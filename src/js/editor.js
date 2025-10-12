@@ -6,6 +6,7 @@
  */
 
 import DOMRenderer from './renderer.js';
+import logger, { LOG_CATEGORIES } from './logger.js';
 
 class MusicNotationEditor {
     constructor(canvasElement) {
@@ -50,7 +51,12 @@ class MusicNotationEditor {
                 parser: new wasmModule.CellParser(),
                 beatDeriver: new wasmModule.BeatDeriver(),
                 layoutRenderer: new wasmModule.LayoutRenderer(16),
-                graphemeSegmenter: new wasmModule.GraphemeSegmenter()
+                graphemeSegmenter: new wasmModule.GraphemeSegmenter(),
+                // New recursive descent API
+                insertCharacter: wasmModule.insertCharacter,
+                parseText: wasmModule.parseText,
+                deleteCharacter: wasmModule.deleteCharacter,
+                applyOctave: wasmModule.applyOctave
             };
 
             const loadTime = performance.now() - startTime;
@@ -89,6 +95,7 @@ class MusicNotationEditor {
                 created_at: new Date().toISOString()
             },
             lines: [{
+                label: "",
                 lanes: [[], [], [], []], // Empty lanes
                 metadata: {},
                 beats: [],
@@ -135,47 +142,100 @@ class MusicNotationEditor {
     }
 
     /**
-     * Insert text at current cursor position
+     * Insert text at current cursor position using recursive descent parser
      */
     async insertText(text) {
         if (!this.isInitialized || !this.wasmModule) {
+            logger.warn(LOG_CATEGORIES.EDITOR, 'insertText called before initialization');
             return;
         }
+
+        logger.time('insertText', LOG_CATEGORIES.EDITOR);
+        const cursorPos = this.getCursorPosition();
+        const pitchSystem = this.getCurrentPitchSystem();
+
+        logger.info(LOG_CATEGORIES.EDITOR, 'Inserting text', {
+            text,
+            cursorPos,
+            pitchSystem: this.getPitchSystemName(pitchSystem)
+        });
 
         const startTime = performance.now();
 
         try {
-            const cursorPos = this.getCursorPosition();
 
-            // Simple text insertion for POC
             if (this.document && this.document.lines && this.document.lines.length > 0) {
                 const line = this.document.lines[0];
-                const letterLane = line.lanes[1]; // Letter lane
+                let letterLane = line.lanes[1]; // Letter lane
 
-                // Parse the text to create cells
-                const cells = this.wasmModule.parser.parseToCells(text);
+                logger.debug(LOG_CATEGORIES.PARSER, 'Processing characters', {
+                    charCount: text.length,
+                    initialLaneSize: letterLane.length
+                });
 
-                // Insert cells at cursor position
-                letterLane.splice(cursorPos, 0, ...cells);
+                // Insert each character using recursive descent parser
+                let currentPos = cursorPos;
+                for (const char of text) {
+                    const lengthBefore = letterLane.length;
+
+                    logger.debug(LOG_CATEGORIES.PARSER, `Inserting char '${char}'`, {
+                        position: currentPos,
+                        laneSizeBefore: lengthBefore
+                    });
+
+                    // Call WASM recursive descent API
+                    const updatedCells = this.wasmModule.insertCharacter(
+                        letterLane,
+                        char,
+                        currentPos,
+                        pitchSystem
+                    );
+
+                    const lengthAfter = updatedCells.length;
+
+                    // Update letter lane with combined cells
+                    line.lanes[1] = updatedCells;
+                    letterLane = updatedCells;
+
+                    // Adjust cursor based on actual change in cell count
+                    // If cells combined, length might not increase by 1
+                    const cellDelta = lengthAfter - lengthBefore;
+                    logger.trace(LOG_CATEGORIES.PARSER, `Cell delta: ${cellDelta}`, {
+                        lengthBefore,
+                        lengthAfter
+                    });
+                    currentPos += cellDelta;
+                }
 
                 // Update cursor position
-                this.setCursorPosition(cursorPos + text.length);
+                logger.debug(LOG_CATEGORIES.CURSOR, 'Updating cursor position', {
+                    from: cursorPos,
+                    to: currentPos
+                });
+                this.setCursorPosition(currentPos);
             }
 
             await this.render();
             this.updateDocumentDisplay();
 
             const endTime = performance.now();
-            this.recordPerformanceMetric('typingLatency', endTime - startTime);
+            const duration = endTime - startTime;
+            this.recordPerformanceMetric('typingLatency', duration);
+
+            logger.timeEnd('insertText', LOG_CATEGORIES.EDITOR, { duration: `${duration.toFixed(2)}ms` });
 
         } catch (error) {
+            logger.error(LOG_CATEGORIES.EDITOR, 'Failed to insert text', {
+                error: error.message,
+                stack: error.stack
+            });
             console.error('Failed to insert text:', error);
             this.showError('Failed to insert text');
         }
     }
 
     /**
-     * Parse musical notation text with real-time processing
+     * Parse musical notation text with real-time processing using recursive descent
      */
     async parseText(text) {
         if (!this.isInitialized || !this.wasmModule) {
@@ -192,9 +252,11 @@ class MusicNotationEditor {
                 return;
             }
 
-            // Parse text using WASM parser and update document
+            const pitchSystem = this.getCurrentPitchSystem();
+
+            // Parse text using WASM recursive descent parser
             if (this.document && this.document.lines && this.document.lines.length > 0) {
-                const cells = this.wasmModule.parser.parseToCells(text);
+                const cells = this.wasmModule.parseText(text, pitchSystem);
                 const line = this.document.lines[0];
                 line.lanes[1] = cells; // Replace letter lane with parsed cells
             }
@@ -396,6 +458,7 @@ class MusicNotationEditor {
         if (this.document && this.document.state) {
             this.document.state.cursor.column = position;
             this.updateCursorPositionDisplay();
+            this.updateCursorVisualPosition();
         }
     }
 
@@ -606,7 +669,6 @@ class MusicNotationEditor {
 
             // Update display
             this.updateSelectionDisplay();
-            this.updateCursorVisualPosition();
         }
     }
 
@@ -678,10 +740,6 @@ class MusicNotationEditor {
         // Record navigation performance
         const endTime = performance.now();
         this.recordPerformanceMetric('navigationLatency', endTime - startTime);
-
-        // Update display
-        this.updateCursorPositionDisplay();
-        this.updateCursorVisualPosition();
     }
 
     /**
@@ -1050,6 +1108,7 @@ class MusicNotationEditor {
             this.document.state.selection = null;
         }
         this.clearSelectionVisual();
+        this.updateDocumentDisplay();
     }
 
     /**
@@ -1216,6 +1275,9 @@ class MusicNotationEditor {
 
         // Add visual selection for selected range
         this.renderSelectionVisual(selection);
+
+        // Update ephemeral model display to show current selection state
+        this.updateDocumentDisplay();
     }
 
     /**
@@ -1317,8 +1379,22 @@ class MusicNotationEditor {
         } else {
             const cursorPos = this.getCursorPosition();
             if (cursorPos > 0) {
-                await this.deleteRange(cursorPos - 1, cursorPos);
-                this.setCursorPosition(cursorPos - 1);
+                // Use WASM API to delete character
+                if (this.document && this.document.lines && this.document.lines.length > 0) {
+                    const line = this.document.lines[0];
+                    const letterLane = line.lanes[1];
+
+                    try {
+                        const updatedCells = this.wasmModule.deleteCharacter(letterLane, cursorPos - 1);
+                        line.lanes[1] = updatedCells;
+                        this.setCursorPosition(cursorPos - 1);
+                    } catch (e) {
+                        console.error('Failed to delete character:', e);
+                        // Fallback to old method
+                        await this.deleteRange(cursorPos - 1, cursorPos);
+                        this.setCursorPosition(cursorPos - 1);
+                    }
+                }
 
                 // Recalculate beats after deletion
                 await this.recalculateBeats();
@@ -1342,7 +1418,20 @@ class MusicNotationEditor {
             const maxPos = this.getMaxCursorPosition();
 
             if (cursorPos < maxPos) {
-                await this.deleteRange(cursorPos, cursorPos + 1);
+                // Use WASM API to delete character
+                if (this.document && this.document.lines && this.document.lines.length > 0) {
+                    const line = this.document.lines[0];
+                    const letterLane = line.lanes[1];
+
+                    try {
+                        const updatedCells = this.wasmModule.deleteCharacter(letterLane, cursorPos);
+                        line.lanes[1] = updatedCells;
+                    } catch (e) {
+                        console.error('Failed to delete character:', e);
+                        // Fallback to old method
+                        await this.deleteRange(cursorPos, cursorPos + 1);
+                    }
+                }
 
                 // Recalculate beats after deletion
                 await this.recalculateBeats();
@@ -1558,11 +1647,15 @@ class MusicNotationEditor {
      */
     async applyOctave(octave) {
         if (!this.isInitialized || !this.wasmModule) {
+            logger.warn(LOG_CATEGORIES.COMMAND, 'applyOctave called before initialization');
             return;
         }
 
+        logger.time('applyOctave', LOG_CATEGORIES.COMMAND);
+
         // Validate selection
         if (!this.validateSelectionForCommands()) {
+            logger.warn(LOG_CATEGORIES.COMMAND, 'applyOctave called without valid selection');
             return;
         }
 
@@ -1570,8 +1663,15 @@ class MusicNotationEditor {
             const selection = this.getSelection();
             const selectedText = this.getSelectedText();
 
+            logger.info(LOG_CATEGORIES.COMMAND, 'Applying octave', {
+                octave,
+                selection: `${selection.start}..${selection.end}`,
+                selectedText
+            });
+
             // Validate octave value
             if (![-1, 0, 1].includes(octave)) {
+                logger.error(LOG_CATEGORIES.COMMAND, 'Invalid octave value', { octave });
                 this.showError('Invalid octave value', {
                     source: 'Octave Command',
                     details: `Octave must be -1 (lower), 0 (middle), or 1 (upper), got: ${octave}`
@@ -1587,25 +1687,55 @@ class MusicNotationEditor {
 
             this.addToConsoleLog(`Applying octave ${octaveNames[octave]} to selection: "${selectedText}"`);
 
-            // Stub implementation for POC - manually set octave on cells
+            // Call WASM function to apply octave to selected cells
             if (this.document && this.document.lines && this.document.lines.length > 0) {
                 const line = this.document.lines[0];
                 const letterLane = line.lanes[1]; // Letter lane
 
-                // Apply octave to cells in selection range
-                for (let i = selection.start; i < selection.end && i < letterLane.length; i++) {
-                    const cell = letterLane[i];
-                    // Only apply octave to pitched elements (kind 1)
-                    if (cell.kind === 1) {
-                        cell.octave = octave;
+                logger.debug(LOG_CATEGORIES.COMMAND, 'Calling WASM applyOctave', {
+                    laneSize: letterLane.length,
+                    range: `${selection.start}..${selection.end}`
+                });
+
+                try {
+                    const updatedCells = this.wasmModule.applyOctave(
+                        letterLane,
+                        selection.start,
+                        selection.end,
+                        octave
+                    );
+                    line.lanes[1] = updatedCells;
+                    logger.info(LOG_CATEGORIES.COMMAND, 'WASM applyOctave successful', {
+                        cellsModified: updatedCells.length
+                    });
+                } catch (e) {
+                    logger.error(LOG_CATEGORIES.COMMAND, 'WASM applyOctave failed, using fallback', {
+                        error: e.message
+                    });
+                    console.error('WASM applyOctave failed:', e);
+                    // Fallback to manual application
+                    let fallbackCount = 0;
+                    for (let i = selection.start; i < selection.end && i < letterLane.length; i++) {
+                        const cell = letterLane[i];
+                        // Only apply octave to pitched elements (kind 1)
+                        if (cell.kind === 1) {
+                            cell.octave = octave;
+                            fallbackCount++;
+                        }
                     }
+                    logger.info(LOG_CATEGORIES.COMMAND, 'Fallback application complete', { cellsModified: fallbackCount });
                 }
             }
 
             await this.render();
 
+            logger.timeEnd('applyOctave', LOG_CATEGORIES.COMMAND);
             this.addToConsoleLog(`Octave ${octaveNames[octave]} applied successfully to "${selectedText}"`);
         } catch (error) {
+            logger.error(LOG_CATEGORIES.COMMAND, 'Failed to apply octave', {
+                error: error.message,
+                stack: error.stack
+            });
             console.error('Failed to apply octave:', error);
             this.showError('Failed to apply octave - please ensure you have a valid selection', {
                 source: 'Octave Command',
@@ -1843,14 +1973,30 @@ class MusicNotationEditor {
         const cursorPos = this.getCursorPosition();
         const lane = this.getCurrentLane();
 
-        // Calculate precise positioning
+        // Calculate precise positioning based on actual grapheme lengths
         const charWidth = 12; // Approximate character width
         const lineHeight = 16; // Line height in pixels
         const laneOffsets = [0, lineHeight, lineHeight * 2, lineHeight * 3]; // Visual offsets for lanes
         const yOffset = laneOffsets[lane] || lineHeight;
 
+        // Calculate pixel position by summing grapheme lengths of all cells before cursor
+        let pixelPos = 0;
+        if (this.document && this.document.lines && this.document.lines.length > 0) {
+            const line = this.document.lines[0];
+            const letterLane = line.lanes[lane];
+
+            for (let i = 0; i < cursorPos && i < letterLane.length; i++) {
+                const cell = letterLane[i];
+                // Add the length of this cell's grapheme (e.g., "1#" has length 2)
+                pixelPos += (cell.grapheme || '').length * charWidth;
+            }
+        } else {
+            // Fallback if no document
+            pixelPos = cursorPos * charWidth;
+        }
+
         // Set cursor position
-        cursor.style.left = `${cursorPos * charWidth}px`;
+        cursor.style.left = `${pixelPos}px`;
         cursor.style.top = `${yOffset}px`;
         cursor.style.height = `${lineHeight}px`;
 

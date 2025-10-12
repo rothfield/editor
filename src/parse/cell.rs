@@ -23,16 +23,15 @@ impl CellParser {
         }
     }
 
-    /// Parse text into Cell array
+    /// Parse text into Cell array (character-by-character, no eager combination)
     #[wasm_bindgen(js_name = parseToCells)]
     pub fn parse_to_char_cells(&self, text: &str) -> Result<js_sys::Array, JsValue> {
         let segments = self.segmenter.segment_text(text)?;
-        let head_markers = GraphemeUtils::identify_head_markers(text);
 
         let mut char_cells = Vec::new();
         let mut column = 0;
 
-        for (i, segment_result) in segments.iter().enumerate() {
+        for segment_result in segments.iter() {
             let segment = segment_result.as_string()
                 .ok_or_else(|| JsValue::from_str("Failed to get segment"))?;
 
@@ -47,13 +46,11 @@ impl CellParser {
             // Set pitch system for pitched elements
             if kind == ElementKind::PitchedElement {
                 cell.pitch_system = Some(pitch_system);
-
-                // Set pitch code
                 cell.pitch_code = Some(self.canonicalize_pitch(&segment, pitch_system));
             }
 
-            // Set head marker
-            cell.set_head(head_markers[i]);
+            // All cells are heads in character-by-character mode
+            cell.set_head(true);
 
             char_cells.push(cell);
             column += 1;
@@ -70,19 +67,6 @@ impl CellParser {
         Ok(result)
     }
 
-    /// Identify head markers for multi-character tokens
-    #[wasm_bindgen(js_name = identifyHeadMarkers)]
-    pub fn identify_head_markers(&self, text: &str) -> Result<js_sys::Array, JsValue> {
-        let head_markers = GraphemeUtils::identify_head_markers(text);
-        let result = js_sys::Array::new();
-
-        for is_head in head_markers {
-            result.push(&JsValue::from_bool(is_head));
-        }
-
-        Ok(result)
-    }
-
     /// Validate musical notation syntax
     #[wasm_bindgen(js_name = validateNotation)]
     pub fn validate_notation(&self, text: &str) -> Result<JsValue, JsValue> {
@@ -93,15 +77,14 @@ impl CellParser {
 }
 
 impl CellParser {
-    /// Parse text into Cell array (Rust version)
+    /// Parse text into Cell array (Rust version, character-by-character)
     pub fn parse_to_char_cells_rust(&self, text: &str) -> Result<Vec<Cell>, String> {
         let segments = self.segmenter.segment_text_rust(text);
-        let head_markers = GraphemeUtils::identify_head_markers(text);
 
         let mut char_cells = Vec::new();
         let mut column = 0;
 
-        for (i, segment) in segments.iter().enumerate() {
+        for segment in segments.iter() {
             if segment.trim().is_empty() {
                 column += 1;
                 continue;
@@ -116,8 +99,8 @@ impl CellParser {
                 cell.pitch_code = Some(self.canonicalize_pitch(segment, pitch_system));
             }
 
-            // Set head marker
-            cell.set_head(head_markers[i]);
+            // All cells are heads in character-by-character mode
+            cell.set_head(true);
 
             char_cells.push(cell);
             column += 1;
@@ -163,16 +146,14 @@ impl CellParser {
         (ElementKind::Text, PitchSystem::Unknown)
     }
 
-    /// Check if segment is a number system pitch
+    /// Check if segment is a number system pitch (single character only)
     fn is_number_system_pitch(&self, segment: &str) -> bool {
-        let base = segment.trim_end_matches('#').trim_end_matches('b');
-        matches!(base, "1" | "2" | "3" | "4" | "5" | "6" | "7")
+        matches!(segment, "1" | "2" | "3" | "4" | "5" | "6" | "7")
     }
 
-    /// Check if segment is a western system pitch
+    /// Check if segment is a western system pitch (single character only)
     fn is_western_system_pitch(&self, segment: &str) -> bool {
-        let base = segment.trim_end_matches('#').trim_end_matches('b');
-        matches!(base.to_lowercase().as_str(), "c" | "d" | "e" | "f" | "g" | "a" | "b")
+        matches!(segment.to_lowercase().as_str(), "c" | "d" | "e" | "f" | "g" | "a" | "b")
     }
 
     /// Check if segment is a sargam system pitch
@@ -181,16 +162,16 @@ impl CellParser {
                "S" | "r" | "R" | "g" | "G" | "m" | "M" | "P" | "d" | "D" | "n" | "N")
     }
 
-    /// Canonicalize pitch representation
+    /// Canonicalize pitch representation (single character only)
     fn canonicalize_pitch(&self, pitch: &str, pitch_system: PitchSystem) -> String {
         match pitch_system {
             PitchSystem::Number => {
-                // Remove accidentals for canonical form
-                pitch.trim_end_matches('#').trim_end_matches('b').to_string()
+                // Single character number pitch
+                pitch.to_string()
             },
             PitchSystem::Western => {
                 // Convert to lowercase for canonical form
-                pitch.trim_end_matches('#').trim_end_matches('b').to_lowercase()
+                pitch.to_lowercase()
             },
             PitchSystem::Sargam => {
                 // Use uppercase for canonical form

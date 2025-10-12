@@ -7,6 +7,7 @@ pub mod models;
 pub mod parse;
 pub mod renderers;
 pub mod utils;
+pub mod api;
 
 // Re-export commonly used types
 pub use models::core::*;

@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Recursive Descent Parser Test</title>
+    <style>
+        body {
+            font-family: 'Monaco', 'Courier New', monospace;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+            background: #1e1e1e;
+            color: #d4d4d4;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            background: #2d2d30;
+            border-radius: 4px;
+            border-left: 4px solid #007acc;
+        }
+        .test-result {
+            margin: 10px 0;
+            padding: 10px;
+            background: #1e1e1e;
+            border-radius: 3px;
+        }
+        .pass { color: #4ec9b0; }
+        .fail { color: #f48771; }
+        h1 { color: #4ec9b0; }
+        h2 { color: #dcdcaa; }
+        .cell-display {
+            display: inline-block;
+            margin: 2px;
+            padding: 4px 8px;
+            background: #3e3e42;
+            border-radius: 3px;
+            border: 1px solid #569cd6;
+        }
+        .note { background: #264f78; }
+        .text { background: #562b08; }
+        pre {
+            background: #1e1e1e;
+            padding: 10px;
+            border-radius: 3px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎵 Recursive Descent Parser Tests</h1>
+    <div id="test-output"></div>
+
+    <script type="module">
+        import init, { insertCharacter, parseText } from './dist/pkg/editor_wasm.js';
+
+        const output = document.getElementById('test-output');
+
+        function addSection(title) {
+            const section = document.createElement('div');
+            section.className = 'test-section';
+            section.innerHTML = `<h2>${title}</h2>`;
+            output.appendChild(section);
+            return section;
+        }
+
+        function addResult(section, name, result, details = '') {
+            const div = document.createElement('div');
+            div.className = 'test-result';
+            const status = result ? '<span class="pass">✓ PASS</span>' : '<span class="fail">✗ FAIL</span>';
+            div.innerHTML = `
+                ${status} <strong>${name}</strong>
+                ${details ? `<pre>${details}</pre>` : ''}
+            `;
+            section.appendChild(div);
+        }
+
+        function displayCells(cells) {
+            return cells.map(cell => {
+                const kind = cell.kind === 1 ? 'note' : 'text';
+                return `<span class="cell-display ${kind}">${cell.grapheme} (kind: ${cell.kind})</span>`;
+            }).join('');
+        }
+
+        async function runTests() {
+            await init();
+
+            // Test 1: Single character parsing
+            const section1 = addSection('Test 1: Single Character Parsing');
+            try {
+                const result = parseText('1', 1); // Number system
+                const cells = Array.from(result);
+                const pass = cells.length === 1 && cells[0].grapheme === '1' && cells[0].kind === 1;
+                addResult(section1, 'Parse single note "1"', pass,
+                    `Result: ${displayCells(cells)}\nExpected: 1 cell with grapheme="1", kind=PitchedElement(1)`);
+            } catch (e) {
+                addResult(section1, 'Parse single note "1"', false, `Error: ${e.message}`);
+            }
+
+            // Test 2: Note with single accidental
+            const section2 = addSection('Test 2: Note with Accidental');
+            try {
+                const result = parseText('1#', 1); // Number system
+                const cells = Array.from(result);
+                const pass = cells.length === 1 && cells[0].grapheme === '1#' && cells[0].kind === 1;
+                addResult(section2, 'Parse "1#" (C sharp)', pass,
+                    `Result: ${displayCells(cells)}\nExpected: 1 combined cell with grapheme="1#"`);
+            } catch (e) {
+                addResult(section2, 'Parse "1#"', false, `Error: ${e.message}`);
+            }
+
+            // Test 3: Note with double accidental
+            const section3 = addSection('Test 3: Double Accidental');
+            try {
+                const result = parseText('1##', 1); // Number system
+                const cells = Array.from(result);
+                const pass = cells.length === 1 && cells[0].grapheme === '1##' && cells[0].kind === 1;
+                addResult(section3, 'Parse "1##" (C double sharp)', pass,
+                    `Result: ${displayCells(cells)}\nExpected: 1 combined cell with grapheme="1##"`);
+            } catch (e) {
+                addResult(section3, 'Parse "1##"', false, `Error: ${e.message}`);
+            }
+
+            // Test 4: Multiple notes
+            const section4 = addSection('Test 4: Multiple Notes');
+            try {
+                const result = parseText('123', 1); // Number system
+                const cells = Array.from(result);
+                const pass = cells.length === 3 &&
+                    cells[0].grapheme === '1' && cells[1].grapheme === '2' && cells[2].grapheme === '3';
+                addResult(section4, 'Parse "123" (C D E)', pass,
+                    `Result: ${displayCells(cells)}\nExpected: 3 separate cells`);
+            } catch (e) {
+                addResult(section4, 'Parse "123"', false, `Error: ${e.message}`);
+            }
+
+            // Test 5: Western system
+            const section5 = addSection('Test 5: Western System');
+            try {
+                const result = parseText('c#', 2); // Western system
+                const cells = Array.from(result);
+                const pass = cells.length === 1 && cells[0].grapheme === 'c#' && cells[0].kind === 1;
+                addResult(section5, 'Parse "c#" (C sharp in Western)', pass,
+                    `Result: ${displayCells(cells)}\nExpected: 1 combined cell with grapheme="c#"`);
+            } catch (e) {
+                addResult(section5, 'Parse "c#"', false, `Error: ${e.message}`);
+            }
+
+            // Test 6: Character-by-character insertion
+            const section6 = addSection('Test 6: Character-by-Character Insertion');
+            try {
+                let cells = [];
+                // Insert '1'
+                cells = insertCharacter(cells, '1', 0, 1);
+                const step1Pass = cells.length === 1 && cells[0].grapheme === '1';
+
+                // Insert '#'
+                cells = insertCharacter(cells, '#', 1, 1);
+                const step2Pass = cells.length === 1 && cells[0].grapheme === '1#';
+
+                addResult(section6, 'Insert "1" then "#" (char-by-char)', step1Pass && step2Pass,
+                    `After '1': ${displayCells(cells.slice(0,1))}\nAfter '#': ${displayCells(cells)}\nExpected: Combination into "1#"`);
+            } catch (e) {
+                addResult(section6, 'Character-by-character insertion', false, `Error: ${e.message}`);
+            }
+
+            // Test 7: Text handling
+            const section7 = addSection('Test 7: Text (Non-Musical) Handling');
+            try {
+                const result = parseText('xyz', 1);
+                const cells = Array.from(result);
+                const pass = cells.length === 1 && cells[0].grapheme === 'xyz' && cells[0].kind === 7; // Text kind
+                addResult(section7, 'Parse "xyz" (text combination)', pass,
+                    `Result: ${displayCells(cells)}\nExpected: 1 combined text cell`);
+            } catch (e) {
+                addResult(section7, 'Parse "xyz"', false, `Error: ${e.message}`);
+            }
+
+            // Test 8: Mixed content
+            const section8 = addSection('Test 8: Mixed Content');
+            try {
+                const result = parseText('1#2b3', 1);
+                const cells = Array.from(result);
+                const pass = cells.length === 3 &&
+                    cells[0].grapheme === '1#' &&
+                    cells[1].grapheme === '2b' &&
+                    cells[2].grapheme === '3';
+                addResult(section8, 'Parse "1#2b3" (C# Db E)', pass,
+                    `Result: ${displayCells(cells)}\nExpected: 3 cells ["1#", "2b", "3"]`);
+            } catch (e) {
+                addResult(section8, 'Parse "1#2b3"', false, `Error: ${e.message}`);
+            }
+
+            // Summary
+            const summary = addSection('📊 Test Summary');
+            const passCount = document.querySelectorAll('.pass').length;
+            const failCount = document.querySelectorAll('.fail').length;
+            const total = passCount + failCount;
+            addResult(summary, 'Results', true,
+                `Passed: ${passCount}/${total}\nFailed: ${failCount}/${total}\n\n${passCount === total ? '🎉 All tests passed!' : '⚠️ Some tests failed'}`);
+        }
+
+        runTests().catch(err => {
+            output.innerHTML = `<div class="test-result fail">Failed to initialize WASM module: ${err.message}</div>`;
+        });
+    </script>
+</body>
+</html>

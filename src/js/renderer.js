@@ -200,6 +200,11 @@ class DOMRenderer {
             this.renderLane(lane, lineIndex, laneIndex, lineElement);
         });
 
+        // Render line label
+        if (line.label) {
+            this.renderLineLabel(line.label, lineElement);
+        }
+
         // Render line metadata
         if (line.metadata) {
             this.renderLineMetadata(line.metadata, lineElement);
@@ -215,17 +220,34 @@ class DOMRenderer {
         // Clear existing content
         laneContainer.innerHTML = '';
 
-        // Render each Cell in the lane
+        // Calculate cumulative x positions based on actual grapheme lengths
+        let cumulativeX = 0;
+        const cellPositions = [];
+        lane.forEach((charCell) => {
+            cellPositions.push(cumulativeX);
+            const graphemeLength = (charCell.grapheme || '').length;
+            cumulativeX += graphemeLength * 12; // 12px per character
+        });
+
+        // Render each Cell in the lane and update ephemeral rendering fields
         lane.forEach((charCell, cellIndex) => {
-            this.renderCell(charCell, lineIndex, laneIndex, cellIndex, laneContainer);
+            // Set ephemeral rendering fields (hitboxes) on the cell for ephemeral model display
+            const graphemeLength = (charCell.grapheme || '').length;
+            const cellWidth = graphemeLength * 12;
+            charCell.x = cellPositions[cellIndex];
+            charCell.y = laneIndex * 16; // 16px per lane
+            charCell.w = cellWidth;
+            charCell.h = 16;
+
+            this.renderCell(charCell, lineIndex, laneIndex, cellIndex, laneContainer, cellPositions[cellIndex]);
         });
     }
 
     /**
      * Render a single Cell
      */
-    renderCell(charCell, lineIndex, laneIndex, cellIndex, container) {
-        const element = this.createCellElement(charCell, lineIndex, laneIndex, cellIndex);
+    renderCell(charCell, lineIndex, laneIndex, cellIndex, container, xPosition) {
+        const element = this.createCellElement(charCell, lineIndex, laneIndex, cellIndex, xPosition);
         container.appendChild(element);
 
         // Cache the element for future updates
@@ -236,17 +258,21 @@ class DOMRenderer {
     /**
      * Create DOM element for Cell
      */
-    createCellElement(charCell, lineIndex, laneIndex, cellIndex) {
+    createCellElement(charCell, lineIndex, laneIndex, cellIndex, xPosition) {
         const element = document.createElement('span');
         element.className = this.getCellClasses(charCell);
         element.textContent = charCell.grapheme;
 
+        // Calculate width based on actual grapheme length (e.g., "1#" = 2 chars = 24px)
+        const graphemeLength = (charCell.grapheme || '').length;
+        const cellWidth = graphemeLength * 12; // 12px per character
+
         // Set positioning using inline styles for now
         // In a real implementation, this would use CSS positioning
         element.style.position = 'absolute';
-        element.style.left = `${charCell.x || (cellIndex * 12)}px`;
+        element.style.left = `${charCell.x || xPosition || 0}px`;
         element.style.top = `${charCell.y || 0}px`;
-        element.style.width = `${charCell.w || 12}px`;
+        element.style.width = `${charCell.w || cellWidth}px`;
         element.style.height = `${charCell.h || 16}px`;
 
         // Add data attributes for debugging
@@ -254,6 +280,7 @@ class DOMRenderer {
         element.dataset.laneIndex = laneIndex;
         element.dataset.cellIndex = cellIndex;
         element.dataset.column = charCell.col;
+        element.dataset.graphemeLength = graphemeLength;
 
         // Add event listeners
         this.addCellEventListeners(element, charCell);
@@ -399,11 +426,6 @@ class DOMRenderer {
      */
     renderLineMetadata(metadata, lineElement) {
         if (!metadata) return;
-
-        // Render label if present
-        if (metadata.label) {
-            this.renderLineLabel(metadata.label, lineElement);
-        }
 
         // Render lyrics if present
         if (metadata.lyrics) {

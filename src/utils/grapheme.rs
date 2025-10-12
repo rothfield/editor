@@ -154,39 +154,4 @@ impl GraphemeUtils {
     pub fn is_whitespace(text: &str) -> bool {
         text.trim().is_empty()
     }
-
-    /// Identify head markers for multi-character tokens
-    pub fn identify_head_markers(text: &str) -> Vec<bool> {
-        let segments = GraphemeSegmenter::new().segment_text_rust(text);
-        let mut head_markers = vec![true; segments.len()];
-
-        // Mark non-head segments of multi-character tokens
-        for i in 0..segments.len() {
-            if !head_markers[i] {
-                continue;
-            }
-
-            let segment = &segments[i];
-            if segment.len() > 1 {
-                // Multi-character segments are always heads
-                continue;
-            }
-
-            // Check for multi-character token patterns
-            if i + 1 < segments.len() {
-                let combined = format!("{}{}", segment, segments[i + 1]);
-                if combined.ends_with('#') || combined.ends_with('b') {
-                    if combined == "##" || combined == "bb" {
-                        // Mark second character as non-head
-                        head_markers[i + 1] = false;
-                    } else {
-                        // Mark second character as non-head
-                        head_markers[i + 1] = false;
-                    }
-                }
-            }
-        }
-
-        head_markers
-    }
 }

@@ -35,6 +35,9 @@ pub struct Cell {
     /// Pitch system used for this element (for pitched elements only)
     pub pitch_system: Option<PitchSystem>,
 
+    /// Octave marking for pitched elements (-1 = lower, 0 = middle/none, 1 = upper)
+    pub octave: Option<i8>,
+
     /// Layout cache properties (calculated at render time)
     #[serde(skip)]
     pub x: f32,
@@ -65,6 +68,7 @@ impl Cell {
             flags: 0,
             pitch_code: None,
             pitch_system: None,
+            octave: None,
             x: 0.0,
             y: 0.0,
             w: 0.0,

@@ -38,12 +38,19 @@ class UI {
         // Setup File menu
         this.setupFileMenu();
 
+        // Setup Edit menu
+        this.setupEditMenu();
+
         // Setup Line menu
         this.setupLineMenu();
 
         // Add menu toggle listeners
         document.getElementById('file-menu-button').addEventListener('click', () => {
             this.handleMenuToggle('file');
+        });
+
+        document.getElementById('edit-menu-button').addEventListener('click', () => {
+            this.handleMenuToggle('edit');
         });
 
         document.getElementById('line-menu-button').addEventListener('click', () => {
@@ -85,6 +92,38 @@ class UI {
                 menuItem.textContent = item.label;
                 menuItem.addEventListener('click', this.handleMenuItemClick);
                 fileMenu.appendChild(menuItem);
+            }
+        });
+    }
+
+    /**
+     * Setup Edit menu
+     */
+    setupEditMenu() {
+        const menuItems = [
+            { id: 'menu-apply-slur', label: 'Apply Slur (Alt+S)', action: 'apply-slur' },
+            { id: 'menu-separator-1', label: null, separator: true },
+            { id: 'menu-octave-upper', label: 'Upper Octave (Alt+U)', action: 'octave-upper' },
+            { id: 'menu-octave-middle', label: 'Middle Octave (Alt+M)', action: 'octave-middle' },
+            { id: 'menu-octave-lower', label: 'Lower Octave (Alt+L)', action: 'octave-lower' }
+        ];
+
+        const editMenu = document.getElementById('edit-menu');
+        editMenu.innerHTML = '';
+
+        menuItems.forEach(item => {
+            if (item.separator) {
+                const separator = document.createElement('div');
+                separator.className = 'menu-separator';
+                editMenu.appendChild(separator);
+            } else {
+                const menuItem = document.createElement('div');
+                menuItem.id = item.id;
+                menuItem.className = 'menu-item';
+                menuItem.dataset.action = item.action;
+                menuItem.textContent = item.label;
+                menuItem.addEventListener('click', this.handleMenuItemClick);
+                editMenu.appendChild(menuItem);
             }
         });
     }
@@ -265,6 +304,18 @@ class UI {
                 break;
             case 'set-key-signature':
                 this.setKeySignature();
+                break;
+            case 'apply-slur':
+                this.applySlur();
+                break;
+            case 'octave-upper':
+                this.applyOctave(1);
+                break;
+            case 'octave-middle':
+                this.applyOctave(0);
+                break;
+            case 'octave-lower':
+                this.applyOctave(-1);
                 break;
             case 'set-label':
                 this.setLabel();
@@ -478,7 +529,7 @@ class UI {
             this.updateLineLabelDisplay(newLabel);
 
             if (this.editor && this.editor.document && this.editor.document.lines.length > 0) {
-                this.editor.document.lines[0].metadata.label = newLabel;
+                this.editor.document.lines[0].label = newLabel;
                 this.editor.addToConsoleLog(`Line label set to: ${newLabel}`);
             }
         }
@@ -733,7 +784,7 @@ class UI {
 
     getLineLabel() {
         if (this.editor?.document?.lines?.length > 0) {
-            return this.editor.document.lines[0].metadata.label || '';
+            return this.editor.document.lines[0].label || '';
         }
         return '';
     }
@@ -812,6 +863,24 @@ class UI {
     updateLineKeySignatureDisplay(signature) {
         // This would update UI to show line key signature
         console.log(`Line key signature updated: ${signature}`);
+    }
+
+    /**
+     * Apply slur to current selection
+     */
+    applySlur() {
+        if (this.editor) {
+            this.editor.applySlur();
+        }
+    }
+
+    /**
+     * Apply octave to current selection
+     */
+    applyOctave(octave) {
+        if (this.editor) {
+            this.editor.applyOctave(octave);
+        }
     }
 
     /**
