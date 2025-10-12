@@ -95,7 +95,7 @@ pub struct SlurSpan {
 #[wasm_bindgen]
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
 pub struct Position {
-    pub line: usize,
+    pub stave: usize,
     pub lane: LaneKind,
     pub column: usize,
 }
@@ -138,17 +138,17 @@ impl SlurSpan {
 
     /// Get the horizontal span of this slur
     pub fn horizontal_span(&self) -> usize {
-        if self.start.line == self.end.line && self.start.lane == self.end.lane {
+        if self.start.stave == self.end.stave && self.start.lane == self.end.lane {
             self.end.column.abs_diff(self.start.column) + 1
         } else {
-            0 // Multi-line slur (not supported in POC)
+            0 // Multi-stave slur (not supported in POC)
         }
     }
 
     /// Check if this slur contains a given position
-    pub fn contains(&self, line: usize, lane: LaneKind, column: usize) -> bool {
-        // Only check if line and lane match
-        if line != self.start.line || lane != self.start.lane {
+    pub fn contains(&self, stave: usize, lane: LaneKind, column: usize) -> bool {
+        // Only check if stave and lane match
+        if stave != self.start.stave || lane != self.start.lane {
             return false;
         }
 
@@ -171,10 +171,10 @@ impl SlurSpan {
 #[wasm_bindgen]
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct CursorPosition {
-    /// Line index (0-based)
-    pub line: usize,
+    /// Stave index (0-based)
+    pub stave: usize,
 
-    /// Lane within the line
+    /// Lane within the stave
     pub lane: LaneKind,
 
     /// Column within the lane (0-based)
@@ -185,22 +185,22 @@ impl CursorPosition {
     /// Create a new cursor position
     pub fn new() -> Self {
         Self {
-            line: 0,
+            stave: 0,
             lane: LaneKind::Letter,
             column: 0,
         }
     }
 
     /// Create a cursor position at specific coordinates
-    pub fn at(line: usize, lane: LaneKind, column: usize) -> Self {
-        Self { line, lane, column }
+    pub fn at(stave: usize, lane: LaneKind, column: usize) -> Self {
+        Self { stave, lane, column }
     }
 
     /// Move cursor relative to current position
-    pub fn move_by(&mut self, delta_line: isize, delta_lane: isize, delta_column: isize) {
-        // Update line
-        if let Some(new_line) = self.line.checked_add_signed(delta_line) {
-            self.line = new_line;
+    pub fn move_by(&mut self, delta_stave: isize, delta_lane: isize, delta_column: isize) {
+        // Update stave
+        if let Some(new_stave) = self.stave.checked_add_signed(delta_stave) {
+            self.stave = new_stave;
         }
 
         // Update lane
@@ -259,8 +259,8 @@ impl Selection {
 
     /// Get the range as (start_pos, end_pos) with start <= end
     pub fn range(&self) -> (CursorPosition, CursorPosition) {
-        if self.start.line < self.end.line ||
-           (self.start.line == self.end.line && self.start.column <= self.end.column) {
+        if self.start.stave < self.end.stave ||
+           (self.start.stave == self.end.stave && self.start.column <= self.end.column) {
             (self.start.clone(), self.end.clone())
         } else {
             (self.end.clone(), self.start.clone())
@@ -268,15 +268,15 @@ impl Selection {
     }
 
     /// Check if a position is within the selection
-    pub fn contains(&self, line: usize, lane: LaneKind, column: usize) -> bool {
+    pub fn contains(&self, stave: usize, lane: LaneKind, column: usize) -> bool {
         if !self.active {
             return false;
         }
 
         let (start, end) = self.range();
 
-        // Only check if on the same line and lane
-        if line != start.line || lane != start.lane {
+        // Only check if on the same stave and lane
+        if stave != start.stave || lane != start.lane {
             return false;
         }
 
@@ -295,10 +295,10 @@ impl Selection {
         }
 
         let (start, end) = self.range();
-        if start.line == end.line {
+        if start.stave == end.stave {
             end.column.abs_diff(start.column) + 1
         } else {
-            0 // Multi-line selections not supported in POC
+            0 // Multi-stave selections not supported in POC
         }
     }
 }

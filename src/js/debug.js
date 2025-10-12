@@ -453,7 +453,7 @@ class DebugSystem {
         const metadata = this.editor.getDocumentMetadata();
 
         // Update document state
-        this.querySelector('.debug-lines-count').textContent = document?.lines?.length || 0;
+        this.querySelector('.debug-lines-count').textContent = document?.staves?.length || 0;
         this.querySelector('.debug-cursor-pos').textContent = this.editor.getCursorPosition() || 0;
         this.querySelector('.debug-selection').textContent = 'None'; // TODO: Get selection info
         this.querySelector('.debug-modified').textContent = 'Yes'; // TODO: Track modification state
@@ -466,10 +466,11 @@ class DebugSystem {
 
         // Update content preview
         const contentPreview = this.querySelector('.debug-content-preview');
-        if (document && document.lines && document.lines.length > 0) {
-            const content = document.lines.map(line =>
-                line.lanes.map(lane =>
-                    lane.map(cell => cell.grapheme || '').join('')
+        if (document && document.staves && document.staves.length > 0) {
+            const lineNames = ['upper_line', 'line', 'lower_line', 'lyrics'];
+            const content = document.staves.map(stave =>
+                lineNames.map(lineName =>
+                    stave[lineName].map(cell => cell.grapheme || '').join('')
                 ).join(' | ')
             ).join('\n');
             contentPreview.textContent = content;
@@ -543,7 +544,7 @@ class DebugSystem {
         const recentCells = this.querySelector('.debug-recent-cells');
         if (stats.recent && stats.recent.length > 0) {
             recentCells.innerHTML = stats.recent.map(cell =>
-                `<div>${cell.grapheme} [${cell.line},${cell.lane},${cell.col}] ${cell.kindName}</div>`
+                `<div>${cell.grapheme} [${cell.stave},${cell.lane},${cell.col}] ${cell.kindName}</div>`
             ).join('');
         } else {
             recentCells.textContent = '(no cells)';
@@ -623,14 +624,16 @@ class DebugSystem {
             recent: []
         };
 
-        if (!this.editor?.document?.lines) return stats;
+        if (!this.editor?.document?.staves) return stats;
 
         const document = this.editor.document;
+        const lineNames = ['upper_line', 'line', 'lower_line', 'lyrics'];
         const laneNames = ['upper', 'letter', 'lower', 'lyrics'];
         const kindNames = ['unknown', 'pitched', 'unpitched', 'upper-annotation', 'lower-annotation', 'text', 'barline', 'breath', 'whitespace'];
 
-        document.lines.forEach((line, lineIndex) => {
-            line.lanes.forEach((lane, laneIndex) => {
+        document.staves.forEach((stave, staveIndex) => {
+            lineNames.forEach((lineName, laneIndex) => {
+                const lane = stave[lineName];
                 lane.forEach((cell, cellIndex) => {
                     stats.total++;
 
@@ -658,7 +661,7 @@ class DebugSystem {
                     if (stats.recent.length < 10) {
                         stats.recent.push({
                             grapheme: cell.grapheme,
-                            line: lineIndex,
+                            stave: staveIndex,
                             lane: laneIndex,
                             col: cellIndex,
                             kindName: kindName
@@ -683,14 +686,14 @@ class DebugSystem {
             details: []
         };
 
-        if (!this.editor?.document?.lines) return stats;
+        if (!this.editor?.document?.staves) return stats;
 
         const document = this.editor.document;
         let totalDuration = 0;
 
-        document.lines.forEach(line => {
-            if (line.beats) {
-                line.beats.forEach(beat => {
+        document.staves.forEach(stave => {
+            if (stave.beats) {
+                stave.beats.forEach(beat => {
                     stats.total++;
                     totalDuration += beat.duration || 1;
                     stats.longest = Math.max(stats.longest, beat.width ? beat.width() : 1);
@@ -716,10 +719,10 @@ class DebugSystem {
      * Get slur count
      */
     getSlurCount() {
-        if (!this.editor?.document?.lines) return 0;
+        if (!this.editor?.document?.staves) return 0;
 
-        return this.editor.document.lines.reduce((count, line) => {
-            return count + (line.slurs ? line.slurs.length : 0);
+        return this.editor.document.staves.reduce((count, stave) => {
+            return count + (stave.slurs ? stave.slurs.length : 0);
         }, 0);
     }
 
@@ -727,11 +730,12 @@ class DebugSystem {
      * Get total Cell count
      */
     getCellCount() {
-        if (!this.editor?.document?.lines) return 0;
+        if (!this.editor?.document?.staves) return 0;
 
-        return this.editor.document.lines.reduce((count, line) => {
-            return count + line.lanes.reduce((laneCount, lane) => {
-                return laneCount + lane.length;
+        const lineNames = ['upper_line', 'line', 'lower_line', 'lyrics'];
+        return this.editor.document.staves.reduce((count, stave) => {
+            return count + lineNames.reduce((laneCount, lineName) => {
+                return laneCount + stave[lineName].length;
             }, 0);
         }, 0);
     }

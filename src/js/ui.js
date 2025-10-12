@@ -528,8 +528,8 @@ class UI {
         if (newLabel !== null && newLabel.trim() !== '') {
             this.updateLineLabelDisplay(newLabel);
 
-            if (this.editor && this.editor.document && this.editor.document.lines.length > 0) {
-                this.editor.document.lines[0].label = newLabel;
+            if (this.editor && this.editor.document && this.editor.document.staves.length > 0) {
+                this.editor.document.staves[0].label = newLabel;
                 this.editor.addToConsoleLog(`Line label set to: ${newLabel}`);
             }
         }
@@ -545,8 +545,8 @@ class UI {
         if (newTonic !== null && newTonic.trim() !== '') {
             this.updateLineTonicDisplay(newTonic);
 
-            if (this.editor && this.editor.document && this.editor.document.lines.length > 0) {
-                this.editor.document.lines[0].metadata.tonic = newTonic;
+            if (this.editor && this.editor.document && this.editor.document.staves.length > 0) {
+                this.editor.document.staves[0].metadata.tonic = newTonic;
                 this.editor.addToConsoleLog(`Line tonic set to: ${newTonic}`);
             }
         }
@@ -562,8 +562,8 @@ class UI {
         if (newSystem !== null) {
             this.updateLinePitchSystemDisplay(newSystem);
 
-            if (this.editor && this.editor.document && this.editor.document.lines.length > 0) {
-                this.editor.document.lines[0].metadata.pitch_system = newSystem;
+            if (this.editor && this.editor.document && this.editor.document.staves.length > 0) {
+                this.editor.document.staves[0].metadata.pitch_system = newSystem;
                 this.editor.addToConsoleLog(`Line pitch system set to: ${this.getPitchSystemName(newSystem)}`);
             }
         }
@@ -579,8 +579,8 @@ class UI {
         if (newLyrics !== null && newLyrics.trim() !== '') {
             this.updateLyricsDisplay(newLyrics);
 
-            if (this.editor && this.editor.document && this.editor.document.lines.length > 0) {
-                this.editor.document.lines[0].metadata.lyrics = newLyrics;
+            if (this.editor && this.editor.document && this.editor.document.staves.length > 0) {
+                this.editor.document.staves[0].metadata.lyrics = newLyrics;
                 this.editor.addToConsoleLog(`Lyrics set to: ${newLyrics}`);
             }
         }
@@ -624,8 +624,8 @@ class UI {
         if (newSignature !== null && newSignature.trim() !== '') {
             this.updateLineKeySignatureDisplay(newSignature);
 
-            if (this.editor && this.editor.document && this.editor.document.lines.length > 0) {
-                this.editor.document.lines[0].metadata.key_signature = newSignature;
+            if (this.editor && this.editor.document && this.editor.document.staves.length > 0) {
+                this.editor.document.staves[0].metadata.key_signature = newSignature;
                 this.editor.addToConsoleLog(`Line key signature set to: ${newSignature}`);
             }
         }
@@ -783,41 +783,41 @@ class UI {
     }
 
     getLineLabel() {
-        if (this.editor?.document?.lines?.length > 0) {
-            return this.editor.document.lines[0].label || '';
+        if (this.editor?.document?.staves?.length > 0) {
+            return this.editor.document.staves[0].label || '';
         }
         return '';
     }
 
     getLineTonic() {
-        if (this.editor?.document?.lines?.length > 0) {
-            return this.editor.document.lines[0].metadata.tonic || '';
+        if (this.editor?.document?.staves?.length > 0) {
+            return this.editor.document.staves[0].metadata.tonic || '';
         }
         return '';
     }
 
     getLinePitchSystem() {
-        if (this.editor?.document?.lines?.length > 0) {
-            return this.editor.document.lines[0].metadata.pitch_system || 1;
+        if (this.editor?.document?.staves?.length > 0) {
+            return this.editor.document.staves[0].metadata.pitch_system || 1;
         }
         return 1;
     }
 
     getLyrics() {
-        if (this.editor?.document?.lines?.length > 0) {
-            return this.editor.document.lines[0].metadata.lyrics || '';
+        if (this.editor?.document?.staves?.length > 0) {
+            return this.editor.document.staves[0].metadata.lyrics || '';
         }
         return '';
     }
 
     getTala() {
-        return this.editor?.document?.lines?.length > 0 ?
-            this.editor.document.lines[0].metadata.tala || '' : '';
+        return this.editor?.document?.staves?.length > 0 ?
+            this.editor.document.staves[0].metadata.tala || '' : '';
     }
 
     getLineKeySignature() {
-        if (this.editor?.document?.lines?.length > 0) {
-            return this.editor.document.lines[0].metadata.key_signature || '';
+        if (this.editor?.document?.staves?.length > 0) {
+            return this.editor.document.staves[0].metadata.key_signature || '';
         }
         return '';
     }

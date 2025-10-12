@@ -94,15 +94,18 @@ class MusicNotationEditor {
                 pitch_system: 1, // Number system
                 created_at: new Date().toISOString()
             },
-            lines: [{
+            staves: [{
                 label: "",
-                lanes: [[], [], [], []], // Empty lanes
+                upper_line: [],
+                line: [],        // Main line of notation
+                lower_line: [],
+                lyrics: [],
                 metadata: {},
                 beats: [],
                 slurs: []
             }],
             state: {
-                cursor: { line: 0, lane: 1, column: 0 },
+                cursor: { stave: 0, lane: 1, column: 0 },
                 selection: null,
                 has_focus: false
             }
@@ -164,9 +167,9 @@ class MusicNotationEditor {
 
         try {
 
-            if (this.document && this.document.lines && this.document.lines.length > 0) {
-                const line = this.document.lines[0];
-                let letterLane = line.lanes[1]; // Letter lane
+            if (this.document && this.document.staves && this.document.staves.length > 0) {
+                const stave = this.document.staves[0];
+                let letterLane = stave.line; // Main line of notation
 
                 logger.debug(LOG_CATEGORIES.PARSER, 'Processing characters', {
                     charCount: text.length,
@@ -193,8 +196,8 @@ class MusicNotationEditor {
 
                     const lengthAfter = updatedCells.length;
 
-                    // Update letter lane with combined cells
-                    line.lanes[1] = updatedCells;
+                    // Update main line with combined cells
+                    stave.line = updatedCells;
                     letterLane = updatedCells;
 
                     // Adjust cursor based on actual change in cell count
@@ -255,10 +258,10 @@ class MusicNotationEditor {
             const pitchSystem = this.getCurrentPitchSystem();
 
             // Parse text using WASM recursive descent parser
-            if (this.document && this.document.lines && this.document.lines.length > 0) {
+            if (this.document && this.document.staves && this.document.staves.length > 0) {
                 const cells = this.wasmModule.parseText(text, pitchSystem);
-                const line = this.document.lines[0];
-                line.lanes[1] = cells; // Replace letter lane with parsed cells
+                const stave = this.document.staves[0];
+                stave.line = cells; // Replace main line with parsed cells
             }
 
             // Extract beats for visualization
@@ -424,9 +427,9 @@ class MusicNotationEditor {
 
         try {
             // Simple deletion for POC - manual array manipulation
-            if (this.document && this.document.lines && this.document.lines.length > 0) {
-                const line = this.document.lines[0];
-                const letterLane = line.lanes[1]; // Letter lane
+            if (this.document && this.document.staves && this.document.staves.length > 0) {
+                const stave = this.document.staves[0];
+                const letterLane = stave.line; // Main line
 
                 // Delete cells in range
                 letterLane.splice(start, end - start);
@@ -743,28 +746,31 @@ class MusicNotationEditor {
     }
 
     /**
-     * Navigate left one character with grapheme-safe positioning
+     * Navigate left one cell (like Excel)
      */
     navigateLeft() {
-        const currentPos = this.getCursorPosition();
-        if (currentPos > 0) {
-            // Find previous grapheme boundary
-            const newPos = this.findPreviousGraphemeBoundary(currentPos);
-            this.setCursorPosition(newPos);
+        logger.debug(LOG_CATEGORIES.CURSOR, 'Navigate left');
+        const currentCellIndex = this.getCursorPosition();
+
+        if (currentCellIndex > 0) {
+            // Move to previous cell
+            this.setCursorPosition(currentCellIndex - 1);
+            logger.debug(LOG_CATEGORIES.CURSOR, 'Moved to cell', { index: currentCellIndex - 1 });
         }
     }
 
     /**
-     * Navigate right one character with grapheme-safe positioning
+     * Navigate right one cell (like Excel)
      */
     navigateRight() {
-        const currentPos = this.getCursorPosition();
-        const maxPos = this.getMaxCursorPosition();
+        logger.debug(LOG_CATEGORIES.CURSOR, 'Navigate right');
+        const currentCellIndex = this.getCursorPosition();
+        const maxCellIndex = this.getMaxCellIndex();
 
-        if (currentPos < maxPos) {
-            // Find next grapheme boundary
-            const newPos = this.findNextGraphemeBoundary(currentPos);
-            this.setCursorPosition(newPos);
+        if (currentCellIndex < maxCellIndex) {
+            // Move to next cell
+            this.setCursorPosition(currentCellIndex + 1);
+            logger.debug(LOG_CATEGORIES.CURSOR, 'Moved to cell', { index: currentCellIndex + 1 });
         }
     }
 
@@ -792,6 +798,7 @@ class MusicNotationEditor {
      * Navigate to beginning of current line
      */
     navigateHome() {
+        logger.debug(LOG_CATEGORIES.CURSOR, 'Navigate home');
         this.setCursorPosition(0);
     }
 
@@ -799,249 +806,28 @@ class MusicNotationEditor {
      * Navigate to end of current line
      */
     navigateEnd() {
-        const maxPos = this.getMaxCursorPosition();
-        this.setCursorPosition(maxPos);
+        logger.debug(LOG_CATEGORIES.CURSOR, 'Navigate end');
+        const maxCellIndex = this.getMaxCellIndex();
+        this.setCursorPosition(maxCellIndex);
     }
 
     /**
-     * Find previous grapheme boundary (grapheme-safe navigation)
+     * Get the maximum cell index in the current lane
      */
-    findPreviousGraphemeBoundary(currentPos) {
-        if (!this.document || !this.document.lines || this.document.lines.length === 0) {
-            return Math.max(0, currentPos - 1);
-        }
-
-        const line = this.document.lines[0];
-        const letterLane = line.lanes[1]; // Letter lane
-
-        if (letterLane.length === 0 || currentPos === 0) {
+    getMaxCellIndex() {
+        if (!this.document || !this.document.staves || this.document.staves.length === 0) {
             return 0;
         }
 
-        // First try Cell-based navigation for structured tokens
-        for (let i = letterLane.length - 1; i >= 0; i--) {
-            const cell = letterLane[i];
-            if (cell.col < currentPos) {
-                if (cell.is_head && cell.token_length > 1) {
-                    // We're at or after a multi-character token, jump to its start
-                    return cell.col;
-                } else if (!cell.is_head && i > 0) {
-                    // We're inside a token, find its head
-                    const headCell = letterLane[i - 1];
-                    if (headCell && headCell.is_head) {
-                        return headCell.col;
-                    }
-                }
-                // Single character or token boundary found
-                return cell.col;
-            }
-        }
+        const stave = this.document.staves[0];
+        const currentLaneIndex = this.getCurrentLane();
+        const laneNames = ['upper_line', 'line', 'lower_line', 'lyrics'];
+        const laneName = laneNames[currentLaneIndex];
+        const lane = stave[laneName];
 
-        // Fallback: use Intl.Segmenter for grapheme-aware navigation
-        return this.findPreviousGraphemeBoundaryIntl(currentPos);
+        return lane.length; // Position after last cell
     }
 
-    /**
-     * Find previous grapheme boundary using Intl.Segmenter (fallback method)
-     */
-    findPreviousGraphemeBoundaryIntl(currentPos) {
-        try {
-            const text = this.getCurrentTextContent();
-            if (!text || currentPos <= 0) return 0;
-
-            const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
-            const segments = [...segmenter.segment(text)];
-
-            let accumulatedLength = 0;
-            for (let i = segments.length - 1; i >= 0; i--) {
-                const segment = segments[i];
-                if (accumulatedLength + segment.segment.length < currentPos) {
-                    return accumulatedLength + segment.segment.length;
-                }
-                accumulatedLength += segment.segment.length;
-            }
-
-            return 0;
-        } catch (error) {
-            // Ultimate fallback: simple character-based navigation
-            return Math.max(0, currentPos - 1);
-        }
-    }
-
-    /**
-     * Find next grapheme boundary (grapheme-safe navigation)
-     */
-    findNextGraphemeBoundary(currentPos) {
-        if (!this.document || !this.document.lines || this.document.lines.length === 0) {
-            return currentPos + 1;
-        }
-
-        const line = this.document.lines[0];
-        const letterLane = line.lanes[1]; // Letter lane
-
-        if (letterLane.length === 0) {
-            return currentPos + 1;
-        }
-
-        // First try Cell-based navigation for structured tokens
-        for (let i = 0; i < letterLane.length; i++) {
-            const cell = letterLane[i];
-            if (cell.col > currentPos) {
-                if (cell.is_head && cell.token_length > 1) {
-                    // Jump to end of multi-character token
-                    return cell.col + cell.token_length - 1;
-                }
-                // Single character or boundary found
-                return cell.col;
-            }
-        }
-
-        // Fallback: use Intl.Segmenter for grapheme-aware navigation
-        return this.findNextGraphemeBoundaryIntl(currentPos);
-    }
-
-    /**
-     * Find next grapheme boundary using Intl.Segmenter (fallback method)
-     */
-    findNextGraphemeBoundaryIntl(currentPos) {
-        try {
-            const text = this.getCurrentTextContent();
-            if (!text) return currentPos + 1;
-
-            const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
-            const segments = [...segmenter.segment(text)];
-
-            let accumulatedLength = 0;
-            for (const segment of segments) {
-                if (accumulatedLength > currentPos) {
-                    return accumulatedLength;
-                }
-                accumulatedLength += segment.segment.length;
-            }
-
-            // If we're at the end, return position after last character
-            return accumulatedLength;
-        } catch (error) {
-            // Ultimate fallback: simple character-based navigation
-            return currentPos + 1;
-        }
-    }
-
-    /**
-     * Enhanced grapheme-safe navigation for complex grapheme clusters
-     */
-    isComplexGraphemeCluster(text, position) {
-        try {
-            const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
-            const segments = [...segmenter.segment(text)];
-
-            let accumulatedLength = 0;
-            for (const segment of segments) {
-                if (accumulatedLength === position && segment.segment.length > 1) {
-                    return true; // Multi-byte grapheme cluster at this position
-                }
-                accumulatedLength += segment.segment.length;
-                if (accumulatedLength > position) {
-                    break;
-                }
-            }
-            return false;
-        } catch (error) {
-            return false;
-        }
-    }
-
-    /**
-     * Get grapheme cluster at position
-     */
-    getGraphemeClusterAt(position) {
-        try {
-            const text = this.getCurrentTextContent();
-            if (!text || position < 0 || position >= text.length) return '';
-
-            const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
-            const segments = [...segmenter.segment(text)];
-
-            let accumulatedLength = 0;
-            for (const segment of segments) {
-                if (accumulatedLength <= position && position < accumulatedLength + segment.segment.length) {
-                    return segment.segment;
-                }
-                accumulatedLength += segment.segment.length;
-            }
-            return '';
-        } catch (error) {
-            // Fallback to single character
-            const text = this.getCurrentTextContent();
-            return text.charAt(position) || '';
-        }
-    }
-
-    /**
-     * Enhanced selection extension with grapheme awareness
-     */
-    extendSelectionGraphemeLeft() {
-        const currentPos = this.getCursorPosition();
-        let selection = this.getSelection();
-
-        if (!selection) {
-            this.initializeSelection(currentPos, currentPos);
-            selection = this.getSelection(); // Get the newly created selection
-        }
-
-        // Find the actual start of the current grapheme cluster
-        const graphemeStart = this.findPreviousGraphemeBoundary(currentPos);
-        if (graphemeStart < currentPos && selection) {
-            this.initializeSelection(graphemeStart, selection.end);
-            this.setCursorPosition(graphemeStart);
-        }
-    }
-
-    /**
-     * Enhanced selection extension with grapheme awareness
-     */
-    extendSelectionGraphemeRight() {
-        const currentPos = this.getCursorPosition();
-        let selection = this.getSelection();
-
-        if (!selection) {
-            this.initializeSelection(currentPos, currentPos);
-            selection = this.getSelection(); // Get the newly created selection
-        }
-
-        // Find the actual end of the current grapheme cluster
-        const graphemeEnd = this.findNextGraphemeBoundary(currentPos);
-        const maxPos = this.getMaxCursorPosition();
-
-        if (graphemeEnd > currentPos && graphemeEnd <= maxPos && selection) {
-            this.initializeSelection(selection.start, graphemeEnd);
-            this.setCursorPosition(graphemeEnd);
-        }
-    }
-
-    /**
-     * Get maximum cursor position in current line
-     */
-    getMaxCursorPosition() {
-        if (!this.document || !this.document.lines || this.document.lines.length === 0) {
-            return 0;
-        }
-
-        const line = this.document.lines[0];
-        const letterLane = line.lanes[1]; // Letter lane
-
-        if (letterLane.length === 0) {
-            return 0;
-        }
-
-        // Find the last position based on the last Cell
-        const lastCell = letterLane[letterLane.length - 1];
-        if (lastCell) {
-            return lastCell.col + (lastCell.token_length || 1);
-        }
-
-        return 0;
-    }
 
     /**
      * Get current lane index
@@ -1062,25 +848,6 @@ class MusicNotationEditor {
         }
     }
 
-    /**
-     * Update cursor visual position based on current cursor position
-     */
-    updateCursorVisualPosition() {
-        const cursor = this.getCursorElement();
-        if (!cursor) return;
-
-        const cursorPos = this.getCursorPosition();
-        const charWidth = 12; // Approximate character width
-        const lane = this.getCurrentLane();
-
-        // Calculate vertical offset for lane
-        const laneOffsets = [0, 16, 32, 48]; // Visual offsets for lanes
-        const yOffset = laneOffsets[lane] || 16;
-
-        cursor.style.left = `${cursorPos * charWidth}px`;
-        cursor.style.top = `${yOffset}px`;
-        cursor.style.height = '16px';
-    }
 
     // ==================== SELECTION MANAGEMENT ====================
 
@@ -1137,12 +904,14 @@ class MusicNotationEditor {
             return '';
         }
 
-        if (!this.document || !this.document.lines || this.document.lines.length === 0) {
+        if (!this.document || !this.document.staves || this.document.staves.length === 0) {
             return '';
         }
 
-        const line = this.document.lines[0];
-        const letterLane = line.lanes[selection.lane || 1];
+        const stave = this.document.staves[0];
+        const laneNames = ['upper_line', 'line', 'lower_line', 'lyrics'];
+        const laneName = laneNames[selection.lane || 1];
+        const letterLane = stave[laneName];
 
         if (letterLane.length === 0) {
             return '';
@@ -1157,13 +926,31 @@ class MusicNotationEditor {
     }
 
     /**
-     * Extend selection to the left (grapheme-aware)
+     * Extend selection to the left (cell-based)
      */
     extendSelectionLeft() {
         const startTime = performance.now();
+        const currentCellIndex = this.getCursorPosition();
+        let selection = this.getSelection();
 
-        // Use enhanced grapheme-aware selection extension
-        this.extendSelectionGraphemeLeft();
+        if (!selection) {
+            // Start new selection
+            this.initializeSelection(currentCellIndex, currentCellIndex);
+            selection = this.getSelection();
+        }
+
+        if (currentCellIndex > 0) {
+            const newIndex = currentCellIndex - 1;
+            // Extend selection to include previous cell
+            if (currentCellIndex === selection.end) {
+                // Extending left from end
+                this.initializeSelection(newIndex, selection.end);
+            } else {
+                // Extending left from start
+                this.initializeSelection(newIndex, selection.end);
+            }
+            this.setCursorPosition(newIndex);
+        }
 
         // Record performance
         const endTime = performance.now();
@@ -1171,13 +958,32 @@ class MusicNotationEditor {
     }
 
     /**
-     * Extend selection to the right (grapheme-aware)
+     * Extend selection to the right (cell-based)
      */
     extendSelectionRight() {
         const startTime = performance.now();
+        const currentCellIndex = this.getCursorPosition();
+        const maxCellIndex = this.getMaxCellIndex();
+        let selection = this.getSelection();
 
-        // Use enhanced grapheme-aware selection extension
-        this.extendSelectionGraphemeRight();
+        if (!selection) {
+            // Start new selection
+            this.initializeSelection(currentCellIndex, currentCellIndex);
+            selection = this.getSelection();
+        }
+
+        if (currentCellIndex < maxCellIndex) {
+            const newIndex = currentCellIndex + 1;
+            // Extend selection to include next cell
+            if (currentCellIndex === selection.start) {
+                // Extending right from start
+                this.initializeSelection(selection.start, newIndex);
+            } else {
+                // Extending right from end
+                this.initializeSelection(selection.start, newIndex);
+            }
+            this.setCursorPosition(newIndex);
+        }
 
         // Record performance
         const endTime = performance.now();
@@ -1388,9 +1194,9 @@ class MusicNotationEditor {
         } else {
             if (cursorPos > 0) {
                 // Use WASM API to delete character
-                if (this.document && this.document.lines && this.document.lines.length > 0) {
-                    const line = this.document.lines[0];
-                    const letterLane = line.lanes[1];
+                if (this.document && this.document.staves && this.document.staves.length > 0) {
+                    const stave = this.document.staves[0];
+                    const letterLane = stave.line;
 
                     logger.debug(LOG_CATEGORIES.EDITOR, 'Calling WASM deleteCharacter', {
                         position: cursorPos - 1,
@@ -1399,7 +1205,7 @@ class MusicNotationEditor {
 
                     try {
                         const updatedCells = this.wasmModule.deleteCharacter(letterLane, cursorPos - 1);
-                        line.lanes[1] = updatedCells;
+                        stave.line = updatedCells;
                         this.setCursorPosition(cursorPos - 1);
                         logger.info(LOG_CATEGORIES.EDITOR, 'Character deleted successfully', {
                             newLaneSize: updatedCells.length
@@ -1442,13 +1248,13 @@ class MusicNotationEditor {
 
             if (cursorPos < maxPos) {
                 // Use WASM API to delete character
-                if (this.document && this.document.lines && this.document.lines.length > 0) {
-                    const line = this.document.lines[0];
-                    const letterLane = line.lanes[1];
+                if (this.document && this.document.staves && this.document.staves.length > 0) {
+                    const stave = this.document.staves[0];
+                    const letterLane = stave.line;
 
                     try {
                         const updatedCells = this.wasmModule.deleteCharacter(letterLane, cursorPos);
-                        line.lanes[1] = updatedCells;
+                        stave.line = updatedCells;
                     } catch (e) {
                         console.error('Failed to delete character:', e);
                         // Fallback to old method
@@ -1470,7 +1276,7 @@ class MusicNotationEditor {
      */
     async recalculateBeats() {
         try {
-            if (this.document && this.document.lines && this.document.lines.length > 0) {
+            if (this.document && this.document.staves && this.document.staves.length > 0) {
                 // Get current text content
                 const text = this.getCurrentTextContent();
 
@@ -1488,12 +1294,12 @@ class MusicNotationEditor {
      * Get current text content from the document
      */
     getCurrentTextContent() {
-        if (!this.document || !this.document.lines || this.document.lines.length === 0) {
+        if (!this.document || !this.document.staves || this.document.staves.length === 0) {
             return '';
         }
 
-        const line = this.document.lines[0];
-        const letterLane = line.lanes[1]; // Letter lane
+        const stave = this.document.staves[0];
+        const letterLane = stave.line; // Main line
 
         return letterLane.map(cell => cell.grapheme || '').join('');
     }
@@ -1561,14 +1367,14 @@ class MusicNotationEditor {
             } else {
                 this.addToConsoleLog(`Applying slur to selection: "${selectedText}"`);
                 // Stub implementation for POC - manually create slur
-                if (this.document && this.document.lines && this.document.lines.length > 0) {
-                    const line = this.document.lines[0];
-                    if (!line.slurs) {
-                        line.slurs = [];
+                if (this.document && this.document.staves && this.document.staves.length > 0) {
+                    const stave = this.document.staves[0];
+                    if (!stave.slurs) {
+                        stave.slurs = [];
                     }
-                    line.slurs.push({
-                        start: { line: 0, lane: selection.lane || 1, column: selection.start },
-                        end: { line: 0, lane: selection.lane || 1, column: selection.end },
+                    stave.slurs.push({
+                        start: { stave: 0, lane: selection.lane || 1, column: selection.start },
+                        end: { stave: 0, lane: selection.lane || 1, column: selection.end },
                         direction: 0, // Upward
                         visual: {
                             curvature: 0.15,
@@ -1597,17 +1403,17 @@ class MusicNotationEditor {
      * Check if there's already a slur on the given selection
      */
     hasSlurOnSelection(selection) {
-        if (!this.document || !this.document.lines || this.document.lines.length === 0) {
+        if (!this.document || !this.document.staves || this.document.staves.length === 0) {
             return false;
         }
 
-        const line = this.document.lines[0];
-        if (!line.slurs || line.slurs.length === 0) {
+        const stave = this.document.staves[0];
+        if (!stave.slurs || stave.slurs.length === 0) {
             return false;
         }
 
         // Check if any slur overlaps with the current selection
-        return line.slurs.some(slur => {
+        return stave.slurs.some(slur => {
             const slurStart = slur.start?.column || 0;
             const slurEnd = slur.end?.column || 0;
 
@@ -1620,17 +1426,17 @@ class MusicNotationEditor {
      * Remove slur from the given selection
      */
     async removeSlurFromSelection(selection) {
-        if (!this.document || !this.document.lines || this.document.lines.length === 0) {
+        if (!this.document || !this.document.staves || this.document.staves.length === 0) {
             return;
         }
 
-        const line = this.document.lines[0];
-        if (!line.slurs || line.slurs.length === 0) {
+        const stave = this.document.staves[0];
+        if (!stave.slurs || stave.slurs.length === 0) {
             return;
         }
 
         // Find and remove slurs that overlap with the selection
-        line.slurs = line.slurs.filter(slur => {
+        stave.slurs = stave.slurs.filter(slur => {
             const slurStart = slur.start?.column || 0;
             const slurEnd = slur.end?.column || 0;
 
@@ -1657,12 +1463,12 @@ class MusicNotationEditor {
      * Get the total number of slurs in the document
      */
     getSlurCount() {
-        if (!this.document || !this.document.lines || this.document.lines.length === 0) {
+        if (!this.document || !this.document.staves || this.document.staves.length === 0) {
             return 0;
         }
 
-        const line = this.document.lines[0];
-        return line.slurs ? line.slurs.length : 0;
+        const stave = this.document.staves[0];
+        return stave.slurs ? stave.slurs.length : 0;
     }
 
     /**
@@ -1711,9 +1517,9 @@ class MusicNotationEditor {
             this.addToConsoleLog(`Applying octave ${octaveNames[octave]} to selection: "${selectedText}"`);
 
             // Call WASM function to apply octave to selected cells
-            if (this.document && this.document.lines && this.document.lines.length > 0) {
-                const line = this.document.lines[0];
-                const letterLane = line.lanes[1]; // Letter lane
+            if (this.document && this.document.staves && this.document.staves.length > 0) {
+                const stave = this.document.staves[0];
+                const letterLane = stave.line; // Main line
 
                 logger.debug(LOG_CATEGORIES.COMMAND, 'Calling WASM applyOctave', {
                     laneSize: letterLane.length,
@@ -1727,7 +1533,7 @@ class MusicNotationEditor {
                         selection.end,
                         octave
                     );
-                    line.lanes[1] = updatedCells;
+                    stave.line = updatedCells;
                     logger.info(LOG_CATEGORIES.COMMAND, 'WASM applyOctave successful', {
                         cellsModified: updatedCells.length
                     });
@@ -1786,8 +1592,8 @@ class MusicNotationEditor {
             const state = await this.saveDocument();
             const doc = JSON.parse(state);
 
-            if (doc.lines.length > 0) {
-                doc.lines[0].metadata.tala = talaString;
+            if (doc.staves.length > 0) {
+                doc.staves[0].metadata.tala = talaString;
                 await this.loadDocument(JSON.stringify(doc));
             }
         } catch (error) {
@@ -1987,35 +1793,53 @@ class MusicNotationEditor {
     }
 
     /**
-     * Update cursor visual positioning with enhanced accuracy
+     * Update cursor visual positioning (cell-based)
      */
     updateCursorVisualPosition() {
         const cursor = this.getCursorElement();
         if (!cursor) return;
 
-        const cursorPos = this.getCursorPosition();
+        const cellIndex = this.getCursorPosition(); // This is now a cell index (0, 1, 2, ...)
         const lane = this.getCurrentLane();
 
-        // Calculate precise positioning based on actual grapheme lengths
         const charWidth = 12; // Approximate character width
         const lineHeight = 16; // Line height in pixels
-        const laneOffsets = [0, lineHeight, lineHeight * 2, lineHeight * 3]; // Visual offsets for lanes
-        const yOffset = laneOffsets[lane] || lineHeight;
 
-        // Calculate pixel position by summing grapheme lengths of all cells before cursor
+        // Calculate Y offset to match renderer's lane positioning
+        // Renderer uses: charCell.y = laneIndex * 16
+        const yOffset = lane * lineHeight;
+
+        logger.debug(LOG_CATEGORIES.CURSOR, 'Cursor Y position', {
+            lane,
+            lineHeight,
+            yOffset,
+            calculation: `${lane} * ${lineHeight} = ${yOffset}`
+        });
+
+        // Calculate pixel position by summing widths of all cells before cursor
         let pixelPos = 0;
-        if (this.document && this.document.lines && this.document.lines.length > 0) {
-            const line = this.document.lines[0];
-            const letterLane = line.lanes[lane];
+        if (this.document && this.document.staves && this.document.staves.length > 0) {
+            const stave = this.document.staves[0];
+            const laneNames = ['upper_line', 'line', 'lower_line', 'lyrics'];
+            const laneName = laneNames[lane];
+            const currentLane = stave[laneName];
 
-            for (let i = 0; i < cursorPos && i < letterLane.length; i++) {
-                const cell = letterLane[i];
-                // Add the length of this cell's grapheme (e.g., "1#" has length 2)
+            // Sum up widths of cells 0 through cellIndex-1
+            for (let i = 0; i < cellIndex && i < currentLane.length; i++) {
+                const cell = currentLane[i];
+                // Each cell's width is its grapheme length * charWidth
                 pixelPos += (cell.grapheme || '').length * charWidth;
             }
+
+            logger.trace(LOG_CATEGORIES.CURSOR, 'Cursor visual position', {
+                cellIndex,
+                pixelPos,
+                lane,
+                cellCount: currentLane.length
+            });
         } else {
             // Fallback if no document
-            pixelPos = cursorPos * charWidth;
+            pixelPos = cellIndex * charWidth;
         }
 
         // Set cursor position
@@ -2064,7 +1888,7 @@ class MusicNotationEditor {
     setCursorPositionWithLane(position) {
         if (this.document && this.document.state) {
             this.document.state.cursor = {
-                line: 0,
+                stave: 0,
                 lane: position.lane,
                 column: position.column
             };
@@ -2102,14 +1926,24 @@ class MusicNotationEditor {
     updateCursorPositionDisplay() {
         const cursorPos = document.getElementById('cursor-position');
         if (cursorPos) {
-            const pos = this.getCursorPositionWithLane();
-            cursorPos.textContent = `Col: ${pos.column}, Lane: ${pos.lane}`;
+            // Get line, lane (row), and column for debugging
+            const line = this.document && this.document.state && this.document.state.cursor
+                ? this.document.state.cursor.stave
+                : 0;
+            const col = this.getCursorPosition();
+            const lane = this.getCurrentLane();
+
+            // Display in "Line: X, Col: Y" format for debugging
+            cursorPos.textContent = `Line: ${line}, Col: ${col} (Lane: ${lane})`;
         }
 
         const charCount = document.getElementById('char-count');
-        if (charCount && this.document && this.document.lines && this.document.lines[0]) {
-            const letterLane = this.document.lines[0].lanes[1];
-            charCount.textContent = letterLane.length;
+        if (charCount && this.document && this.document.staves && this.document.staves[0]) {
+            const currentLaneIndex = this.getCurrentLane();
+            const laneNames = ['upper_line', 'line', 'lower_line', 'lyrics'];
+            const laneName = laneNames[currentLaneIndex];
+            const lane = this.document.staves[0][laneName];
+            charCount.textContent = lane.length;
         }
 
         const selectionInfo = document.getElementById('selection-info');
@@ -2117,8 +1951,8 @@ class MusicNotationEditor {
             if (this.hasSelection()) {
                 const selection = this.getSelection();
                 const selectionText = this.getSelectedText();
-                const selectionLength = selection.end - selection.start;
-                selectionInfo.textContent = `Selected: ${selectionLength} chars (${selectionText})`;
+                const cellCount = selection.end - selection.start;
+                selectionInfo.textContent = `Selected: ${cellCount} cells (${selectionText})`;
                 selectionInfo.className = 'text-xs text-success';
             } else {
                 selectionInfo.textContent = 'No selection';
@@ -2146,7 +1980,7 @@ class MusicNotationEditor {
             // We only need to exclude the state object (runtime cursor/selection data)
             const persistentDoc = {
                 metadata: this.document.metadata,
-                lines: this.document.lines
+                staves: this.document.staves
             };
             const displayDoc = this.createDisplayDocument(persistentDoc);
             persistentJson.textContent = this.toYAML(displayDoc);
@@ -2218,12 +2052,12 @@ class MusicNotationEditor {
             displayDoc.metadata.pitch_system = `${this.getPitchSystemName(systemNum)} (${systemNum})`;
         }
 
-        // Convert line-level pitch_systems to strings
-        if (displayDoc.lines && Array.isArray(displayDoc.lines)) {
-            displayDoc.lines.forEach(line => {
-                if (line.metadata && typeof line.metadata.pitch_system === 'number') {
-                    const systemNum = line.metadata.pitch_system;
-                    line.metadata.pitch_system = `${this.getPitchSystemName(systemNum)} (${systemNum})`;
+        // Convert stave-level pitch_systems to strings
+        if (displayDoc.staves && Array.isArray(displayDoc.staves)) {
+            displayDoc.staves.forEach(stave => {
+                if (stave.metadata && typeof stave.metadata.pitch_system === 'number') {
+                    const systemNum = stave.metadata.pitch_system;
+                    stave.metadata.pitch_system = `${this.getPitchSystemName(systemNum)} (${systemNum})`;
                 }
             });
         }
@@ -2231,21 +2065,6 @@ class MusicNotationEditor {
         return displayDoc;
     }
 
-    /**
-     * Update cursor position display
-     */
-    updateCursorPositionDisplay() {
-        const cursorPos = document.getElementById('cursor-position');
-        if (cursorPos) {
-            cursorPos.textContent = this.getCursorPosition();
-        }
-
-        const charCount = document.getElementById('char-count');
-        if (charCount && this.document && this.document.lines && this.document.lines[0]) {
-            const letterLane = this.document.lines[0].lanes[1];
-            charCount.textContent = letterLane.length;
-        }
-    }
 
     /**
      * Record performance metrics

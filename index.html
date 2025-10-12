@@ -146,6 +146,17 @@
                     </ul>
                 </nav>
 
+                <!-- Center: Document Status Information -->
+                <div class="flex items-center space-x-4 text-xs text-gray-600">
+                    <span>Position: <span id="cursor-position">Line: 0, Col: 0 (Lane: 1)</span></span>
+                    <span class="text-gray-400">|</span>
+                    <span>Pitch System: <span id="current-pitch-system">Number</span></span>
+                    <span class="text-gray-400">|</span>
+                    <span>Characters: <span id="char-count">0</span></span>
+                    <span class="text-gray-400">|</span>
+                    <span id="selection-info">No selection</span>
+                </div>
+
                 <!-- Right: Document Title -->
                 <div id="composition-title" class="text-sm text-ui-disabled-text">
                     Untitled Document
@@ -180,13 +191,9 @@
                 <footer class="bg-ui-background border-t border-ui-border px-4 py-2">
                     <div class="flex items-center justify-between text-xs text-gray-500">
                         <div class="flex items-center space-x-4">
-                            <span>Position: <span id="cursor-position">0</span></span>
-                            <span>Pitch System: <span id="current-pitch-system">Number</span></span>
-                            <span>Characters: <span id="char-count">0</span></span>
-                            <span id="selection-info" class="text-xs text-gray-500">No selection</span>
+                            <span id="focus-status" class="text-gray-500">No focus</span>
                         </div>
                         <div class="flex items-center space-x-4">
-                            <span id="focus-status" class="text-gray-500">No focus</span>
                             <span id="performance-indicator" class="text-success hidden">Ready</span>
                         </div>
                     </div>

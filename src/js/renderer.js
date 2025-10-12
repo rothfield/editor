@@ -151,14 +151,14 @@ class DOMRenderer {
         // Clear previous content
         this.clearCanvas();
 
-        if (!document.lines || document.lines.length === 0) {
+        if (!document.staves || document.staves.length === 0) {
             this.showEmptyState();
             return;
         }
 
-        // Render each line
-        document.lines.forEach((line, lineIndex) => {
-            this.renderLine(line, lineIndex);
+        // Render each stave
+        document.staves.forEach((stave, staveIndex) => {
+            this.renderStave(stave, staveIndex);
         });
 
         // Render beat loops
@@ -190,24 +190,26 @@ class DOMRenderer {
     }
 
     /**
-     * Render a single line
+     * Render a single stave
      */
-    renderLine(line, lineIndex) {
-        const lineElement = this.getOrCreateLineElement(lineIndex);
+    renderStave(stave, staveIndex) {
+        const staveElement = this.getOrCreateLineElement(staveIndex);
 
-        // Render each lane
-        line.lanes.forEach((lane, laneIndex) => {
-            this.renderLane(lane, lineIndex, laneIndex, lineElement);
+        // Render each line (upper_line, line, lower_line, lyrics)
+        const lineNames = ['upper_line', 'line', 'lower_line', 'lyrics'];
+        lineNames.forEach((lineName, laneIndex) => {
+            const lane = stave[lineName];
+            this.renderLane(lane, staveIndex, laneIndex, staveElement);
         });
 
-        // Render line label
-        if (line.label) {
-            this.renderLineLabel(line.label, lineElement);
+        // Render stave label
+        if (stave.label) {
+            this.renderLineLabel(stave.label, staveElement);
         }
 
-        // Render line metadata
-        if (line.metadata) {
-            this.renderLineMetadata(line.metadata, lineElement);
+        // Render stave metadata
+        if (stave.metadata) {
+            this.renderLineMetadata(stave.metadata, staveElement);
         }
     }
 
@@ -483,14 +485,14 @@ class DOMRenderer {
      * Render beat loops with enhanced visualization
      */
     renderBeatLoops(document) {
-        document.lines.forEach((line, lineIndex) => {
-            if (line.beats) {
-                line.beats.forEach((beat, beatIndex) => {
-                    this.renderBeatLoop(beat, lineIndex, beatIndex);
+        document.staves.forEach((stave, staveIndex) => {
+            if (stave.beats) {
+                stave.beats.forEach((beat, beatIndex) => {
+                    this.renderBeatLoop(beat, staveIndex, beatIndex);
                 });
             } else {
                 // Extract beats from Cell data if not already derived
-                this.extractAndRenderBeatsFromCells(line, lineIndex);
+                this.extractAndRenderBeatsFromCells(stave, staveIndex);
             }
         });
     }
@@ -498,17 +500,17 @@ class DOMRenderer {
     /**
      * Extract beats from Cell data and render them
      */
-    extractAndRenderBeatsFromCells(line, lineIndex) {
-        const letterLane = line.lanes[1]; // Letter lane contains temporal elements
+    extractAndRenderBeatsFromCells(stave, staveIndex) {
+        const letterLane = stave.line; // Main line contains temporal elements
         if (!letterLane || letterLane.length === 0) return;
 
         const beats = this.extractBeatsFromCells(letterLane);
         beats.forEach((beat, beatIndex) => {
-            this.renderBeatLoop(beat, lineIndex, beatIndex);
+            this.renderBeatLoop(beat, staveIndex, beatIndex);
         });
 
-        // Store beats back in line for caching
-        line.beats = beats;
+        // Store beats back in stave for caching
+        stave.beats = beats;
     }
 
     /**
@@ -605,10 +607,10 @@ class DOMRenderer {
         // Clear canvas
         this.slurCtx.clearRect(0, 0, this.slurCanvas.width, this.slurCanvas.height);
 
-        document.lines.forEach((line, lineIndex) => {
-            if (line.slurs) {
-                line.slurs.forEach((slur, slurIndex) => {
-                    this.renderSlur(slur, lineIndex, slurIndex);
+        document.staves.forEach((stave, staveIndex) => {
+            if (stave.slurs) {
+                stave.slurs.forEach((slur, slurIndex) => {
+                    this.renderSlur(slur, staveIndex, slurIndex);
                 });
             }
         });
@@ -708,11 +710,13 @@ class DOMRenderer {
 
         let octavesRendered = 0;
 
-        document.lines.forEach((line, lineIndex) => {
-            line.lanes.forEach((lane, laneIndex) => {
+        document.staves.forEach((stave, staveIndex) => {
+            const lineNames = ['upper_line', 'line', 'lower_line', 'lyrics'];
+            lineNames.forEach((lineName, laneIndex) => {
+                const lane = stave[lineName];
                 lane.forEach((charCell, cellIndex) => {
                     if (this.hasOctaveMarking(charCell)) {
-                        this.renderOctaveDot(charCell, lineIndex, laneIndex, cellIndex);
+                        this.renderOctaveDot(charCell, staveIndex, laneIndex, cellIndex);
                         octavesRendered++;
                     }
                 });

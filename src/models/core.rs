@@ -814,12 +814,12 @@ impl SelectionManager {
 
             self.current_selection = Some(Selection {
                 start: CursorPosition {
-                    line: 0,
+                    stave: 0,
                     lane: LaneKind::Letter,
                     column: start_col,
                 },
                 end: CursorPosition {
-                    line: 0,
+                    stave: 0,
                     lane: LaneKind::Letter,
                     column: end_col,
                 },
@@ -860,12 +860,12 @@ impl SelectionManager {
 
             self.current_selection = Some(Selection {
                 start: CursorPosition {
-                    line: position.line,
+                    stave: position.stave,
                     lane: position.lane,
                     column: start_col,
                 },
                 end: CursorPosition {
-                    line: position.line,
+                    stave: position.stave,
                     lane: position.lane,
                     column: end_col,
                 },
