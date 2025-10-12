@@ -11,6 +11,11 @@
 
     <!-- Custom UI styles -->
     <style>
+        /* Utility classes */
+        .hidden {
+            display: none !important;
+        }
+
         /* Remove list bullets */
         nav ul {
             list-style: none;
@@ -182,8 +187,11 @@
                 <!-- Tab Navigation -->
                 <div class="bg-white border-b border-ui-border">
                     <nav class="flex">
-                        <button id="tab-document" class="tab active" data-tab="document">
-                            Document
+                        <button id="tab-ephemeral" class="tab active" data-tab="ephemeral">
+                            Ephemeral Model
+                        </button>
+                        <button id="tab-persistent" class="tab" data-tab="persistent">
+                            Persistent Model
                         </button>
                         <button id="tab-console-errors" class="tab" data-tab="console-errors">
                             Console Errors
@@ -196,9 +204,16 @@
 
                 <!-- Tab Content -->
                 <div class="flex-1 flex flex-col overflow-hidden">
-                    <!-- Document Tab -->
-                    <div id="tab-content-document" data-tab-content="document" class="tab-content flex-1 flex flex-col p-4">
+                    <!-- Ephemeral Model Tab (full document with state) -->
+                    <div id="tab-content-ephemeral" data-tab-content="ephemeral" class="tab-content flex-1 flex flex-col p-4">
+                        <h3 class="text-sm font-semibold mb-2 text-gray-700">Ephemeral Model (includes runtime state)</h3>
                         <pre id="document-json" class="flex-1 text-xs font-mono bg-white p-3 border-2 border-gray-300 rounded overflow-auto"></pre>
+                    </div>
+
+                    <!-- Persistent Model Tab (saveable content only) -->
+                    <div id="tab-content-persistent" data-tab-content="persistent" class="tab-content hidden flex-1 flex flex-col p-4">
+                        <h3 class="text-sm font-semibold mb-2 text-gray-700">Persistent Model (saved to disk)</h3>
+                        <pre id="persistent-json" class="flex-1 text-xs font-mono bg-white p-3 border-2 border-gray-300 rounded overflow-auto"></pre>
                     </div>
 
                     <!-- Console Errors Tab -->

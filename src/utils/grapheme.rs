@@ -100,34 +100,10 @@ impl GraphemeSegmenter {
 
 impl GraphemeSegmenter {
     /// Rust-native version of grapheme segmentation
+    /// Simple character-by-character segmentation
+    /// Accidentals will be combined in post-processing
     pub fn segment_text_rust(&self, text: &str) -> Vec<String> {
-        let mut segments = Vec::new();
-        let chars: Vec<char> = text.chars().collect();
-        let mut i = 0;
-
-        while i < chars.len() {
-            if i + 1 < chars.len() {
-                let two_char = format!("{}{}", chars[i], chars[i + 1]);
-
-                // Check for accidentals
-                if two_char.ends_with('#') || two_char.ends_with('b') {
-                    if two_char == "##" || two_char == "bb" {
-                        segments.push(two_char);
-                        i += 2;
-                        continue;
-                    } else if chars[i + 1] == '#' || chars[i + 1] == 'b' {
-                        segments.push(two_char);
-                        i += 2;
-                        continue;
-                    }
-                }
-            }
-
-            segments.push(chars[i].to_string());
-            i += 1;
-        }
-
-        segments
+        text.chars().map(|c| c.to_string()).collect()
     }
 }
 

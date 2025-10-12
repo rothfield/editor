@@ -9,7 +9,7 @@ class UI {
     constructor(editor) {
         this.editor = editor;
         this.activeMenu = null;
-        this.activeTab = 'document';
+        this.activeTab = 'ephemeral';
         this.menuListeners = new Map();
 
         // Bind methods
@@ -128,7 +128,7 @@ class UI {
         });
 
         // Set initial active tab
-        this.switchTab('document');
+        this.switchTab('ephemeral');
     }
 
     /**

@@ -36,15 +36,21 @@ pub struct Cell {
     pub pitch_system: Option<PitchSystem>,
 
     /// Layout cache properties (calculated at render time)
+    #[serde(skip)]
     pub x: f32,
+    #[serde(skip)]
     pub y: f32,
+    #[serde(skip)]
     pub w: f32,
+    #[serde(skip)]
     pub h: f32,
 
     /// Bounding box for hit testing (left, top, right, bottom)
+    #[serde(skip)]
     pub bbox: (f32, f32, f32, f32),
 
     /// Hit testing area (may be larger than bbox for interaction)
+    #[serde(skip)]
     pub hit: (f32, f32, f32, f32),
 }
 

@@ -508,11 +508,19 @@ class MusicNotationEditor {
         // Route to appropriate handler
         if (modifiers.alt && !modifiers.ctrl && !modifiers.shift) {
             this.handleAltCommand(key);
-        } else if (modifiers.shift && !modifiers.alt && !modifiers.ctrl) {
+        } else if (modifiers.shift && !modifiers.alt && !modifiers.ctrl && this.isSelectionKey(key)) {
+            // Only route to selection handler for actual selection keys (arrows, Home, End)
             this.handleShiftCommand(key);
         } else {
             this.handleNormalKey(key);
         }
+    }
+
+    /**
+     * Check if key is a selection key (arrow keys, Home, End)
+     */
+    isSelectionKey(key) {
+        return ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(key);
     }
 
     /**
@@ -559,38 +567,47 @@ class MusicNotationEditor {
      */
     handleShiftCommand(key) {
         const startTime = performance.now();
+        let handled = false;
 
         switch (key) {
             case 'ArrowLeft':
                 this.extendSelectionLeft();
+                handled = true;
                 break;
             case 'ArrowRight':
                 this.extendSelectionRight();
+                handled = true;
                 break;
             case 'ArrowUp':
                 this.extendSelectionUp();
+                handled = true;
                 break;
             case 'ArrowDown':
                 this.extendSelectionDown();
+                handled = true;
                 break;
             case 'Home':
                 this.extendSelectionToStart();
+                handled = true;
                 break;
             case 'End':
                 this.extendSelectionToEnd();
+                handled = true;
                 break;
             default:
-                console.log('Unknown Shift command:', key);
+                // Ignore non-selection Shift commands (like Shift+#, Shift alone, etc.)
                 return;
         }
 
-        // Record selection performance
-        const endTime = performance.now();
-        this.recordPerformanceMetric('selectionLatency', endTime - startTime);
+        // Only record performance for actual selection commands
+        if (handled) {
+            const endTime = performance.now();
+            this.recordPerformanceMetric('selectionLatency', endTime - startTime);
 
-        // Update display
-        this.updateSelectionDisplay();
-        this.updateCursorVisualPosition();
+            // Update display
+            this.updateSelectionDisplay();
+            this.updateCursorVisualPosition();
+        }
     }
 
     /**
@@ -907,15 +924,16 @@ class MusicNotationEditor {
      */
     extendSelectionGraphemeLeft() {
         const currentPos = this.getCursorPosition();
-        const selection = this.getSelection();
+        let selection = this.getSelection();
 
         if (!selection) {
             this.initializeSelection(currentPos, currentPos);
+            selection = this.getSelection(); // Get the newly created selection
         }
 
         // Find the actual start of the current grapheme cluster
         const graphemeStart = this.findPreviousGraphemeBoundary(currentPos);
-        if (graphemeStart < currentPos) {
+        if (graphemeStart < currentPos && selection) {
             this.initializeSelection(graphemeStart, selection.end);
             this.setCursorPosition(graphemeStart);
         }
@@ -926,17 +944,18 @@ class MusicNotationEditor {
      */
     extendSelectionGraphemeRight() {
         const currentPos = this.getCursorPosition();
-        const selection = this.getSelection();
+        let selection = this.getSelection();
 
         if (!selection) {
             this.initializeSelection(currentPos, currentPos);
+            selection = this.getSelection(); // Get the newly created selection
         }
 
         // Find the actual end of the current grapheme cluster
         const graphemeEnd = this.findNextGraphemeBoundary(currentPos);
         const maxPos = this.getMaxCursorPosition();
 
-        if (graphemeEnd > currentPos && graphemeEnd <= maxPos) {
+        if (graphemeEnd > currentPos && graphemeEnd <= maxPos && selection) {
             this.initializeSelection(selection.start, graphemeEnd);
             this.setCursorPosition(graphemeEnd);
         }
@@ -1943,11 +1962,25 @@ class MusicNotationEditor {
      * Update document display in debug panel
      */
     updateDocumentDisplay() {
+        // Update ephemeral model (full document with state)
         const docJson = document.getElementById('document-json');
         if (docJson && this.document) {
             // Create a display-friendly version of the document
             const displayDoc = this.createDisplayDocument(this.document);
             docJson.textContent = this.toYAML(displayDoc);
+        }
+
+        // Update persistent model (saveable content only, no state)
+        const persistentJson = document.getElementById('persistent-json');
+        if (persistentJson && this.document) {
+            // Rust now handles cell field exclusion via #[serde(skip)] on ephemeral rendering fields
+            // We only need to exclude the state object (runtime cursor/selection data)
+            const persistentDoc = {
+                metadata: this.document.metadata,
+                lines: this.document.lines
+            };
+            const displayDoc = this.createDisplayDocument(persistentDoc);
+            persistentJson.textContent = this.toYAML(displayDoc);
         }
     }
 
