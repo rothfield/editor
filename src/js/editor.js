@@ -1372,23 +1372,42 @@ class MusicNotationEditor {
      * Handle backspace key with selection awareness and beat recalculation
      */
     async handleBackspace() {
+        logger.time('handleBackspace', LOG_CATEGORIES.EDITOR);
+        const cursorPos = this.getCursorPosition();
+
+        logger.info(LOG_CATEGORIES.EDITOR, 'Backspace pressed', {
+            cursorPos,
+            hasSelection: this.hasSelection()
+        });
+
         if (this.hasSelection()) {
             // Delete selected content
+            logger.debug(LOG_CATEGORIES.EDITOR, 'Deleting selection via backspace');
             await this.deleteSelection();
             await this.recalculateBeats();
         } else {
-            const cursorPos = this.getCursorPosition();
             if (cursorPos > 0) {
                 // Use WASM API to delete character
                 if (this.document && this.document.lines && this.document.lines.length > 0) {
                     const line = this.document.lines[0];
                     const letterLane = line.lanes[1];
 
+                    logger.debug(LOG_CATEGORIES.EDITOR, 'Calling WASM deleteCharacter', {
+                        position: cursorPos - 1,
+                        laneSize: letterLane.length
+                    });
+
                     try {
                         const updatedCells = this.wasmModule.deleteCharacter(letterLane, cursorPos - 1);
                         line.lanes[1] = updatedCells;
                         this.setCursorPosition(cursorPos - 1);
+                        logger.info(LOG_CATEGORIES.EDITOR, 'Character deleted successfully', {
+                            newLaneSize: updatedCells.length
+                        });
                     } catch (e) {
+                        logger.error(LOG_CATEGORIES.EDITOR, 'WASM deleteCharacter failed, using fallback', {
+                            error: e.message
+                        });
                         console.error('Failed to delete character:', e);
                         // Fallback to old method
                         await this.deleteRange(cursorPos - 1, cursorPos);
@@ -1401,8 +1420,12 @@ class MusicNotationEditor {
 
                 await this.render();
                 this.updateDocumentDisplay();
+            } else {
+                logger.debug(LOG_CATEGORIES.EDITOR, 'Backspace at start of document, no action');
             }
         }
+
+        logger.timeEnd('handleBackspace', LOG_CATEGORIES.EDITOR);
     }
 
     /**
