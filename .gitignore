@@ -161,3 +161,6 @@ docs/_build/
 # Lock files (keep package-lock.json but ignore others)
 yarn.lock
 pnpm-lock.yaml
+archive/
+attic/
+
