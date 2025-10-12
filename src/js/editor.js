@@ -5,6 +5,8 @@
  * document management, and basic event handling for the Music Notation Editor POC.
  */
 
+import DOMRenderer from './renderer.js';
+
 class MusicNotationEditor {
     constructor(canvasElement) {
         this.canvas = canvasElement;
@@ -38,11 +40,18 @@ class MusicNotationEditor {
 
             // Load WASM module
             const startTime = performance.now();
-            const { MusicNotationEditor } = await import('../pkg/ecs_editor_wasm.js');
-            this.wasmModule = new MusicNotationEditor();
+            const wasmModule = await import('/dist/pkg/editor_wasm.js');
 
-            // Initialize WASM module
-            await this.wasmModule.initialize();
+            // Initialize WASM
+            await wasmModule.default();
+
+            // Initialize WASM components
+            this.wasmModule = {
+                parser: new wasmModule.CellParser(),
+                beatDeriver: new wasmModule.BeatDeriver(),
+                layoutRenderer: new wasmModule.LayoutRenderer(16),
+                graphemeSegmenter: new wasmModule.GraphemeSegmenter()
+            };
 
             const loadTime = performance.now() - startTime;
             console.log(`WASM module loaded in ${loadTime.toFixed(2)}ms`);
@@ -101,8 +110,7 @@ class MusicNotationEditor {
     async loadDocument(jsonString) {
         try {
             if (this.wasmModule) {
-                await this.wasmModule.setDocumentState(jsonString);
-                this.document = JSON.parse(jsonString);
+                this.document = typeof jsonString === 'string' ? JSON.parse(jsonString) : jsonString;
                 await this.render();
                 this.updateDocumentDisplay();
             }
@@ -118,10 +126,6 @@ class MusicNotationEditor {
      */
     async saveDocument() {
         try {
-            if (this.wasmModule) {
-                const state = await this.wasmModule.getDocumentState();
-                return state;
-            }
             return JSON.stringify(this.document);
         } catch (error) {
             console.error('Failed to save document:', error);
@@ -142,8 +146,22 @@ class MusicNotationEditor {
 
         try {
             const cursorPos = this.getCursorPosition();
-            const newPosition = await this.wasmModule.insertText(text, cursorPos);
-            this.setCursorPosition(newPosition);
+
+            // Simple text insertion for POC
+            if (this.document && this.document.lines && this.document.lines.length > 0) {
+                const line = this.document.lines[0];
+                const letterLane = line.lanes[1]; // Letter lane
+
+                // Parse the text to create cells
+                const cells = this.wasmModule.parser.parseToCells(text);
+
+                // Insert cells at cursor position
+                letterLane.splice(cursorPos, 0, ...cells);
+
+                // Update cursor position
+                this.setCursorPosition(cursorPos + text.length);
+            }
+
             await this.render();
             this.updateDocumentDisplay();
 
@@ -174,8 +192,12 @@ class MusicNotationEditor {
                 return;
             }
 
-            // Parse text in WASM module
-            await this.wasmModule.parseText(text);
+            // Parse text using WASM parser and update document
+            if (this.document && this.document.lines && this.document.lines.length > 0) {
+                const cells = this.wasmModule.parser.parseToCells(text);
+                const line = this.document.lines[0];
+                line.lanes[1] = cells; // Replace letter lane with parsed cells
+            }
 
             // Extract beats for visualization
             await this.extractAndRenderBeats(text);
@@ -339,7 +361,15 @@ class MusicNotationEditor {
         }
 
         try {
-            await this.wasmModule.deleteRange(start, end);
+            // Simple deletion for POC - manual array manipulation
+            if (this.document && this.document.lines && this.document.lines.length > 0) {
+                const line = this.document.lines[0];
+                const letterLane = line.lanes[1]; // Letter lane
+
+                // Delete cells in range
+                letterLane.splice(start, end - start);
+            }
+
             this.setCursorPosition(start);
             await this.render();
             this.updateDocumentDisplay();
@@ -378,9 +408,9 @@ class MusicNotationEditor {
         }
 
         try {
-            const converted = await this.wasmModule.convertPitchSystem(pitch, fromSystem, toSystem);
-            this.addToConsoleLog(`Converted "${pitch}" from ${this.getPitchSystemName(fromSystem)} to ${this.getPitchSystemName(toSystem)}: ${converted}`);
-            return converted;
+            // Stub implementation for POC - pitch conversion not yet implemented
+            this.addToConsoleLog(`Pitch system conversion not yet implemented (${this.getPitchSystemName(fromSystem)} to ${this.getPitchSystemName(toSystem)})`);
+            return pitch;
         } catch (error) {
             console.error('Failed to convert pitch system:', error);
             return pitch;
@@ -469,6 +499,11 @@ class MusicNotationEditor {
             ctrl: event.ctrlKey,
             shift: event.shiftKey,
         };
+
+        // Ignore Ctrl key combinations (let browser handle them)
+        if (modifiers.ctrl) {
+            return;
+        }
 
         // Route to appropriate handler
         if (modifiers.alt && !modifiers.ctrl && !modifiers.shift) {
@@ -708,7 +743,7 @@ class MusicNotationEditor {
             return 0;
         }
 
-        // First try CharCell-based navigation for structured tokens
+        // First try Cell-based navigation for structured tokens
         for (let i = letterLane.length - 1; i >= 0; i--) {
             const cell = letterLane[i];
             if (cell.col < currentPos) {
@@ -773,7 +808,7 @@ class MusicNotationEditor {
             return currentPos + 1;
         }
 
-        // First try CharCell-based navigation for structured tokens
+        // First try Cell-based navigation for structured tokens
         for (let i = 0; i < letterLane.length; i++) {
             const cell = letterLane[i];
             if (cell.col > currentPos) {
@@ -922,7 +957,7 @@ class MusicNotationEditor {
             return 0;
         }
 
-        // Find the last position based on the last CharCell
+        // Find the last position based on the last Cell
         const lastCell = letterLane[letterLane.length - 1];
         if (lastCell) {
             return lastCell.col + (lastCell.token_length || 1);
@@ -1394,7 +1429,23 @@ class MusicNotationEditor {
                 await this.removeSlurFromSelection(selection);
             } else {
                 this.addToConsoleLog(`Applying slur to selection: "${selectedText}"`);
-                await this.wasmModule.applySlurCommand();
+                // Stub implementation for POC - manually create slur
+                if (this.document && this.document.lines && this.document.lines.length > 0) {
+                    const line = this.document.lines[0];
+                    if (!line.slurs) {
+                        line.slurs = [];
+                    }
+                    line.slurs.push({
+                        start: { line: 0, lane: selection.lane || 1, column: selection.start },
+                        end: { line: 0, lane: selection.lane || 1, column: selection.end },
+                        direction: 0, // Upward
+                        visual: {
+                            curvature: 0.15,
+                            thickness: 1.5,
+                            highlighted: false
+                        }
+                    });
+                }
             }
 
             await this.render();
@@ -1456,9 +1507,7 @@ class MusicNotationEditor {
             return !(slurStart <= selection.end && slurEnd >= selection.start);
         });
 
-        // Update the document
-        const state = await this.saveDocument();
-        await this.wasmModule.setDocumentState(state);
+        // Note: setDocumentState is not needed - we update this.document directly
     }
 
     /**
@@ -1519,7 +1568,21 @@ class MusicNotationEditor {
 
             this.addToConsoleLog(`Applying octave ${octaveNames[octave]} to selection: "${selectedText}"`);
 
-            await this.wasmModule.applyOctaveCommand(octave);
+            // Stub implementation for POC - manually set octave on cells
+            if (this.document && this.document.lines && this.document.lines.length > 0) {
+                const line = this.document.lines[0];
+                const letterLane = line.lanes[1]; // Letter lane
+
+                // Apply octave to cells in selection range
+                for (let i = selection.start; i < selection.end && i < letterLane.length; i++) {
+                    const cell = letterLane[i];
+                    // Only apply octave to pitched elements (kind 1)
+                    if (cell.kind === 1) {
+                        cell.octave = octave;
+                    }
+                }
+            }
+
             await this.render();
 
             this.addToConsoleLog(`Octave ${octaveNames[octave]} applied successfully to "${selectedText}"`);
@@ -1588,12 +1651,8 @@ class MusicNotationEditor {
      * Setup event handlers
      */
     setupEventHandlers() {
-        // Keyboard events
-        this.canvas.addEventListener('keydown', (event) => {
-            if (this.canvas === document.activeElement) {
-                this.handleKeyboardEvent(event);
-            }
-        });
+        // NOTE: Keyboard events are handled by EventManager globally
+        // to avoid duplicate event handling
 
         // Focus events
         this.canvas.addEventListener('focus', () => {
@@ -1623,8 +1682,8 @@ class MusicNotationEditor {
         const x = event.clientX - rect.left;
         const y = event.clientY - rect.top;
 
-        // Calculate CharCell position from click coordinates
-        const charCellPosition = this.calculateCharCellPosition(x, y);
+        // Calculate Cell position from click coordinates
+        const charCellPosition = this.calculateCellPosition(x, y);
 
         if (charCellPosition !== null) {
             this.setCursorPosition(charCellPosition);
@@ -1633,9 +1692,9 @@ class MusicNotationEditor {
     }
 
     /**
-     * Calculate CharCell position from coordinates
+     * Calculate Cell position from coordinates
      */
-    calculateCharCellPosition(x, y) {
+    calculateCellPosition(x, y) {
         // Simplified calculation - in a real implementation,
         // this would use the layout engine to calculate positions
         const charWidth = 12; // Approximate character width
@@ -1886,8 +1945,88 @@ class MusicNotationEditor {
     updateDocumentDisplay() {
         const docJson = document.getElementById('document-json');
         if (docJson && this.document) {
-            docJson.textContent = JSON.stringify(this.document, null, 2);
+            // Create a display-friendly version of the document
+            const displayDoc = this.createDisplayDocument(this.document);
+            docJson.textContent = this.toYAML(displayDoc);
         }
+    }
+
+    /**
+     * Convert JavaScript object to concise YAML format
+     */
+    toYAML(obj, indent = 0) {
+        const spaces = '  '.repeat(indent);
+
+        if (obj === null) return 'null';
+        if (obj === undefined) return 'undefined';
+
+        const type = typeof obj;
+
+        // Handle primitives
+        if (type === 'string') return `"${obj}"`;
+        if (type === 'number' || type === 'boolean') return String(obj);
+
+        // Handle arrays
+        if (Array.isArray(obj)) {
+            if (obj.length === 0) return '[]';
+
+            // Inline for simple arrays
+            if (obj.every(item => typeof item !== 'object' || item === null)) {
+                const items = obj.map(item => this.toYAML(item, 0)).join(', ');
+                return `[${items}]`;
+            }
+
+            // Multi-line for complex arrays
+            return '\n' + obj.map(item => {
+                const value = this.toYAML(item, indent + 1);
+                if (value.startsWith('\n')) {
+                    return `${spaces}  -${value}`;
+                }
+                return `${spaces}  - ${value}`;
+            }).join('\n');
+        }
+
+        // Handle objects
+        if (type === 'object') {
+            const keys = Object.keys(obj);
+            if (keys.length === 0) return '{}';
+
+            return '\n' + keys.map(key => {
+                const value = this.toYAML(obj[key], indent + 1);
+                if (value.startsWith('\n')) {
+                    return `${spaces}  ${key}:${value}`;
+                }
+                return `${spaces}  ${key}: ${value}`;
+            }).join('\n');
+        }
+
+        return String(obj);
+    }
+
+    /**
+     * Create a display-friendly version of the document with string pitch systems
+     */
+    createDisplayDocument(doc) {
+        // Deep clone the document
+        const displayDoc = JSON.parse(JSON.stringify(doc));
+
+        // Convert document-level pitch_system to string
+        if (displayDoc.metadata && typeof displayDoc.metadata.pitch_system === 'number') {
+            const systemNum = displayDoc.metadata.pitch_system;
+            displayDoc.metadata.pitch_system = `${this.getPitchSystemName(systemNum)} (${systemNum})`;
+        }
+
+        // Convert line-level pitch_systems to strings
+        if (displayDoc.lines && Array.isArray(displayDoc.lines)) {
+            displayDoc.lines.forEach(line => {
+                if (line.metadata && typeof line.metadata.pitch_system === 'number') {
+                    const systemNum = line.metadata.pitch_system;
+                    line.metadata.pitch_system = `${this.getPitchSystemName(systemNum)} (${systemNum})`;
+                }
+            });
+        }
+
+        return displayDoc;
     }
 
     /**
@@ -2029,6 +2168,9 @@ class MusicNotationEditor {
     addToConsoleErrors(errorInfo) {
         const errorsTab = document.getElementById('console-errors-list');
         if (errorsTab) {
+            // Remove placeholder if this is the first real entry
+            this.removePlaceholder(errorsTab);
+
             const errorElement = this.createConsoleEntry(errorInfo, 'error');
             errorsTab.appendChild(errorElement);
             errorsTab.scrollTop = errorsTab.scrollHeight;
@@ -2059,6 +2201,9 @@ class MusicNotationEditor {
     addToConsoleLog(message) {
         const logTab = document.getElementById('console-log-list');
         if (logTab) {
+            // Remove placeholder if this is the first real entry
+            this.removePlaceholder(logTab);
+
             const logElement = this.createConsoleEntry({
                 message: typeof message === 'string' ? message : JSON.stringify(message),
                 timestamp: new Date().toISOString(),
@@ -2184,6 +2329,18 @@ class MusicNotationEditor {
             closeBtn.addEventListener('click', () => {
                 notification.remove();
             });
+        }
+    }
+
+    /**
+     * Remove placeholder text from console tabs
+     */
+    removePlaceholder(container) {
+        // Check if the first child is a placeholder
+        const firstChild = container.firstElementChild;
+        if (firstChild && firstChild.textContent.includes('No logs') ||
+            firstChild && firstChild.textContent.includes('No errors')) {
+            container.removeChild(firstChild);
         }
     }
 

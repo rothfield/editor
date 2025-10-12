@@ -3,77 +3,141 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Music Notation Editor POC - CharCell-based musical notation editing">
+    <meta name="description" content="Music Notation Editor POC - Cell-based musical notation editing">
     <title>Music Notation Editor - POC</title>
 
     <!-- External CSS -->
     <link rel="stylesheet" href="dist/main.css">
 
+    <!-- Custom UI styles -->
+    <style>
+        /* Remove list bullets */
+        nav ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        nav ul li {
+            list-style: none;
+        }
+
+        /* Tab active state */
+        .tab.active {
+            border-bottom-color: #0066cc;
+            color: #0066cc;
+            font-weight: 500;
+        }
+
+        /* Menu item hover */
+        .menu-item:hover {
+            background-color: #f3f4f6;
+        }
+
+        /* Menu button active state */
+        button.bg-ui-active {
+            background-color: #e5e7eb;
+        }
+
+        /* Tab container */
+        .tab {
+            position: relative;
+        }
+
+        /* Resize handle */
+        #resize-handle {
+            position: relative;
+        }
+
+        #resize-handle::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 3px;
+            height: 40px;
+            background: linear-gradient(to bottom,
+                transparent 0%,
+                #9ca3af 20%,
+                #9ca3af 80%,
+                transparent 100%);
+            border-radius: 2px;
+            pointer-events: none;
+        }
+
+        #resize-handle:hover::before {
+            background: linear-gradient(to bottom,
+                transparent 0%,
+                #3b82f6 20%,
+                #3b82f6 80%,
+                transparent 100%);
+        }
+    </style>
+
     <!-- Preload critical resources -->
-    <link rel="preload" href="dist/pkg/ecs_editor_wasm.js" as="script">
-    <link rel="preload" href="dist/pkg/ecs_editor_wasm_bg.wasm" as="fetch" crossorigin>
+    <link rel="modulepreload" href="dist/pkg/editor_wasm.js">
+    <link rel="preload" href="dist/pkg/editor_wasm_bg.wasm" as="fetch" crossorigin="anonymous">
 
     <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>♫</text></svg>">
 </head>
 <body class="bg-ui-background text-notation-text font-sans antialiased">
     <div id="app" class="min-h-screen flex flex-col">
-        <!-- Header with Title -->
-        <header class="bg-white border-b border-ui-border px-4 py-3">
-            <div class="flex items-center justify-between">
-                <h1 class="text-xl font-semibold text-notation-text">
-                    Music Notation Editor <span class="text-sm text-ui-disabled-text">POC</span>
-                </h1>
+        <!-- Header with Menu and Title -->
+        <header class="bg-white border-b border-ui-border">
+            <div class="flex items-center justify-between px-4 py-2">
+                <!-- Left: Menu Bar -->
+                <nav class="flex items-center space-x-4">
+                    <ul class="flex space-x-1">
+                        <!-- File Menu -->
+                        <li class="relative">
+                            <button id="file-menu-button" class="px-3 py-1 rounded text-sm hover:bg-ui-hover">
+                                File
+                            </button>
+                            <ul id="file-menu" class="absolute top-full left-0 bg-white border border-ui-border rounded shadow-lg hidden z-menu min-w-48">
+                                <li><button id="menu-new" class="menu-item">New</button></li>
+                                <li><button id="menu-open" class="menu-item">Open...</button></li>
+                                <li><button id="menu-save" class="menu-item">Save...</button></li>
+                                <li class="border-t border-ui-border my-1"></li>
+                                <li><button id="menu-export-musicxml" class="menu-item">Export MusicXML...</button></li>
+                                <li><button id="menu-export-lilypond" class="menu-item">Export LilyPond...</button></li>
+                                <li class="border-t border-ui-border my-1"></li>
+                                <li><button id="menu-set-title" class="menu-item">Set Title...</button></li>
+                                <li><button id="menu-set-tonic" class="menu-item">Set Tonic...</button></li>
+                                <li><button id="menu-set-pitch-system" class="menu-item">Set Pitch System...</button></li>
+                                <li><button id="menu-set-key-signature" class="menu-item">Set Key Signature...</button></li>
+                            </ul>
+                        </li>
+
+                        <!-- Line Menu -->
+                        <li class="relative">
+                            <button id="line-menu-button" class="px-3 py-1 rounded text-sm hover:bg-ui-hover">
+                                Line
+                            </button>
+                            <ul id="line-menu" class="absolute top-full left-0 bg-white border border-ui-border rounded shadow-lg hidden z-menu min-w-48">
+                                <li><button id="menu-set-label" class="menu-item">Set Label...</button></li>
+                                <li><button id="menu-set-tonic" class="menu-item">Set Tonic...</button></li>
+                                <li><button id="menu-set-pitch-system" class="menu-item">Set Pitch System...</button></li>
+                                <li><button id="menu-set-lyrics" class="menu-item">Set Lyrics...</button></li>
+                                <li><button id="menu-set-tala" class="menu-item">Set Tala...</button></li>
+                                <li><button id="menu-set-key-signature" class="menu-item">Set Key Signature...</button></li>
+                            </ul>
+                        </li>
+                    </ul>
+                </nav>
+
+                <!-- Right: Document Title -->
                 <div id="composition-title" class="text-sm text-ui-disabled-text">
                     Untitled Document
                 </div>
             </div>
         </header>
 
-        <!-- Menu Bar -->
-        <nav class="bg-white border-b border-ui-border px-2 py-1">
-            <ul class="flex space-x-1">
-                <!-- File Menu -->
-                <li class="relative">
-                    <button id="file-menu-button" class="menu-item px-3 py-1 rounded text-sm hover:bg-ui-hover">
-                        File
-                    </button>
-                    <ul id="file-menu" class="absolute top-full left-0 bg-white border border-ui-border rounded shadow-lg hidden z-menu">
-                        <li><button id="menu-new" class="menu-item block w-full text-left px-3 py-1 text-sm whitespace-nowrap">New</button></li>
-                        <li><button id="menu-open" class="menu-item block w-full text-left px-3 py-1 text-sm whitespace-nowrap">Open...</button></li>
-                        <li><button id="menu-save" class="menu-item block w-full text-left px-3 py-1 text-sm whitespace-nowrap">Save...</button></li>
-                        <li class="border-t border-ui-border"><hr class="my-1"></li>
-                        <li><button id="menu-export-musicxml" class="menu-item block w-full text-left px-3 py-1 text-sm whitespace-nowrap">Export MusicXML...</button></li>
-                        <li><button id="menu-export-lilypond" class="menu-item block w-full text-left px-3 py-1 text-sm whitespace-nowrap">Export LilyPond...</button></li>
-                        <li class="border-t border-ui-border"><hr class="my-1"></li>
-                        <li><button id="menu-set-title" class="menu-item block w-full text-left px-3 py-1 text-sm whitespace-nowrap">Set Title...</button></li>
-                        <li><button id="menu-set-tonic" class="menu-item block w-full text-left px-3 py-1 text-sm whitespace-nowrap">Set Tonic...</button></li>
-                        <li><button id="menu-set-pitch-system" class="menu-item block w-full text-left px-3 py-1 text-sm whitespace-nowrap">Set Pitch System...</button></li>
-                        <li><button id="menu-set-key-signature" class="menu-item block w-full text-left px-3 py-1 text-sm whitespace-nowrap">Set Key Signature...</button></li>
-                    </ul>
-                </li>
-
-                <!-- Line Menu -->
-                <li class="relative">
-                    <button id="line-menu-button" class="menu-item px-3 py-1 rounded text-sm hover:bg-ui-hover">
-                        Line
-                    </button>
-                    <ul id="line-menu" class="absolute top-full left-0 bg-white border border-ui-border rounded shadow-lg hidden z-menu">
-                        <li><button id="menu-set-label" class="menu-item block w-full text-left px-3 py-1 text-sm whitespace-nowrap">Set Label...</button></li>
-                        <li><button id="menu-set-tonic" class="menu-item block w-full text-left px-3 py-1 text-sm whitespace-nowrap">Set Tonic...</button></li>
-                        <li><button id="menu-set-pitch-system" class="menu-item block w-full text-left px-3 py-1 text-sm whitespace-nowrap">Set Pitch System...</button></li>
-                        <li><button id="menu-set-lyrics" class="menu-item block w-full text-left px-3 py-1 text-sm whitespace-nowrap">Set Lyrics...</button></li>
-                        <li><button id="menu-set-tala" class="menu-item block w-full text-left px-3 py-1 text-sm whitespace-nowrap">Set Tala...</button></li>
-                        <li><button id="menu-set-key-signature" class="menu-item block w-full text-left px-3 py-1 text-sm whitespace-nowrap">Set Key Signature...</button></li>
-                    </ul>
-                </li>
-            </ul>
-        </nav>
-
         <!-- Main Content Area -->
-        <main class="flex-1 flex">
+        <main class="flex-1 flex" id="main-container">
             <!-- Editor Canvas -->
-            <section class="flex-1 flex flex-col">
+            <section class="flex-1 flex flex-col" id="editor-section">
                 <div id="editor-container" class="flex-1 relative overflow-auto p-4">
                     <!-- Notation Canvas -->
                     <div id="notation-canvas"
@@ -83,7 +147,7 @@
                          aria-label="Music notation editor"
                          aria-multiline="false"
                          spellcheck="false">
-                        <!-- CharCell elements will be dynamically added here -->
+                        <!-- Cell elements will be dynamically added here -->
                         <div class="notation-line" id="notation-line">
                             <div class="text-ui-disabled-text text-sm">Click to start entering musical notation...</div>
                         </div>
@@ -95,22 +159,26 @@
 
                 <!-- Status Bar -->
                 <footer class="bg-ui-background border-t border-ui-border px-4 py-2">
-                    <div class="flex items-center justify-between text-xs text-ui-disabled-text">
+                    <div class="flex items-center justify-between text-xs text-gray-500">
                         <div class="flex items-center space-x-4">
                             <span>Position: <span id="cursor-position">0</span></span>
                             <span>Pitch System: <span id="current-pitch-system">Number</span></span>
                             <span>Characters: <span id="char-count">0</span></span>
+                            <span id="selection-info" class="text-xs text-gray-500">No selection</span>
                         </div>
                         <div class="flex items-center space-x-4">
-                            <span id="focus-status" class="text-ui-disabled-text">No focus</span>
+                            <span id="focus-status" class="text-gray-500">No focus</span>
                             <span id="performance-indicator" class="text-success hidden">Ready</span>
                         </div>
                     </div>
                 </footer>
             </section>
 
+            <!-- Resize Handle -->
+            <div id="resize-handle" class="w-4 bg-gray-300 hover:bg-blue-500 cursor-col-resize transition-colors flex-shrink-0"></div>
+
             <!-- Debug Information Panel -->
-            <aside class="w-96 bg-ui-background border-l border-ui-border flex flex-col">
+            <aside id="tabs-panel" class="bg-ui-background border-l border-ui-border flex flex-col" style="width: 384px; min-width: 200px; max-width: 800px;">
                 <!-- Tab Navigation -->
                 <div class="bg-white border-b border-ui-border">
                     <nav class="flex">
@@ -127,26 +195,25 @@
                 </div>
 
                 <!-- Tab Content -->
-                <div class="flex-1 overflow-auto">
+                <div class="flex-1 flex flex-col overflow-hidden">
                     <!-- Document Tab -->
-                    <div id="tab-content-document" class="tab-content p-4">
-                        <h3 class="text-sm font-semibold mb-2">Document Structure</h3>
-                        <pre id="document-json" class="text-xs font-mono bg-white p-2 rounded border border-ui-border overflow-auto max-h-96"></pre>
+                    <div id="tab-content-document" data-tab-content="document" class="tab-content flex-1 flex flex-col p-4">
+                        <pre id="document-json" class="flex-1 text-xs font-mono bg-white p-3 border-2 border-gray-300 rounded overflow-auto"></pre>
                     </div>
 
                     <!-- Console Errors Tab -->
-                    <div id="tab-content-console-errors" class="tab-content hidden p-4">
+                    <div id="tab-content-console-errors" data-tab-content="console-errors" class="tab-content hidden flex-1 flex flex-col p-4">
                         <h3 class="text-sm font-semibold mb-2">Console Errors</h3>
-                        <div id="console-errors-list" class="space-y-1 max-h-96 overflow-auto">
-                            <div class="text-sm text-ui-disabled-text">No errors</div>
+                        <div id="console-errors-list" class="flex-1 space-y-1 overflow-auto text-xs bg-white p-3 border-2 border-gray-300 rounded">
+                            <div class="text-sm text-gray-500">No errors</div>
                         </div>
                     </div>
 
                     <!-- Console Log Tab -->
-                    <div id="tab-content-console-log" class="tab-content hidden p-4">
+                    <div id="tab-content-console-log" data-tab-content="console-log" class="tab-content hidden flex-1 flex flex-col p-4">
                         <h3 class="text-sm font-semibold mb-2">Console Log</h3>
-                        <div id="console-log-list" class="space-y-1 max-h-96 overflow-auto">
-                            <div class="text-sm text-ui-disabled-text">No logs</div>
+                        <div id="console-log-list" class="flex-1 space-y-1 overflow-auto text-xs bg-white p-3 border-2 border-gray-300 rounded">
+                            <div class="text-sm text-gray-500">No logs</div>
                         </div>
                     </div>
                 </div>
@@ -156,6 +223,72 @@
 
     <!-- JavaScript Modules -->
     <script type="module" src="dist/main.js"></script>
+
+    <!-- Resize Handle Script -->
+    <script>
+        // Wait for DOM to be ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initResize);
+        } else {
+            initResize();
+        }
+
+        function initResize() {
+            const resizeHandle = document.getElementById('resize-handle');
+            const tabsPanel = document.getElementById('tabs-panel');
+            const mainContainer = document.getElementById('main-container');
+
+            if (!resizeHandle || !tabsPanel || !mainContainer) {
+                console.error('Resize handle elements not found');
+                return;
+            }
+
+            console.log('Resize handle initialized');
+
+            let isResizing = false;
+            let startX = 0;
+            let startWidth = 0;
+
+            resizeHandle.addEventListener('mousedown', function(e) {
+                console.log('Resize started');
+                isResizing = true;
+                startX = e.clientX;
+                startWidth = tabsPanel.offsetWidth;
+
+                // Prevent text selection during resize
+                document.body.style.userSelect = 'none';
+                document.body.style.cursor = 'col-resize';
+
+                e.preventDefault();
+            });
+
+            document.addEventListener('mousemove', function(e) {
+                if (!isResizing) return;
+
+                const maxWidth = parseInt(tabsPanel.style.maxWidth) || 800;
+                const minWidth = parseInt(tabsPanel.style.minWidth) || 200;
+
+                // Calculate new width (resize from right edge, so subtract delta)
+                const deltaX = e.clientX - startX;
+                let newWidth = startWidth - deltaX;
+
+                // Constrain to min/max
+                newWidth = Math.max(minWidth, Math.min(maxWidth, newWidth));
+
+                // Apply new width
+                tabsPanel.style.width = newWidth + 'px';
+            });
+
+            document.addEventListener('mouseup', function() {
+                if (isResizing) {
+                    console.log('Resize ended');
+                    isResizing = false;
+                    document.body.style.userSelect = '';
+                    document.body.style.cursor = '';
+                }
+            });
+        }
+    </script>
 
     <!-- Error handling for script loading -->
     <script>

@@ -1,7 +1,7 @@
 //! Models module for the Music Notation Editor
 //!
 //! This module contains all the data models and structures
-//! used in the CharCell-based musical notation system.
+//! used in the Cell-based musical notation system.
 
 pub mod core;
 pub mod elements;

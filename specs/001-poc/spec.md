@@ -9,7 +9,7 @@
 
 ### User Story 1 - Basic Music Notation Entry and Editing (Priority: P1)
 
-As a musician, I want to enter and edit musical notation using a CharCell-based model with support for both Number and Western pitch systems, including immediate keyboard responsiveness when the editor canvas receives focus, to create simple musical scores with automatic beat detection and rendering.
+As a musician, I want to enter and edit musical notation using a Cell-based model with support for both Number and Western pitch systems, including immediate keyboard responsiveness when the editor canvas receives focus, to create simple musical scores with automatic beat detection and rendering.
 
 **Why this priority**: This establishes the core value proposition - intuitive music notation entry and editing with proper musical semantics, pitch system flexibility, and immediate keyboard responsiveness upon focus.
 
@@ -42,7 +42,7 @@ As a user, I want to interact with the notation using keyboard arrows to navigat
 
 **Acceptance Scenarios**:
 
-1. **Given** I have musical notation displayed, **When** I use arrow keys (left/right), **Then** the caret moves to adjacent CharCells
+1. **Given** I have musical notation displayed, **When** I use arrow keys (left/right), **Then** the caret moves to adjacent Cells
 2. **Given** I have a caret positioned, **When** I use arrow keys (up/down), **Then** the caret moves between lines at appropriate positions
 3. **Given** I have a caret positioned, **When** I use Shift+arrow keys, **Then** the selection expands appropriately with visual highlighting
 4. **Given** I have text selected via keyboard, **When** I type new characters, **Then** the selected text is replaced and highlighting updates
@@ -54,7 +54,7 @@ As a user, I want to interact with the notation using keyboard arrows to navigat
 
 As a musician, I want to apply musical notations like slurs and octaves to selected ranges using keyboard shortcuts to efficiently enhance musical expression and articulation.
 
-**Why this priority**: Advanced musical notation features that demonstrate the full capabilities of the CharCell model with efficient selection-based operations.
+**Why this priority**: Advanced musical notation features that demonstrate the full capabilities of the Cell model with efficient selection-based operations.
 
 **Independent Test**: Can be tested by selecting ranges and applying slur/octave commands via keyboard shortcuts, verifying proper toggle behavior and rendering.
 
@@ -91,7 +91,7 @@ As a musician, I want to apply musical notations like slurs and octaves to selec
 
 As a developer, I want a clean menu-based interface with debug information tabs to understand the current document state and monitor application behavior during development.
 
-**Why this priority**: Essential development tools for debugging and understanding the CharCell data structure and application state.
+**Why this priority**: Essential development tools for debugging and understanding the Cell data structure and application state.
 
 **Independent Test**: Can be tested by navigating menus, switching tabs, and verifying that focus returns correctly to the editor after UI interactions.
 
@@ -99,7 +99,7 @@ As a developer, I want a clean menu-based interface with debug information tabs 
 
 1. **Given** I am using the application, **When** I interact with menu items, **Then** focus automatically returns to the editor canvas after the menu operation
 2. **Given** I am viewing the interface, **When** I switch between tabs (Document, Console Errors, Console Log), **Then** focus automatically returns to the editor canvas
-3. **Given** I have entered musical notation, **When** I click the "Document" tab, **Then** I see the current CharCell array structure displayed in a readable format
+3. **Given** I have entered musical notation, **When** I click the "Document" tab, **Then** I see the current Cell array structure displayed in a readable format
 4. **Given** an error occurs in the application, **When** I click the "Console Errors" tab, **Then** I see error messages displayed with timestamps
 5. **Given** I perform actions in the editor, **When** I click the "Console Log" tab, **Then** I see debug information and action logs displayed
 6. **Given** I am using the application, **When** I view the HTML source, **Then** JavaScript and CSS are in separate external files, not embedded in HTML
@@ -118,14 +118,14 @@ As a developer, I want a clean menu-based interface with debug information tabs 
 
 ### Functional Requirements
 
-**CharCell Model Requirements**
-- **FR-001**: System MUST represent all content as CharCell arrays, one per visible grapheme cluster
-- **FR-002**: Every CharCell corresponds to one visible column (grapheme-safe)
+**Cell Model Requirements**
+- **FR-001**: System MUST represent all content as Cell arrays, one per visible grapheme cluster
+- **FR-002**: Every Cell corresponds to one visible column (grapheme-safe)
 - **FR-003**: System MUST support ElementKind types: PitchedElement, UnpitchedElement, UpperAnnotation, LowerAnnotation, LyricElement
 - **FR-004**: System MUST handle temporal columns (those whose kind is PitchedElement or UnpitchedElement) separately from non-temporal columns
 - **FR-005**: System MUST provide grapheme-safe indexing to prevent splitting combined characters
-- **FR-006**: System MUST mark the first column (CharCell) of multi-character tokens as 'head' to identify token boundaries
-- **FR-007**: System MUST provide navigation methods to jump between head CharCells for efficient token-based movement
+- **FR-006**: System MUST mark the first column (Cell) of multi-character tokens as 'head' to identify token boundaries
+- **FR-007**: System MUST provide navigation methods to jump between head Cells for efficient token-based movement
 
 **Music Notation Requirements**
 - **FR-008**: System MUST support Number pitch system (1-7) as the default, with optional accidentals (#, ##, b, bb) only
@@ -160,11 +160,11 @@ As a developer, I want a clean menu-based interface with debug information tabs 
 - **FR-031**: System MUST handle focus transitions smoothly without interrupting user input
 
 **POC Scope Limitations**
-- **FR-032**: System MUST support ordered lanes structure [Upper, Letter, Lower, Lyrics] where each lane is a Vec<CharCell> with shared column alignment for vertical positioning of annotations
+- **FR-032**: System MUST support ordered lanes structure [Upper, Letter, Lower, Lyrics] where each lane is a Vec<Cell> with shared column alignment for vertical positioning of annotations
 - **FR-033**: System MUST render all content at 16-point typeface for the POC
 
 **Keyboard-Only Editing Requirements**
-- **FR-034**: System MUST support arrow key navigation (left/right) for precise CharCell movement within the single line
+- **FR-034**: System MUST support arrow key navigation (left/right) for precise Cell movement within the single line
 - **FR-035**: System MUST provide visual highlighting for selected ranges of notation
 - **FR-036**: System MUST support Shift+arrow key selection expansion
 - **FR-037**: System MUST support home/end key navigation for line beginning/end positioning
@@ -209,7 +209,7 @@ As a developer, I want a clean menu-based interface with debug information tabs 
 - **FR-053**: System MUST implement menu-based navigation for user interface
 - **FR-054**: System MUST separate JavaScript and CSS into external files (not embedded in HTML)
 - **FR-055**: System MUST provide a tab group below the main editor canvas
-- **FR-056**: System MUST include a "Document" tab showing current data structure (CharCell arrays)
+- **FR-056**: System MUST include a "Document" tab showing current data structure (Cell arrays)
 - **FR-057**: System MUST include a "Console Errors" tab displaying error messages
 - **FR-058**: System MUST include a "Console Log" tab displaying debug information
 - **FR-059**: System MUST return focus to the editor canvas after menu operations
@@ -259,7 +259,7 @@ As a developer, I want a clean menu-based interface with debug information tabs 
 
 ### Key Entities
 
-- **CharCell**: Core data structure representing one visible grapheme cluster with grapheme, lane, kind, position, rendering properties, and optional head marker for multi-character token boundaries
+- **Cell**: Core data structure representing one visible grapheme cluster with grapheme, lane, kind, position, rendering properties, and optional head marker for multi-character token boundaries
 - **PitchedElement**: Musical note symbols supporting Number system (1-7, default) and Western system (cdefgab/CDEFGAB), with optional accidentals (##, bb) only, pitch_system attribute for tracking current system, ornaments, and octave display property (-4 to +4) applied only via selection commands
 - **UnpitchedElement**: Non-pitched musical symbols (dashes, breath marks, barlines, spaces) that affect timing and structure
 - **TextToken**: Unknown text on the main line that cannot be parsed as musical notation, rendered in red color as fallback elements, with multi-character support
@@ -268,8 +268,8 @@ As a developer, I want a clean menu-based interface with debug information tabs 
 - **Lyrics**: Line-level text string displayed below the first pitched element of the line (stored at line level, positioned below first PitchedElement)
 - **Slur**: Curved connection that can start/end on any element anywhere in the notation (temporal or non-temporal), can span beats and barlines, rendered as Bézier curves
 - **Caret**: Visual cursor indicator showing current editing position, positioned at grapheme boundaries
-- **Selection**: Highlighted range of CharCells indicating user-selected content for editing operations
-- **Line**: Container with ordered lanes using LaneKind enum { Upper, Letter, Lower } where each lane is a Vec<CharCell> maintaining vertical alignment through shared column indices, plus line-level storage for tala (digits 0-9+), lyrics (text string), label (displayed at beginning of line), tonic (musical root note), and key_signature (sharps/flats affecting pitch interpretation). **Note**: The data model supports multiple lines, but POC implementation will display and edit only a single line at a time.
+- **Selection**: Highlighted range of Cells indicating user-selected content for editing operations
+- **Line**: Container with ordered lanes using LaneKind enum { Upper, Letter, Lower } where each lane is a Vec<Cell> maintaining vertical alignment through shared column indices, plus line-level storage for tala (digits 0-9+), lyrics (text string), label (displayed at beginning of line), tonic (musical root note), and key_signature (sharps/flats affecting pitch interpretation). **Note**: The data model supports multiple lines, but POC implementation will display and edit only a single line at a time.
 - **Label**: Line-level text string displayed at the beginning of the line for line identification or section labeling
 - **Tonic**: Musical root note that can be set at composition level (File menu) or line level (Line menu), affecting how pitch systems are interpreted and rendered
 - **KeySignature**: Musical key signature (sharps/flats) that can be set at composition level (File menu) or line level (Line menu), displayed at line beginnings and affecting pitch interpretation
@@ -284,7 +284,7 @@ As a developer, I want a clean menu-based interface with debug information tabs 
 - **SC-002**: Musical notation input appears with less than 50ms latency for typical entry speeds
 - **SC-003**: Focus activation occurs within 10ms of user interaction (click, tab, or programmatic)
 - **SC-004**: Arrow key navigation completes movement within 16ms (60fps)
-- **SC-005**: System can handle single-line documents with up to 1,000 CharCells without performance degradation
+- **SC-005**: System can handle single-line documents with up to 1,000 Cells without performance degradation
 - **SC-006**: Beat derivation and rendering completes in under 10ms for typical single-line content
 
 **Functional Metrics**
@@ -312,7 +312,7 @@ As a developer, I want a clean menu-based interface with debug information tabs 
 - **SC-026**: Users can focus the editor and begin typing immediately without additional clicks
 - **SC-027**: Focus returns to editor canvas within 50ms after menu operations
 - **SC-028**: Focus returns to editor canvas within 50ms after tab switching
-- **SC-029**: Document tab displays current CharCell structure in real-time with <100ms latency
+- **SC-029**: Document tab displays current Cell structure in real-time with <100ms latency
 - **SC-030**: Console tabs update within 200ms of new errors or log entries
 
 **Development Metrics**

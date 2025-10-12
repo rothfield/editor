@@ -1,10 +1,9 @@
 //! Core data structures for the Music Notation Editor POC
 //!
-//! This module defines the fundamental CharCell-based architecture
+//! This module defines the fundamental Cell-based architecture
 //! for representing musical notation with grapheme-safe indexing.
 
 use serde::{Deserialize, Serialize};
-use wasm_bindgen::prelude::*;
 use std::collections::VecDeque;
 
 // Re-export from other modules
@@ -14,7 +13,7 @@ pub use super::notation::{BeatSpan, SlurSpan, Position, Selection, Range, Cursor
 /// The fundamental unit representing one visible grapheme cluster in musical notation
 #[repr(C)]
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct CharCell {
+pub struct Cell {
     /// The visible grapheme cluster (e.g., "S", "C#", "2b", "-")
     pub grapheme: String,
 
@@ -49,8 +48,8 @@ pub struct CharCell {
     pub hit: (f32, f32, f32, f32),
 }
 
-impl CharCell {
-    /// Create a new CharCell
+impl Cell {
+    /// Create a new Cell
     pub fn new(grapheme: String, kind: ElementKind, lane: LaneKind, col: usize) -> Self {
         Self {
             grapheme,
@@ -149,8 +148,8 @@ impl CharCell {
 /// Container for musical notation with support for multiple lanes and line-level metadata
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Line {
-    /// Ordered lanes containing CharCell arrays
-    pub lanes: [Vec<CharCell>; 4],
+    /// Ordered lanes containing Cell arrays
+    pub lanes: [Vec<Cell>; 4],
 
     /// Line-level metadata
     pub metadata: LineMetadata,
@@ -180,18 +179,18 @@ impl Line {
         }
     }
 
-    /// Get CharCells from a specific lane
-    pub fn get_lane(&self, lane: LaneKind) -> &[CharCell] {
+    /// Get Cells from a specific lane
+    pub fn get_lane(&self, lane: LaneKind) -> &[Cell] {
         &self.lanes[lane as usize]
     }
 
-    /// Get mutable CharCells from a specific lane
-    pub fn get_lane_mut(&mut self, lane: LaneKind) -> &mut Vec<CharCell> {
+    /// Get mutable Cells from a specific lane
+    pub fn get_lane_mut(&mut self, lane: LaneKind) -> &mut Vec<Cell> {
         &mut self.lanes[lane as usize]
     }
 
-    /// Get all temporal CharCells from the Letter lane
-    pub fn get_temporal_cells(&self) -> Vec<&CharCell> {
+    /// Get all temporal Cells from the Letter lane
+    pub fn get_temporal_cells(&self) -> Vec<&Cell> {
         self.lanes[LaneKind::Letter as usize]
             .iter()
             .filter(|cell| cell.is_temporal())
@@ -207,18 +206,18 @@ impl Line {
             .unwrap_or(0)
     }
 
-    /// Add a CharCell to the specified lane
-    pub fn add_cell(&mut self, cell: CharCell, lane: LaneKind) {
+    /// Add a Cell to the specified lane
+    pub fn add_cell(&mut self, cell: Cell, lane: LaneKind) {
         self.get_lane_mut(lane).push(cell);
     }
 
-    /// Insert a CharCell at a specific position in a lane
-    pub fn insert_cell(&mut self, cell: CharCell, lane: LaneKind, index: usize) {
+    /// Insert a Cell at a specific position in a lane
+    pub fn insert_cell(&mut self, cell: Cell, lane: LaneKind, index: usize) {
         self.get_lane_mut(lane).insert(index, cell);
     }
 
-    /// Remove a CharCell from a lane
-    pub fn remove_cell(&mut self, lane: LaneKind, index: usize) -> Option<CharCell> {
+    /// Remove a Cell from a lane
+    pub fn remove_cell(&mut self, lane: LaneKind, index: usize) -> Option<Cell> {
         let lane_vec = self.get_lane_mut(lane);
         if index < lane_vec.len() {
             Some(lane_vec.remove(index))
@@ -227,7 +226,7 @@ impl Line {
         }
     }
 
-    /// Clear all CharCells from a lane
+    /// Clear all Cells from a lane
     pub fn clear_lane(&mut self, lane: LaneKind) {
         self.get_lane_mut(lane).clear();
     }
@@ -603,7 +602,7 @@ pub struct RenderMetrics {
     /// Time taken for last render in milliseconds
     pub last_render_time_ms: f32,
 
-    /// Number of CharCells rendered
+    /// Number of Cells rendered
     pub cells_rendered: usize,
 
     /// Number of beat loops rendered

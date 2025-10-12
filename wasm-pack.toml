@@ -1,7 +1,7 @@
 [package]
 name = "ecs-editor-wasm"
 version = "0.1.0"
-description = "Music Notation Editor WASM module with CharCell architecture"
+description = "Music Notation Editor WASM module with Cell architecture"
 repository = "https://github.com/your-org/ecs-editor.git"
 license = "MIT"
 authors = ["ECS Editor Project"]

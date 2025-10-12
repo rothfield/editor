@@ -6,7 +6,7 @@ This document consolidates the Phase 0 research for the Music Notation Editor PO
 
 ## Executive Summary
 
-The Music Notation Editor POC requires careful integration of multiple technologies to achieve the performance targets (<10ms beat derivation, <50ms typing latency) while maintaining code quality and user experience. This research establishes the foundation for implementing a CharCell-based music notation editor with dual pitch systems, keyboard-only interaction, and real-time visual feedback.
+The Music Notation Editor POC requires careful integration of multiple technologies to achieve the performance targets (<10ms beat derivation, <50ms typing latency) while maintaining code quality and user experience. This research establishes the foundation for implementing a Cell-based music notation editor with dual pitch systems, keyboard-only interaction, and real-time visual feedback.
 
 **Key Research Findings:**
 - UnoCSS provides optimal styling performance with utility-first approach for music notation
@@ -49,7 +49,7 @@ export default defineConfig({
       '16': ['16px', '1.2'], // Fixed 16pt typeface for POC
     },
     spacing: {
-      'char': '1ch', // Character-based spacing for CharCell alignment
+      'char': '1ch', // Character-based spacing for Cell alignment
       'line': '1.2em', // Line spacing for music notation
     }
   },
@@ -95,10 +95,10 @@ export default defineConfig({
 
 ## 2. Custom Utility Classes for Music Notation
 
-### 2.1 CharCell Positioning Utilities
+### 2.1 Cell Positioning Utilities
 
 ```typescript
-// Custom rules for CharCell model alignment
+// Custom rules for Cell model alignment
 rules: [
   // Character-based positioning
   [/^char-w-(\d+)$/, ([, width]) => ({ width: `${width}ch` })],
@@ -196,17 +196,17 @@ rules: [
 ]
 ```
 
-## 3. Monospace Font Requirements for CharCell Model
+## 3. Monospace Font Requirements for Cell Model
 
 ### 3.1 Font Stack Configuration
 
-For predictable column positioning in the CharCell model:
+For predictable column positioning in the Cell model:
 
 ```typescript
 theme: {
   fontFamily: {
-    // Primary monospace for CharCell alignment
-    'charcell': [
+    // Primary monospace for Cell alignment
+    'cell': [
       'Consolas', // Windows
       'Monaco',   // macOS
       'Ubuntu Mono', // Linux
@@ -237,7 +237,7 @@ theme: {
 rules: [
   // Ensure predictable character widths
   ['char-cell', {
-    fontFamily: 'theme("fontFamily.charcell")',
+    fontFamily: 'theme("fontFamily.cell")',
     fontSize: '16px',
     lineHeight: '1.2',
     letterSpacing: '0', // No letter spacing for alignment
@@ -493,7 +493,7 @@ class MusicNotationRenderer {
 
 ### 7.1 UnoCSS Configuration Priority
 
-1. **Immediate (Phase 1)**: Basic monospace configuration and CharCell utilities
+1. **Immediate (Phase 1)**: Basic monospace configuration and Cell utilities
 2. **Core (Phase 1)**: Music notation positioning utilities
 3. **Advanced (Phase 2)**: WASM integration and dynamic styling
 4. **Optimization (Phase 2)**: Performance optimization and critical CSS
@@ -510,7 +510,7 @@ class MusicNotationRenderer {
 1. **Static Generation**: Use UnoCSS preset and custom rules for base styling
 2. **Dynamic Updates**: Integrate with WASM for runtime style computation
 3. **Performance Caching**: Implement intelligent caching for repeated cell states
-4. **Critical Path**: Prioritize CharCell positioning and annotation utilities
+4. **Critical Path**: Prioritize Cell positioning and annotation utilities
 
 ## 8. Next Steps
 
@@ -520,7 +520,7 @@ class MusicNotationRenderer {
 4. **Performance Testing**: Validate <50ms latency targets for real-time editing
 5. **Responsive Testing**: Ensure proper behavior across different screen sizes
 
-This research provides a solid foundation for implementing UnoCSS in the Music Notation Editor POC, addressing the specific requirements of CharCell-based positioning, monospace font requirements, and real-time performance optimization.
+This research provides a solid foundation for implementing UnoCSS in the Music Notation Editor POC, addressing the specific requirements of Cell-based positioning, monospace font requirements, and real-time performance optimization.
 
 ---
 
@@ -581,7 +581,7 @@ wasm-opt = ['-Os', '--enable-simd', '--enable-bulk-memory']
 
 ---
 
-## 11. CharCell Architecture Design
+## 11. Cell Architecture Design
 
 ### Decision
 **Domain-driven module organization** with clear separation of concerns for musical concepts, parsing, and rendering.
@@ -590,7 +590,7 @@ wasm-opt = ['-Os', '--enable-simd', '--enable-bulk-memory']
 ```
 src/rust/
 ├── models/                 # Core data models
-│   ├── core.rs            # CharCell, Line, Document structures
+│   ├── core.rs            # Cell, Line, Document structures
 │   ├── elements.rs        # PitchedElement, UnpitchedElement, etc.
 │   ├── notation.rs        # Slur, Beat, Ornament models
 │   ├── pitch.rs           # Pitch representation and conversion
@@ -601,7 +601,7 @@ src/rust/
 │       ├── sargam.rs      # Sargam system (S, R, G, M, P, D, N)
 │       └── bhatkhande.rs  # Bhatkhande system
 ├── parsing/               # Text processing and analysis
-│   ├── charcell.rs        # CharCell parsing and grapheme handling
+│   ├── cell.rs        # Cell parsing and grapheme handling
 │   ├── beats.rs           # Beat derivation algorithms
 │   └── tokens.rs          # Token recognition and validation
 ├── rendering/             # Visual rendering and layout
@@ -631,17 +631,17 @@ src/rust/
 - **Slur Rendering**: <5ms for complex curves
 - **Position Calculations**: <2ms from WASM
 - **Total Render Time**: <10ms for single-line content
-- **Memory Usage**: <5MB for 1000 CharCells
+- **Memory Usage**: <5MB for 1000 Cells
 
 ---
 
 ## 13. Implementation Phases and Roadmap
 
 ### Phase 1: Core Foundation (Weeks 1-2)
-**Goal**: Basic CharCell editor with text entry and beat visualization
+**Goal**: Basic Cell editor with text entry and beat visualization
 
 **Milestones:**
-- [ ] Rust/WASM module with CharCell data structures
+- [ ] Rust/WASM module with Cell data structures
 - [ ] Grapheme-safe text parsing with multi-character support
 - [ ] Basic beat derivation and loop rendering
 - [ ] DOM-based rendering with UnoCSS integration
@@ -683,7 +683,7 @@ The research addresses all critical areas identified in the Constitution Check a
 
 **Next Steps:**
 1. Proceed to Phase 1 design (data-model.md, contracts/, quickstart.md)
-2. Begin implementation with core CharCell and WASM modules
+2. Begin implementation with core Cell and WASM modules
 3. Establish comprehensive testing framework
 4. Iterate based on performance benchmarks and user feedback
 

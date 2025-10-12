@@ -1,6 +1,6 @@
 import resolve from '@rollup/plugin-node-resolve';
 import commonjs from '@rollup/plugin-commonjs';
-import { terser } from '@rollup/plugin-terser';
+import terser from '@rollup/plugin-terser';
 
 const production = !process.env.ROLLUP_WATCH;
 
@@ -10,6 +10,9 @@ export default {
     file: 'dist/main.js',
     format: 'es',
     sourcemap: !production,
+    paths: {
+      '/dist/pkg/editor_wasm.js': '/dist/pkg/editor_wasm.js'
+    }
   },
   plugins: [
     resolve({
@@ -23,5 +26,5 @@ export default {
       },
     }),
   ],
-  external: ['../pkg/ecs_editor_wasm.js'],
+  external: [/^\/dist\/pkg\//],
 };

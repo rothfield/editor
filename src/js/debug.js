@@ -2,7 +2,7 @@
  * Debug System for Music Notation Editor
  *
  * Provides comprehensive debugging information including document state,
- * performance metrics, CharCell details, beat analysis, and system status.
+ * performance metrics, Cell details, beat analysis, and system status.
  */
 
 class DebugSystem {
@@ -65,7 +65,7 @@ class DebugSystem {
         const tabNav = document.createElement('div');
         tabNav.className = 'bg-gray-50 border-b border-gray-200 px-2 py-1 flex space-x-1';
 
-        const tabNames = ['Document', 'Performance', 'CharCells', 'Beats', 'System'];
+        const tabNames = ['Document', 'Performance', 'Cells', 'Beats', 'System'];
         tabNames.forEach(name => {
             const tab = document.createElement('button');
             tab.className = 'debug-tab px-3 py-1 text-xs rounded hover:bg-gray-200 data-active:bg-blue-500 data-active:text-white';
@@ -82,7 +82,7 @@ class DebugSystem {
         // Create content panels for each tab
         this.createDocumentPanel(contentArea);
         this.createPerformancePanel(contentArea);
-        this.createCharCellPanel(contentArea);
+        this.createCellPanel(contentArea);
         this.createBeatsPanel(contentArea);
         this.createSystemPanel(contentArea);
 
@@ -168,7 +168,7 @@ class DebugSystem {
                     <div class="bg-gray-50 p-2 rounded space-y-1">
                         <div>Current: <span class="debug-memory-used font-mono">0MB</span></div>
                         <div>Peak: <span class="debug-memory-peak font-mono">0MB</span></div>
-                        <div>CharCell Count: <span class="debug-charcell-count font-mono">0</span></div>
+                        <div>Cell Count: <span class="debug-cell-count font-mono">0</span></div>
                     </div>
                 </div>
 
@@ -187,15 +187,15 @@ class DebugSystem {
     }
 
     /**
-     * Create CharCell debug panel
+     * Create Cell debug panel
      */
-    createCharCellPanel(container) {
+    createCellPanel(container) {
         const panel = document.createElement('div');
-        panel.className = 'debug-panel-charcells hidden';
+        panel.className = 'debug-panel-cells hidden';
         panel.innerHTML = `
             <div class="space-y-4">
                 <div>
-                    <h4 class="font-semibold mb-2">CharCell Statistics</h4>
+                    <h4 class="font-semibold mb-2">Cell Statistics</h4>
                     <div class="bg-gray-50 p-2 rounded space-y-1">
                         <div>Total Cells: <span class="debug-total-cells font-mono">0</span></div>
                         <div>Temporal Cells: <span class="debug-temporal-cells font-mono">0</span></div>
@@ -226,14 +226,14 @@ class DebugSystem {
                 </div>
 
                 <div>
-                    <h4 class="font-semibold mb-2">Recent CharCells</h4>
+                    <h4 class="font-semibold mb-2">Recent Cells</h4>
                     <div class="debug-recent-cells bg-gray-50 p-2 rounded font-mono text-xs max-h-32 overflow-y-auto"></div>
                 </div>
             </div>
         `;
 
         container.appendChild(panel);
-        this.content.charcells = panel;
+        this.content.cells = panel;
     }
 
     /**
@@ -422,8 +422,8 @@ class DebugSystem {
             case 'performance':
                 this.updatePerformanceInfo();
                 break;
-            case 'charcells':
-                this.updateCharCellInfo();
+            case 'cells':
+                this.updateCellInfo();
                 break;
             case 'beats':
                 this.updateBeatsInfo();
@@ -507,18 +507,18 @@ class DebugSystem {
             this.querySelector('.debug-memory-peak').textContent = `${peakMB}MB`;
         }
 
-        // Update CharCell count
-        const cellCount = this.getCharCellCount();
-        this.querySelector('.debug-charcell-count').textContent = cellCount;
+        // Update Cell count
+        const cellCount = this.getCellCount();
+        this.querySelector('.debug-cell-count').textContent = cellCount;
     }
 
     /**
-     * Update CharCell information
+     * Update Cell information
      */
-    updateCharCellInfo() {
+    updateCellInfo() {
         if (!this.editor) return;
 
-        const stats = this.getCharCellStatistics();
+        const stats = this.getCellStatistics();
 
         // Update totals
         this.querySelector('.debug-total-cells').textContent = stats.total;
@@ -610,9 +610,9 @@ class DebugSystem {
     }
 
     /**
-     * Get CharCell statistics
+     * Get Cell statistics
      */
-    getCharCellStatistics() {
+    getCellStatistics() {
         const stats = {
             total: 0,
             temporal: 0,
@@ -724,9 +724,9 @@ class DebugSystem {
     }
 
     /**
-     * Get total CharCell count
+     * Get total Cell count
      */
-    getCharCellCount() {
+    getCellCount() {
         if (!this.editor?.document?.lines) return 0;
 
         return this.editor.document.lines.reduce((count, line) => {

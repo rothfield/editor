@@ -2,16 +2,16 @@
 
 **Branch**: `001-poc` | **Date**: 2025-10-11 | **Status**: Phase 1 Design
 
-This document defines the core data structures and entity relationships for the Music Notation Editor POC based on the CharCell architecture and Phase 0 research findings.
+This document defines the core data structures and entity relationships for the Music Notation Editor POC based on the Cell architecture and Phase 0 research findings.
 
 ---
 
 ## Overview
 
-The Music Notation Editor uses a **CharCell-based architecture** where all musical content is represented as discrete cells that correspond to visible grapheme clusters. This approach provides predictable positioning, efficient rendering, and intuitive musical semantics while supporting multiple pitch systems and notation styles.
+The Music Notation Editor uses a **Cell-based architecture** where all musical content is represented as discrete cells that correspond to visible grapheme clusters. This approach provides predictable positioning, efficient rendering, and intuitive musical semantics while supporting multiple pitch systems and notation styles.
 
 **Core Principles:**
-- **Grapheme-Safe**: Each CharCell represents one visible grapheme cluster
+- **Grapheme-Safe**: Each Cell represents one visible grapheme cluster
 - **Temporal Separation**: Clear distinction between temporal (pitched/unpitched) and non-temporal elements
 - **Lane Organization**: Vertical positioning through ordered lanes [Upper, Letter, Lower, Lyrics]
 - **Implicit Beats**: Beat spans derived algorithmically from temporal elements
@@ -21,14 +21,14 @@ The Music Notation Editor uses a **CharCell-based architecture** where all music
 
 ## Core Data Structures
 
-### CharCell
+### Cell
 
 The fundamental unit representing one visible grapheme cluster in the musical notation.
 
 ```rust
 #[repr(C)]
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
-pub struct CharCell {
+pub struct Cell {
     /// The visible grapheme cluster (e.g., "S", "C#", "2b", "-")
     pub grapheme: String,
 
@@ -63,7 +63,7 @@ pub struct CharCell {
     pub hit: (f32, f32, f32, f32),
 }
 
-impl CharCell {
+impl Cell {
     /// Check if this cell is the head of a multi-character token
     pub fn is_head(&self) -> bool {
         self.flags & 0x01 != 0
@@ -93,7 +93,7 @@ impl CharCell {
 
 ### ElementKind
 
-Enumeration of all possible musical element types that can be represented in a CharCell.
+Enumeration of all possible musical element types that can be represented in a Cell.
 
 ```rust
 #[repr(u8)]
@@ -139,7 +139,7 @@ impl ElementKind {
 
 ### LaneKind
 
-Enumeration defining the vertical positioning lanes for CharCell elements.
+Enumeration defining the vertical positioning lanes for Cell elements.
 
 ```rust
 #[repr(u8)]
@@ -224,8 +224,8 @@ Container for musical notation with support for multiple lanes and line-level me
 ```rust
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct Line {
-    /// Ordered lanes containing CharCell arrays
-    pub lanes: [Vec<CharCell>; 4],
+    /// Ordered lanes containing Cell arrays
+    pub lanes: [Vec<Cell>; 4],
 
     /// Line-level metadata
     pub metadata: LineMetadata,
@@ -255,18 +255,18 @@ impl Line {
         }
     }
 
-    /// Get CharCells from a specific lane
-    pub fn get_lane(&self, lane: LaneKind) -> &[CharCell] {
+    /// Get Cells from a specific lane
+    pub fn get_lane(&self, lane: LaneKind) -> &[Cell] {
         &self.lanes[lane as usize]
     }
 
-    /// Get mutable CharCells from a specific lane
-    pub fn get_lane_mut(&mut self, lane: LaneKind) -> &mut Vec<CharCell> {
+    /// Get mutable Cells from a specific lane
+    pub fn get_lane_mut(&mut self, lane: LaneKind) -> &mut Vec<Cell> {
         &mut self.lanes[lane as usize]
     }
 
-    /// Get all temporal CharCells from the Letter lane
-    pub fn get_temporal_cells(&self) -> Vec<&CharCell> {
+    /// Get all temporal Cells from the Letter lane
+    pub fn get_temporal_cells(&self) -> Vec<&Cell> {
         self.lanes[LaneKind::Letter as usize]
             .iter()
             .filter(|cell| cell.is_temporal())
@@ -282,18 +282,18 @@ impl Line {
             .unwrap_or(0)
     }
 
-    /// Add a CharCell to the specified lane
-    pub fn add_cell(&mut self, cell: CharCell, lane: LaneKind) {
+    /// Add a Cell to the specified lane
+    pub fn add_cell(&mut self, cell: Cell, lane: LaneKind) {
         self.get_lane_mut(lane).push(cell);
     }
 
-    /// Insert a CharCell at a specific position in a lane
-    pub fn insert_cell(&mut self, cell: CharCell, lane: LaneKind, index: usize) {
+    /// Insert a Cell at a specific position in a lane
+    pub fn insert_cell(&mut self, cell: Cell, lane: LaneKind, index: usize) {
         self.get_lane_mut(lane).insert(index, cell);
     }
 
-    /// Remove a CharCell from a lane
-    pub fn remove_cell(&mut self, lane: LaneKind, index: usize) -> Option<CharCell> {
+    /// Remove a Cell from a lane
+    pub fn remove_cell(&mut self, lane: LaneKind, index: usize) -> Option<Cell> {
         self.get_lane_mut(lane).remove(index)
     }
 }
@@ -748,7 +748,7 @@ impl ValidationError {
 The data structures are optimized for WASM compilation and efficient memory access:
 
 1. **Fixed-size enums**: All enums use `#[repr(u8)]` for predictable memory layout
-2. **Contiguous arrays**: CharCell arrays use `Vec<T>` for cache-friendly access
+2. **Contiguous arrays**: Cell arrays use `Vec<T>` for cache-friendly access
 3. **Lazy evaluation**: Derived data (beats, slurs) is calculated on-demand
 4. **Minimal allocations**: String allocations are minimized where possible
 
@@ -775,7 +775,7 @@ Derived data is cached to avoid expensive recalculations:
 The data model is organized into several key modules that align with the project structure:
 
 ### Core Models (`src/rust/models/`)
-- **core.rs**: CharCell, Line, Document structures
+- **core.rs**: Cell, Line, Document structures
 - **elements.rs**: ElementKind, LaneKind, and musical element definitions
 - **notation.rs**: BeatSpan, SlurSpan, and musical notation models
 - **pitch.rs**: Pitch representation and conversion logic
@@ -783,7 +783,7 @@ The data model is organized into several key modules that align with the project
 - **pitch_systems/**: Pitch system implementations (Number, Western, Sargam, etc.)
 
 ### Parsing Modules (`src/rust/parse/`)
-- **charcell.rs**: CharCell parsing and grapheme handling
+- **cell.rs**: Cell parsing and grapheme handling
 - **beats.rs**: Beat derivation algorithms using `extract_implicit_beats`
 - **tokens.rs**: Token recognition and validation
 - **grammar.rs**: Musical grammar parsing and validation
@@ -805,8 +805,8 @@ The data model is organized into several key modules that align with the project
 ### Creating a Simple Musical Line
 
 ```rust
-use ecs_editor::models::*;
-use ecs_editor::parse::*;
+use editor::models::*;
+use editor::parse::*;
 
 // Create a new document
 let mut doc = Document::new();
@@ -814,8 +814,8 @@ let mut doc = Document::new();
 // Add a line with basic notation
 let mut line = Line::new();
 
-// Parse musical notation into CharCells
-let parser = CharCellParser::new();
+// Parse musical notation into Cells
+let parser = CellParser::new();
 let char_cells = parser.parse_to_char_cells("S--r g m P");
 
 // Add parsed cells to the letter lane
@@ -834,7 +834,7 @@ doc.add_line(line);
 ### Converting Between Pitch Systems
 
 ```rust
-use ecs_editor::models::pitch_systems::*;
+use editor::models::pitch_systems::*;
 
 // Convert from Sargam to Western
 let converter = PitchConverter::new();
@@ -849,7 +849,7 @@ assert_eq!(number_note, "1#");
 ### Rendering to SVG
 
 ```rust
-use ecs_editor::renderers::svg::*;
+use editor::renderers::svg::*;
 
 // Create SVG renderer
 let mut renderer = SVGRenderer::new();
@@ -865,7 +865,7 @@ std::fs::write("output.svg", svg_output)?;
 ### Export to MusicXML (Stub Implementation)
 
 ```rust
-use ecs_editor::renderers::musicxml::*;
+use editor::renderers::musicxml::*;
 
 // Create MusicXML exporter
 let exporter = MusicXMLExporter::new();

@@ -3,8 +3,6 @@
 //! This module provides curve rendering for slurs and other
 //! musical notation elements using Bézier curves.
 
-use crate::models::*;
-
 /// Curve renderer for slurs and musical arcs
 pub struct CurveRenderer;
 

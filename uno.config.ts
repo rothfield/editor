@@ -124,12 +124,12 @@ export default defineConfig({
 
   // Custom rules for musical notation
   rules: [
-    // CharCell base styling
+    // Cell base styling
     [/^char-cell$/, () => ({
       'position': 'relative',
       'display': 'inline-block',
-      'font-family': 'theme("fontFamily.notation")',
-      'font-size': 'theme("fontSize.notation")',
+      'font-family': 'Bravura, Leland, Leipzig, sans-serif',
+      'font-size': '1rem',
       'line-height': '1',
       'vertical-align': 'baseline',
       'cursor': 'text',
@@ -150,17 +150,17 @@ export default defineConfig({
     // Element type styling
     [/^kind-(pitched|unpitched|upper-annotation|lower-annotation|text|barline|breath|whitespace)$/, ([, kind]) => {
       const styles = {
-        pitched: { color: 'theme("colors.notation.temporal")' },
-        unpitched: { color: 'theme("colors.notation.non-temporal")' },
-        'upper-annotation': { color: 'theme("colors.notation.octave")' },
-        'lower-annotation': { color: 'theme("colors.notation.octave")' },
-        text: { color: 'theme("colors.notation.text-token")' },
+        pitched: { color: '#0066cc' },
+        unpitched: { color: '#666666' },
+        'upper-annotation': { color: '#cc0000' },
+        'lower-annotation': { color: '#cc0000' },
+        text: { color: '#cc0000' },
         barline: {
-          color: 'theme("colors.notation.barline")',
+          color: '#000000',
           'font-weight': 'bold',
         },
         breath: {
-          color: 'theme("colors.notation.breath")',
+          color: '#666666',
           'font-style': 'italic',
         },
         whitespace: { color: 'transparent' },
@@ -185,11 +185,11 @@ export default defineConfig({
       'position': 'absolute',
       'bottom': '1.25rem',
       'height': '0.375rem',
-      'background': 'theme("colors.notation.beat-loop")',
-      'border-radius': 'theme("borderRadius.notation")',
-      'box-shadow': 'theme("boxShadow.beat-loop")',
+      'background': '#ff9500',
+      'border-radius': '0.125rem',
+      'box-shadow': 'inset 0 -1px 1px rgba(0, 0, 0, 0.1)',
       'pointer-events': 'none',
-      'z-index': 'theme("zIndex.beat-loop")',
+      'z-index': '2',
     })],
 
     // Octave dot styling
@@ -197,9 +197,9 @@ export default defineConfig({
       'position': 'absolute',
       'width': '0.25rem',
       'height': '0.25rem',
-      'background': 'theme("colors.notation.octave")',
-      'border-radius': 'theme("borderRadius.octave")',
-      'z-index': 'theme("zIndex.octave")',
+      'background': '#cc0000',
+      'border-radius': '50%',
+      'z-index': '4',
       ...(position === 'above'
         ? { top: '-0.5rem' }
         : { bottom: '-0.3rem' }
@@ -208,13 +208,13 @@ export default defineConfig({
 
     // Selection styling
     [/^selected$/, () => ({
-      'background': 'theme("colors.notation.selection")',
+      'background': '#007acc',
       'color': 'white',
     })],
 
     // Focus styling
     [/^focused$/, () => ({
-      'outline': '2px solid theme("colors.notation.focus")',
+      'outline': '2px solid #0066cc',
       'outline-offset': '1px',
     })],
 
@@ -223,9 +223,9 @@ export default defineConfig({
       'position': 'absolute',
       'width': '2px',
       'height': '1.2em',
-      'background': 'theme("colors.notation.focus")',
+      'background': '#0066cc',
       'animation': 'cursor-blink 1s infinite',
-      'z-index': 'theme("zIndex.cursor")',
+      'z-index': '5',
       'pointer-events': 'none',
     })],
 
@@ -237,15 +237,13 @@ export default defineConfig({
 
     // UI component styling
     [/^menu-item$/, () => ({
+      'display': 'block',
+      'width': '100%',
+      'text-align': 'left',
       'padding': '0.5rem 1rem',
       'cursor': 'pointer',
-      'transition': 'all theme("duration.hover-transition")',
-      '&:hover': {
-        'background': 'theme("colors.ui.hover")',
-      },
-      '&:active': {
-        'background': 'theme("colors.ui.active")',
-      },
+      'transition': 'background-color 0.2s',
+      'white-space': 'nowrap',
     })],
 
     // Tab styling
@@ -253,27 +251,23 @@ export default defineConfig({
       'padding': '0.5rem 1rem',
       'cursor': 'pointer',
       'border-bottom': '2px solid transparent',
-      'transition': 'all theme("duration.focus-transition")',
-      '&.active': {
-        'border-bottom-color': 'theme("colors.notation.focus")',
-        'color': 'theme("colors.notation.focus")',
-      },
+      'transition': 'all 0.15s',
     })],
 
     // Error styling
     [/^error$/, () => ({
-      'color': 'theme("colors.error")',
+      'color': '#ef4444',
       'background': 'rgba(239, 68, 68, 0.1)',
-      'border': '1px solid theme("colors.error")',
+      'border': '1px solid #ef4444',
       'border-radius': '0.25rem',
       'padding': '0.25rem 0.5rem',
     })],
 
     // Success styling
     [/^success$/, () => ({
-      'color': 'theme("colors.success")',
+      'color': '#10b981',
       'background': 'rgba(16, 185, 129, 0.1)',
-      'border': '1px solid theme("colors.success")',
+      'border': '1px solid #10b981',
       'border-radius': '0.25rem',
       'padding': '0.25rem 0.5rem',
     })],
@@ -298,20 +292,15 @@ export default defineConfig({
     'token-text': 'text-notation-text-token',
   },
 
-  // Performance optimizations
-  presets: [
-    presetUno({
-      // Enable important utilities for CSS specificity battles
-      important: true,
-    }),
+  // Safelist classes that are dynamically added
+  safelist: [
+    'active',
+    'hover',
+    'bg-ui-active',
+    'bg-ui-hover',
+    'hidden',
+    'text-blue-600',
+    'border-blue-600',
   ],
 
-  // Build optimization
-  build: {
-    // Minify CSS in production
-    minify: true,
-
-    // Enable CSS source maps in development
-    sourcemap: process.env.NODE_ENV === 'development',
-  },
 });

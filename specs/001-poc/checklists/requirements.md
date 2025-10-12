@@ -31,7 +31,7 @@
 
 ## Music Notation Specific Validation
 
-- [x] CharCell model properly defined with grapheme safety
+- [x] Cell model properly defined with grapheme safety
 - [x] Temporal vs non-temporal element distinction clear
 - [x] Implicit beat derivation rules specified
 - [x] Musical ornament and slur functionality covered

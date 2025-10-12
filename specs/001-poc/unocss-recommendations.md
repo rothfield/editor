@@ -18,7 +18,7 @@ export default defineConfig({
   ],
   theme: {
     fontFamily: {
-      'charcell': ['Consolas', 'Monaco', 'Ubuntu Mono', 'Liberation Mono', 'monospace'],
+      'cell': ['Consolas', 'Monaco', 'Ubuntu Mono', 'Liberation Mono', 'monospace'],
       'notation': ['Bravura', 'Leipzig', 'serif'],
     },
     fontSize: {
@@ -34,11 +34,11 @@ export default defineConfig({
 
 ## 2. Essential Custom Utilities
 
-### CharCell Model Utilities
+### Cell Model Utilities
 ```typescript
 rules: [
   ['char-cell', {
-    fontFamily: 'theme("fontFamily.charcell")',
+    fontFamily: 'theme("fontFamily.cell")',
     fontSize: '16px',
     lineHeight: '1.2',
     letterSpacing: '0',
@@ -190,7 +190,7 @@ class MusicNotationStyler {
 ## 6. Implementation Priority
 
 ### Phase 1 (Core Functionality)
-1. **Base UnoCSS Configuration** - Monospace fonts, basic CharCell utilities
+1. **Base UnoCSS Configuration** - Monospace fonts, basic Cell utilities
 2. **Music Notation Utilities** - Beat loops, octave dots, annotations
 3. **Focus Management** - Keyboard navigation, selection highlighting
 4. **Basic WASM Integration** - Style computation from Rust
@@ -203,7 +203,7 @@ class MusicNotationStyler {
 
 ## 7. Key Benefits
 
-1. **Predictable Positioning**: Monospace fonts ensure consistent CharCell alignment
+1. **Predictable Positioning**: Monospace fonts ensure consistent Cell alignment
 2. **Performance**: UnoCSS instant generation meets <50ms latency requirements
 3. **Maintainability**: Utility-first approach reduces custom CSS complexity
 4. **Scalability**: WASM integration supports dynamic styling requirements
@@ -216,4 +216,4 @@ class MusicNotationStyler {
 - **Progressive Enhancement**: Core functionality works without WASM optimization
 - **Browser Compatibility**: UnoCSS supports modern browsers with WASM
 
-This configuration provides a solid foundation for implementing the Music Notation Editor POC while meeting the specific requirements for CharCell-based positioning, real-time performance, and musical notation rendering.
+This configuration provides a solid foundation for implementing the Music Notation Editor POC while meeting the specific requirements for Cell-based positioning, real-time performance, and musical notation rendering.

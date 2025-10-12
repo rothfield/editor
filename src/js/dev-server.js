@@ -10,6 +10,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { watch } from 'fs';
 import { stat, readFile } from 'fs/promises';
+import { WebSocketServer } from 'ws';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -159,12 +160,6 @@ async function handleRequest(req, res) {
     filePath = join(projectRoot, 'index.html');
   }
 
-  // Handle WebSocket upgrade
-  if (url.pathname === '/ws' && req.headers.upgrade === 'websocket') {
-    handleWebSocketUpgrade(req, res);
-    return;
-  }
-
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     handleCors(res);
@@ -210,19 +205,22 @@ async function handleRequest(req, res) {
  */
 const webSocketClients = new Set();
 
+// Create a single WebSocketServer instance
+const wss = new WebSocketServer({ noServer: true });
+
+wss.on('connection', (ws) => {
+  webSocketClients.add(ws);
+
+  ws.on('close', () => {
+    webSocketClients.delete(ws);
+  });
+
+  ws.send(JSON.stringify({ type: 'connected' }));
+});
+
 function handleWebSocketUpgrade(req, socket, head) {
-  const { WebSocketServer } = require('ws');
-
-  const wss = new WebSocketServer({ noServer: true });
-
   wss.handleUpgrade(req, socket, head, (ws) => {
-    webSocketClients.add(ws);
-
-    ws.on('close', () => {
-      webSocketClients.delete(ws);
-    });
-
-    ws.send(JSON.stringify({ type: 'connected' }));
+    wss.emit('connection', ws, req);
   });
 }
 
@@ -272,6 +270,16 @@ function setupFileWatcher() {
  */
 async function startServer() {
   const server = createServer(handleRequest);
+
+  // Handle WebSocket upgrade requests
+  server.on('upgrade', (req, socket, head) => {
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    if (url.pathname === '/ws') {
+      handleWebSocketUpgrade(req, socket, head);
+    } else {
+      socket.destroy();
+    }
+  });
 
   try {
     await new Promise((resolve, reject) => {

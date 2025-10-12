@@ -1,7 +1,7 @@
 # Music Notation Editor POC - Build Orchestration
 # Supports development, production, and testing workflows
 
-.PHONY: help setup build build-dev build-prod build-wasm build-js build-css clean serve serve-prod test test-e2e test-headless test-coverage lint format type-check pre-commit install-tools
+.PHONY: help setup build build-dev build-prod build-wasm build-js build-css clean serve serve-prod kill test test-e2e test-headless test-coverage lint format type-check pre-commit install-tools
 
 # Default target
 help:
@@ -22,6 +22,7 @@ help:
 	@echo "Development:"
 	@echo "  serve          - Start development server with hot reload"
 	@echo "  serve-prod     - Serve production build"
+	@echo "  kill           - Kill the running development server"
 	@echo "  clean          - Clean all build artifacts"
 	@echo ""
 	@echo "Testing:"
@@ -66,14 +67,14 @@ build-dev:
 
 build-prod:
 	@echo "Building production version..."
-	wasm-pack build src/rust --target web --out-dir ../../dist/pkg --release
+	wasm-pack build . --target web --out-dir dist/pkg --release
 	$(MAKE) build-js
 	$(MAKE) build-css
 	@echo "Production build complete!"
 
 build-wasm:
 	@echo "Building WASM module..."
-	wasm-pack build src/rust --target web --out-dir ../../dist/pkg
+	wasm-pack build . --target web --out-dir dist/pkg
 	@echo "WASM build complete!"
 
 build-js:
@@ -95,12 +96,17 @@ serve-prod: build-prod
 	@echo "Starting production server..."
 	npm run serve-prod
 
+kill:
+	@echo "Stopping development server..."
+	@pkill -f "node src/js/dev-server.js" && echo "Development server stopped!" || echo "No development server running"
+	@pkill -f "npm run dev" 2>/dev/null || true
+
 # Cleanup
 clean:
 	@echo "Cleaning build artifacts..."
 	rm -rf dist/
-	rm -rf src/rust/pkg/
-	rm -rf src/rust/target/
+	rm -rf pkg/
+	rm -rf target/
 	rm -rf node_modules/.cache/
 	find . -name "*.pyc" -delete
 	find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
@@ -126,13 +132,13 @@ test-coverage:
 lint:
 	@echo "Running linters..."
 	npm run lint
-	cargo clippy --manifest-path src/rust/Cargo.toml -- -D warnings
+	cargo clippy -- -D warnings
 	@echo "Linting complete!"
 
 format:
 	@echo "Formatting code..."
 	npm run format
-	cargo fmt --manifest-path src/rust/Cargo.toml
+	cargo fmt
 	@echo "Code formatted!"
 
 type-check:
@@ -160,8 +166,8 @@ ci-build: clean build-prod lint test-e2e
 
 package: build-prod
 	@echo "Creating distribution package..."
-	cd dist && tar -czf ecs-editor-poc.tar.gz *
-	@echo "Package created: dist/ecs-editor-poc.tar.gz"
+	cd dist && tar -czf editor-poc.tar.gz *
+	@echo "Package created: dist/editor-poc.tar.gz"
 
 # Performance testing
 perf-test: build-prod
@@ -172,7 +178,7 @@ perf-test: build-prod
 # Documentation generation
 docs:
 	@echo "Generating documentation..."
-	cargo doc --manifest-path src/rust/Cargo.toml --no-deps --target-dir ../docs/rust
+	cargo doc --no-deps --target-dir docs/rust
 	@echo "Documentation generated in docs/rust/"
 
 # Validate project structure

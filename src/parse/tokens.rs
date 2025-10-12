@@ -4,7 +4,6 @@
 //! for musical notation parsing.
 
 use serde::{Serialize, Deserialize};
-use crate::models::*;
 
 /// Token types for musical notation
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -71,7 +70,7 @@ impl TokenRecognizer {
     fn is_pitched(text: &str) -> bool {
         // Simple pattern matching for pitched elements
         let base = text.trim_end_matches('#').trim_end_matches('b');
-        matches!(base, "1"|"2"|"3"|"4"|"5"|"6"|"7"|"c"|"d"|"e"|"f"|"g"|"a"|"b"|"C"|"D"|"E"|"F"|"G"|"A"|"B"|"S"|"R"|"G"|"M"|"P"|"D"|"N")
+        matches!(base, "1"|"2"|"3"|"4"|"5"|"6"|"7"|"c"|"d"|"e"|"f"|"g"|"a"|"b"|"C"|"D"|"E"|"F"|"G"|"A"|"B"|"S"|"R"|"M"|"P"|"N")
     }
 
     fn is_unpitched(text: &str) -> bool {

@@ -1,12 +1,12 @@
 //! Element types and enumerations for musical notation
 //!
 //! This module defines the core enums and types used throughout
-//! the CharCell-based musical notation system.
+//! the Cell-based musical notation system.
 
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
-/// Enumeration of all possible musical element types that can be represented in a CharCell
+/// Enumeration of all possible musical element types that can be represented in a Cell
 #[wasm_bindgen]
 #[repr(u8)]
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
@@ -82,7 +82,7 @@ impl Default for ElementKind {
     }
 }
 
-/// Enumeration defining the vertical positioning lanes for CharCell elements
+/// Enumeration defining the vertical positioning lanes for Cell elements
 #[wasm_bindgen]
 #[repr(u8)]
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]

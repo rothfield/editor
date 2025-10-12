@@ -7,9 +7,9 @@
  */
 
 import MusicNotationEditor from './editor.js';
-import { EventManager } from './events.js';
+import EventManager from './events.js';
 import { FileOperations } from './file-ops.js';
-import { UI } from './ui.js';
+import UI from './ui.js';
 
 /**
  * Main application class
@@ -160,7 +160,7 @@ class MusicNotationApp {
             initialized: this.isInitialized,
             features: [
                 'Number and Western pitch systems',
-                'CharCell-based architecture',
+                'Cell-based architecture',
                 'Real-time beat derivation',
                 'Selection-based commands',
                 'WASM performance optimization'

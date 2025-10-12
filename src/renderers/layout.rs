@@ -1,12 +1,12 @@
-//! Layout calculation engine for CharCell rendering
+//! Layout calculation engine for Cell rendering
 //!
 //! This module provides position calculation and layout algorithms
-//! for rendering CharCell elements in the correct positions.
+//! for rendering Cell elements in the correct positions.
 
 use wasm_bindgen::prelude::*;
 use crate::models::*;
 
-/// Layout renderer for calculating CharCell positions
+/// Layout renderer for calculating Cell positions
 #[wasm_bindgen]
 pub struct LayoutRenderer {
     font_size: f32,
@@ -26,10 +26,10 @@ impl LayoutRenderer {
         }
     }
 
-    /// Calculate positions for CharCell array
+    /// Calculate positions for Cell array
     #[wasm_bindgen(js_name = calculatePositions)]
     pub fn calculate_positions(&self, char_cells: &JsValue, lane: u8) -> Result<JsValue, JsValue> {
-        let cells: Vec<CharCell> = serde_wasm_bindgen::from_value(char_cells.clone())
+        let cells: Vec<Cell> = serde_wasm_bindgen::from_value(char_cells.clone())
             .map_err(|e| JsValue::from_str(&format!("Deserialization error: {}", e)))?;
 
         let lane_kind = LaneKind::try_from(lane)
@@ -55,7 +55,7 @@ impl LayoutRenderer {
         let beat_spans: Vec<BeatSpan> = serde_wasm_bindgen::from_value(beats.clone())
             .map_err(|e| JsValue::from_str(&format!("Deserialization error: {}", e)))?;
 
-        let cells: Vec<CharCell> = serde_wasm_bindgen::from_value(char_cells.clone())
+        let cells: Vec<Cell> = serde_wasm_bindgen::from_value(char_cells.clone())
             .map_err(|e| JsValue::from_str(&format!("Deserialization error: {}", e)))?;
 
         let mut loop_positions = Vec::new();
@@ -91,7 +91,7 @@ impl LayoutRenderer {
         let slur_spans: Vec<SlurSpan> = serde_wasm_bindgen::from_value(slurs.clone())
             .map_err(|e| JsValue::from_str(&format!("Deserialization error: {}", e)))?;
 
-        let cells: Vec<CharCell> = serde_wasm_bindgen::from_value(char_cells.clone())
+        let cells: Vec<Cell> = serde_wasm_bindgen::from_value(char_cells.clone())
             .map_err(|e| JsValue::from_str(&format!("Deserialization error: {}", e)))?;
 
         let mut slur_positions = Vec::new();
@@ -172,8 +172,8 @@ pub struct SlurPosition {
 }
 
 impl LayoutRenderer {
-    /// Calculate position for a single CharCell
-    pub fn calculate_cell_position(&self, cell: &CharCell) -> (f32, f32, f32, f32) {
+    /// Calculate position for a single Cell
+    pub fn calculate_cell_position(&self, cell: &Cell) -> (f32, f32, f32, f32) {
         let x = cell.col as f32 * self.char_width;
         let y = cell.lane.baseline(0.0, self.font_size);
 
@@ -189,7 +189,7 @@ impl LayoutRenderer {
     }
 
     /// Calculate the visual bounds of a line
-    pub fn calculate_line_bounds(&self, cells: &[CharCell]) -> (f32, f32, f32, f32) {
+    pub fn calculate_line_bounds(&self, cells: &[Cell]) -> (f32, f32, f32, f32) {
         if cells.is_empty() {
             return (0.0, 0.0, 0.0, 0.0);
         }

@@ -117,6 +117,7 @@ class EventManager {
         // Check for global shortcuts
         if (this.globalShortcuts[key]) {
             event.preventDefault();
+            event.stopPropagation();
             this.globalShortcuts[key]();
             return;
         }
@@ -131,6 +132,8 @@ class EventManager {
             // Route to editor
             if (this.editor && this.editor.handleKeyboardEvent) {
                 this.editor.handleKeyboardEvent(event);
+                // Prevent further propagation after editor handles the event
+                event.stopPropagation();
             }
         }
     }

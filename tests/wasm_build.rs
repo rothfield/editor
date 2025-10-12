@@ -2,7 +2,7 @@
 //!
 //! This module tests that the WASM module can be built and basic functionality works.
 
-use ecs_editor_wasm::*;
+use editor_wasm::*;
 use wasm_bindgen_test::*;
 
 wasm_bindgen_test_configure!(run_in_browser);

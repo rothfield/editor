@@ -2,7 +2,7 @@
 
 **Date**: 2025-10-11
 **Target**: Music Notation Editor POC with <10ms beat derivation performance
-**Context**: Performance-critical operations for CharCell-based text processing and beat extraction
+**Context**: Performance-critical operations for Cell-based text processing and beat extraction
 
 ## Executive Summary
 
@@ -76,7 +76,7 @@ serde-wasm-bindgen = "0.6.3"
 
 ## 2. Rust Code Patterns for High-Performance Text Processing
 
-### 2.1 Memory-Efficient CharCell Data Structure
+### 2.1 Memory-Efficient Cell Data Structure
 
 ```rust
 use core::mem::{self, MaybeUninit};
@@ -85,7 +85,7 @@ use smallvec::SmallVec;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
-pub struct CharCell {
+pub struct Cell {
     // Use u32 for compact storage with packed flags
     grapheme: u32,          // Index into string interner
     kind: u8,              // ElementKind enum
@@ -94,7 +94,7 @@ pub struct CharCell {
     reserved: u8,          // Alignment padding
 }
 
-impl CharCell {
+impl Cell {
     #[inline]
     pub const fn new(grapheme: u32, kind: ElementKind, lane: LaneKind) -> Self {
         Self {
@@ -168,7 +168,7 @@ pub struct BeatSpan {
 
 // Optimized beat extraction with minimal allocations
 pub fn extract_beats_optimized(
-    cells: &[CharCell],
+    cells: &[Cell],
     exclude_set: &HashSet<u32>, // Use interned IDs
 ) -> Vec<BeatSpan> {
     let mut beats = Vec::with_capacity(cells.len() / 4); // Estimate capacity
@@ -227,7 +227,7 @@ pub fn extract_beats_optimized(
 }
 
 #[inline(always)]
-fn is_beat_separator(cell: &CharCell) -> bool {
+fn is_beat_separator(cell: &Cell) -> bool {
     match cell.kind() {
         ElementKind::Barline | ElementKind::Whitespace | ElementKind::BreathMark => true,
         _ => false,
@@ -285,12 +285,12 @@ pub fn find_barlines_simd(text: &[u8]) -> Vec<usize> {
 ### 3.1 Arena-Based Allocation
 
 ```rust
-pub struct CharCellArena {
-    storage: Vec<CharCell>,
+pub struct CellArena {
+    storage: Vec<Cell>,
     free_list: Vec<usize>,
 }
 
-impl CharCellArena {
+impl CellArena {
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             storage: Vec::with_capacity(capacity),
@@ -298,7 +298,7 @@ impl CharCellArena {
         }
     }
 
-    pub fn allocate(&mut self, cell: CharCell) -> usize {
+    pub fn allocate(&mut self, cell: Cell) -> usize {
         if let Some(idx) = self.free_list.pop() {
             self.storage[idx] = cell;
             idx
@@ -314,12 +314,12 @@ impl CharCellArena {
     }
 
     #[inline(always)]
-    pub fn get(&self, idx: usize) -> &CharCell {
+    pub fn get(&self, idx: usize) -> &Cell {
         &self.storage[idx]
     }
 
     #[inline(always)]
-    pub fn get_mut(&mut self, idx: usize) -> &mut CharCell {
+    pub fn get_mut(&mut self, idx: usize) -> &mut Cell {
         &mut self.storage[idx]
     }
 }
@@ -332,16 +332,16 @@ use wasm_bindgen::prelude::*;
 use js_sys::{Uint8Array, ArrayBuffer};
 
 #[wasm_bindgen]
-pub struct CharCellBuffer {
-    data: Vec<CharCell>,
+pub struct CellBuffer {
+    data: Vec<Cell>,
     length: usize,
 }
 
 #[wasm_bindgen]
-impl CharCellBuffer {
+impl CellBuffer {
     #[wasm_bindgen(constructor)]
-    pub fn new(capacity: usize) -> CharCellBuffer {
-        CharCellBuffer {
+    pub fn new(capacity: usize) -> CellBuffer {
+        CellBuffer {
             data: Vec::with_capacity(capacity),
             length: 0,
         }
@@ -357,7 +357,7 @@ impl CharCellBuffer {
     }
 
     #[wasm_bindgen]
-    pub fn push(&mut self, cell: CharCell) {
+    pub fn push(&mut self, cell: Cell) {
         self.data.push(cell);
         self.length = self.data.len();
     }
@@ -410,7 +410,7 @@ pub struct BeatResult {
 #[wasm_bindgen]
 pub struct BeatExtractor {
     interner: StringInterner,
-    arena: CharCellArena,
+    arena: CellArena,
     exclude_cache: HashSet<u32>,
 }
 
@@ -420,7 +420,7 @@ impl BeatExtractor {
     pub fn new() -> BeatExtractor {
         BeatExtractor {
             interner: StringInterner::new(),
-            arena: CharCellArena::with_capacity(1000),
+            arena: CellArena::with_capacity(1000),
             exclude_cache: HashSet::with_capacity(100),
         }
     }
@@ -434,7 +434,7 @@ impl BeatExtractor {
             .unwrap()
             .now();
 
-        // Parse input into CharCells
+        // Parse input into Cells
         let cells = self.parse_input_optimized(input);
 
         // Update exclude cache efficiently
@@ -459,7 +459,7 @@ impl BeatExtractor {
     }
 
     // Optimized input parsing
-    fn parse_input_optimized(&mut self, input: &str) -> Vec<CharCell> {
+    fn parse_input_optimized(&mut self, input: &str) -> Vec<Cell> {
         let mut cells = Vec::with_capacity(input.len());
 
         // Use grapheme clustering for accurate tokenization
@@ -468,7 +468,7 @@ impl BeatExtractor {
         while let Some(grapheme) = grapheme_iter.next() {
             let interned = self.interner.intern(grapheme.to_string());
             let kind = self.classify_grapheme(grapheme);
-            let cell = CharCell::new(interned, kind, LaneKind::Letter);
+            let cell = Cell::new(interned, kind, LaneKind::Letter);
             cells.push(cell);
         }
 
@@ -619,9 +619,9 @@ mod benchmarks {
 
     #[test]
     fn benchmark_memory_allocation() {
-        let mut arena = CharCellArena::with_capacity(1000);
+        let mut arena = CellArena::with_capacity(1000);
         let cells: Vec<usize> = (0..1000)
-            .map(|_| arena.allocate(CharCell::new(0, ElementKind::Text, LaneKind::Letter)))
+            .map(|_| arena.allocate(Cell::new(0, ElementKind::Text, LaneKind::Letter)))
             .collect();
 
         let start = Instant::now();
@@ -630,7 +630,7 @@ mod benchmarks {
         for i in 0..10000 {
             let idx = cells[i % cells.len()];
             arena.deallocate(idx);
-            arena.allocate(CharCell::new(i as u32, ElementKind::Text, LaneKind::Letter));
+            arena.allocate(Cell::new(i as u32, ElementKind::Text, LaneKind::Letter));
         }
 
         let duration = start.elapsed();
@@ -678,7 +678,7 @@ build-release:
 	cargo build --target wasm32-unknown-unknown --release
 	wasm-pack build --target web --out-dir pkg
 ifdef WASM_OPT_PATH
-	wasm-opt -Os pkg/ecs_editor_wasm_bg.wasm -o pkg/ecs_editor_wasm_bg.wasm
+	wasm-opt -Os pkg/editor_wasm_bg.wasm -o pkg/editor_wasm_bg.wasm
 endif
 
 test:
@@ -717,7 +717,7 @@ class WasmBeatExtractor {
     async initialize() {
         try {
             // Load WASM module with streaming for better performance
-            const { default: init } = await import('../pkg/ecs_editor_wasm.js');
+            const { default: init } = await import('../pkg/editor_wasm.js');
             this.module = await init();
 
             // Create extractor instance
@@ -864,7 +864,7 @@ export default PerformanceMonitor;
 
 ### 8.2 Memory Management
 - [ ] Implement string interning for repeated characters
-- [ ] Use arena allocation for CharCell storage
+- [ ] Use arena allocation for Cell storage
 - [ ] Prefer `SmallVec` for small collections
 - [ ] Use `HashSet` for fast lookups
 - [ ] Minimize allocations in hot paths
@@ -889,7 +889,7 @@ export default PerformanceMonitor;
 ### 8.5 Performance Targets
 - [ ] Beat extraction: <10ms for typical content
 - [ ] Input processing: <1ms per character
-- [ ] Memory usage: <10MB for 1000 CharCells
+- [ ] Memory usage: <10MB for 1000 Cells
 - [ ] WASM binary size: <500KB optimized
 - [ ] Initialization time: <100ms
 - [ ] JavaScript interop overhead: <1ms

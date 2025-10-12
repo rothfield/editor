@@ -149,18 +149,26 @@ class UI {
         const menu = document.getElementById(`${menuName}-menu`);
         const button = document.getElementById(`${menuName}-menu-button`);
 
-        // Close other menus
-        this.closeAllMenus();
+        if (!menu || !button) return;
 
-        // Toggle current menu
-        if (menu.style.display === 'block') {
-            menu.style.display = 'none';
-            button.classList.remove('active');
-            this.activeMenu = null;
-        } else {
-            menu.style.display = 'block';
-            button.classList.add('active');
+        // Close other menus first
+        if (this.activeMenu && this.activeMenu !== menuName) {
+            this.closeAllMenus();
+        }
+
+        // Toggle current menu visibility
+        const isHidden = menu.classList.contains('hidden');
+
+        if (isHidden) {
+            // Show menu
+            menu.classList.remove('hidden');
+            button.classList.add('bg-ui-active');
             this.activeMenu = menuName;
+        } else {
+            // Hide menu
+            menu.classList.add('hidden');
+            button.classList.remove('bg-ui-active');
+            this.activeMenu = null;
         }
     }
 
@@ -178,6 +186,9 @@ class UI {
 
         // Close menu after action
         this.closeAllMenus();
+
+        // Return focus to editor
+        this.returnFocusToEditor();
     }
 
     /**
@@ -220,11 +231,7 @@ class UI {
         this.activeTab = tabName;
 
         // Request focus return to editor
-        setTimeout(() => {
-            if (this.editor && this.editor.returnFocusToEditor) {
-                this.editor.returnFocusToEditor();
-            }
-        }, 50);
+        this.returnFocusToEditor();
     }
 
     /**
@@ -579,23 +586,44 @@ class UI {
     closeAllMenus() {
         const menus = document.querySelectorAll('[id$="-menu"]');
         menus.forEach(menu => {
-            menu.style.display = 'none';
+            menu.classList.add('hidden');
         });
 
         const buttons = document.querySelectorAll('[id$="-menu-button"]');
         buttons.forEach(button => {
-            button.classList.remove('active');
+            button.classList.remove('bg-ui-active');
         });
 
         this.activeMenu = null;
     }
 
     /**
+     * Return focus to editor canvas
+     */
+    returnFocusToEditor() {
+        // Use setTimeout to ensure any dialogs/prompts have closed first
+        setTimeout(() => {
+            const canvas = document.getElementById('notation-canvas');
+            if (canvas) {
+                canvas.focus();
+            }
+        }, 50);
+    }
+
+    /**
      * Handle outside clicks
      */
     handleOutsideClick(event) {
-        if (!event.target.closest('.menu-container')) {
+        // Check if click is outside menu buttons and menu dropdowns
+        const isMenuButton = event.target.closest('[id$="-menu-button"]');
+        const isMenuDropdown = event.target.closest('[id$="-menu"]');
+
+        if (!isMenuButton && !isMenuDropdown && this.activeMenu) {
             this.closeAllMenus();
+            // Only return focus if clicking on the editor canvas
+            if (event.target.closest('#notation-canvas, #editor-container')) {
+                this.returnFocusToEditor();
+            }
         }
     }
 
@@ -608,6 +636,7 @@ class UI {
         switch (event.key) {
             case 'Escape':
                 this.closeAllMenus();
+                this.returnFocusToEditor();
                 break;
             case 'ArrowDown':
                 this.navigateMenu('down');

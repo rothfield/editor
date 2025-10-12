@@ -1,7 +1,7 @@
 /**
  * DOM Renderer for Music Notation Editor
  *
- * This class provides DOM-based rendering for CharCell elements,
+ * This class provides DOM-based rendering for Cell elements,
  * beat loops, slurs, and other musical notation components.
  */
 
@@ -207,7 +207,7 @@ class DOMRenderer {
     }
 
     /**
-     * Render a lane with CharCell elements
+     * Render a lane with Cell elements
      */
     renderLane(lane, lineIndex, laneIndex, lineElement) {
         const laneContainer = this.getOrCreateLaneContainer(lineElement, laneIndex);
@@ -215,17 +215,17 @@ class DOMRenderer {
         // Clear existing content
         laneContainer.innerHTML = '';
 
-        // Render each CharCell in the lane
+        // Render each Cell in the lane
         lane.forEach((charCell, cellIndex) => {
-            this.renderCharCell(charCell, lineIndex, laneIndex, cellIndex, laneContainer);
+            this.renderCell(charCell, lineIndex, laneIndex, cellIndex, laneContainer);
         });
     }
 
     /**
-     * Render a single CharCell
+     * Render a single Cell
      */
-    renderCharCell(charCell, lineIndex, laneIndex, cellIndex, container) {
-        const element = this.createCharCellElement(charCell, lineIndex, laneIndex, cellIndex);
+    renderCell(charCell, lineIndex, laneIndex, cellIndex, container) {
+        const element = this.createCellElement(charCell, lineIndex, laneIndex, cellIndex);
         container.appendChild(element);
 
         // Cache the element for future updates
@@ -234,11 +234,11 @@ class DOMRenderer {
     }
 
     /**
-     * Create DOM element for CharCell
+     * Create DOM element for Cell
      */
-    createCharCellElement(charCell, lineIndex, laneIndex, cellIndex) {
+    createCellElement(charCell, lineIndex, laneIndex, cellIndex) {
         const element = document.createElement('span');
-        element.className = this.getCharCellClasses(charCell);
+        element.className = this.getCellClasses(charCell);
         element.textContent = charCell.grapheme;
 
         // Set positioning using inline styles for now
@@ -256,15 +256,15 @@ class DOMRenderer {
         element.dataset.column = charCell.col;
 
         // Add event listeners
-        this.addCharCellEventListeners(element, charCell);
+        this.addCellEventListeners(element, charCell);
 
         return element;
     }
 
     /**
-     * Get CSS classes for CharCell
+     * Get CSS classes for Cell
      */
-    getCharCellClasses(charCell) {
+    getCellClasses(charCell) {
         const classes = ['char-cell'];
 
         // Add lane class
@@ -316,28 +316,28 @@ class DOMRenderer {
     }
 
     /**
-     * Add event listeners to CharCell element
+     * Add event listeners to Cell element
      */
-    addCharCellEventListeners(element, charCell) {
+    addCellEventListeners(element, charCell) {
         element.addEventListener('click', (event) => {
             event.stopPropagation();
-            this.handleCharCellClick(charCell, event);
+            this.handleCellClick(charCell, event);
         });
 
         element.addEventListener('mouseenter', () => {
-            this.handleCharCellHover(charCell, true);
+            this.handleCellHover(charCell, true);
         });
 
         element.addEventListener('mouseleave', () => {
-            this.handleCharCellHover(charCell, false);
+            this.handleCellHover(charCell, false);
         });
     }
 
     /**
-     * Handle CharCell click
+     * Handle Cell click
      */
-    handleCharCellClick(charCell, event) {
-        console.log('CharCell clicked:', charCell);
+    handleCellClick(charCell, event) {
+        console.log('Cell clicked:', charCell);
 
         // Update cursor position
         if (window.musicEditor) {
@@ -346,12 +346,12 @@ class DOMRenderer {
     }
 
     /**
-     * Handle CharCell hover
+     * Handle Cell hover
      */
-    handleCharCellHover(charCell, isHovering) {
+    handleCellHover(charCell, isHovering) {
         // Could add hover effects here
         if (isHovering) {
-            console.log('Hovering over CharCell:', charCell);
+            console.log('Hovering over Cell:', charCell);
         }
     }
 
@@ -467,14 +467,14 @@ class DOMRenderer {
                     this.renderBeatLoop(beat, lineIndex, beatIndex);
                 });
             } else {
-                // Extract beats from CharCell data if not already derived
+                // Extract beats from Cell data if not already derived
                 this.extractAndRenderBeatsFromCells(line, lineIndex);
             }
         });
     }
 
     /**
-     * Extract beats from CharCell data and render them
+     * Extract beats from Cell data and render them
      */
     extractAndRenderBeatsFromCells(line, lineIndex) {
         const letterLane = line.lanes[1]; // Letter lane contains temporal elements
@@ -490,7 +490,7 @@ class DOMRenderer {
     }
 
     /**
-     * Extract beat spans from CharCell array
+     * Extract beat spans from Cell array
      */
     extractBeatsFromCells(cells) {
         const beats = [];
@@ -704,7 +704,7 @@ class DOMRenderer {
     }
 
     /**
-     * Check if a CharCell has octave marking
+     * Check if a Cell has octave marking
      */
     hasOctaveMarking(charCell) {
         return charCell.octave !== undefined && charCell.octave !== 0;
@@ -786,7 +786,7 @@ class DOMRenderer {
      * Clear canvas content
      */
     clearCanvas() {
-        // Remove all CharCell elements
+        // Remove all Cell elements
         this.charCellElements.clear();
         this.beatLoopElements.clear();
 

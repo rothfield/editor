@@ -15,12 +15,12 @@ This document captures the implementation details and technology decisions that 
 
 ## 🏗️ Architecture Overview
 
-### Core Model: CharCell + Ordered Lanes
+### Core Model: Cell + Ordered Lanes
 
 ```rust
 pub struct Line {
     /// Ordered top → bottom: [Upper, Letter, Lower]
-    pub lanes: [Vec<CharCell>; 3],
+    pub lanes: [Vec<Cell>; 3],
 
     /// Line-level attributes
     pub tala: Option<String>,        // "+203"
@@ -30,7 +30,7 @@ pub struct Line {
     pub key_signature: Option<String>, // "F#", "Bb"
 }
 
-pub struct CharCell {
+pub struct Cell {
     pub grapheme: String,        // "S", "C#", "3b", "-", "'", "|"
     pub lane: LaneKind,          // Upper, Letter, Lower
     pub kind: ElementKind,       // PitchedElement, UnpitchedElement, etc.
@@ -62,7 +62,7 @@ pub enum PitchSystem { Number, Western }
 
 ### Key Architectural Principles
 
-1. **CharCell arrays = source of truth** (canonical document representation)
+1. **Cell arrays = source of truth** (canonical document representation)
 2. **ECS = optional optimization** (transient UI state, not required for POC)
 3. **Lanes = vertical positioning zones** (Upper/Lower have variable baselines)
 4. **Beat derivation = implicit words of temporal columns** (line-grammar.md algorithm)
@@ -76,7 +76,7 @@ pub enum PitchSystem { Number, Western }
 #### **Styling System: UnoCSS**
 - **Why**: Utility-first CSS framework, atomic classes, highly performant
 - **Alternatives**: Tailwind CSS, plain CSS, Styled Components
-- **Rationale**: Utility-based styling aligns with CharCell positioning needs
+- **Rationale**: Utility-based styling aligns with Cell positioning needs
 
 #### **JavaScript Runtime: ES6+ (ES2022+)**
 - **Features**: Modern syntax, const/let, arrow functions, template literals
@@ -130,7 +130,7 @@ ecs-editor/
 ├── src/
 │   ├── rust/              # WASM module source
 │   │   ├── lib.rs          # Main WASM library
-│   │   ├── charcell.rs     # CharCell data structures
+│   │   ├── cell.rs     # Cell data structures
 │   │   ├── parsing.rs      # Text parsing and beat derivation
 │   │   ├── utils.rs        # Utility functions
 │   │   └── mod.rs          # Module declarations
@@ -172,7 +172,7 @@ ecs-editor/
 1. **Text Processing**: Grapheme segmentation, character analysis
 2. **Beat Derivation**: `extract_implicit_beats` algorithm
 3. **Pitch System Conversion**: Number ↔ Western conversion logic
-4. **Memory Management**: Efficient CharCell array operations
+4. **Memory Management**: Efficient Cell array operations
 
 ### JavaScript Performance
 
@@ -250,7 +250,7 @@ function handleMenuOperation() {
 // UI components (ES6 modules)
 export class EditorCanvas {
     constructor() {
-        this.charcells = [];
+        this.cells = [];
         this.caret = null;
         this.selection = null;
         this.setupEventListeners();
@@ -292,7 +292,7 @@ pub fn convert_pitch_system(
 ```rust
 // Core beat extraction algorithm (from beat_groups.rs)
 pub fn extract_implicit_beats(
-    cells: &[CharCell],
+    cells: &[Cell],
     draw_single_cell_loops: bool
 ) -> Vec<BeatSpan> {
     // Algorithm processes contiguous temporal columns
@@ -327,7 +327,7 @@ pub struct Document {
 }
 
 pub struct Line {
-    pub lanes: [Vec<CharCell>; 3], // Upper, Letter, Lower
+    pub lanes: [Vec<Cell>; 3], // Upper, Letter, Lower
     pub tala: Option<String>,
     pub lyrics: Option<String>,
     pub label: Option<String>,
@@ -605,7 +605,7 @@ make test
 
 ### Scalability Considerations
 
-- **Large Documents**: 10,000+ CharCells per line
+- **Large Documents**: 10,000+ Cells per line
 - **Complex Notation**: Polyphonic music, multiple voices
 - **Performance Optimization**: Virtual scrolling, incremental rendering
 - **Memory Management**: Efficient garbage collection, object pooling
@@ -637,7 +637,7 @@ make test
 This implementation plan preserves the architectural decisions and technology guidance that make the Music Notation Editor POC achievable while maintaining the specification's technology-agnostic approach. Teams can use this as a starting point and adapt as needed for their specific requirements and constraints.
 
 **Key Success Factors:**
-1. **CharCell Model**: Simple, elegant, powerful architecture
+1. **Cell Model**: Simple, elegant, powerful architecture
 2. **Performance**: WASM for critical operations, JavaScript for UI
 3. **Testing**: Comprehensive E2E coverage with headless execution
 4. **Extensibility**: Clean separation allows future growth

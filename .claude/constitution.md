@@ -47,7 +47,7 @@ ecs-editor/
 │   ├── rust/              # WASM module source (performance-critical operations)
 │   │   ├── lib.rs         # Main WASM library entry point
 │   │   ├── models/        # Domain-driven data model organization
-│   │   │   ├── core.rs    # Core CharCell data structures
+│   │   │   ├── core.rs    # Core Cell data structures
 │   │   │   ├── elements.rs # Musical element definitions
 │   │   │   ├── notation.rs # Notation-specific models
 │   │   │   ├── pitch.rs   # Pitch representation and conversion
@@ -59,7 +59,7 @@ ecs-editor/
 │   │   │       ├── bhatkhande.rs # Bhatkhande system
 │   │   │       └── tabla.rs     # Tabla notation
 │   │   ├── parse/         # Text processing and analysis
-│   │   │   ├── charcell.rs # CharCell parsing and grapheme handling
+│   │   │   ├── cell.rs # Cell parsing and grapheme handling
 │   │   │   ├── beats.rs    # Beat derivation algorithms
 │   │   │   ├── tokens.rs   # Token recognition and validation
 │   │   │   └── grammar.rs  # Musical grammar parsing
@@ -81,7 +81,7 @@ ecs-editor/
 │   │       └── performance.rs # Performance optimization utilities
 │   ├── js/                # JavaScript host application
 │   │   ├── main.js        # Application entry point and initialization
-│   │   ├── editor.js      # Core editor functionality and CharCell management
+│   │   ├── editor.js      # Core editor functionality and Cell management
 │   │   ├── ui.js          # UI components and user interactions
 │   │   ├── renderer.js    # DOM-based rendering system
 │   │   ├── events.js      # Event handling and keyboard management
@@ -166,7 +166,7 @@ ecs-editor/
 ### Resource Limits
 - Single line support only (POC scope)
 - 16-point typeface rendering
-- Up to 1,000 CharCells per document
+- Up to 1,000 Cells per document
 
 ## UI/UX Standards
 
@@ -180,7 +180,7 @@ ecs-editor/
 ### Interface Design
 - **Menu-based navigation** for all functions
 - **Tab group** below editor:
-  - Document tab (CharCell data structure)
+  - Document tab (Cell data structure)
   - Console Errors tab
   - Console Log tab
 - **UnoCSS** for all styling
@@ -194,7 +194,7 @@ ecs-editor/
 - **Support**: Accidentals (##, bb) and octave numbers
 
 ### Data Model
-- **CharCell**: Core data structure
+- **Cell**: Core data structure
 - **Temporal vs Non-temporal**: Clear separation
 - **Implicit beats**: Derived from contiguous temporal elements
 - **Octave display**: Range -4 to +4 (dots above/below)

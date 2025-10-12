@@ -70,7 +70,7 @@ class MusicNotationTestUtils:
         return json.loads(text) if text else {}
 
     async def get_char_cells(self) -> List[Dict[str, Any]]:
-        """Get all CharCells from document state"""
+        """Get all Cells from document state"""
         state = await self.get_document_state()
         cells = []
 

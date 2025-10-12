@@ -7,7 +7,7 @@
 
 ## Summary
 
-Create a Music Notation Editor POC using a CharCell-based architecture for WYSIWYG editing of musical notation. The system will support dual pitch systems (Number and Western), keyboard-only editing, selection-based musical commands (slurs, octaves), and real-time beat derivation with visual rendering. Performance-critical operations (text processing, beat derivation) will be implemented in Rust/WASM, while the user interface will use JavaScript with modern ES6+ features and utility-based styling.
+Create a Music Notation Editor POC using a Cell-based architecture for WYSIWYG editing of musical notation. The system will support dual pitch systems (Number and Western), keyboard-only editing, selection-based musical commands (slurs, octaves), and real-time beat derivation with visual rendering. Performance-critical operations (text processing, beat derivation) will be implemented in Rust/WASM, while the user interface will use JavaScript with modern ES6+ features and utility-based styling.
 
 ## Technical Context
 
@@ -19,7 +19,7 @@ Create a Music Notation Editor POC using a CharCell-based architecture for WYSIW
 **Project Type**: Web application with WASM performance module
 **Performance Goals**: <50ms typing latency, <10ms focus activation, <16ms navigation (60fps), <10ms beat derivation
 **Constraints**: Single-line editing only, 16-point typeface, keyboard-only interaction model, <1s file operations
-**Scale/Scope**: Up to 1,000 CharCells per document, POC scope with extensibility for multi-line future
+**Scale/Scope**: Up to 1,000 Cells per document, POC scope with extensibility for multi-line future
 
 ## Constitution Check
 
@@ -40,7 +40,7 @@ Create a Music Notation Editor POC using a CharCell-based architecture for WYSIW
 - **UnoCSS Integration**: Best practices for utility-first CSS in music notation context
 - **WASM Performance Optimization**: Rust compilation settings for <10ms beat derivation target
 - **Grapheme Cluster Handling**: Intl.Segmenter API implementation for multi-character tokens
-- **CharCell Architecture**: Detailed data structure design for lanes and temporal columns
+- **Cell Architecture**: Detailed data structure design for lanes and temporal columns
 - **Beat Visualization**: Rendering approach for lower loops/arcs in browser context
 
 ## Project Structure
@@ -60,12 +60,12 @@ specs/[###-feature]/
 ### Source Code (repository root)
 
 ```
-ecs-editor/
+editor/
 ├── src/
 │   ├── rust/              # WASM module source (performance-critical operations)
 │   │   ├── lib.rs         # Main WASM library entry point
 │   │   ├── models/        # Domain-driven data model organization
-│   │   │   ├── core.rs    # Core CharCell data structures
+│   │   │   ├── core.rs    # Core Cell data structures
 │   │   │   ├── elements.rs # Musical element definitions (Pitched, Unpitched, etc.)
 │   │   │   ├── notation.rs # Notation-specific models (slurs, ornaments, beats)
 │   │   │   ├── pitch.rs   # Pitch representation and conversion logic
@@ -77,7 +77,7 @@ ecs-editor/
 │   │   │       ├── bhatkhande.rs # Bhatkhande system
 │   │   │       └── tabla.rs     # Tabla notation
 │   │   ├── parse/         # Text processing and analysis
-│   │   │   ├── charcell.rs # CharCell parsing and grapheme handling
+│   │   │   ├── cell.rs # Cell parsing and grapheme handling
 │   │   │   ├── beats.rs    # Beat derivation algorithms
 │   │   │   ├── tokens.rs   # Token recognition and validation
 │   │   │   └── grammar.rs  # Musical grammar parsing
@@ -99,7 +99,7 @@ ecs-editor/
 │   │       └── performance.rs # Performance optimization utilities
 │   ├── js/                # JavaScript host application
 │   │   ├── main.js        # Application entry point and initialization
-│   │   ├── editor.js      # Core editor functionality and CharCell management
+│   │   ├── editor.js      # Core editor functionality and Cell management
 │   │   ├── ui.js          # UI components and user interactions
 │   │   └── utils.js       # JavaScript utilities and helper functions
 │   ├── css/               # Separate CSS files (UnoCSS)

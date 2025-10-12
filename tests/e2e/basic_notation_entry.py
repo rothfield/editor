@@ -8,7 +8,7 @@ Test Coverage:
 - Basic notation entry with Number system (1-7)
 - Basic notation entry with Western system (cdefgab/CDEFGAB)
 - Accidental handling (#, ##, b, bb)
-- Real-time CharCell creation
+- Real-time Cell creation
 - Document state validation
 - Performance requirements for input latency
 """
@@ -120,7 +120,7 @@ class TestBasicNotationEntry:
 
                 # Verify document structure
                 assert doc_state["lines"] == 1, f"Expected 1 line, got {doc_state['lines']}"
-                assert doc_state["charCells"] == 7, f"Expected 7 CharCells, got {doc_state['charCells']}"
+                assert doc_state["charCells"] == 7, f"Expected 7 Cells, got {doc_state['charCells']}"
 
                 # Verify content contains our input
                 content_text = " ".join(doc_state["content"])
@@ -170,7 +170,7 @@ class TestBasicNotationEntry:
 
                 # Verify document structure
                 assert doc_state["lines"] == 1, f"Expected 1 line, got {doc_state['lines']}"
-                assert doc_state["charCells"] == 7, f"Expected 7 CharCells, got {doc_state['charCells']}"
+                assert doc_state["charCells"] == 7, f"Expected 7 Cells, got {doc_state['charCells']}"
 
                 # Verify content contains our input (Western system converts to uppercase internally)
                 content_text = " ".join(doc_state["content"]).upper()
@@ -212,10 +212,10 @@ class TestBasicNotationEntry:
                     # Get document state
                     doc_state = await self.get_document_state(page)
 
-                    # Verify CharCell was created for accidental
+                    # Verify Cell was created for accidental
                     expected_cells = len(test_input)
                     assert doc_state["charCells"] >= expected_cells, \
-                        f"Expected at least {expected_cells} CharCells for '{test_input}', got {doc_state['charCells']}"
+                        f"Expected at least {expected_cells} Cells for '{test_input}', got {doc_state['charCells']}"
 
                     print(f"✓ Accidental '{test_input}' passed (latency: {latency:.2f}ms)")
 
@@ -256,10 +256,10 @@ class TestBasicNotationEntry:
                     # Get document state
                     doc_state = await self.get_document_state(page)
 
-                    # Verify CharCell was created for accidental
+                    # Verify Cell was created for accidental
                     expected_cells = len(test_input)
                     assert doc_state["charCells"] >= expected_cells, \
-                        f"Expected at least {expected_cells} CharCells for '{test_input}', got {doc_state['charCells']}"
+                        f"Expected at least {expected_cells} Cells for '{test_input}', got {doc_state['charCells']}"
 
                     print(f"✓ Western accidental '{test_input}' passed (latency: {latency:.2f}ms)")
 
@@ -291,9 +291,9 @@ class TestBasicNotationEntry:
                 # Verify document structure
                 assert doc_state["lines"] == 1, f"Expected 1 line, got {doc_state['lines']}"
 
-                # Should have CharCells for musical elements (spaces may not create CharCells)
+                # Should have Cells for musical elements (spaces may not create Cells)
                 assert doc_state["charCells"] >= 5, \
-                    f"Expected at least 5 CharCells for musical elements, got {doc_state['charCells']}"
+                    f"Expected at least 5 Cells for musical elements, got {doc_state['charCells']}"
 
                 # Verify content
                 content_text = " ".join(doc_state["content"])
@@ -310,7 +310,7 @@ class TestBasicNotationEntry:
 
     @pytest.mark.asyncio
     async def test_realtime_chancell_creation(self):
-        """Test that CharCells are created in real-time during typing."""
+        """Test that Cells are created in real-time during typing."""
         async with async_playwright() as p:
             browser = await p.chromium.launch()
             page = await browser.new_page()
@@ -318,7 +318,7 @@ class TestBasicNotationEntry:
             try:
                 await self.async_setup(page)
 
-                # Type slowly and check CharCell creation after each character
+                # Type slowly and check Cell creation after each character
                 test_input = "12345"
 
                 for i, char in enumerate(test_input):
@@ -329,12 +329,12 @@ class TestBasicNotationEntry:
                     # Get document state
                     doc_state = await self.get_document_state(page)
 
-                    # Should have i+1 CharCells (assuming each musical note creates one)
+                    # Should have i+1 Cells (assuming each musical note creates one)
                     expected_min_cells = i + 1
                     assert doc_state["charCells"] >= expected_min_cells, \
-                        f"After typing {i+1} chars, expected at least {expected_min_cells} CharCells, got {doc_state['charCells']}"
+                        f"After typing {i+1} chars, expected at least {expected_min_cells} Cells, got {doc_state['charCells']}"
 
-                print(f"✓ Real-time CharCell creation passed")
+                print(f"✓ Real-time Cell creation passed")
 
             finally:
                 await browser.close()
@@ -367,7 +367,7 @@ class TestBasicNotationEntry:
                     assert state["lines"] == first_state["lines"], \
                         f"State {i} has different line count: {state['lines']} vs {first_state['lines']}"
                     assert state["charCells"] == first_state["charCells"], \
-                        f"State {i} has different CharCell count: {state['charCells']} vs {first_state['charCells']}"
+                        f"State {i} has different Cell count: {state['charCells']} vs {first_state['charCells']}"
                     assert state["content"] == first_state["content"], \
                         f"State {i} has different content: {state['content']} vs {first_state['content']}"
 
@@ -515,7 +515,7 @@ class TestBasicNotationEntry:
                 # Verify document was processed correctly
                 doc_state = await self.get_document_state(page)
                 assert doc_state["charCells"] > 50, \
-                    f"Expected many CharCells after sustained input, got {doc_state['charCells']}"
+                    f"Expected many Cells after sustained input, got {doc_state['charCells']}"
 
                 # Verify rendering is still performant
                 render_stats = await self.get_render_stats(page)

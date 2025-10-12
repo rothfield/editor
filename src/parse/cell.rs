@@ -1,30 +1,30 @@
-//! CharCell parser for converting text to musical notation
+//! Cell parser for converting text to musical notation
 //!
 //! This module provides the core parsing logic for converting
-//! text input into CharCell-based musical notation.
+//! text input into Cell-based musical notation.
 
 use wasm_bindgen::prelude::*;
 use crate::models::*;
 use crate::utils::grapheme::{GraphemeSegmenter, GraphemeUtils};
 
-/// CharCell parser for musical notation text
+/// Cell parser for musical notation text
 #[wasm_bindgen]
-pub struct CharCellParser {
+pub struct CellParser {
     segmenter: GraphemeSegmenter,
 }
 
 #[wasm_bindgen]
-impl CharCellParser {
-    /// Create a new CharCell parser
+impl CellParser {
+    /// Create a new Cell parser
     #[wasm_bindgen(constructor)]
-    pub fn new() -> CharCellParser {
-        CharCellParser {
+    pub fn new() -> CellParser {
+        CellParser {
             segmenter: GraphemeSegmenter::new(),
         }
     }
 
-    /// Parse text into CharCell array
-    #[wasm_bindgen(js_name = parseToCharCells)]
+    /// Parse text into Cell array
+    #[wasm_bindgen(js_name = parseToCells)]
     pub fn parse_to_char_cells(&self, text: &str) -> Result<js_sys::Array, JsValue> {
         let segments = self.segmenter.segment_text(text)?;
         let head_markers = GraphemeUtils::identify_head_markers(text);
@@ -42,7 +42,7 @@ impl CharCellParser {
             }
 
             let (kind, pitch_system) = self.identify_element_kind(&segment);
-            let mut cell = CharCell::new(segment.clone(), kind, LaneKind::Letter, column);
+            let mut cell = Cell::new(segment.clone(), kind, LaneKind::Letter, column);
 
             // Set pitch system for pitched elements
             if kind == ElementKind::PitchedElement {
@@ -92,9 +92,9 @@ impl CharCellParser {
     }
 }
 
-impl CharCellParser {
-    /// Parse text into CharCell array (Rust version)
-    pub fn parse_to_char_cells_rust(&self, text: &str) -> Result<Vec<CharCell>, String> {
+impl CellParser {
+    /// Parse text into Cell array (Rust version)
+    pub fn parse_to_char_cells_rust(&self, text: &str) -> Result<Vec<Cell>, String> {
         let segments = self.segmenter.segment_text_rust(text);
         let head_markers = GraphemeUtils::identify_head_markers(text);
 
@@ -108,7 +108,7 @@ impl CharCellParser {
             }
 
             let (kind, pitch_system) = self.identify_element_kind(segment);
-            let mut cell = CharCell::new(segment.clone(), kind, LaneKind::Letter, column);
+            let mut cell = Cell::new(segment.clone(), kind, LaneKind::Letter, column);
 
             // Set pitch system for pitched elements
             if kind == ElementKind::PitchedElement {
@@ -251,7 +251,7 @@ pub struct ValidationResult {
     pub warnings: Vec<String>,
 }
 
-impl Default for CharCellParser {
+impl Default for CellParser {
     fn default() -> Self {
         Self::new()
     }

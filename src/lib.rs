@@ -1,7 +1,7 @@
 //! Music Notation Editor WASM Module
 //!
 //! This is the main WASM module for the Music Notation Editor POC.
-//! It provides core functionality for CharCell-based musical notation editing.
+//! It provides core functionality for Cell-based musical notation editing.
 
 pub mod models;
 pub mod parse;
@@ -14,12 +14,6 @@ pub use models::elements::*;
 pub use models::notation::*;
 
 use wasm_bindgen::prelude::*;
-
-// When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
-// allocator.
-#[cfg(feature = "wee_alloc")]
-#[global_allocator]
-static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
 // This is like the `main` function, but for WASM modules.
 #[wasm_bindgen(start)]

@@ -5,8 +5,8 @@
 pub struct SVGElementRenderer;
 
 impl SVGElementRenderer {
-    pub fn render_charcell(_cell: &crate::models::CharCell) -> String {
-        // SVG CharCell rendering stub
-        "<!-- CharCell rendering not implemented in POC -->".to_string()
+    pub fn render_cell(_cell: &crate::models::Cell) -> String {
+        // SVG Cell rendering stub
+        "<!-- Cell rendering not implemented in POC -->".to_string()
     }
 }

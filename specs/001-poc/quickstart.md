@@ -69,8 +69,8 @@ npm install
 ### Clone and Initialize
 ```bash
 # Clone the repository (replace with actual repository URL)
-git clone <repository-url> ecs-editor
-cd ecs-editor
+git clone <repository-url> editor
+cd editor
 
 # Set up the development environment
 make setup
@@ -78,7 +78,7 @@ make setup
 
 ### Project Structure
 ```
-ecs-editor/
+editor/
 ├── src/
 │   ├── rust/              # WASM module source
 │   │   ├── lib.rs         # Main entry point

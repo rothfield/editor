@@ -1,10 +1,10 @@
 [package]
-name = "ecs-editor-wasm"
+name = "editor-wasm"
 version = "0.1.0"
 edition = "2021"
-description = "Music Notation Editor WASM module with CharCell architecture"
+description = "Music Notation Editor WASM module with Cell architecture"
 license = "MIT"
-authors = ["ECS Editor Project"]
+authors = ["Editor Project"]
 
 [lib]
 crate-type = ["cdylib"]

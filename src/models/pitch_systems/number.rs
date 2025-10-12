@@ -3,7 +3,7 @@
 //! The number system uses numbers 1-7 to represent the
 //! seven degrees of the musical scale.
 
-use crate::models::elements::{PitchSystem, Accidental};
+use crate::models::elements::Accidental;
 
 /// Number system implementation
 pub struct NumberSystem;

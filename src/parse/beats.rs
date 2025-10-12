@@ -7,7 +7,7 @@ use serde::{Serialize, Deserialize};
 use wasm_bindgen::prelude::*;
 use crate::models::*;
 
-/// Beat deriver for calculating implicit beats from CharCell arrays
+/// Beat deriver for calculating implicit beats from Cell arrays
 #[wasm_bindgen]
 pub struct BeatDeriver {
     config: BeatConfig,
@@ -37,10 +37,10 @@ impl BeatDeriver {
         }
     }
 
-    /// Derive implicit beats from CharCell array
+    /// Derive implicit beats from Cell array
     #[wasm_bindgen(js_name = deriveImplicitBeats)]
     pub fn derive_implicit_beats(&self, char_cells: &JsValue) -> Result<JsValue, JsValue> {
-        let cells: Vec<CharCell> = serde_wasm_bindgen::from_value(char_cells.clone())
+        let cells: Vec<Cell> = serde_wasm_bindgen::from_value(char_cells.clone())
             .map_err(|e| JsValue::from_str(&format!("Deserialization error: {}", e)))?;
 
         let beats = self.extract_implicit_beats(&cells);
@@ -64,7 +64,7 @@ impl BeatDeriver {
 
 impl BeatDeriver {
     /// Extract implicit beats from temporal cells
-    pub fn extract_implicit_beats(&self, cells: &[CharCell]) -> Vec<BeatSpan> {
+    pub fn extract_implicit_beats(&self, cells: &[Cell]) -> Vec<BeatSpan> {
         let mut beats = Vec::new();
         let mut beat_start = None;
         let mut current_duration = 1.0;
@@ -104,7 +104,7 @@ impl BeatDeriver {
     }
 
     /// Determine if a beat should end at this cell
-    fn should_end_beat(&self, current: &CharCell, next: Option<&CharCell>) -> bool {
+    fn should_end_beat(&self, current: &Cell, next: Option<&Cell>) -> bool {
         // End beat before non-temporal elements
         if let Some(next_cell) = next {
             if !next_cell.is_temporal() {

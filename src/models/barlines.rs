@@ -4,7 +4,6 @@
 //! and beat separation in musical notation.
 
 use serde::{Serialize, Deserialize};
-use crate::models::*;
 
 /// Barline types and handling
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]

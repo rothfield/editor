@@ -3,7 +3,7 @@
 //! The western system uses note names C-B to represent
 //! the seven degrees of the musical scale.
 
-use crate::models::elements::{PitchSystem, Accidental};
+use crate::models::elements::Accidental;
 
 /// Western system implementation
 pub struct WesternSystem;

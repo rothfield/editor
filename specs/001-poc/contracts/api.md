@@ -29,7 +29,7 @@ use wasm_bindgen::prelude::*;
 #[wasm_bindgen]
 pub struct MusicNotationEditor {
     document: Document,
-    parser: CharCellParser,
+    parser: CellParser,
     renderer: LayoutRenderer,
 }
 
@@ -43,7 +43,7 @@ impl MusicNotationEditor {
     #[wasm_bindgen(js_name = initialize)]
     pub fn initialize(&mut self) -> Result<(), JsValue>;
 
-    /// Parse musical notation text into CharCells
+    /// Parse musical notation text into Cells
     #[wasm_bindgen(js_name = parseText)]
     pub fn parse_text(&mut self, text: &str) -> Result<JsValue, JsValue>;
 
@@ -69,24 +69,24 @@ impl MusicNotationEditor {
 }
 ```
 
-### CharCell Parser API
+### Cell Parser API
 
 ```rust
-// src/rust/parse/charcell.rs
+// src/rust/parse/cell.rs
 #[wasm_bindgen]
-pub struct CharCellParser {
+pub struct CellParser {
     segmenter: GraphemeSegmenter,
     token_recognizer: TokenRecognizer,
 }
 
 #[wasm_bindgen]
-impl CharCellParser {
-    /// Create a new CharCell parser
+impl CellParser {
+    /// Create a new Cell parser
     #[wasm_bindgen(constructor)]
-    pub fn new() -> CharCellParser;
+    pub fn new() -> CellParser;
 
-    /// Parse text into CharCell array
-    #[wasm_bindgen(js_name = parseToCharCells)]
+    /// Parse text into Cell array
+    #[wasm_bindgen(js_name = parseToCells)]
     pub fn parse_to_char_cells(&mut self, text: &str) -> Result<JsValue, JsValue>;
 
     /// Identify head markers for multi-character tokens
@@ -114,7 +114,7 @@ impl BeatDeriver {
     #[wasm_bindgen(constructor)]
     pub fn new() -> BeatDeriver;
 
-    /// Derive implicit beats from CharCell array
+    /// Derive implicit beats from Cell array
     #[wasm_bindgen(js_name = deriveImplicitBeats)]
     pub fn derive_implicit_beats(&self, char_cells: &JsValue) -> Result<JsValue, JsValue>;
 
@@ -154,7 +154,7 @@ impl LayoutRenderer {
     #[wasm_bindgen(constructor)]
     pub fn new(font_size: f32) -> LayoutRenderer;
 
-    /// Calculate positions for CharCell array
+    /// Calculate positions for Cell array
     #[wasm_bindgen(js_name = calculatePositions)]
     pub fn calculate_positions(&self, char_cells: &JsValue, lane: u8) -> Result<JsValue, JsValue>;
 
@@ -531,26 +531,26 @@ class DOMRenderer {
     // Render a lane
     renderLane(lane, lineIndex, laneIndex) {
         lane.forEach((charCell, cellIndex) => {
-            this.renderCharCell(charCell, lineIndex, laneIndex, cellIndex);
+            this.renderCell(charCell, lineIndex, laneIndex, cellIndex);
         });
     }
 
-    // Render a single CharCell
-    renderCharCell(charCell, lineIndex, laneIndex, cellIndex) {
-        const element = this.getOrCreateCharCellElement(charCell, lineIndex, laneIndex, cellIndex);
+    // Render a single Cell
+    renderCell(charCell, lineIndex, laneIndex, cellIndex) {
+        const element = this.getOrCreateCellElement(charCell, lineIndex, laneIndex, cellIndex);
 
         // Update element content and style
         element.textContent = charCell.grapheme;
-        element.className = this.getCharCellClasses(charCell);
+        element.className = this.getCellClasses(charCell);
         element.style.left = `${charCell.x}px`;
         element.style.top = `${charCell.y}px`;
 
         // Add event listeners
-        this.addCharCellEventListeners(element, charCell);
+        this.addCellEventListeners(element, charCell);
     }
 
-    // Get CSS classes for CharCell
-    getCharCellClasses(charCell) {
+    // Get CSS classes for Cell
+    getCellClasses(charCell) {
         const classes = ['char-cell'];
 
         // Add lane class
@@ -656,7 +656,7 @@ class DOMRenderer {
 
     // Clear canvas
     clearCanvas() {
-        // Remove all CharCell elements
+        // Remove all Cell elements
         this.charCellElements.clear();
         this.beatLoopElements.clear();
 
@@ -722,8 +722,8 @@ class EventManager {
         const x = event.clientX - rect.left;
         const y = event.clientY - rect.top;
 
-        // Calculate CharCell position from click coordinates
-        const charCellPosition = this.calculateCharCellPosition(x, y);
+        // Calculate Cell position from click coordinates
+        const charCellPosition = this.calculateCellPosition(x, y);
 
         if (charCellPosition !== null) {
             this.editor.setCursorPosition(charCellPosition);
@@ -731,8 +731,8 @@ class EventManager {
         }
     }
 
-    // Calculate CharCell position from coordinates
-    calculateCharCellPosition(x, y) {
+    // Calculate Cell position from coordinates
+    calculateCellPosition(x, y) {
         // Implementation depends on layout calculations
         // Return column index or null if no valid position
         return null; // Placeholder
@@ -1263,9 +1263,9 @@ class InputValidator {
                 return;
             }
 
-            // Validate CharCells in lane
+            // Validate Cells in lane
             lane.forEach((cell, cellIndex) => {
-                const cellErrors = this.validateCharCell(cell, lineIndex, laneIndex, cellIndex);
+                const cellErrors = this.validateCell(cell, lineIndex, laneIndex, cellIndex);
                 errors.push(...cellErrors.map(err => `${laneNames[laneIndex]} lane, cell ${cellIndex + 1}: ${err}`));
             });
         });
@@ -1273,8 +1273,8 @@ class InputValidator {
         return errors;
     }
 
-    // Validate CharCell structure
-    validateCharCell(cell, lineIndex, laneIndex, cellIndex) {
+    // Validate Cell structure
+    validateCell(cell, lineIndex, laneIndex, cellIndex) {
         const errors = [];
 
         const requiredFields = ['grapheme', 'kind', 'lane', 'col'];

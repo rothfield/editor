@@ -3,7 +3,6 @@
 //! This module provides musical grammar parsing and validation.
 
 use serde::{Serialize, Deserialize};
-use crate::models::*;
 
 /// Grammar parser for musical notation
 pub struct GrammarParser;
@@ -66,7 +65,7 @@ impl GrammarParser {
     }
 
     fn is_pitch_char(ch: char) -> bool {
-        matches!(ch, '1'|'2'|'3'|'4'|'5'|'6'|'7'|'c'|'d'|'e'|'f'|'g'|'a'|'b'|'C'|'D'|'E'|'F'|'G'|'A'|'B'|'S'|'R'|'G'|'M'|'P'|'D'|'N')
+        matches!(ch, '1'|'2'|'3'|'4'|'5'|'6'|'7'|'c'|'d'|'e'|'f'|'g'|'a'|'b'|'C'|'D'|'E'|'F'|'G'|'A'|'B'|'S'|'R'|'M'|'P'|'N')
     }
 }
 

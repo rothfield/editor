@@ -1,8 +1,8 @@
-# Line Grammar Specification (CharCell Model — Implicit Beats)
+# Line Grammar Specification (Cell Model — Implicit Beats)
 
 This document defines the structure of a musical **Line** in the textual music-notation system.  
 It reflects the current design direction of the WYSIWYG editor, in which all data is represented as
-linear **CharCells** rather than hierarchical trees.
+linear **Cells** rather than hierarchical trees.
 
 ---
 
@@ -11,7 +11,7 @@ linear **CharCells** rather than hierarchical trees.
 A **Line** represents one horizontal lane of musical text — typically a **Letter line** (notes),
 but also **Upper annotations**, **Lower annotations**, or **Lyrics**.
 
-Each **Line** is modeled as an array (or gap-buffer) of **CharCells**,  
+Each **Line** is modeled as an array (or gap-buffer) of **Cells**,  
 one per visible grapheme cluster (column).
 
 All columns are **physical** — meaning their order and spacing correspond exactly
@@ -19,12 +19,12 @@ to the user’s visible text in the editor.
 
 ---
 
-## 2. CharCell structure
+## 2. Cell structure
 
-Every visual column is represented by a `CharCell`:
+Every visual column is represented by a `Cell`:
 
 ```rust
-pub struct CharCell {
+pub struct Cell {
     pub grapheme: String,        // e.g., "S", "C#", "3b", "-", "'", "|"
     pub lane: Lane,              // Upper | Letter | Lower | Lyrics
     pub kind: ElementKind,       // PitchedElement, UnpitchedElement, etc.
@@ -115,11 +115,11 @@ rust
 Copy code
 struct BeatSpan { start: usize, end: usize }
 
-fn derive_implicit_beats(cells: &[CharCell], breath_ends_beat: bool) -> Vec<BeatSpan> {
+fn derive_implicit_beats(cells: &[Cell], breath_ends_beat: bool) -> Vec<BeatSpan> {
     let mut spans = Vec::new();
     let mut cur: Option<usize> = None;
 
-    let is_splitter = |c: &CharCell| -> bool {
+    let is_splitter = |c: &Cell| -> bool {
         match c.kind {
             ElementKind::UnpitchedElement if c.grapheme == "|" => true,
             ElementKind::UnpitchedElement if c.grapheme == " " => true,
@@ -128,7 +128,7 @@ fn derive_implicit_beats(cells: &[CharCell], breath_ends_beat: bool) -> Vec<Beat
         }
     };
 
-    let is_word_char = |c: &CharCell| -> bool {
+    let is_word_char = |c: &Cell| -> bool {
         matches!(c.kind, ElementKind::PitchedElement | ElementKind::UnpitchedElement)
             && c.grapheme != "|" && c.grapheme != " " && c.grapheme != "'"
     };
@@ -205,7 +205,7 @@ loop_offset_px	20.0	Distance of loops below baseline
 loop_height_px	6.0	Curvature of loop arcs
 
 11. Summary
-Every CharCell corresponds to one visible column (grapheme-safe).
+Every Cell corresponds to one visible column (grapheme-safe).
 
 Beats are implicit words on the Letter line.
 
@@ -223,7 +223,7 @@ Music unfolds in time — not in trees.
 Every column is a moment; every word is a beat.
 ## 11. Summary
 
-- Every **CharCell** corresponds to one visible column (grapheme-safe).
+- Every **Cell** corresponds to one visible column (grapheme-safe).
 - **Temporal columns** are those whose kind is `PitchedElement` or `UnpitchedElement`.
   - These represent actual musical time (sounded or sustained).
 - **Non-temporal columns** (whitespace, lyrics, annotations, barlines) serve only as layout or visual markers.
