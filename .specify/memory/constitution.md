@@ -1,22 +1,23 @@
 <!--
 Sync Impact Report:
-Version change: TEMPLATE → 1.1.0 (initialization from existing constitution)
-Action: Constitution migrated from .claude/constitution.md to .specify/memory/constitution.md
-Modified sections: N/A (initialization, not modification)
-Added sections: All sections populated from existing constitution
+Version change: 1.1.0 → 1.2.0 (new principle added)
+Modified principles: None
+Added sections:
+  - Principle VII: No Fallbacks - Implementation Excellence
+Removed sections: None
 Templates requiring updates:
-✅ plan-template.md (already aligned with file structure principles)
-✅ spec-template.md (governance aligned)
-✅ tasks-template.md (principle-driven task categorization present)
-✅ checklist-template.md (standards compliance present)
+✅ plan-template.md (constitution check gates already include fallback validation)
+✅ spec-template.md (requirements already emphasize correct implementation)
+✅ tasks-template.md (task quality standards already present)
+⚠ Conflict Resolution section needs update to include new principle in priority order
 Follow-up TODOs: None
 -->
 
 # Music Notation Editor POC Constitution
 
-**Version**: 1.1.0
+**Version**: 1.2.0
 **Ratified**: 2025-10-11
-**Last Amended**: 2025-10-11
+**Last Amended**: 2025-10-12
 **Purpose**: Define development environment, standards, principles, and governance for the Music Notation Editor POC project
 
 ## Core Principles
@@ -50,6 +51,11 @@ Rich debugging information MUST be provided through dedicated console tabs (Erro
 Code organization follows documented file structure exactly. JavaScript uses ES6+ modern syntax with proper error handling. Rust follows domain-driven design with clear module boundaries. UnoCSS for all styling with utility-first approach.
 
 **Rationale**: Consistent code organization and standards reduce onboarding time and prevent architectural drift.
+
+### VII. No Fallbacks - Implementation Excellence (NON-NEGOTIABLE)
+All implementations MUST be done correctly the first time. No JavaScript fallbacks for WASM functionality. No partial implementations that rely on degraded behavior. If WASM/Rust cannot provide the functionality, the feature MUST NOT be implemented until proper WASM support exists. Fallback code indicates architectural failure and technical debt accumulation.
+
+**Rationale**: JavaScript fallbacks for WASM operations defeat Performance First principle and create maintenance burden. Partial implementations that "sort of work" lead to undefined behavior, difficult debugging, and user confusion. Doing it right the first time saves debugging time, prevents technical debt, and maintains architectural integrity. Quality over speed of delivery.
 
 ## Development Environment
 
@@ -167,6 +173,7 @@ music-notation-editor/
 - **Data Transfer**: Efficient serialization/deserialization between JavaScript and WASM
 - **Module Loading**: WebAssembly.instantiateStreaming with proper caching
 - **Optimization**: Release builds with optimal compilation settings
+- **No Fallbacks**: JavaScript MUST NOT implement fallback versions of WASM functionality
 
 ## Testing Standards
 
@@ -314,10 +321,11 @@ This constitution follows semantic versioning (MAJOR.MINOR.PATCH):
 
 ### Conflict Resolution
 When conflicts arise between principles:
-1. **Performance First** and **Test-Driven** take precedence over implementation details
-2. **User Experience Focus** overrides architectural preferences when user impact is significant
-3. **Clean Architecture** guides implementation decisions but doesn't prevent pragmatic solutions
-4. **Standards Compliance** ensures consistency but allows for justified exceptions
+1. **No Fallbacks** and **Test-Driven** are NON-NEGOTIABLE and override all other principles
+2. **Performance First** takes precedence over implementation convenience
+3. **User Experience Focus** overrides architectural preferences when user impact is significant
+4. **Clean Architecture** guides implementation decisions but doesn't prevent pragmatic solutions
+5. **Standards Compliance** ensures consistency but allows for justified exceptions
 
 ### Constitutional Evolution
 This constitution is a living document that should evolve with the project:

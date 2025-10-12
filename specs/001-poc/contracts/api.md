@@ -217,12 +217,12 @@ impl SelectionManager {
 
     /// Set cursor position
     #[wasm_bindgen(js_name = setCursor)]
-    pub fn set_cursor(&mut self, line: usize, lane: u8, column: usize) -> Result<(), JsValue>;
+    pub fn set_cursor(&mut self, stave: usize, lane: u8, column: usize) -> Result<(), JsValue>;
 
     /// Create selection range
     #[wasm_bindgen(js_name = createSelection)]
-    pub fn create_selection(&mut self, start_line: usize, start_lane: u8, start_column: usize,
-                           end_line: usize, end_lane: u8, end_column: usize) -> Result<(), JsValue>;
+    pub fn create_selection(&mut self, start_stave: usize, start_lane: u8, start_column: usize,
+                           end_stave: usize, end_lane: u8, end_column: usize) -> Result<(), JsValue>;
 
     /// Apply slur command to selection
     #[wasm_bindgen(js_name = applySlurCommand)]
@@ -803,7 +803,7 @@ class FileOperations {
                     slurs: []
                 }],
                 state: {
-                    cursor: { line: 0, lane: 1, column: 0 },
+                    cursor: { stave: 0, lane: 1, column: 0 },
                     selection: null,
                     has_focus: false
                 }

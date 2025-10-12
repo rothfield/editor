@@ -210,13 +210,13 @@ C# D Eb F# G A# Bb C
 - **File → Set Pitch System**: Set default pitch system for composition
 - **File → Set Key Signature**: Set key signature for composition
 
-### Line Operations
-- **Line → Set Label**: Set line label (appears at beginning)
-- **Line → Set Tonic**: Set line-specific tonic (overrides composition)
-- **Line → Set Pitch System**: Set line-specific pitch system
-- **Line → Set Lyrics**: Set line lyrics (displayed below first note)
-- **Line → Set Tala**: Set tala notation (digits 0-9+ above barlines)
-- **Line → Set Key Signature**: Set line-specific key signature
+### Stave Operations
+- **Stave → Set Label**: Set stave label (appears at beginning)
+- **Stave → Set Tonic**: Set stave-specific tonic (overrides composition)
+- **Stave → Set Pitch System**: Set stave-specific pitch system
+- **Stave → Set Lyrics**: Set stave lyrics (displayed below first note)
+- **Stave → Set Tala**: Set tala notation (digits 0-9+ above barlines)
+- **Stave → Set Key Signature**: Set stave-specific key signature
 
 ### Debug Information
 - **Document Tab**: Shows current cell data structure in real-time

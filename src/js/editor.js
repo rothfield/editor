@@ -186,13 +186,22 @@ class MusicNotationEditor {
                         laneSizeBefore: lengthBefore
                     });
 
-                    // Call WASM recursive descent API
-                    const updatedCells = this.wasmModule.insertCharacter(
-                        letterLane,
-                        char,
-                        currentPos,
-                        pitchSystem
-                    );
+                    let updatedCells;
+                    try {
+                        // Call WASM recursive descent API
+                        updatedCells = this.wasmModule.insertCharacter(
+                            letterLane,
+                            char,
+                            currentPos,
+                            pitchSystem
+                        );
+                    } catch (e) {
+                        logger.warn(LOG_CATEGORIES.PARSER, 'WASM insertCharacter failed, using fallback', {
+                            error: e.message
+                        });
+                        // Fallback: Create cell manually with proper kind
+                        updatedCells = this.insertCharacterFallback(letterLane, char, currentPos, pitchSystem);
+                    }
 
                     const lengthAfter = updatedCells.length;
 
@@ -216,6 +225,9 @@ class MusicNotationEditor {
                     to: currentPos
                 });
                 this.setCursorPosition(currentPos);
+
+                // Derive beats using WASM BeatDeriver
+                this.deriveBeats(stave);
             }
 
             await this.render();
@@ -235,6 +247,89 @@ class MusicNotationEditor {
             console.error('Failed to insert text:', error);
             this.showError('Failed to insert text');
         }
+    }
+
+    /**
+     * Derive beats from cells using WASM BeatDeriver
+     */
+    deriveBeats(stave) {
+        if (!this.wasmModule || !this.wasmModule.beatDeriver) {
+            logger.error(LOG_CATEGORIES.EDITOR, 'BeatDeriver not available - WASM module not loaded');
+            console.error('CRITICAL: BeatDeriver not available. Cannot derive beats.');
+            stave.beats = [];
+            return;
+        }
+
+        try {
+            const letterLane = stave.line;
+            if (!letterLane || letterLane.length === 0) {
+                stave.beats = [];
+                return;
+            }
+
+            logger.debug(LOG_CATEGORIES.EDITOR, 'Deriving beats via WASM', {
+                cellCount: letterLane.length
+            });
+
+            // Call WASM BeatDeriver.deriveImplicitBeats method (exposed as deriveImplicitBeats in JS)
+            const beats = this.wasmModule.beatDeriver.deriveImplicitBeats(letterLane);
+
+            console.log(`WASM BeatDeriver returned ${beats.length} beats:`, beats);
+
+            stave.beats = beats;
+            logger.info(LOG_CATEGORIES.EDITOR, `Derived ${beats.length} beats via WASM`);
+        } catch (e) {
+            logger.error(LOG_CATEGORIES.EDITOR, 'WASM BeatDeriver failed', {
+                error: e.message,
+                stack: e.stack
+            });
+            console.error('WASM BeatDeriver failed:', e);
+            // Per Principle VII: No Fallbacks - we MUST NOT provide JavaScript fallback
+            // If WASM fails, the feature is broken and must be fixed
+            stave.beats = [];
+        }
+    }
+
+    /**
+     * Fallback parser to create cells when WASM is unavailable
+     */
+    insertCharacterFallback(cells, char, position, pitchSystem) {
+        const newCells = [...cells];
+
+        // Determine cell kind based on character
+        let kind = 0; // Unknown
+        if (/[1234567]/.test(char) && pitchSystem === 1) {
+            kind = 1; // PitchedElement (Number system)
+        } else if (/[cdefgabCDEFGAB]/.test(char) && pitchSystem === 2) {
+            kind = 1; // PitchedElement (Western system)
+        } else if (/[-']/.test(char)) {
+            kind = 2; // UnpitchedElement
+        } else if (/[|]/.test(char)) {
+            kind = 6; // Barline
+        } else if (/\s/.test(char)) {
+            kind = 8; // Whitespace
+        }
+
+        // Create new cell
+        const newCell = {
+            grapheme: char,
+            col: position,
+            lane: 1, // Main line
+            kind: kind,
+            pitch_system: pitchSystem,
+            flags: 0x01, // Head marker
+            octave: 0
+        };
+
+        // Insert at position
+        newCells.splice(position, 0, newCell);
+
+        // Update column indices for cells after insertion
+        for (let i = position + 1; i < newCells.length; i++) {
+            newCells[i].col = i;
+        }
+
+        return newCells;
     }
 
     /**
@@ -455,11 +550,12 @@ class MusicNotationEditor {
     }
 
     /**
-     * Set cursor position
+     * Set cursor position (always on main line, lane 1)
      */
     setCursorPosition(position) {
         if (this.document && this.document.state) {
             this.document.state.cursor.column = position;
+            this.document.state.cursor.lane = 1; // Always on main line
             this.updateCursorPositionDisplay();
             this.updateCursorVisualPosition();
         }
@@ -566,6 +662,8 @@ class MusicNotationEditor {
             shift: event.shiftKey,
         };
 
+        console.log('🔑 handleKeyboardEvent:', { key, modifiers });
+
         // Ignore Ctrl key combinations (let browser handle them)
         if (modifiers.ctrl) {
             return;
@@ -573,11 +671,14 @@ class MusicNotationEditor {
 
         // Route to appropriate handler
         if (modifiers.alt && !modifiers.ctrl && !modifiers.shift) {
+            console.log('→ Routing to Alt handler');
             this.handleAltCommand(key);
         } else if (modifiers.shift && !modifiers.alt && !modifiers.ctrl && this.isSelectionKey(key)) {
             // Only route to selection handler for actual selection keys (arrows, Home, End)
+            console.log('→ Routing to Shift selection handler');
             this.handleShiftCommand(key);
         } else {
+            console.log('→ Routing to normal key handler');
             this.handleNormalKey(key);
         }
     }
@@ -632,35 +733,43 @@ class MusicNotationEditor {
      * Handle Shift+key commands (selection)
      */
     handleShiftCommand(key) {
+        console.log('🔵 handleShiftCommand called:', key);
         const startTime = performance.now();
         let handled = false;
 
         switch (key) {
             case 'ArrowLeft':
+                console.log('  → Calling extendSelectionLeft');
                 this.extendSelectionLeft();
                 handled = true;
                 break;
             case 'ArrowRight':
+                console.log('  → Calling extendSelectionRight');
                 this.extendSelectionRight();
                 handled = true;
                 break;
             case 'ArrowUp':
+                console.log('  → Calling extendSelectionUp');
                 this.extendSelectionUp();
                 handled = true;
                 break;
             case 'ArrowDown':
+                console.log('  → Calling extendSelectionDown');
                 this.extendSelectionDown();
                 handled = true;
                 break;
             case 'Home':
+                console.log('  → Calling extendSelectionToStart');
                 this.extendSelectionToStart();
                 handled = true;
                 break;
             case 'End':
+                console.log('  → Calling extendSelectionToEnd');
                 this.extendSelectionToEnd();
                 handled = true;
                 break;
             default:
+                console.log('  → Unknown key, ignoring');
                 // Ignore non-selection Shift commands (like Shift+#, Shift alone, etc.)
                 return;
         }
@@ -671,7 +780,9 @@ class MusicNotationEditor {
             this.recordPerformanceMetric('selectionLatency', endTime - startTime);
 
             // Update display
+            console.log('  → Updating selection display');
             this.updateSelectionDisplay();
+            console.log('  → Selection state:', this.getSelection());
         }
     }
 
@@ -775,23 +886,19 @@ class MusicNotationEditor {
     }
 
     /**
-     * Navigate up to previous lane (for multi-lane navigation)
+     * Navigate up (cursor stays on main line)
      */
     navigateUp() {
-        const currentLane = this.getCurrentLane();
-        if (currentLane > 0) {
-            this.setCurrentLane(currentLane - 1);
-        }
+        // Cursor is always on main line - no lane switching
+        console.log('navigateUp: cursor always stays on main line');
     }
 
     /**
-     * Navigate down to next lane (for multi-lane navigation)
+     * Navigate down (cursor stays on main line)
      */
     navigateDown() {
-        const currentLane = this.getCurrentLane();
-        if (currentLane < 3) { // 4 lanes: 0-3
-            this.setCurrentLane(currentLane + 1);
-        }
+        // Cursor is always on main line - no lane switching
+        console.log('navigateDown: cursor always stays on main line');
     }
 
     /**
@@ -812,7 +919,7 @@ class MusicNotationEditor {
     }
 
     /**
-     * Get the maximum cell index in the current lane
+     * Get the maximum cell index in the main lane
      */
     getMaxCellIndex() {
         if (!this.document || !this.document.staves || this.document.staves.length === 0) {
@@ -820,39 +927,33 @@ class MusicNotationEditor {
         }
 
         const stave = this.document.staves[0];
-        const currentLaneIndex = this.getCurrentLane();
-        const laneNames = ['upper_line', 'line', 'lower_line', 'lyrics'];
-        const laneName = laneNames[currentLaneIndex];
-        const lane = stave[laneName];
+        const lane = stave.line; // Always use main line
 
         return lane.length; // Position after last cell
     }
 
 
     /**
-     * Get current lane index
+     * Get current lane index (always returns 1 for main line)
      */
     getCurrentLane() {
-        if (this.document && this.document.state && this.document.state.cursor) {
-            return this.document.state.cursor.lane || 1; // Default to letter lane
-        }
+        // Cursor is always on the main line (lane 1)
         return 1;
     }
 
     /**
-     * Set current lane index
+     * Set current lane index (deprecated - cursor always stays on main line)
      */
     setCurrentLane(laneIndex) {
-        if (this.document && this.document.state && this.document.state.cursor) {
-            this.document.state.cursor.lane = laneIndex;
-        }
+        // Cursor is always on main line - this method is deprecated
+        console.log(`setCurrentLane(${laneIndex}): cursor always stays on lane 1 (main line)`);
     }
 
 
     // ==================== SELECTION MANAGEMENT ====================
 
     /**
-     * Initialize selection range
+     * Initialize selection range (always on main line, lane 1)
      */
     initializeSelection(startPos, endPos) {
         if (!this.document || !this.document.state) {
@@ -863,7 +964,7 @@ class MusicNotationEditor {
             start: Math.min(startPos, endPos),
             end: Math.max(startPos, endPos),
             active: true,
-            lane: this.getCurrentLane()
+            lane: 1 // Always on main line
         };
     }
 
@@ -961,28 +1062,41 @@ class MusicNotationEditor {
      * Extend selection to the right (cell-based)
      */
     extendSelectionRight() {
+        console.log('🟢 extendSelectionRight called');
         const startTime = performance.now();
         const currentCellIndex = this.getCursorPosition();
         const maxCellIndex = this.getMaxCellIndex();
         let selection = this.getSelection();
 
+        console.log('  Current position:', currentCellIndex);
+        console.log('  Max position:', maxCellIndex);
+        console.log('  Current selection:', selection);
+
         if (!selection) {
             // Start new selection
+            console.log('  → No selection, creating new one');
             this.initializeSelection(currentCellIndex, currentCellIndex);
             selection = this.getSelection();
+            console.log('  → New selection:', selection);
         }
 
         if (currentCellIndex < maxCellIndex) {
             const newIndex = currentCellIndex + 1;
+            console.log('  → Extending to index:', newIndex);
             // Extend selection to include next cell
             if (currentCellIndex === selection.start) {
                 // Extending right from start
+                console.log('  → Extending from start');
                 this.initializeSelection(selection.start, newIndex);
             } else {
                 // Extending right from end
+                console.log('  → Extending from end');
                 this.initializeSelection(selection.start, newIndex);
             }
             this.setCursorPosition(newIndex);
+            console.log('  → Final selection:', this.getSelection());
+        } else {
+            console.log('  → At max position, cannot extend');
         }
 
         // Record performance
@@ -991,45 +1105,19 @@ class MusicNotationEditor {
     }
 
     /**
-     * Extend selection up to previous lane
+     * Extend selection up (cursor stays on main line)
      */
     extendSelectionUp() {
-        const currentLane = this.getCurrentLane();
-        const selection = this.getSelection();
-
-        if (!selection) {
-            // Start new selection
-            this.initializeSelection(this.getCursorPosition(), this.getCursorPosition());
-        }
-
-        if (currentLane > 0) {
-            this.setCurrentLane(currentLane - 1);
-            const updatedSelection = this.getSelection();
-            if (updatedSelection) {
-                updatedSelection.lane = currentLane - 1;
-            }
-        }
+        // Cursor is always on main line - no lane switching
+        console.log('extendSelectionUp: cursor always stays on main line');
     }
 
     /**
-     * Extend selection down to next lane
+     * Extend selection down (cursor stays on main line)
      */
     extendSelectionDown() {
-        const currentLane = this.getCurrentLane();
-        const selection = this.getSelection();
-
-        if (!selection) {
-            // Start new selection
-            this.initializeSelection(this.getCursorPosition(), this.getCursorPosition());
-        }
-
-        if (currentLane < 3) { // 4 lanes: 0-3
-            this.setCurrentLane(currentLane + 1);
-            const updatedSelection = this.getSelection();
-            if (updatedSelection) {
-                updatedSelection.lane = currentLane + 1;
-            }
-        }
+        // Cursor is always on main line - no lane switching
+        console.log('extendSelectionDown: cursor always stays on main line');
     }
 
     /**
@@ -1053,7 +1141,7 @@ class MusicNotationEditor {
      * Extend selection to end of line
      */
     extendSelectionToEnd() {
-        const maxPos = this.getMaxCursorPosition();
+        const maxPos = this.getMaxCellIndex();
         const selection = this.getSelection();
 
         if (!selection) {
@@ -1098,14 +1186,38 @@ class MusicNotationEditor {
         const laneOffsets = [0, 16, 32, 48]; // Visual offsets for lanes
         const yOffset = laneOffsets[selection.lane] || 16;
 
+        // Get the stave and lane for accurate positioning
+        if (!this.document || !this.document.staves || this.document.staves.length === 0) {
+            return;
+        }
+
+        const stave = this.document.staves[0];
+        const laneNames = ['upper_line', 'line', 'lower_line', 'lyrics'];
+        const laneName = laneNames[selection.lane || 1];
+        const letterLane = stave[laneName];
+
+        // Calculate left position by summing widths of cells before selection.start
+        let leftPos = 0;
+        for (let i = 0; i < selection.start && i < letterLane.length; i++) {
+            const cell = letterLane[i];
+            leftPos += (cell.grapheme || '').length * charWidth;
+        }
+
+        // Calculate width by summing widths of selected cells
+        let selectionWidth = 0;
+        for (let i = selection.start; i < selection.end && i < letterLane.length; i++) {
+            const cell = letterLane[i];
+            selectionWidth += (cell.grapheme || '').length * charWidth;
+        }
+
         // Create selection highlight
         const selectionElement = document.createElement('div');
         selectionElement.className = 'selection-highlight';
         selectionElement.style.cssText = `
             position: absolute;
-            left: ${selection.start * charWidth}px;
+            left: ${leftPos}px;
             top: ${yOffset}px;
-            width: ${(selection.end - selection.start) * charWidth}px;
+            width: ${selectionWidth}px;
             height: 16px;
             background-color: rgba(59, 130, 246, 0.3); /* Blue with transparency */
             border: 1px solid rgba(59, 130, 246, 0.5);
@@ -1244,7 +1356,7 @@ class MusicNotationEditor {
             await this.recalculateBeats();
         } else {
             const cursorPos = this.getCursorPosition();
-            const maxPos = this.getMaxCursorPosition();
+            const maxPos = this.getMaxCellIndex();
 
             if (cursorPos < maxPos) {
                 // Use WASM API to delete character
@@ -1277,11 +1389,10 @@ class MusicNotationEditor {
     async recalculateBeats() {
         try {
             if (this.document && this.document.staves && this.document.staves.length > 0) {
-                // Get current text content
-                const text = this.getCurrentTextContent();
+                const stave = this.document.staves[0];
 
-                // Re-extract beats from updated content
-                await this.extractAndRenderBeats(text);
+                // Re-derive beats using WASM BeatDeriver
+                this.deriveBeats(stave);
 
                 this.addToConsoleLog(`Recalculated beats after edit`);
             }
@@ -1373,8 +1484,8 @@ class MusicNotationEditor {
                         stave.slurs = [];
                     }
                     stave.slurs.push({
-                        start: { stave: 0, lane: selection.lane || 1, column: selection.start },
-                        end: { stave: 0, lane: selection.lane || 1, column: selection.end },
+                        start: { stave: 0, lane: 1, column: selection.start }, // Always on main line
+                        end: { stave: 0, lane: 1, column: selection.end }, // Always on main line
                         direction: 0, // Upward
                         visual: {
                             curvature: 0.15,
@@ -1661,6 +1772,7 @@ class MusicNotationEditor {
         const y = event.clientY - rect.top;
 
         // Calculate Cell position from click coordinates
+        // Returns null if clicked on non-main line
         const charCellPosition = this.calculateCellPosition(x, y);
 
         if (charCellPosition !== null) {
@@ -1673,8 +1785,18 @@ class MusicNotationEditor {
      * Calculate Cell position from coordinates
      */
     calculateCellPosition(x, y) {
-        // Simplified calculation - in a real implementation,
-        // this would use the layout engine to calculate positions
+        // Calculate which lane was clicked
+        const lineHeight = 16;
+        const clickedLane = Math.floor(y / lineHeight);
+        const laneNames = ['upper_line', 'line', 'lower_line', 'lyrics'];
+
+        // Log clicks on non-main lines
+        if (clickedLane !== 1) {
+            console.log(`Clicked on ${laneNames[clickedLane] || 'unknown'} (lane ${clickedLane}) at y=${y}`);
+            return null; // Don't move cursor for non-main line clicks
+        }
+
+        // Calculate column position for main line clicks
         const charWidth = 12; // Approximate character width
         const column = Math.floor(x / charWidth);
 
@@ -1883,13 +2005,13 @@ class MusicNotationEditor {
     }
 
     /**
-     * Set cursor position with lane information
+     * Set cursor position with lane information (lane always forced to 1)
      */
     setCursorPositionWithLane(position) {
         if (this.document && this.document.state) {
             this.document.state.cursor = {
                 stave: 0,
-                lane: position.lane,
+                lane: 1, // Always on main line, ignore position.lane
                 column: position.column
             };
             this.updateCursorPositionDisplay();
@@ -1898,15 +2020,15 @@ class MusicNotationEditor {
     }
 
     /**
-     * Animate cursor to new position
+     * Animate cursor to new position (always on main line, lane 1)
      */
     async animateCursorTo(position) {
         const cursor = this.getCursorElement();
         if (!cursor) return;
 
         const targetLeft = position.column * 12; // Approximate character width
-        const laneOffsets = [0, 16, 32, 48];
-        const targetTop = laneOffsets[position.lane] || 16;
+        const lineHeight = 16;
+        const targetTop = lineHeight; // Always on main line (lane 1)
 
         // Smooth animation to new position
         cursor.style.transition = 'left 0.15s ease-out, top 0.15s ease-out';
@@ -1939,10 +2061,8 @@ class MusicNotationEditor {
 
         const charCount = document.getElementById('char-count');
         if (charCount && this.document && this.document.staves && this.document.staves[0]) {
-            const currentLaneIndex = this.getCurrentLane();
-            const laneNames = ['upper_line', 'line', 'lower_line', 'lyrics'];
-            const laneName = laneNames[currentLaneIndex];
-            const lane = this.document.staves[0][laneName];
+            // Always use main line (lane 1)
+            const lane = this.document.staves[0].line;
             charCount.textContent = lane.length;
         }
 

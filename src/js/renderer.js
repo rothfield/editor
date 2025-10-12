@@ -237,7 +237,7 @@ class DOMRenderer {
             const graphemeLength = (charCell.grapheme || '').length;
             const cellWidth = graphemeLength * 12;
             charCell.x = cellPositions[cellIndex];
-            charCell.y = laneIndex * 16; // 16px per lane
+            charCell.y = 0; // Y position relative to lane container (lane containers are vertically offset)
             charCell.w = cellWidth;
             charCell.h = 16;
 
@@ -269,11 +269,11 @@ class DOMRenderer {
         const graphemeLength = (charCell.grapheme || '').length;
         const cellWidth = graphemeLength * 12; // 12px per character
 
-        // Set positioning using inline styles for now
-        // In a real implementation, this would use CSS positioning
+        // Set positioning using inline styles
+        // Cells are positioned relative to their lane container (which is already vertically offset)
         element.style.position = 'absolute';
         element.style.left = `${charCell.x || xPosition || 0}px`;
-        element.style.top = `${charCell.y || 0}px`;
+        element.style.top = '0px'; // Always 0px relative to lane container
         element.style.width = `${charCell.w || cellWidth}px`;
         element.style.height = `${charCell.h || 16}px`;
 
@@ -395,7 +395,7 @@ class DOMRenderer {
             lineElement.className = 'notation-line';
             lineElement.dataset.line = lineIndex;
             lineElement.style.position = 'relative';
-            lineElement.style.height = '32px';
+            lineElement.style.height = '64px'; // 4 lanes * 16px each
             lineElement.style.width = '100%';
 
             this.canvas.appendChild(lineElement);
@@ -414,8 +414,10 @@ class DOMRenderer {
             laneContainer = document.createElement('div');
             laneContainer.className = `notation-lane lane-${this.getLaneName(laneIndex)}`;
             laneContainer.dataset.lane = laneIndex;
-            laneContainer.style.position = 'relative';
-            laneContainer.style.height = '100%';
+            laneContainer.style.position = 'absolute';
+            laneContainer.style.top = `${laneIndex * 16}px`;
+            laneContainer.style.height = '16px';
+            laneContainer.style.width = '100%';
 
             lineElement.appendChild(laneContainer);
         }
@@ -485,14 +487,23 @@ class DOMRenderer {
      * Render beat loops with enhanced visualization
      */
     renderBeatLoops(document) {
+        // Clear existing beat loop elements
+        this.beatLoopElements.forEach((element) => {
+            if (element.parentElement) {
+                element.parentElement.removeChild(element);
+            }
+        });
+        this.beatLoopElements.clear();
+
         document.staves.forEach((stave, staveIndex) => {
-            if (stave.beats) {
+            // Always use beats from stave.beats array (populated by BeatDeriver)
+            if (stave.beats && stave.beats.length > 0) {
+                console.log(`Rendering ${stave.beats.length} beats for stave ${staveIndex}`);
                 stave.beats.forEach((beat, beatIndex) => {
                     this.renderBeatLoop(beat, staveIndex, beatIndex);
                 });
             } else {
-                // Extract beats from Cell data if not already derived
-                this.extractAndRenderBeatsFromCells(stave, staveIndex);
+                console.log(`No beats found in stave ${staveIndex}, stave.beats:`, stave.beats);
             }
         });
     }
@@ -502,10 +513,22 @@ class DOMRenderer {
      */
     extractAndRenderBeatsFromCells(stave, staveIndex) {
         const letterLane = stave.line; // Main line contains temporal elements
-        if (!letterLane || letterLane.length === 0) return;
+        if (!letterLane || letterLane.length === 0) {
+            console.log('No cells in main line for beat extraction');
+            return;
+        }
 
         const beats = this.extractBeatsFromCells(letterLane);
+        console.log(`Extracted ${beats.length} beats from ${letterLane.length} cells:`, beats);
+
         beats.forEach((beat, beatIndex) => {
+            console.log(`Rendering beat ${beatIndex}:`, {
+                start: beat.start,
+                end: beat.end,
+                width: beat.end - beat.start + 1,
+                startX: beat.visual.start_x,
+                visualWidth: beat.visual.width
+            });
             this.renderBeatLoop(beat, staveIndex, beatIndex);
         });
 
@@ -570,7 +593,11 @@ class DOMRenderer {
      * Check if cell is temporal (part of musical timing)
      */
     isTemporalCell(cell) {
-        return cell.kind === 1 || cell.kind === 2; // PitchedElement or UnpitchedElement
+        const isTemporal = cell.kind === 1 || cell.kind === 2; // PitchedElement or UnpitchedElement
+        if (!isTemporal && cell.grapheme) {
+            console.log(`Cell "${cell.grapheme}" is not temporal (kind: ${cell.kind})`);
+        }
+        return isTemporal;
     }
 
     /**
@@ -578,24 +605,54 @@ class DOMRenderer {
      */
     renderBeatLoop(beat, lineIndex, beatIndex) {
         const key = `beat-${lineIndex}-${beatIndex}`;
-        let beatElement = this.beatLoopElements.get(key);
 
-        if (!beatElement) {
-            beatElement = document.createElement('div');
-            beatElement.className = 'beat-loop';
-            beatElement.dataset.lineIndex = lineIndex;
-            beatElement.dataset.beatIndex = beatIndex;
+        // Get the line element to append to
+        const lineElement = this.getOrCreateLineElement(lineIndex);
 
-            this.canvas.appendChild(beatElement);
-            this.beatLoopElements.set(key, beatElement);
-        }
+        // Create beat loop element
+        const beatElement = document.createElement('div');
+        beatElement.className = 'beat-loop';
+        beatElement.dataset.lineIndex = lineIndex;
+        beatElement.dataset.beatIndex = beatIndex;
 
-        // Update position and appearance
-        beatElement.style.left = `${beat.visual.start_x || (beat.start * 12)}px`;
-        beatElement.style.width = `${beat.visual.width || (beat.width() * 12)}px`;
-        beatElement.style.bottom = `${beat.visual.loop_offset_px || 20}px`;
-        beatElement.style.height = `${beat.visual.loop_height_px || 6}px`;
-        beatElement.style.display = beat.visual.draw_single_cell || beat.width() > 1 ? 'block' : 'none';
+        // Calculate beat width from start/end positions
+        const beatWidth = (beat.end - beat.start + 1);
+        const shouldDisplay = beat.visual.draw_single_cell || beatWidth > 1;
+
+        console.log(`Beat loop ${beatIndex}: width=${beatWidth}, shouldDisplay=${shouldDisplay}, draw_single_cell=${beat.visual.draw_single_cell}`);
+
+        // Position below the main line (lane 1 is at 16px)
+        const mainLineY = 16; // Lane 1 (main line)
+        const loopOffsetBelow = 18; // Offset below the text baseline
+
+        const leftPos = beat.visual.start_x || (beat.start * 12);
+        const widthPx = beat.visual.width || (beatWidth * 12);
+        const topPos = mainLineY + loopOffsetBelow;
+
+        // Update position and appearance - arc beneath beats (no bottom fill)
+        beatElement.style.position = 'absolute';
+        beatElement.style.left = `${leftPos}px`;
+        beatElement.style.width = `${widthPx}px`;
+        beatElement.style.top = `${topPos}px`;
+        beatElement.style.height = `${beat.visual.loop_height_px || 8}px`;
+        // Arc outline only - no bottom border (empty bowl)
+        beatElement.style.border = '2px solid #666';
+        beatElement.style.borderTop = 'none';
+        beatElement.style.borderRadius = '0 0 8px 8px';
+        beatElement.style.backgroundColor = 'transparent';
+        beatElement.style.display = shouldDisplay ? 'block' : 'none';
+        beatElement.style.zIndex = '1';
+        beatElement.style.pointerEvents = 'none';
+
+        console.log(`Beat loop element created:`, {
+            left: leftPos,
+            width: widthPx,
+            top: topPos,
+            display: beatElement.style.display
+        });
+
+        lineElement.appendChild(beatElement);
+        this.beatLoopElements.set(key, beatElement);
     }
 
     /**
@@ -812,16 +869,27 @@ class DOMRenderer {
      * Clear canvas content
      */
     clearCanvas() {
-        // Remove all Cell elements
+        // Remove all Cell elements from maps
         this.charCellElements.clear();
+
+        // Remove beat loop elements from DOM before clearing map
+        this.beatLoopElements.forEach((element) => {
+            if (element.parentElement) {
+                element.parentElement.removeChild(element);
+            }
+        });
         this.beatLoopElements.clear();
 
-        // Clear canvas content
-        while (this.canvas.firstChild &&
-               this.canvas.firstChild !== this.slurCanvas &&
-               this.canvas.firstChild !== this.octaveCanvas) {
-            this.canvas.removeChild(this.canvas.firstChild);
+        // Collect all children that are not canvas overlays
+        const childrenToRemove = [];
+        for (let child of this.canvas.children) {
+            if (child !== this.slurCanvas && child !== this.octaveCanvas) {
+                childrenToRemove.push(child);
+            }
         }
+
+        // Remove all non-canvas children (line elements and their children)
+        childrenToRemove.forEach(child => this.canvas.removeChild(child));
 
         // Clear slur canvas
         if (this.slurCtx) {

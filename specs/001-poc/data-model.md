@@ -415,14 +415,14 @@ impl Document {
     /// Validate document structure and content
     pub fn validate(&self) -> Result<(), ValidationError> {
         // Ensure all lanes have consistent column alignment
-        for (line_idx, line) in self.lines.iter().enumerate() {
+        for (stave_idx, line) in self.lines.iter().enumerate() {
             let max_col = line.max_column();
 
             for (lane_idx, lane) in line.lanes.iter().enumerate() {
                 for (cell_idx, cell) in lane.iter().enumerate() {
                     if cell.col > max_col {
                         return Err(ValidationError::ColumnAlignment {
-                            line: line_idx,
+                            stave: stave_idx,
                             lane: lane_idx,
                             cell: cell_idx,
                             cell_col: cell.col,
@@ -495,7 +495,7 @@ Application state including cursor position, selection, and focus information.
 ```rust
 #[derive(serde::Serialize, Deserialize, Clone, Debug)]
 pub struct DocumentState {
-    /// Current cursor position (line index, lane, column)
+    /// Current cursor position (stave index, lane, column)
     pub cursor: CursorPosition,
 
     /// Current selection range (if any)
@@ -611,10 +611,10 @@ Represents a slur connection between two elements.
 ```rust
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct SlurSpan {
-    /// Starting element position (line, lane, column)
+    /// Starting element position (stave, lane, column)
     pub start: Position,
 
-    /// Ending element position (line, lane, column)
+    /// Ending element position (stave, lane, column)
     pub end: Position,
 
     /// Slur direction (upward or downward)
@@ -626,7 +626,7 @@ pub struct SlurSpan {
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct Position {
-    pub line: usize,
+    pub stave: usize,
     pub lane: LaneKind,
     pub column: usize,
 }
@@ -666,10 +666,10 @@ impl SlurSpan {
 
     /// Get the horizontal span of this slur
     pub fn horizontal_span(&self) -> usize {
-        if self.start.line == self.end.line && self.start.lane == self.end.lane {
+        if self.start.stave == self.end.stave && self.start.lane == self.end.lane {
             self.end.column.abs_diff(self.start.column) + 1
         } else {
-            0 // Multi-line slur (not supported in POC)
+            0 // Multi-stave slur (not supported in POC)
         }
     }
 }
@@ -688,7 +688,7 @@ Errors that can occur during document validation.
 pub enum ValidationError {
     /// Column alignment mismatch between lanes
     ColumnAlignment {
-        line: usize,
+        stave: usize,
         lane: usize,
         cell: usize,
         cell_col: usize,
@@ -697,7 +697,7 @@ pub enum ValidationError {
 
     /// Invalid pitch notation
     InvalidPitch {
-        line: usize,
+        stave: usize,
         lane: usize,
         column: usize,
         pitch: String,
@@ -705,7 +705,7 @@ pub enum ValidationError {
 
     /// Invalid character encoding
     InvalidEncoding {
-        line: usize,
+        stave: usize,
         lane: usize,
         column: usize,
         grapheme: String,
@@ -721,15 +721,15 @@ impl ValidationError {
     /// Get a human-readable error message
     pub fn message(&self) -> String {
         match self {
-            ValidationError::ColumnAlignment { line, lane, cell, cell_col, max_col } => {
-                format!("Column alignment error at line {}, lane {}, cell {}: column {} exceeds maximum {}",
-                       line, lane, cell, cell_col, max_col)
+            ValidationError::ColumnAlignment { stave, lane, cell, cell_col, max_col } => {
+                format!("Column alignment error at stave {}, lane {}, cell {}: column {} exceeds maximum {}",
+                       stave, lane, cell, cell_col, max_col)
             },
-            ValidationError::InvalidPitch { line, lane, column, pitch } => {
-                format!("Invalid pitch notation '{}' at line {}, lane {}, column {}", pitch, line, lane, column)
+            ValidationError::InvalidPitch { stave, lane, column, pitch } => {
+                format!("Invalid pitch notation '{}' at stave {}, lane {}, column {}", pitch, stave, lane, column)
             },
-            ValidationError::InvalidEncoding { line, lane, column, grapheme } => {
-                format!("Invalid character encoding '{}' at line {}, lane {}, column {}", grapheme, line, lane, column)
+            ValidationError::InvalidEncoding { stave, lane, column, grapheme } => {
+                format!("Invalid character encoding '{}' at stave {}, lane {}, column {}", grapheme, stave, lane, column)
             },
             ValidationError::StructureError { description } => {
                 format!("Document structure error: {}", description)

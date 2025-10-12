@@ -5,7 +5,7 @@
 
 use wasm_bindgen::prelude::*;
 use crate::models::{Cell, PitchSystem};
-use crate::parse::grammar::{parse_single, try_combine_tokens};
+use crate::parse::grammar::{parse, parse_single, try_combine_tokens};
 
 // Logging macros for WASM
 #[wasm_bindgen]
@@ -207,6 +207,12 @@ pub fn parse_text(text: &str, pitch_system: u8) -> Result<js_sys::Array, JsValue
 
 /// Delete a character at the cursor position
 ///
+/// For multi-character cells (e.g., "1#", "C#", "xyz"), this removes the LAST character
+/// and re-parses the truncated grapheme while PRESERVING all associated musical data
+/// (octave, flags, pitch_code, etc.). Only the grapheme and kind are updated.
+///
+/// For single-character cells, the entire cell is deleted.
+///
 /// # Parameters
 /// - `cells_js`: JavaScript array of Cell objects
 /// - `cursor_pos`: The position to delete (0-based index)
@@ -236,23 +242,76 @@ pub fn delete_character(
         return Err(JsValue::from_str("Cursor position out of bounds"));
     }
 
-    // Get info about the cell being deleted
-    let deleted_cell = &cells[cursor_pos];
-    wasm_log!("  Deleting cell: grapheme='{}', kind={:?}, col={}",
-             deleted_cell.grapheme, deleted_cell.kind, deleted_cell.col);
+    // Get the cell being modified
+    let cell = &cells[cursor_pos];
+    let grapheme = &cell.grapheme;
+    let grapheme_len = grapheme.chars().count();
 
-    // Remove the cell at cursor position
-    cells.remove(cursor_pos);
+    wasm_log!("  Cell at position {}: grapheme='{}' (len={}), kind={:?}",
+             cursor_pos, grapheme, grapheme_len, cell.kind);
 
-    // Update column indices for cells after deletion
-    for i in cursor_pos..cells.len() {
-        if cells[i].col > 0 {
-            cells[i].col -= 1;
+    if grapheme_len > 1 {
+        // Multi-character cell: remove last character, re-parse, PRESERVE ALL DATA
+        let mut chars: Vec<char> = grapheme.chars().collect();
+        let removed_char = chars.pop().unwrap();
+        let truncated_grapheme: String = chars.into_iter().collect();
+
+        wasm_info!("  Truncating multi-char cell: '{}' -> '{}' (removed '{}')",
+                  grapheme, truncated_grapheme, removed_char);
+
+        // Preserve data from old cell before re-parsing
+        let old_cell = &cells[cursor_pos];
+        let preserved_lane = old_cell.lane;
+        let preserved_col = old_cell.col;
+        let preserved_flags = old_cell.flags;
+        let preserved_pitch_code = old_cell.pitch_code.clone();
+        let preserved_pitch_system = old_cell.pitch_system;
+        let preserved_octave = old_cell.octave;
+
+        // Re-parse truncated grapheme to get correct kind
+        let pitch_system = preserved_pitch_system.unwrap_or(PitchSystem::Unknown);
+        let reparsed = parse(&truncated_grapheme, pitch_system, preserved_col);
+
+        wasm_info!("  Re-parsed: kind={:?} (old kind was {:?})", reparsed.kind, old_cell.kind);
+
+        // Create new cell with reparsed kind but preserved data
+        cells[cursor_pos] = Cell {
+            grapheme: truncated_grapheme,
+            kind: reparsed.kind,  // Updated from re-parse
+            lane: preserved_lane,
+            col: preserved_col,
+            flags: preserved_flags,
+            pitch_code: preserved_pitch_code,
+            pitch_system: preserved_pitch_system,
+            octave: preserved_octave,  // CRITICAL: preserve octave
+            // Reset ephemeral fields
+            x: 0.0,
+            y: 0.0,
+            w: 0.0,
+            h: 0.0,
+            bbox: (0.0, 0.0, 0.0, 0.0),
+            hit: (0.0, 0.0, 0.0, 0.0),
+        };
+
+        wasm_info!("  Cell updated: kind={:?}, preserved octave={:?}, flags={}",
+                  cells[cursor_pos].kind, cells[cursor_pos].octave, cells[cursor_pos].flags);
+
+    } else {
+        // Single-character cell: delete entire cell
+        wasm_log!("  Single-char cell: deleting entire cell at position {}", cursor_pos);
+        cells.remove(cursor_pos);
+
+        // Update column indices for cells after deletion
+        for i in cursor_pos..cells.len() {
+            if cells[i].col > 0 {
+                cells[i].col -= 1;
+            }
         }
     }
 
     let cells_after = cells.len();
-    wasm_info!("  After deletion: {} cells (deleted 1)", cells_after);
+    let delta = cells_after as i32 - cells_before as i32;
+    wasm_info!("  After deletion: {} cells (delta: {:+})", cells_after, delta);
 
     // Convert back to JavaScript array
     let result = js_sys::Array::new();

@@ -76,12 +76,12 @@ As a musician, I want to apply musical notations like slurs and octaves to selec
 14. **Given** I select "Set Composition Title" from the menu, **When** I enter text, **Then** the title appears centered at the top of the document
 15. **Given** I have a composition title set, **When** I view the document, **Then** the title is rendered above all lines and centered horizontally
 16. **Given** I select "File → Set Tonic", **When** I choose a root note, **Then** the tonic is set for the entire composition
-17. **Given** I select "Line → Set Tonic", **When** I choose a root note, **Then** the tonic is set for the current line only
+17. **Given** I select "Stave → Set Tonic", **When** I choose a root note, **Then** the tonic is set for the current line only
 18. **Given** I have different tonics set for different lines, **When** I view the document, **Then** each line uses its own tonic for pitch interpretation
 19. **Given** I select "File → Set Pitch System", **When** I choose Number or Western, **Then** the pitch system changes for the entire composition
-20. **Given** I select "Line → Set Pitch System", **When** I choose Number or Western, **Then** the pitch system changes for the current line only
+20. **Given** I select "Stave → Set Pitch System", **When** I choose Number or Western, **Then** the pitch system changes for the current line only
 21. **Given** I select "File → Set Key Signature", **When** I choose sharps or flats, **Then** the key signature is set for the entire composition
-22. **Given** I select "Line → Set Key Signature", **When** I choose sharps or flats, **Then** the key signature is set for the current line only
+22. **Given** I select "Stave → Set Key Signature", **When** I choose sharps or flats, **Then** the key signature is set for the current line only
 23. **Given** I have different key signatures set for different lines, **When** I view the document, **Then** each line displays its key signature at the beginning and uses it for pitch interpretation
 24. **Given** I have a key signature set, **When** I type pitched elements, **Then** the key signature automatically applies the appropriate sharps or flats to the notes
 
@@ -189,12 +189,12 @@ As a developer, I want a clean menu-based interface with debug information tabs 
 - **FR-054**: System MUST support line-level lyrics storage as text strings displayed below the first pitched element of the line
 - **FR-055**: System MUST support line-level labels stored as text strings displayed at the beginning of lines
 - **FR-056**: System MUST support composition-level title stored as text string rendered at the top of the document, centered
-- **FR-057**: System MUST provide organized menu structure with File menu and Line menu
+- **FR-057**: System MUST provide organized menu structure with File menu and Stave menu
 - **FR-058**: System MUST provide File menu with items: New, Save, Open, Export MusicXML (stub), Export LilyPond (stub), Set Title, Set Tonic, Set Pitch System, Set Key Signature
-- **FR-059**: System MUST provide Line menu with items: Set Label, Set Tonic, Set Pitch System, Set Lyrics, Set Tala, Set Key Signature
-- **FR-060**: System MUST support tonic setting at both composition level (File menu) and line level (Line menu)
-- **FR-061**: System MUST support pitch system switching at both composition level (File menu) and line level (Line menu)
-- **FR-062**: System MUST support key signature setting at both composition level (File menu) and line level (Line menu)
+- **FR-059**: System MUST provide Stave menu with items: Set Label, Set Tonic, Set Pitch System, Set Lyrics, Set Tala, Set Key Signature
+- **FR-060**: System MUST support tonic setting at both composition level (File menu) and stave level (Stave menu)
+- **FR-061**: System MUST support pitch system switching at both composition level (File menu) and stave level (Stave menu)
+- **FR-062**: System MUST support key signature setting at both composition level (File menu) and stave level (Stave menu)
 - **FR-063**: System MUST display key signatures at the beginning of lines (after line labels) affecting pitch interpretation for those lines
 
 **Text Document Requirements**
@@ -264,15 +264,15 @@ As a developer, I want a clean menu-based interface with debug information tabs 
 - **UnpitchedElement**: Non-pitched musical symbols (dashes, breath marks, barlines, spaces) that affect timing and structure
 - **TextToken**: Unknown text on the main line that cannot be parsed as musical notation, rendered in red color as fallback elements, with multi-character support
 - **Beat**: Implicit "words" of temporal columns separated by spaces, barlines, or other non-beat elements, derived at parse time, not stored explicitly
-- **Tala**: Line-level string of digits 0-9+ displayed above barlines for rhythmic notation (stored at line level, positioned above barlines)
+- **Tala**: Stave-level string of digits 0-9+ displayed above barlines for rhythmic notation (stored at stave level, positioned above barlines)
 - **Lyrics**: Line-level text string displayed below the first pitched element of the line (stored at line level, positioned below first PitchedElement)
 - **Slur**: Curved connection that can start/end on any element anywhere in the notation (temporal or non-temporal), can span beats and barlines, rendered as Bézier curves
 - **Caret**: Visual cursor indicator showing current editing position, positioned at grapheme boundaries
 - **Selection**: Highlighted range of Cells indicating user-selected content for editing operations
 - **Line**: Container with ordered lanes using LaneKind enum { Upper, Letter, Lower } where each lane is a Vec<Cell> maintaining vertical alignment through shared column indices, plus line-level storage for tala (digits 0-9+), lyrics (text string), label (displayed at beginning of line), tonic (musical root note), and key_signature (sharps/flats affecting pitch interpretation). **Note**: The data model supports multiple lines, but POC implementation will display and edit only a single line at a time.
 - **Label**: Line-level text string displayed at the beginning of the line for line identification or section labeling
-- **Tonic**: Musical root note that can be set at composition level (File menu) or line level (Line menu), affecting how pitch systems are interpreted and rendered
-- **KeySignature**: Musical key signature (sharps/flats) that can be set at composition level (File menu) or line level (Line menu), displayed at line beginnings and affecting pitch interpretation
+- **Tonic**: Musical root note that can be set at composition level (File menu) or stave level (Stave menu), affecting how pitch systems are interpreted and rendered
+- **KeySignature**: Musical key signature (sharps/flats) that can be set at composition level (File menu) or stave level (Stave menu), displayed at line beginnings and affecting pitch interpretation
 - **Document**: Container for multiple lines with mixed text and musical notation content, plus composition-level title and tonic (rendered at top, centered). **Note**: The document model supports multiple lines for future extensibility, but POC implementation will focus on single-line editing and display.
 
 ## Success Criteria *(mandatory)*

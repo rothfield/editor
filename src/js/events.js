@@ -103,7 +103,7 @@ class EventManager {
 
         // Prevent default behavior for certain keys when editor has focus
         this.preventDefaultWhenFocused = [
-            'Tab', 'Shift+Tab', 'ArrowUp', 'ArrowDown',
+            ' ', 'Tab', 'Shift+Tab', 'ArrowUp', 'ArrowDown',
             'F1', 'F5', 'F7', 'F12'
         ];
     }
