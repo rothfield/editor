@@ -1,0 +1,48 @@
+[package]
+name = "ecs-editor-wasm"
+version = "0.1.0"
+description = "Music Notation Editor WASM module with CharCell architecture"
+repository = "https://github.com/your-org/ecs-editor.git"
+license = "MIT"
+authors = ["ECS Editor Project"]
+
+[lib]
+crate-type = ["cdylib"]
+path = "src/rust/lib.rs"
+
+[dependencies]
+wasm-bindgen = { version = "0.2.92", features = ["serde-serialize"] }
+serde = { version = "1.0.197", features = ["derive"] }
+serde_json = "1.0.114"
+js-sys = "0.3.69"
+web-sys = "0.3.69"
+console_error_panic_hook = "0.1.7"
+
+[dependencies.web-sys]
+version = "0.3.69"
+features = [
+  "console",
+  "Intl",
+  "Segmenter",
+  "SegmenterOptions",
+  "Document",
+  "Element",
+  "HtmlElement",
+  "Window",
+  "Performance",
+]
+
+# WASM-specific configuration
+[package.metadata.wasm-pack.profile.dev.wasm-bindgen]
+debug-js-glue = true
+demangle-name-section = true
+dwarf-debug-info = true
+
+[package.metadata.wasm-pack.profile.release.wasm-bindgen]
+debug-js-glue = false
+demangle-name-section = false
+dwarf-debug-info = false
+
+# Optimization settings for production
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ['-Os']

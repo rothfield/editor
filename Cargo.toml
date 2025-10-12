@@ -1,0 +1,51 @@
+[package]
+name = "ecs-editor-wasm"
+version = "0.1.0"
+edition = "2021"
+description = "Music Notation Editor WASM module with CharCell architecture"
+license = "MIT"
+authors = ["ECS Editor Project"]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wasm-bindgen = { version = "0.2.92", features = ["serde-serialize"] }
+serde = { version = "1.0.197", features = ["derive"] }
+serde_json = "1.0.114"
+serde-wasm-bindgen = "0.6.5"
+js-sys = "0.3.69"
+web-sys = { version = "0.3.69", features = [
+  "console",
+  "Document",
+  "Element",
+  "HtmlElement",
+  "Window",
+  "Performance",
+] }
+console_error_panic_hook = { version = "0.1.7", optional = true }
+console_log = { version = "1.0.0", optional = true }
+log = "0.4.21"
+chrono = { version = "0.4.38", features = ["wasmbind", "js-sys"], optional = true }
+regex = { version = "1.10.4", optional = true }
+getrandom = { version = "0.2.14", features = ["js"] }
+uuid = { version = "1.8.0", features = ["v4", "js"], optional = true }
+wasm-bindgen-test = "0.3.42"
+
+[profile.release]
+opt-level = "s"
+lto = true
+debug = false
+panic = "abort"
+codegen-units = 1
+
+[profile.dev]
+opt-level = 0
+debug = true
+panic = "abort"
+
+[features]
+default = ["console_error_panic_hook", "console_log"]
+regex = ["dep:regex"]
+chrono = ["dep:chrono"]
+uuid = ["dep:uuid"]

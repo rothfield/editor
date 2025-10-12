@@ -86,6 +86,7 @@ BreathMark        = "'"
 Barline           = "|"
 Whitespace        = " "
 Text              = /[A-Za-z0-9]+/   ; typically lyrics or annotations
+                         ; Text on the Letter lane is non-temporal and rendered differently (e.g., red)
 5. Implicit beat segmentation
 Beats are not explicitly stored — they are derived from the character sequence.
 
@@ -181,7 +182,6 @@ Breath ' stays under the same arc, not breaking it.
 Slurs (slur_start / slur_end) may occur on any element, in any lane.
 They are paired by scan order and rendered as cubic Bézier curves connecting
 the flagged elements’ centers.
-If a barline lies strictly within a slur, the slur is split at that point.
 
 9. Rendering guidelines
 X position: x = column * advance_px (monospace) or measured width (proportional).
@@ -198,9 +198,8 @@ Slurs: cubic Bézier with calculated control points based on span width and heig
 
 Annotations: folded to nearest ±1 column; rendered above or below pitch tokens.
 
-10. Policy options
+10. Rendering options
 Setting	Default	Meaning
-breath_ends_beat	true	Treat ' as beat boundary if desired
 draw_single_cell_loops	false	Suppress loop for single-element beats
 loop_offset_px	20.0	Distance of loops below baseline
 loop_height_px	6.0	Curvature of loop arcs

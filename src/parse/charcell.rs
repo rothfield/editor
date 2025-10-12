@@ -1,0 +1,258 @@
+//! CharCell parser for converting text to musical notation
+//!
+//! This module provides the core parsing logic for converting
+//! text input into CharCell-based musical notation.
+
+use wasm_bindgen::prelude::*;
+use crate::models::*;
+use crate::utils::grapheme::{GraphemeSegmenter, GraphemeUtils};
+
+/// CharCell parser for musical notation text
+#[wasm_bindgen]
+pub struct CharCellParser {
+    segmenter: GraphemeSegmenter,
+}
+
+#[wasm_bindgen]
+impl CharCellParser {
+    /// Create a new CharCell parser
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> CharCellParser {
+        CharCellParser {
+            segmenter: GraphemeSegmenter::new(),
+        }
+    }
+
+    /// Parse text into CharCell array
+    #[wasm_bindgen(js_name = parseToCharCells)]
+    pub fn parse_to_char_cells(&self, text: &str) -> Result<js_sys::Array, JsValue> {
+        let segments = self.segmenter.segment_text(text)?;
+        let head_markers = GraphemeUtils::identify_head_markers(text);
+
+        let mut char_cells = Vec::new();
+        let mut column = 0;
+
+        for (i, segment_result) in segments.iter().enumerate() {
+            let segment = segment_result.as_string()
+                .ok_or_else(|| JsValue::from_str("Failed to get segment"))?;
+
+            if segment.trim().is_empty() {
+                column += 1;
+                continue;
+            }
+
+            let (kind, pitch_system) = self.identify_element_kind(&segment);
+            let mut cell = CharCell::new(segment.clone(), kind, LaneKind::Letter, column);
+
+            // Set pitch system for pitched elements
+            if kind == ElementKind::PitchedElement {
+                cell.pitch_system = Some(pitch_system);
+
+                // Set pitch code
+                cell.pitch_code = Some(self.canonicalize_pitch(&segment, pitch_system));
+            }
+
+            // Set head marker
+            cell.set_head(head_markers[i]);
+
+            char_cells.push(cell);
+            column += 1;
+        }
+
+        // Convert to JavaScript array
+        let result = js_sys::Array::new();
+        for cell in char_cells {
+            let cell_js = serde_wasm_bindgen::to_value(&cell)
+                .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))?;
+            result.push(&cell_js);
+        }
+
+        Ok(result)
+    }
+
+    /// Identify head markers for multi-character tokens
+    #[wasm_bindgen(js_name = identifyHeadMarkers)]
+    pub fn identify_head_markers(&self, text: &str) -> Result<js_sys::Array, JsValue> {
+        let head_markers = GraphemeUtils::identify_head_markers(text);
+        let result = js_sys::Array::new();
+
+        for is_head in head_markers {
+            result.push(&JsValue::from_bool(is_head));
+        }
+
+        Ok(result)
+    }
+
+    /// Validate musical notation syntax
+    #[wasm_bindgen(js_name = validateNotation)]
+    pub fn validate_notation(&self, text: &str) -> Result<JsValue, JsValue> {
+        let validation_result = self.validate_notation_internal(text);
+        serde_wasm_bindgen::to_value(&validation_result)
+            .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
+    }
+}
+
+impl CharCellParser {
+    /// Parse text into CharCell array (Rust version)
+    pub fn parse_to_char_cells_rust(&self, text: &str) -> Result<Vec<CharCell>, String> {
+        let segments = self.segmenter.segment_text_rust(text);
+        let head_markers = GraphemeUtils::identify_head_markers(text);
+
+        let mut char_cells = Vec::new();
+        let mut column = 0;
+
+        for (i, segment) in segments.iter().enumerate() {
+            if segment.trim().is_empty() {
+                column += 1;
+                continue;
+            }
+
+            let (kind, pitch_system) = self.identify_element_kind(segment);
+            let mut cell = CharCell::new(segment.clone(), kind, LaneKind::Letter, column);
+
+            // Set pitch system for pitched elements
+            if kind == ElementKind::PitchedElement {
+                cell.pitch_system = Some(pitch_system);
+                cell.pitch_code = Some(self.canonicalize_pitch(segment, pitch_system));
+            }
+
+            // Set head marker
+            cell.set_head(head_markers[i]);
+
+            char_cells.push(cell);
+            column += 1;
+        }
+
+        Ok(char_cells)
+    }
+
+    /// Identify the element kind and pitch system for a segment
+    fn identify_element_kind(&self, segment: &str) -> (ElementKind, PitchSystem) {
+        // Check for special elements first
+        if GraphemeUtils::is_barline(segment) {
+            return (ElementKind::Barline, PitchSystem::Unknown);
+        }
+
+        if GraphemeUtils::is_breath_mark(segment) {
+            return (ElementKind::BreathMark, PitchSystem::Unknown);
+        }
+
+        if GraphemeUtils::is_whitespace(segment) {
+            return (ElementKind::Whitespace, PitchSystem::Unknown);
+        }
+
+        // Check for pitched elements in different pitch systems
+        if self.is_number_system_pitch(segment) {
+            return (ElementKind::PitchedElement, PitchSystem::Number);
+        }
+
+        if self.is_western_system_pitch(segment) {
+            return (ElementKind::PitchedElement, PitchSystem::Western);
+        }
+
+        if self.is_sargam_system_pitch(segment) {
+            return (ElementKind::PitchedElement, PitchSystem::Sargam);
+        }
+
+        // Check for unpitched elements
+        if segment == "-" || segment == "_" {
+            return (ElementKind::UnpitchedElement, PitchSystem::Unknown);
+        }
+
+        // Default to text if it doesn't match any musical pattern
+        (ElementKind::Text, PitchSystem::Unknown)
+    }
+
+    /// Check if segment is a number system pitch
+    fn is_number_system_pitch(&self, segment: &str) -> bool {
+        let base = segment.trim_end_matches('#').trim_end_matches('b');
+        matches!(base, "1" | "2" | "3" | "4" | "5" | "6" | "7")
+    }
+
+    /// Check if segment is a western system pitch
+    fn is_western_system_pitch(&self, segment: &str) -> bool {
+        let base = segment.trim_end_matches('#').trim_end_matches('b');
+        matches!(base.to_lowercase().as_str(), "c" | "d" | "e" | "f" | "g" | "a" | "b")
+    }
+
+    /// Check if segment is a sargam system pitch
+    fn is_sargam_system_pitch(&self, segment: &str) -> bool {
+        matches!(segment,
+               "S" | "r" | "R" | "g" | "G" | "m" | "M" | "P" | "d" | "D" | "n" | "N")
+    }
+
+    /// Canonicalize pitch representation
+    fn canonicalize_pitch(&self, pitch: &str, pitch_system: PitchSystem) -> String {
+        match pitch_system {
+            PitchSystem::Number => {
+                // Remove accidentals for canonical form
+                pitch.trim_end_matches('#').trim_end_matches('b').to_string()
+            },
+            PitchSystem::Western => {
+                // Convert to lowercase for canonical form
+                pitch.trim_end_matches('#').trim_end_matches('b').to_lowercase()
+            },
+            PitchSystem::Sargam => {
+                // Use uppercase for canonical form
+                pitch.to_uppercase()
+            },
+            _ => pitch.to_string(),
+        }
+    }
+
+    /// Internal validation function
+    fn validate_notation_internal(&self, text: &str) -> ValidationResult {
+        let mut errors = Vec::new();
+        let mut warnings = Vec::new();
+
+        if text.is_empty() {
+            return ValidationResult {
+                valid: true,
+                errors: Vec::new(),
+                warnings: vec!["Empty input".to_string()],
+            };
+        }
+
+        let segments = self.segmenter.segment_text_rust(text);
+
+        for (index, segment) in segments.iter().enumerate() {
+            if segment.trim().is_empty() {
+                continue;
+            }
+
+            let (kind, _) = self.identify_element_kind(segment);
+
+            match kind {
+                ElementKind::Unknown => {
+                    errors.push(format!("Invalid musical notation at position {}: '{}'", index, segment));
+                },
+                ElementKind::Text => {
+                    warnings.push(format!("Text token at position {}: '{}'", index, segment));
+                },
+                _ => {
+                    // Valid musical element
+                }
+            }
+        }
+
+        ValidationResult {
+            valid: errors.is_empty(),
+            errors,
+            warnings,
+        }
+    }
+}
+
+/// Result of notation validation
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct ValidationResult {
+    pub valid: bool,
+    pub errors: Vec<String>,
+    pub warnings: Vec<String>,
+}
+
+impl Default for CharCellParser {
+    fn default() -> Self {
+        Self::new()
+    }
+}

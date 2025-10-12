@@ -1,0 +1,66 @@
+{
+  "name": "ecs-editor",
+  "version": "0.1.0",
+  "description": "Music Notation Editor POC with CharCell-based architecture",
+  "main": "src/js/main.js",
+  "type": "module",
+  "scripts": {
+    "dev": "node src/js/dev-server.js",
+    "build": "npm run build-wasm && npm run build-js && npm run build-css",
+    "build-wasm": "wasm-pack build . --target web --out-dir dist/pkg",
+    "build-js": "rollup -c",
+    "build-css": "unocss src/js/main.js -o dist/main.css",
+    "build-prod": "npm run build-wasm -- --release && npm run build-js && npm run build-css",
+    "serve": "npm run build && npm run dev",
+    "serve-prod": "npm run build-prod && python3 -m http.server 8080 --directory dist",
+    "test": "npm run test-e2e",
+    "test-e2e": "python3 -m pytest tests/ -v",
+    "test-headless": "python3 -m pytest tests/ --headless -v",
+    "test-coverage": "python3 -m pytest tests/ --cov --cov-report=html -v",
+    "lint": "eslint src/js/ --ext .js",
+    "format": "prettier --write src/js/",
+    "type-check": "tsc --noEmit",
+    "setup": "npm install && cargo install wasm-pack && playwright install",
+    "clean": "rm -rf dist/ pkg/ target/ node_modules/.cache"
+  },
+  "dependencies": {
+    "wasm-bindgen": "^0.2.92"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@rollup/plugin-commonjs": "^25.0.0",
+    "@rollup/plugin-node-resolve": "^15.0.0",
+    "@rollup/plugin-terser": "^0.4.0",
+    "eslint": "^9.0.0",
+    "globals": "^14.0.0",
+    "playwright": "^1.44.0",
+    "prettier": "^3.2.0",
+    "rollup": "^4.14.0",
+    "typescript": "^5.4.0",
+    "unocss": "^0.59.0",
+    "vite": "^5.2.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "keywords": [
+    "music",
+    "notation",
+    "editor",
+    "wasm",
+    "rust",
+    "charcell",
+    "music-notation"
+  ],
+  "author": "ECS Editor Project",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/your-org/ecs-editor.git"
+  },
+  "bugs": {
+    "url": "https://github.com/your-org/ecs-editor/issues"
+  },
+  "homepage": "https://github.com/your-org/ecs-editor#readme"
+}

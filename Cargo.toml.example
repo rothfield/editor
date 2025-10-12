@@ -1,0 +1,100 @@
+[package]
+name = "ecs-editor-wasm"
+version = "0.1.0"
+edition = "2021"
+authors = ["Your Name <your.email@example.com>"]
+description = "High-performance Music Notation Editor WASM module"
+license = "MIT"
+repository = "https://github.com/yourusername/ecs-editor"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# Core WASM interop
+wasm-bindgen = { version = "0.2.90", features = ["serde-serialize"] }
+js-sys = "0.3.67"
+web-sys = { version = "0.3.67", features = [
+  "console",
+  "Performance",
+  "Window",
+  "ArrayBuffer",
+] }
+
+# Performance optimizations
+wee_alloc = { version = "0.4.5", optional = true }
+
+# Error handling and debugging
+console_error_panic_hook = { version = "0.1.7", optional = true }
+
+# High-performance collections
+hashbrown = "0.14.3"
+smallvec = { version = "1.11.2", features = ["const_generics", "union"] }
+
+# Serialization for JS interop
+serde = { version = "1.0.195", features = ["derive"] }
+serde-wasm-bindgen = "0.6.3"
+
+# Unicode and text processing
+unicode-segmentation = "1.10.1"
+
+# Development dependencies
+[dev-dependencies]
+criterion = { version = "0.5.1", features = ["html_reports"] }
+wasm-bindgen-test = "0.3.40"
+
+[features]
+default = ["console_error_panic_hook", "wee_alloc"]
+console_error_panic_hook = ["dep:console_error_panic_hook"]
+wee_alloc = ["dep:wee_alloc"]
+
+# Release profile optimized for WASM performance
+[profile.release]
+# Maximum optimization level (3 = pure speed, "s" = size-optimized)
+opt-level = "s"
+# Link-time optimization across all crates
+lto = true
+# Remove debug symbols for smaller binary
+debug = false
+# Strip symbols for even smaller binaries
+strip = true
+# Use panic=abort to reduce binary size
+panic = "abort"
+# Single codegen unit for maximum optimization
+codegen-units = 1
+# Optimize for size while maintaining performance
+overflow-checks = false
+
+[profile.release.package."*"]
+# Ensure all dependencies are also optimized for size
+opt-level = "s"
+
+# Development profile with some optimizations
+[profile.dev]
+# Light optimization for better development experience
+opt-level = 1
+# Keep debug info for debugging
+debug = true
+# Enable some optimizations for faster builds
+codegen-units = 16
+
+[profile.test]
+# Test profile with optimizations
+opt-level = 2
+debug = true
+overflow-checks = true
+
+[profile.bench]
+# Benchmark profile with maximum optimizations
+opt-level = 3
+debug = false
+lto = true
+codegen-units = 1
+
+[[bench]]
+name = "beat_extraction"
+harness = false
+
+[[bench]]
+name = "memory_allocation"
+harness = false

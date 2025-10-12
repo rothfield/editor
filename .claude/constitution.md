@@ -1,7 +1,21 @@
+<!--
+Sync Impact Report:
+Version change: 1.0.0 → 1.1.0 (MINOR)
+Modified sections: File Structure, Project Principles
+Added sections: Governance, Version Policy, Compliance Review
+Templates requiring updates:
+✅ plan.md (updated structure without mod.rs files)
+⚠ spec-template.md (may need governance alignment)
+⚠ tasks-template.md (may need principle alignment)
+Follow-up TODOs: None
+-->
+
 # ECS Editor Project Constitution
 
+**Version**: 1.1.0
 **Created**: 2025-10-11
-**Purpose**: Define development environment, standards, and principles for the ECS Editor project
+**Last Amended**: 2025-10-11
+**Purpose**: Define development environment, standards, principles, and governance for the ECS Editor project
 
 ## Development Environment
 
@@ -30,32 +44,65 @@
 ```
 ecs-editor/
 ├── src/
-│   ├── rust/           # WASM module source (performance-critical operations)
-│   │   ├── lib.rs       # Main WASM library
-│   │   ├── charcell.rs # CharCell data structures
-│   │   ├── parsing.rs  # Text parsing and beat derivation
-│   │   └── utils.rs    # Utility functions
-│   ├── js/             # JavaScript host application
-│   │   ├── main.js     # Application entry point
-│   │   ├── editor.js   # Editor functionality
-│   │   ├── ui.js       # UI components and interactions
-│   │   └── utils.js    # JavaScript utilities
-│   ├── css/            # Separate CSS files (UnoCSS)
-│   │   ├── main.css    # Main styles
+│   ├── rust/              # WASM module source (performance-critical operations)
+│   │   ├── lib.rs         # Main WASM library entry point
+│   │   ├── models/        # Domain-driven data model organization
+│   │   │   ├── core.rs    # Core CharCell data structures
+│   │   │   ├── elements.rs # Musical element definitions
+│   │   │   ├── notation.rs # Notation-specific models
+│   │   │   ├── pitch.rs   # Pitch representation and conversion
+│   │   │   ├── barlines.rs # Barline handling and beat separation
+│   │   │   └── pitch_systems/ # Pitch system implementations
+│   │   │       ├── number.rs    # Number system (1-7)
+│   │   │       ├── western.rs   # Western system (cdefgab/CDEFGAB)
+│   │   │       ├── sargam.rs    # Sargam system
+│   │   │       ├── bhatkhande.rs # Bhatkhande system
+│   │   │       └── tabla.rs     # Tabla notation
+│   │   ├── parse/         # Text processing and analysis
+│   │   │   ├── charcell.rs # CharCell parsing and grapheme handling
+│   │   │   ├── beats.rs    # Beat derivation algorithms
+│   │   │   ├── tokens.rs   # Token recognition and validation
+│   │   │   └── grammar.rs  # Musical grammar parsing
+│   │   ├── renderers/     # Visual rendering and output formats
+│   │   │   ├── layout.rs   # Position calculation and layout algorithms
+│   │   │   ├── curves.rs   # Slur and arc rendering (Bézier curves)
+│   │   │   ├── annotations.rs # Upper/lower annotation positioning
+│   │   │   ├── svg/        # SVG rendering output
+│   │   │   │   ├── elements.rs # SVG element rendering
+│   │   │   │   └── document.rs # SVG document generation
+│   │   │   ├── musicxml/   # MusicXML export (stub for POC)
+│   │   │   │   ├── export.rs # MusicXML export functionality
+│   │   │   │   └── attributes.rs # MusicXML attribute handling
+│   │   │   └── lilypond/   # LilyPond export (stub for POC)
+│   │   │       ├── export.rs # LilyPond export functionality
+│   │   │       └── notation.rs # LilyPond notation mapping
+│   │   └── utils/         # Utility functions and helpers
+│   │       ├── grapheme.rs # Grapheme cluster handling
+│   │       └── performance.rs # Performance optimization utilities
+│   ├── js/                # JavaScript host application
+│   │   ├── main.js        # Application entry point and initialization
+│   │   ├── editor.js      # Core editor functionality and CharCell management
+│   │   ├── ui.js          # UI components and user interactions
+│   │   ├── renderer.js    # DOM-based rendering system
+│   │   ├── events.js      # Event handling and keyboard management
+│   │   ├── file-ops.js    # File operations and document persistence
+│   │   └── utils.js       # JavaScript utilities and helper functions
+│   ├── css/               # Separate CSS files (UnoCSS)
+│   │   ├── main.css       # Main styles
 │   │   └── components.css # Component-specific styles
-│   └── tests/          # Playwright Python tests
-│       ├── e2e/        # End-to-end tests
-│       ├── fixtures/   # Test data
-│       └── utils.py    # Test utilities
-├── tests/
-│   ├── e2e/            # End-to-end tests
-│   └── fixtures/       # Test data
-├── Makefile            # Build orchestration
-├── package.json        # Node.js dependencies and scripts
-├── tsconfig.json       # TypeScript configuration
-├── eslint.config.js    # ESLint configuration
-├── wasm-pack.toml     # Rust WASM packaging
-└── dist/               # Built artifacts
+│   └── tests/             # Playwright Python tests
+│       ├── e2e/           # End-to-end tests
+│       ├── fixtures/      # Test data
+│       └── utils.py       # Test utilities
+├── tests/                 # Additional test directories
+│   ├── e2e/               # End-to-end tests
+│   └── fixtures/          # Test data
+├── Makefile               # Build orchestration
+├── package.json           # Node.js dependencies and scripts
+├── tsconfig.json          # TypeScript configuration
+├── eslint.config.js       # ESLint configuration
+├── wasm-pack.toml         # Rust WASM packaging
+└── dist/                  # Built artifacts
 ```
 
 ### File Separation Requirements
@@ -65,6 +112,7 @@ ecs-editor/
 - WASM module as separate `.wasm` file
 - TypeScript definitions for WASM module integration
 - Proper module bundling with tree-shaking
+- **No mod.rs files** - Direct module imports preferred for clarity
 
 ### JavaScript Standards
 - **Modern Syntax**: ES6+ (ES2022+) with const/let, arrow functions, template literals
@@ -207,3 +255,48 @@ ecs-editor/
 - Comprehensive documentation
 - Automated testing and quality gates
 - Smooth developer experience
+
+---
+
+## Governance
+
+### Version Policy
+This constitution follows semantic versioning (MAJOR.MINOR.PATCH):
+- **MAJOR**: Backward incompatible changes to principles or governance
+- **MINOR**: Addition of new principles, sections, or substantial guidance
+- **PATCH**: Clarifications, wording improvements, non-semantic refinements
+
+### Amendment Procedure
+1. **Proposal**: Any project member may propose constitutional amendments
+2. **Review**: Amendment must be reviewed against existing principles and project goals
+3. **Impact Assessment**: Evaluate effects on existing code, documentation, and workflows
+4. **Approval**: Constitutional amendments require consensus among active contributors
+5. **Documentation**: Update version number and sync impact report
+6. **Propagation**: Update dependent templates and documentation as needed
+
+### Compliance Review
+- **Frequency**: Quarterly reviews of constitutional compliance
+- **Scope**: All code, documentation, and development practices
+- **Metrics**: Adherence to principles, standards, and quality gates
+- **Remediation**: Action items for non-compliance identified during reviews
+- **Reporting**: Compliance status shared with all project contributors
+
+### Principle Enforcement
+- **Code Review**: All pull requests must validate constitutional compliance
+- **Automated Checks**: CI/CD pipelines enforce technical standards where possible
+- **Documentation Updates**: Changes affecting constitutional requirements must update relevant sections
+- **Training**: New contributors must be oriented to constitutional principles
+
+### Conflict Resolution
+When conflicts arise between principles:
+1. **Performance First** and **Test-Driven** take precedence over implementation details
+2. **User Experience Focus** overrides architectural preferences when user impact is significant
+3. **Clean Architecture** guides implementation decisions but doesn't prevent pragmatic solutions
+4. **Standards Compliance** ensures consistency but allows for justified exceptions
+
+### Constitutional Evolution
+This constitution is a living document that should evolve with the project:
+- **Regular Reviews**: Assess relevance and completeness of principles
+- **Community Input**: Encourage feedback and suggestions from all contributors
+- **Documentation**: Maintain clear rationale for all principles and requirements
+- **Accessibility**: Ensure constitution is understandable and actionable for all team members

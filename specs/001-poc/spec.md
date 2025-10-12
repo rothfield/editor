@@ -128,8 +128,8 @@ As a developer, I want a clean menu-based interface with debug information tabs 
 - **FR-007**: System MUST provide navigation methods to jump between head CharCells for efficient token-based movement
 
 **Music Notation Requirements**
-- **FR-008**: System MUST support Number pitch system (1-7) as the default, with optional accidentals (##, bb) only
-- **FR-009**: System MUST support Western pitch system (cdefgab or CDEFGAB) with optional accidentals (##, bb) only
+- **FR-008**: System MUST support Number pitch system (1-7) as the default, with optional accidentals (#, ##, b, bb) only
+- **FR-009**: System MUST support Western pitch system (cdefgab or CDEFGAB) with optional accidentals (#, ##, b, bb) only
 - **FR-010**: System MUST support unpitched elements (-, --, ', |, space) with proper semantics
 - **FR-011**: System MUST automatically derive implicit beats as "words" of temporal columns separated by spaces or barlines, or other non-beat elements using the extract_implicit_beats algorithm:
   - Beat separators: barlines ("|"), spaces (" "), and breath marks ("'") based on breath_ends_beat parameter
@@ -144,7 +144,7 @@ As a developer, I want a clean menu-based interface with debug information tabs 
 - **FR-017**: System MUST support octave display on pitched elements with range -4 to +4, where octave dots are rendered above (positive) or below (negative) the element
 - **FR-018**: System MUST support slurs that can start/end on any element, anywhere in the notation (temporal or non-temporal elements)
 - **FR-019**: System MUST handle barlines as beat separators and visual dividers
-- **FR-020**: System MUST treat breath marks (') as inside beats by default (controlled by breath_ends_beat parameter)
+- **FR-020**: System MUST treat breath marks (') as inside beats by default (controlled by breath_ends_beat parameter), but allow them to be positioned outside beats when needed for musical notation
 - **FR-021**: System MUST allow users to switch between Number and Western pitch systems with proper conversion
 - **FR-022**: System MUST support unknown text on the main line as text tokens rendered in red color
 - **FR-023**: System MUST support multi-character tokens for both musical and text elements
@@ -190,7 +190,7 @@ As a developer, I want a clean menu-based interface with debug information tabs 
 - **FR-055**: System MUST support line-level labels stored as text strings displayed at the beginning of lines
 - **FR-056**: System MUST support composition-level title stored as text string rendered at the top of the document, centered
 - **FR-057**: System MUST provide organized menu structure with File menu and Line menu
-- **FR-058**: System MUST provide File menu with items: New, Save, Open, Export MusicXML, Export LilyPond, Set Title, Set Tonic, Set Pitch System, Set Key Signature
+- **FR-058**: System MUST provide File menu with items: New, Save, Open, Export MusicXML (stub), Export LilyPond (stub), Set Title, Set Tonic, Set Pitch System, Set Key Signature
 - **FR-059**: System MUST provide Line menu with items: Set Label, Set Tonic, Set Pitch System, Set Lyrics, Set Tala, Set Key Signature
 - **FR-060**: System MUST support tonic setting at both composition level (File menu) and line level (Line menu)
 - **FR-061**: System MUST support pitch system switching at both composition level (File menu) and line level (Line menu)
@@ -205,7 +205,7 @@ As a developer, I want a clean menu-based interface with debug information tabs 
 - **FR-055**: System MUST provide undo/redo functionality for all editing operations
 
 **UI Framework Requirements**
-- **FR-052**: System MUST use UnoCSS for styling and utility classes
+- **FR-052**: System MUST implement utility-based styling system
 - **FR-053**: System MUST implement menu-based navigation for user interface
 - **FR-054**: System MUST separate JavaScript and CSS into external files (not embedded in HTML)
 - **FR-055**: System MUST provide a tab group below the main editor canvas
@@ -229,35 +229,33 @@ As a developer, I want a clean menu-based interface with debug information tabs 
 - **FR-071**: System MUST validate all tests run in headless mode without requiring visual inspection
 - **FR-072**: System MUST provide test coverage reports for all feature areas
 
-**JavaScript Standards and Best Practices Requirements**
-- **FR-073**: System MUST use ES6+ (ES2022+) JavaScript with modern syntax and features
-- **FR-074**: System MUST implement modules using ES6 import/export syntax
-- **FR-075**: System MUST use const/let declarations consistently, avoiding var
-- **FR-076**: System MUST implement proper error handling with try/catch blocks and Error objects
-- **FR-077**: System MUST use async/await for asynchronous operations instead of Promise chains
-- **FR-078**: System MUST implement proper memory management and avoid memory leaks
-- **FR-079**: System MUST use TypeScript for type safety (JSDoc as minimum, full TypeScript preferred)
-- **FR-080**: System MUST implement proper event handling with addEventListener and removeEventListener
-- **FR-081**: System MUST use modern DOM APIs (querySelector, classList, dataset)
-- **FR-082**: System MUST implement proper WASM integration with WebAssembly.instantiateStreaming
-- **FR-083**: System MUST use modern array methods (map, filter, reduce, forEach, find)
-- **FR-084**: System MUST implement proper null/undefined checking and optional chaining
-- **FR-085**: System MUST use template literals for string interpolation
-- **FR-086**: System MUST implement proper object destructuring and array destructuring
-- **FR-087**: System MUST use arrow functions appropriately for lexical this binding
-- **FR-088**: System MUST implement proper module bundling with tree-shaking
+**Code Quality Requirements**
+- **FR-073**: System MUST use modern language syntax and features
+- **FR-074**: System MUST implement modular architecture with clear separation of concerns
+- **FR-075**: System MUST implement proper error handling with try/catch blocks
+- **FR-076**: System MUST use async/await for asynchronous operations
+- **FR-077**: System MUST implement proper memory management and avoid memory leaks
+- **FR-078**: System MUST use type safety (type annotations or static typing preferred)
+- **FR-079**: System MUST implement proper event handling with listeners
+- **FR-080**: System MUST use modern DOM APIs for interface manipulation
+- **FR-081**: System MUST use modern array methods for data processing
+- **FR-082**: System MUST implement proper null checking and optional handling
+- **FR-083**: System MUST use template strings for string manipulation
+- **FR-084**: System MUST implement proper object and array destructuring
+- **FR-085**: System MUST use arrow functions where appropriate
+- **FR-086**: System MUST implement proper module bundling with dependency management
 
-**WASM/Rust Integration Requirements**
-- **FR-089**: System MUST compile Rust code to WASM using wasm-bindgen for JavaScript interop
-- **FR-090**: System MUST implement proper WASM module loading and initialization
-- **FR-091**: System MUST use wasm-bindgen for type-safe JavaScript-Rust communication
-- **FR-092**: System MUST implement efficient data transfer between JavaScript and WASM (avoid serialization overhead)
-- **FR-093**: System MUST handle WASM errors properly with try/catch blocks
-- **FR-094**: System MUST implement proper memory management for WASM module lifecycle
-- **FR-095**: System MUST use performance-critical operations in Rust/WASM (text processing, beat derivation)
-- **FR-096**: System MUST implement proper WASM module caching for performance
-- **FR-097**: System MUST handle browser compatibility for WASM features
-- **FR-098**: System MUST implement proper WASM module cleanup on page unload
+**Performance Requirements**
+- **FR-087**: System MUST use compiled code for performance-critical operations (text processing, beat derivation)
+- **FR-088**: System MUST implement proper module loading and initialization
+- **FR-089**: System MUST use type-safe communication between components
+- **FR-090**: System MUST implement efficient data transfer between components
+- **FR-091**: System MUST handle errors properly with try/catch blocks
+- **FR-092**: System MUST implement proper memory management for component lifecycle
+- **FR-093**: System MUST use performance-critical operations for text processing and beat derivation
+- **FR-094**: System MUST implement proper module caching for performance
+- **FR-095**: System MUST handle browser compatibility for performance features
+- **FR-096**: System MUST implement proper module cleanup on page unload
 
 ### Key Entities
 
@@ -271,11 +269,11 @@ As a developer, I want a clean menu-based interface with debug information tabs 
 - **Slur**: Curved connection that can start/end on any element anywhere in the notation (temporal or non-temporal), can span beats and barlines, rendered as Bézier curves
 - **Caret**: Visual cursor indicator showing current editing position, positioned at grapheme boundaries
 - **Selection**: Highlighted range of CharCells indicating user-selected content for editing operations
-- **Line**: Container with ordered lanes using LaneKind enum { Upper, Letter, Lower } where each lane is a Vec<CharCell> maintaining vertical alignment through shared column indices, plus line-level storage for tala (digits 0-9+), lyrics (text string), label (displayed at beginning of line), tonic (musical root note), and key_signature (sharps/flats affecting pitch interpretation)
+- **Line**: Container with ordered lanes using LaneKind enum { Upper, Letter, Lower } where each lane is a Vec<CharCell> maintaining vertical alignment through shared column indices, plus line-level storage for tala (digits 0-9+), lyrics (text string), label (displayed at beginning of line), tonic (musical root note), and key_signature (sharps/flats affecting pitch interpretation). **Note**: The data model supports multiple lines, but POC implementation will display and edit only a single line at a time.
 - **Label**: Line-level text string displayed at the beginning of the line for line identification or section labeling
 - **Tonic**: Musical root note that can be set at composition level (File menu) or line level (Line menu), affecting how pitch systems are interpreted and rendered
 - **KeySignature**: Musical key signature (sharps/flats) that can be set at composition level (File menu) or line level (Line menu), displayed at line beginnings and affecting pitch interpretation
-- **Document**: Container for multiple lines with mixed text and musical notation content, plus composition-level title and tonic (rendered at top, centered)
+- **Document**: Container for multiple lines with mixed text and musical notation content, plus composition-level title and tonic (rendered at top, centered). **Note**: The document model supports multiple lines for future extensibility, but POC implementation will focus on single-line editing and display.
 
 ## Success Criteria *(mandatory)*
 
@@ -318,7 +316,7 @@ As a developer, I want a clean menu-based interface with debug information tabs 
 - **SC-030**: Console tabs update within 200ms of new errors or log entries
 
 **Development Metrics**
-- **SC-031**: UnoCSS styles load and apply within 100ms of application startup
+- **SC-031**: Styling system loads and applies within 100ms of application startup
 - **SC-032**: External JS/CSS files load successfully without embedding in HTML
 - **SC-033**: Tab switching maintains application state without data loss
 
@@ -333,40 +331,34 @@ As a developer, I want a clean menu-based interface with debug information tabs 
 - **SC-041**: UI component interactions have automated validation
 
 **Code Quality Metrics**
-- **SC-042**: JavaScript code passes ESLint with modern standards configuration
-- **SC-043**: TypeScript (or JSDoc) provides complete type coverage for all JavaScript modules
-- **SC-044**: No memory leaks detected in JavaScript or WASM modules during automated testing
-- **SC-045**: WASM module compilation produces no warnings with optimal optimization settings
-- **SC-046**: JavaScript bundle size optimized with tree-shaking eliminates unused code
+- **SC-042**: Code passes linting with modern standards configuration
+- **SC-043**: Type system provides complete type coverage for all modules
+- **SC-044**: No memory leaks detected in modules during automated testing
+- **SC-045**: Module compilation produces no warnings with optimal optimization settings
+- **SC-046**: Bundle size optimized with dependency management eliminates unused code
 - **SC-047**: All asynchronous operations use proper async/await with comprehensive error handling
-- **SC-048**: WASM-Rust interop validates type safety with wasm-bindgen generated types
+- **SC-048**: Component interop validates type safety with generated types
 - **SC-049**: Code maintains >90% maintainability index (complexity, duplication, coverage)
 - **SC-050**: All modules follow consistent naming conventions and structure
-- **SC-051**: No deprecated JavaScript APIs or browser compatibility issues
+- **SC-051**: No deprecated APIs or browser compatibility issues
 
 ## Assumptions
 
-- The POC will support only a single line of musical notation for simplified scope
+- The POC will implement single-line editing and display for simplified scope, though the data model will support multiple lines for future extensibility
 - The POC will render all content at a fixed 16-point typeface for consistent display
 - The POC will use monospace font rendering for predictable column positioning
-- The POC will use UnoCSS for styling and utility classes
 - The POC will use a menu-based user interface design
 - The POC will organize code with separate JavaScript and CSS files (not embedded in HTML)
-- The POC will use modern ES6+ (ES2022+) JavaScript with TypeScript/JSDoc for type safety
-- The POC will implement performance-critical operations in Rust/WASM with proper optimization
-- The POC will use wasm-bindgen for type-safe JavaScript-Rust communication
+- The POC will use modern language features with type safety
+- The POC will implement performance-critical operations using compiled code with proper optimization
 - The POC will run comprehensive E2E tests using headless Playwright for all features
 - Number pitch system (1-7) is the default system, with Western as an alternative
 - Musical notation follows both Number system conventions and Western notation
 - Users have basic familiarity with music notation concepts
-- System will run as a Rust/JS WASM project with performance-critical operations in WASM
-- Testing will be implemented using Playwright/Python with Makefile orchestration
+- Testing will be implemented using orchestration with comprehensive test coverage
 - All tests will execute in headless mode without requiring visual inspection
 - File operations will be limited to JSON format for document persistence
-- Grapheme segmentation will use browser's built-in Intl.Segmenter API where available
+- Export features (MusicXML, LilyPond) are implemented as menu stubs only for POC scope - they will show the menu items but display "Not implemented in POC" messages
+- Grapheme segmentation will use browser's built-in segmentation API where available
 - Pitch system conversion maintains relative pitch relationships and octave information
 - Focus management will automatically return to the editor canvas after UI interactions
-- Development environment is Arch Linux with Fish shell
-- Test coverage will validate >95% of feature areas automatically
-- Code quality will be validated with ESLint, TypeScript, and maintainability metrics
-- WASM module will be properly cached and managed for optimal performance
