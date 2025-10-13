@@ -11,6 +11,14 @@
 
     <!-- Custom UI styles -->
     <style>
+        /* Viewport constraints - prevent scrollbars */
+        html, body {
+            height: 100vh;
+            overflow: hidden;
+            margin: 0;
+            padding: 0;
+        }
+
         /* Utility classes */
         .hidden {
             display: none !important;
@@ -34,7 +42,22 @@
             font-weight: 500;
         }
 
-        /* Menu item hover */
+        /* Menu styling */
+        .z-menu {
+            z-index: 1000;
+        }
+
+        .menu-item {
+            display: block;
+            width: 100%;
+            text-align: left;
+            padding: 0.5rem 1rem;
+            border: none;
+            background: none;
+            cursor: pointer;
+            font-size: 0.875rem;
+        }
+
         .menu-item:hover {
             background-color: #f3f4f6;
         }
@@ -88,7 +111,7 @@
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>♫</text></svg>">
 </head>
 <body class="bg-ui-background text-notation-text font-sans antialiased">
-    <div id="app" class="min-h-screen flex flex-col">
+    <div id="app" class="h-screen flex flex-col overflow-hidden">
         <!-- Header with Menu and Title -->
         <header class="bg-white border-b border-ui-border">
             <div class="flex items-center justify-between px-4 py-2">
@@ -165,10 +188,10 @@
         </header>
 
         <!-- Main Content Area -->
-        <main class="flex-1 flex" id="main-container">
+        <main class="flex-1 flex overflow-hidden" id="main-container">
             <!-- Editor Canvas -->
-            <section class="flex-1 flex flex-col" id="editor-section">
-                <div id="editor-container" class="flex-1 relative overflow-auto p-4">
+            <section class="flex-1 flex flex-col overflow-hidden" id="editor-section">
+                <div id="editor-container" class="flex-1 relative overflow-hidden p-4">
                     <!-- Notation Canvas -->
                     <div id="notation-canvas"
                          class="notation-canvas focusable"
@@ -204,7 +227,7 @@
             <div id="resize-handle" class="w-4 bg-gray-300 hover:bg-blue-500 cursor-col-resize transition-colors flex-shrink-0"></div>
 
             <!-- Debug Information Panel -->
-            <aside id="tabs-panel" class="bg-ui-background border-l border-ui-border flex flex-col" style="width: 384px; min-width: 200px; max-width: 800px;">
+            <aside id="tabs-panel" class="bg-ui-background border-l border-ui-border flex flex-col overflow-hidden" style="width: 384px; min-width: 200px; max-width: 800px;">
                 <!-- Tab Navigation -->
                 <div class="bg-white border-b border-ui-border">
                     <nav class="flex">
@@ -259,101 +282,5 @@
 
     <!-- JavaScript Modules -->
     <script type="module" src="dist/main.js"></script>
-
-    <!-- Resize Handle Script -->
-    <script>
-        // Wait for DOM to be ready
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', initResize);
-        } else {
-            initResize();
-        }
-
-        function initResize() {
-            const resizeHandle = document.getElementById('resize-handle');
-            const tabsPanel = document.getElementById('tabs-panel');
-            const mainContainer = document.getElementById('main-container');
-
-            if (!resizeHandle || !tabsPanel || !mainContainer) {
-                console.error('Resize handle elements not found');
-                return;
-            }
-
-            console.log('Resize handle initialized');
-
-            let isResizing = false;
-            let startX = 0;
-            let startWidth = 0;
-
-            resizeHandle.addEventListener('mousedown', function(e) {
-                console.log('Resize started');
-                isResizing = true;
-                startX = e.clientX;
-                startWidth = tabsPanel.offsetWidth;
-
-                // Prevent text selection during resize
-                document.body.style.userSelect = 'none';
-                document.body.style.cursor = 'col-resize';
-
-                e.preventDefault();
-            });
-
-            document.addEventListener('mousemove', function(e) {
-                if (!isResizing) return;
-
-                const maxWidth = parseInt(tabsPanel.style.maxWidth) || 800;
-                const minWidth = parseInt(tabsPanel.style.minWidth) || 200;
-
-                // Calculate new width (resize from right edge, so subtract delta)
-                const deltaX = e.clientX - startX;
-                let newWidth = startWidth - deltaX;
-
-                // Constrain to min/max
-                newWidth = Math.max(minWidth, Math.min(maxWidth, newWidth));
-
-                // Apply new width
-                tabsPanel.style.width = newWidth + 'px';
-            });
-
-            document.addEventListener('mouseup', function() {
-                if (isResizing) {
-                    console.log('Resize ended');
-                    isResizing = false;
-                    document.body.style.userSelect = '';
-                    document.body.style.cursor = '';
-                }
-            });
-        }
-    </script>
-
-    <!-- Error handling for script loading -->
-    <script>
-        // Handle WASM loading errors
-        window.addEventListener('error', function(event) {
-            if (event.filename && event.filename.includes('wasm')) {
-                console.error('WASM loading failed:', event.error);
-                const canvas = document.getElementById('notation-canvas');
-                if (canvas) {
-                    canvas.innerHTML = '<div class="error">Failed to load music notation engine. Please refresh the page.</div>';
-                }
-            }
-        });
-
-        // Handle unhandled promise rejections
-        window.addEventListener('unhandledrejection', function(event) {
-            console.error('Unhandled promise rejection:', event.reason);
-            const errorsList = document.getElementById('console-errors-list');
-            if (errorsList) {
-                const errorEntry = document.createElement('div');
-                errorEntry.className = 'error text-sm';
-                errorEntry.innerHTML = `
-                    <span class="text-error">${new Date().toLocaleTimeString()}</span>
-                    <span class="font-semibold">PROMISE REJECTION:</span>
-                    <span>${event.reason?.message || event.reason}</span>
-                `;
-                errorsList.appendChild(errorEntry);
-            }
-        });
-    </script>
 </body>
 </html>

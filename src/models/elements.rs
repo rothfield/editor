@@ -382,6 +382,62 @@ impl Default for OctaveDisplay {
     }
 }
 
+/// Slur indicator for cells that start or end a slur
+#[wasm_bindgen]
+#[repr(u8)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+pub enum SlurIndicator {
+    /// No slur indicator
+    None = 0,
+
+    /// This cell starts a slur
+    SlurStart = 1,
+
+    /// This cell ends a slur
+    SlurEnd = 2,
+}
+
+impl SlurIndicator {
+    /// Get the human-readable name for this slur indicator
+    pub fn name(&self) -> &'static str {
+        match self {
+            SlurIndicator::None => "None",
+            SlurIndicator::SlurStart => "Slur Start",
+            SlurIndicator::SlurEnd => "Slur End",
+        }
+    }
+
+    /// Get CSS class name for this slur indicator
+    pub fn css_class(&self) -> &'static str {
+        match self {
+            SlurIndicator::None => "slur-none",
+            SlurIndicator::SlurStart => "slur-start",
+            SlurIndicator::SlurEnd => "slur-end",
+        }
+    }
+
+    /// Check if this is a slur start
+    pub fn is_start(&self) -> bool {
+        matches!(self, SlurIndicator::SlurStart)
+    }
+
+    /// Check if this is a slur end
+    pub fn is_end(&self) -> bool {
+        matches!(self, SlurIndicator::SlurEnd)
+    }
+
+    /// Check if this cell has any slur indicator
+    pub fn has_slur(&self) -> bool {
+        !matches!(self, SlurIndicator::None)
+    }
+}
+
+impl Default for SlurIndicator {
+    fn default() -> Self {
+        SlurIndicator::None
+    }
+}
+
 /// Text token properties for non-musical text
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct TextToken {

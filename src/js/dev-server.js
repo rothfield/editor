@@ -30,7 +30,7 @@ const MIME_TYPES = {
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
-  '.gif': 'image/gif',
+  '.gif': 'image/gif'
 };
 
 /**
@@ -66,7 +66,7 @@ async function serveFile(res, filePath) {
       'Cache-Control': 'no-cache, no-store, must-revalidate',
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization'
     });
 
     res.end(data);
@@ -84,7 +84,7 @@ function handleCors(res) {
   res.writeHead(200, {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization'
   });
   res.end();
 }
@@ -145,7 +145,7 @@ async function injectHotReload(htmlContent) {
   `;
 
   // Insert script before closing body tag
-  return htmlContent.replace('</body>', hotReloadScript + '</body>');
+  return htmlContent.replace('</body>', `${hotReloadScript}</body>`);
 }
 
 /**
@@ -187,7 +187,7 @@ async function handleRequest(req, res) {
 
       res.writeHead(200, {
         'Content-Type': 'text/html',
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Cache-Control': 'no-cache, no-store, must-revalidate'
       });
       res.end(htmlWithReload);
     } catch (error) {
@@ -244,11 +244,11 @@ function setupFileWatcher() {
   const watchPaths = [
     join(projectRoot, 'src'),
     join(projectRoot, 'dist'),
-    join(projectRoot, 'index.html'),
+    join(projectRoot, 'index.html')
   ];
 
   const options = {
-    recursive: true,
+    recursive: true
   };
 
   watchPaths.forEach((watchPath) => {
@@ -315,7 +315,6 @@ async function startServer() {
         process.exit(0);
       });
     });
-
   } catch (error) {
     console.error('❌ Failed to start server:', error);
     process.exit(1);

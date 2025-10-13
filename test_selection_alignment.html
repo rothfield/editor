@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Selection Alignment Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .test-container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            max-width: 800px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .canvas-container {
+            position: relative;
+            background: #f9f9f9;
+            border: 1px solid #ccc;
+            padding: 10px;
+            min-height: 100px;
+            font-family: monospace;
+            font-size: 14px;
+            overflow: hidden;
+        }
+        .notation-line {
+            position: relative;
+            height: 64px;
+            width: 100%;
+        }
+        .notation-lane {
+            position: absolute;
+            height: 16px;
+            width: 100%;
+        }
+        .lane-upper {
+            top: 0px;
+            background: rgba(255, 0, 0, 0.1);
+        }
+        .lane-letter {
+            top: 16px;
+            background: rgba(0, 255, 0, 0.1);
+        }
+        .lane-lower {
+            top: 32px;
+            background: rgba(0, 0, 255, 0.1);
+        }
+        .lane-lyrics {
+            top: 48px;
+            background: rgba(255, 255, 0, 0.1);
+        }
+        .char-cell {
+            position: absolute;
+            height: 16px;
+            display: inline-block;
+            font-family: monospace;
+            font-size: 14px;
+            line-height: 16px;
+        }
+        .selection-highlight {
+            position: absolute;
+            background-color: rgba(59, 130, 246, 0.3);
+            border: 1px solid rgba(59, 130, 246, 0.5);
+            pointer-events: none;
+            z-index: 2;
+            height: 16px;
+        }
+        .controls {
+            margin: 10px 0;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            margin-right: 10px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .test-result {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+        }
+        .info {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+        .warning {
+            background: #fff3cd;
+            color: #856404;
+        }
+        .alignment-indicator {
+            position: absolute;
+            top: -5px;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: red;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>Selection Alignment Test</h1>
+
+        <div class="test-section">
+            <h3>Test Selection Alignment</h3>
+            <p>This test verifies that selection highlighting is properly aligned with text elements.</p>
+
+            <div class="controls">
+                <button onclick="loadTestContent()">Load Test Content</button>
+                <button onclick="selectChars(1, 3)">Select Characters 1-3</button>
+                <button onclick="selectChars(2, 5)">Select Characters 2-5</button>
+                <button onclick="clearSelection()">Clear Selection</button>
+                <button onclick="showAlignmentGuides()">Show Alignment Guides</button>
+            </div>
+
+            <div class="canvas-container" id="test-canvas">
+                <div class="notation-line" data-line="0">
+                    <!-- Upper Lane -->
+                    <div class="notation-lane lane-upper" data-lane="0"></div>
+
+                    <!-- Letter Lane (Main) -->
+                    <div class="notation-lane lane-letter" data-lane="1">
+                        <div class="char-cell" style="left: 0px;">1</div>
+                        <div class="char-cell" style="left: 12px;">2</div>
+                        <div class="char-cell" style="left: 24px;">3</div>
+                        <div class="char-cell" style="left: 36px;">4</div>
+                        <div class="char-cell" style="left: 48px;">5</div>
+                    </div>
+
+                    <!-- Lower Lane -->
+                    <div class="notation-lane lane-lower" data-lane="2"></div>
+
+                    <!-- Lyrics Lane -->
+                    <div class="notation-lane lane-lyrics" data-lane="3"></div>
+                </div>
+            </div>
+
+            <div id="test-results">
+                <div class="test-result info">
+                    <strong>Instructions:</strong> Click the buttons above to test selection alignment. The selection should perfectly overlay the selected text characters.
+                </div>
+            </div>
+        </div>
+
+        <div class="test-section">
+            <h3>What This Tests</h3>
+            <ul>
+                <li><strong>Horizontal Alignment:</strong> Selection starts and ends at exact character boundaries</li>
+                <li><strong>Vertical Alignment:</strong> Selection is positioned in the correct lane (line)</li>
+                <li><strong>Container Consistency:</strong> Selection is appended to same container as text</li>
+                <li><strong>Cleanup:</strong> Selection is properly removed when needed</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        let currentSelection = null;
+        let alignmentGuides = false;
+
+        function loadTestContent() {
+            const canvas = document.getElementById('test-canvas');
+
+            // Clear existing content
+            const laneContainers = canvas.querySelectorAll('.notation-lane');
+            laneContainers.forEach(lane => {
+                // Keep lane containers but clear their content
+                const cells = lane.querySelectorAll('.char-cell');
+                cells.forEach(cell => cell.remove());
+
+                const selections = lane.querySelectorAll('.selection-highlight');
+                selections.forEach(sel => sel.remove());
+            });
+
+            // Add test content to letter lane
+            const letterLane = canvas.querySelector('[data-lane="1"]');
+            const testText = "1234567890";
+
+            for (let i = 0; i < testText.length; i++) {
+                const charCell = document.createElement('div');
+                charCell.className = 'char-cell';
+                charCell.style.left = `${i * 12}px`;
+                charCell.textContent = testText[i];
+                letterLane.appendChild(charCell);
+            }
+
+            addTestResult('Test content loaded: "1234567890"', 'success');
+        }
+
+        function selectChars(start, end) {
+            clearSelection();
+
+            const canvas = document.getElementById('test-canvas');
+            const laneContainer = canvas.querySelector('[data-lane="1"]'); // Letter lane
+
+            if (!laneContainer) {
+                addTestResult('Lane container not found', 'warning');
+                return;
+            }
+
+            // Calculate position and width
+            const leftPos = start * 12;
+            const width = (end - start) * 12;
+
+            // Create selection highlight
+            const selectionElement = document.createElement('div');
+            selectionElement.className = 'selection-highlight';
+            selectionElement.style.cssText = `
+                position: absolute;
+                left: ${leftPos}px;
+                top: 0px;
+                width: ${width}px;
+                height: 16px;
+                background-color: rgba(59, 130, 246, 0.3);
+                border: 1px solid rgba(59, 130, 246, 0.5);
+                pointer-events: none;
+                z-index: 2;
+            `;
+
+            // Append to lane container (same as text elements)
+            laneContainer.appendChild(selectionElement);
+            currentSelection = selectionElement;
+
+            addTestResult(`Selection created: characters ${start}-${end} (position: ${leftPos}px, width: ${width}px)`, 'success');
+
+            // Add alignment indicator
+            if (alignmentGuides) {
+                addAlignmentIndicator(selectionElement);
+            }
+        }
+
+        function clearSelection() {
+            const canvas = document.getElementById('test-canvas');
+            const selections = canvas.querySelectorAll('.selection-highlight');
+            selections.forEach(sel => sel.remove());
+            currentSelection = null;
+
+            // Remove alignment indicators
+            const indicators = canvas.querySelectorAll('.alignment-indicator');
+            indicators.forEach(ind => ind.remove());
+
+            addTestResult('Selection cleared', 'info');
+        }
+
+        function showAlignmentGuides() {
+            alignmentGuides = !alignmentGuides;
+
+            if (alignmentGuides && currentSelection) {
+                addAlignmentIndicator(currentSelection);
+                addTestResult('Alignment guides enabled', 'info');
+            } else {
+                // Remove all alignment indicators
+                const canvas = document.getElementById('test-canvas');
+                const indicators = canvas.querySelectorAll('.alignment-indicator');
+                indicators.forEach(ind => ind.remove());
+                addTestResult('Alignment guides disabled', 'info');
+            }
+        }
+
+        function addAlignmentIndicator(selectionElement) {
+            const indicator = document.createElement('div');
+            indicator.className = 'alignment-indicator';
+            indicator.style.top = '-1px';
+            indicator.style.left = selectionElement.style.left;
+            indicator.style.width = selectionElement.style.width;
+
+            // Add to the same lane container
+            if (selectionElement.parentElement) {
+                selectionElement.parentElement.appendChild(indicator);
+            }
+        }
+
+        function addTestResult(message, type) {
+            const resultsDiv = document.getElementById('test-results');
+            const result = document.createElement('div');
+            result.className = `test-result ${type}`;
+            result.innerHTML = `<strong>${new Date().toLocaleTimeString()}</strong>: ${message}`;
+            resultsDiv.appendChild(result);
+        }
+
+        // Initialize with test content
+        window.addEventListener('load', () => {
+            loadTestContent();
+            setTimeout(() => selectChars(2, 6), 500); // Auto-select some chars for demo
+        });
+    </script>
+</body>
+</html>

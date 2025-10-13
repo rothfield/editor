@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
 // Re-export from other modules
-pub use super::elements::{ElementKind, LaneKind, PitchSystem};
+pub use super::elements::{ElementKind, LaneKind, PitchSystem, SlurIndicator};
 pub use super::notation::{BeatSpan, SlurSpan, Position, Selection, Range, CursorPosition};
 
 /// The fundamental unit representing one visible grapheme cluster in musical notation
@@ -36,9 +36,13 @@ pub struct Cell {
     pub pitch_system: Option<PitchSystem>,
 
     /// Octave marking for pitched elements (-1 = lower, 0 = middle/none, 1 = upper)
-    pub octave: Option<i8>,
+    /// Note: Uses i8 instead of Option to ensure field always appears in persistent storage
+    pub octave: i8,
 
-    /// Layout cache properties (calculated at render time)
+    /// Slur indicator (None, SlurStart, SlurEnd)
+    pub slur_indicator: SlurIndicator,
+
+    /// Layout cache properties (calculated at render time) - ephemeral, not saved
     #[serde(skip)]
     pub x: f32,
     #[serde(skip)]
@@ -48,11 +52,11 @@ pub struct Cell {
     #[serde(skip)]
     pub h: f32,
 
-    /// Bounding box for hit testing (left, top, right, bottom)
+    /// Bounding box for hit testing (left, top, right, bottom) - ephemeral, not saved
     #[serde(skip)]
     pub bbox: (f32, f32, f32, f32),
 
-    /// Hit testing area (may be larger than bbox for interaction)
+    /// Hit testing area (may be larger than bbox for interaction) - ephemeral, not saved
     #[serde(skip)]
     pub hit: (f32, f32, f32, f32),
 }
@@ -68,7 +72,8 @@ impl Cell {
             flags: 0,
             pitch_code: None,
             pitch_system: None,
-            octave: None,
+            octave: 0,
+            slur_indicator: SlurIndicator::None,
             x: 0.0,
             y: 0.0,
             w: 0.0,
@@ -152,6 +157,36 @@ impl Cell {
     /// Check if a point is within the hit testing area
     pub fn hit_test(&self, x: f32, y: f32) -> bool {
         x >= self.hit.0 && x <= self.hit.2 && y >= self.hit.1 && y <= self.hit.3
+    }
+
+    /// Set slur indicator to start a slur
+    pub fn set_slur_start(&mut self) {
+        self.slur_indicator = SlurIndicator::SlurStart;
+    }
+
+    /// Set slur indicator to end a slur
+    pub fn set_slur_end(&mut self) {
+        self.slur_indicator = SlurIndicator::SlurEnd;
+    }
+
+    /// Clear slur indicator
+    pub fn clear_slur(&mut self) {
+        self.slur_indicator = SlurIndicator::None;
+    }
+
+    /// Check if this cell has a slur indicator
+    pub fn has_slur(&self) -> bool {
+        self.slur_indicator.has_slur()
+    }
+
+    /// Check if this cell starts a slur
+    pub fn is_slur_start(&self) -> bool {
+        self.slur_indicator.is_start()
+    }
+
+    /// Check if this cell ends a slur
+    pub fn is_slur_end(&self) -> bool {
+        self.slur_indicator.is_end()
     }
 }
 

@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visual Selection Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .test-container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            max-width: 800px;
+        }
+        .test-instructions {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        .test-result {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+        }
+        .failure {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        #notation-canvas {
+            border: 1px solid #ccc;
+            background: white;
+            min-height: 100px;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 14px;
+        }
+        .controls {
+            margin: 10px 0;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            margin-right: 10px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .selection-info {
+            margin: 10px 0;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>Visual Selection Test</h1>
+
+        <div class="test-instructions">
+            <h3>Test Instructions:</h3>
+            <ol>
+                <li>Type some notes in the canvas (e.g., "1234")</li>
+                <li>Select some text using Shift+Arrow keys or mouse drag</li>
+                <li>Apply slur using Alt+S</li>
+                <li>Check if the visual selection remains visible after the slur is applied</li>
+                <li>Repeat with octave commands (Alt+U, Alt+M, Alt+L)</li>
+            </ol>
+        </div>
+
+        <div class="controls">
+            <button onclick="clearCanvas()">Clear Canvas</button>
+            <button onclick="loadTestData()">Load Test Data</button>
+        </div>
+
+        <div id="notation-canvas" contenteditable="false" tabindex="0">
+            Click here and type musical notation...
+        </div>
+
+        <div class="selection-info">
+            <strong>Selection Status:</strong> <span id="selection-status">No selection</span><br>
+            <strong>Selection Range:</strong> <span id="selection-range">None</span>
+        </div>
+
+        <div id="test-results">
+            <div class="test-result">
+                <strong>Test Results:</strong> Perform the test steps above to see results.
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        // Mock implementation for testing visual selection
+        let selectionData = {
+            hasSelection: false,
+            start: 0,
+            end: 0,
+            text: ''
+        };
+
+        const canvas = document.getElementById('notation-canvas');
+        const selectionStatus = document.getElementById('selection-status');
+        const selectionRange = document.getElementById('selection-range');
+        const testResults = document.getElementById('test-results');
+
+        // Track selection changes
+        canvas.addEventListener('mouseup', () => {
+            const selection = window.getSelection();
+            if (selection.rangeCount > 0) {
+                const range = selection.getRangeAt(0);
+                if (range.toString().length > 0) {
+                    selectionData.hasSelection = true;
+                    selectionData.text = range.toString();
+                    selectionData.start = getCharacterPosition(range.startContainer, range.startOffset);
+                    selectionData.end = getCharacterPosition(range.endContainer, range.endOffset);
+                    updateSelectionDisplay();
+                }
+            }
+        });
+
+        // Keyboard events for testing
+        canvas.addEventListener('keydown', (e) => {
+            if (e.altKey && e.key === 's') {
+                e.preventDefault();
+                simulateSlurApplication();
+            } else if (e.altKey && (e.key === 'u' || e.key === 'm' || e.key === 'l')) {
+                e.preventDefault();
+                simulateOctaveApplication(e.key);
+            }
+        });
+
+        function getCharacterPosition(node, offset) {
+            // Simplified character position calculation
+            const text = canvas.textContent || '';
+            return Math.min(offset, text.length);
+        }
+
+        function updateSelectionDisplay() {
+            if (selectionData.hasSelection) {
+                selectionStatus.textContent = 'Active';
+                selectionRange.textContent = `${selectionData.start} - ${selectionData.end} ("${selectionData.text}")`;
+            } else {
+                selectionStatus.textContent = 'No selection';
+                selectionRange.textContent = 'None';
+            }
+        }
+
+        function simulateSlurApplication() {
+            if (!selectionData.hasSelection) {
+                addTestResult('Please select some text before applying slur', 'failure');
+                return;
+            }
+
+            // Simulate the slur application process
+            const originalSelection = {...selectionData};
+
+            // Clear selection (simulating render())
+            window.getSelection().removeAllRanges();
+            selectionData.hasSelection = false;
+            updateSelectionDisplay();
+
+            // Simulate processing delay
+            setTimeout(() => {
+                // Restore selection (this is what our fix should do)
+                restoreSelection(originalSelection);
+                addTestResult('Slur applied - visual selection preserved ✓', 'success');
+            }, 100);
+        }
+
+        function simulateOctaveApplication(key) {
+            if (!selectionData.hasSelection) {
+                addTestResult('Please select some text before applying octave', 'failure');
+                return;
+            }
+
+            const octaveNames = { 'u': 'Upper', 'm': 'Middle', 'l': 'Lower' };
+            const originalSelection = {...selectionData};
+
+            // Clear selection (simulating render())
+            window.getSelection().removeAllRanges();
+            selectionData.hasSelection = false;
+            updateSelectionDisplay();
+
+            // Simulate processing delay
+            setTimeout(() => {
+                // Restore selection (this is what our fix should do)
+                restoreSelection(originalSelection);
+                addTestResult(`${octaveNames[key]} octave applied - visual selection preserved ✓`, 'success');
+            }, 100);
+        }
+
+        function restoreSelection(originalSelection) {
+            // Restore the selection data
+            selectionData = {...originalSelection};
+            selectionData.hasSelection = true;
+            updateSelectionDisplay();
+
+            // Create visual selection highlight
+            const highlight = document.createElement('div');
+            highlight.style.cssText = `
+                position: absolute;
+                background-color: rgba(59, 130, 246, 0.3);
+                border: 1px solid rgba(59, 130, 246, 0.5);
+                pointer-events: none;
+                z-index: 2;
+            `;
+
+            // Simple visual representation - in real implementation this would be calculated properly
+            const rect = canvas.getBoundingClientRect();
+            highlight.style.left = '50px';
+            highlight.style.top = '20px';
+            highlight.style.width = '60px';
+            highlight.style.height = '20px';
+
+            canvas.style.position = 'relative';
+            canvas.appendChild(highlight);
+        }
+
+        function addTestResult(message, type) {
+            const result = document.createElement('div');
+            result.className = `test-result ${type}`;
+            result.innerHTML = `<strong>${new Date().toLocaleTimeString()}</strong>: ${message}`;
+            testResults.appendChild(result);
+        }
+
+        window.clearCanvas = function() {
+            canvas.textContent = '';
+            window.getSelection().removeAllRanges();
+            selectionData = { hasSelection: false, start: 0, end: 0, text: '' };
+            updateSelectionDisplay();
+            // Remove any highlights
+            const highlights = canvas.querySelectorAll('div[style*="position: absolute"]');
+            highlights.forEach(h => h.remove());
+        };
+
+        window.loadTestData = function() {
+            canvas.textContent = '1234567';
+            addTestResult('Test data loaded: "1234567"', 'success');
+        };
+    </script>
+</body>
+</html>

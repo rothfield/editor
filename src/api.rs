@@ -4,7 +4,7 @@
 //! and token combination using the recursive descent parser.
 
 use wasm_bindgen::prelude::*;
-use crate::models::{Cell, PitchSystem};
+use crate::models::{Cell, PitchSystem, SlurIndicator};
 use crate::parse::grammar::{parse, parse_single, try_combine_tokens};
 
 // Logging macros for WASM
@@ -98,7 +98,7 @@ pub fn insert_character(
         cells.last().map(|c| c.col + 1).unwrap_or(0)
     };
 
-    let new_cell = parse_single(c, pitch_system, column);
+    let mut new_cell = parse_single(c, pitch_system, column);
 
     // Insert the new cell at the cursor position
     let insert_pos = cursor_pos.min(cells.len());
@@ -267,6 +267,7 @@ pub fn delete_character(
         let preserved_pitch_code = old_cell.pitch_code.clone();
         let preserved_pitch_system = old_cell.pitch_system;
         let preserved_octave = old_cell.octave;
+        let preserved_slur_indicator = old_cell.slur_indicator;
 
         // Re-parse truncated grapheme to get correct kind
         let pitch_system = preserved_pitch_system.unwrap_or(PitchSystem::Unknown);
@@ -284,6 +285,7 @@ pub fn delete_character(
             pitch_code: preserved_pitch_code,
             pitch_system: preserved_pitch_system,
             octave: preserved_octave,  // CRITICAL: preserve octave
+            slur_indicator: preserved_slur_indicator,  // CRITICAL: preserve slur indicator
             // Reset ephemeral fields
             x: 0.0,
             y: 0.0,
@@ -367,7 +369,7 @@ pub fn apply_octave(
     for i in start..end.min(cells.len()) {
         // Only apply to pitched elements (kind = 1)
         if cells[i].kind == crate::models::ElementKind::PitchedElement {
-            cells[i].octave = Some(octave);
+            cells[i].octave = octave;
             modified_count += 1;
             wasm_log!("  Applied octave {} to cell {}: '{}'", octave, i, cells[i].grapheme);
         }
@@ -388,6 +390,189 @@ pub fn apply_octave(
 
     wasm_info!("applyOctave completed successfully");
     Ok(result)
+}
+
+/// Apply slur to cells in a selection range
+///
+/// # Parameters
+/// - `cells_js`: JavaScript array of Cell objects
+/// - `start`: Start of selection (0-based index)
+/// - `end`: End of selection (exclusive)
+///
+/// # Returns
+/// Updated JavaScript array of Cell objects with slur applied
+#[wasm_bindgen(js_name = applySlur)]
+pub fn apply_slur(
+    cells_js: JsValue,
+    start: usize,
+    end: usize,
+) -> Result<js_sys::Array, JsValue> {
+    wasm_info!("applySlur called: start={}, end={}", start, end);
+
+    // Deserialize cells from JavaScript
+    let mut cells: Vec<Cell> = serde_wasm_bindgen::from_value(cells_js)
+        .map_err(|e| {
+            wasm_error!("Deserialization error: {}", e);
+            JsValue::from_str(&format!("Deserialization error: {}", e))
+        })?;
+
+    wasm_log!("  Total cells: {}, selection range: {}..{}", cells.len(), start, end);
+
+    // Validate selection range
+    if start >= end {
+        wasm_error!("Invalid selection range: start {} >= end {}", start, end);
+        return Err(JsValue::from_str("Start must be less than end"));
+    }
+
+    if start >= cells.len() {
+        wasm_error!("Start position {} out of bounds (max: {})", start, cells.len() - 1);
+        return Err(JsValue::from_str("Start position out of bounds"));
+    }
+
+    let actual_end = end.min(cells.len());
+
+    // Clear any existing slur indicators in the range first
+    for i in start..actual_end {
+        cells[i].clear_slur();
+    }
+
+    // Check if we have at least 2 cells for a slur
+    if actual_end - start >= 2 {
+        // Apply slur: first cell = SlurStart, last cell = SlurEnd
+        cells[start].set_slur_start();
+        cells[actual_end - 1].set_slur_end();
+
+        wasm_info!("  Applied slur: cell[{}] = SlurStart, cell[{}] = SlurEnd",
+                  start, actual_end - 1);
+    } else {
+        wasm_warn!("  Selection too short for slur ({} cells), skipping", actual_end - start);
+    }
+
+    // Convert back to JavaScript array
+    let result = js_sys::Array::new();
+    for cell in cells {
+        let cell_js = serde_wasm_bindgen::to_value(&cell)
+            .map_err(|e| {
+                wasm_error!("Serialization error: {}", e);
+                JsValue::from_str(&format!("Serialization error: {}", e))
+            })?;
+        result.push(&cell_js);
+    }
+
+    wasm_info!("applySlur completed successfully");
+    Ok(result)
+}
+
+/// Remove slur from cells in a selection range
+///
+/// # Parameters
+/// - `cells_js`: JavaScript array of Cell objects
+/// - `start`: Start of selection (0-based index)
+/// - `end`: End of selection (exclusive)
+///
+/// # Returns
+/// Updated JavaScript array of Cell objects with slur removed
+#[wasm_bindgen(js_name = removeSlur)]
+pub fn remove_slur(
+    cells_js: JsValue,
+    start: usize,
+    end: usize,
+) -> Result<js_sys::Array, JsValue> {
+    wasm_info!("removeSlur called: start={}, end={}", start, end);
+
+    // Deserialize cells from JavaScript
+    let mut cells: Vec<Cell> = serde_wasm_bindgen::from_value(cells_js)
+        .map_err(|e| {
+            wasm_error!("Deserialization error: {}", e);
+            JsValue::from_str(&format!("Deserialization error: {}", e))
+        })?;
+
+    wasm_log!("  Total cells: {}, selection range: {}..{}", cells.len(), start, end);
+
+    // Validate selection range
+    if start >= end {
+        wasm_error!("Invalid selection range: start {} >= end {}", start, end);
+        return Err(JsValue::from_str("Start must be less than end"));
+    }
+
+    if start >= cells.len() {
+        wasm_error!("Start position {} out of bounds (max: {})", start, cells.len() - 1);
+        return Err(JsValue::from_str("Start position out of bounds"));
+    }
+
+    let actual_end = end.min(cells.len());
+    let mut removed_count = 0;
+
+    // Clear slur indicators from cells in selection range
+    for i in start..actual_end {
+        if cells[i].has_slur() {
+            cells[i].clear_slur();
+            removed_count += 1;
+            wasm_log!("  Removed slur indicator from cell {}: '{}'", i, cells[i].grapheme);
+        }
+    }
+
+    wasm_info!("  Removed slur indicators from {} cells", removed_count);
+
+    // Convert back to JavaScript array
+    let result = js_sys::Array::new();
+    for cell in cells {
+        let cell_js = serde_wasm_bindgen::to_value(&cell)
+            .map_err(|e| {
+                wasm_error!("Serialization error: {}", e);
+                JsValue::from_str(&format!("Serialization error: {}", e))
+            })?;
+        result.push(&cell_js);
+    }
+
+    wasm_info!("removeSlur completed successfully");
+    Ok(result)
+}
+
+/// Check if there are any slur indicators in a selection range
+///
+/// # Parameters
+/// - `cells_js`: JavaScript array of Cell objects
+/// - `start`: Start of selection (0-based index)
+/// - `end`: End of selection (exclusive)
+///
+/// # Returns
+/// Boolean indicating whether there are slur indicators in the range
+#[wasm_bindgen(js_name = hasSlurInSelection)]
+pub fn has_slur_in_selection(
+    cells_js: JsValue,
+    start: usize,
+    end: usize,
+) -> Result<bool, JsValue> {
+    wasm_info!("hasSlurInSelection called: start={}, end={}", start, end);
+
+    // Deserialize cells from JavaScript
+    let cells: Vec<Cell> = serde_wasm_bindgen::from_value(cells_js)
+        .map_err(|e| {
+            wasm_error!("Deserialization error: {}", e);
+            JsValue::from_str(&format!("Deserialization error: {}", e))
+        })?;
+
+    wasm_log!("  Total cells: {}, selection range: {}..{}", cells.len(), start, end);
+
+    // Validate selection range
+    if start >= end || start >= cells.len() {
+        wasm_warn!("  Invalid selection range, returning false");
+        return Ok(false);
+    }
+
+    let actual_end = end.min(cells.len());
+
+    // Check for any slur indicators in the selection range
+    for i in start..actual_end {
+        if cells[i].has_slur() {
+            wasm_info!("  Found slur indicator at cell {}: {:?}", i, cells[i].slur_indicator);
+            return Ok(true);
+        }
+    }
+
+    wasm_info!("  No slur indicators found in selection range");
+    Ok(false)
 }
 
 #[cfg(test)]
