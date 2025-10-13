@@ -1182,6 +1182,12 @@ class MusicNotationEditor {
             return;
         }
 
+        // Check if there's a slur on this selection - if so, don't show rectangle
+        if (this.hasSlurOnSelection(selection)) {
+            // Let the slur rendering handle the visual indication
+            return;
+        }
+
         const charWidth = 12; // Approximate character width
         const laneOffsets = [0, 16, 32, 48]; // Visual offsets for lanes
         const yOffset = laneOffsets[selection.lane] || 16;
@@ -1755,12 +1761,96 @@ class MusicNotationEditor {
             this.hideCursor();
         });
 
-        // Click events for caret positioning
-        this.canvas.addEventListener('click', (event) => {
-            // Clear selection when clicking
-            this.clearSelection();
-            this.handleCanvasClick(event);
+        // Mouse drag selection support
+        this.canvas.addEventListener('mousedown', (event) => {
+            this.handleMouseDown(event);
         });
+
+        this.canvas.addEventListener('mousemove', (event) => {
+            this.handleMouseMove(event);
+        });
+
+        this.canvas.addEventListener('mouseup', (event) => {
+            this.handleMouseUp(event);
+        });
+
+        // Click events for caret positioning (when not selecting)
+        this.canvas.addEventListener('click', (event) => {
+            if (!this.isDragging) {
+                // Clear selection when clicking
+                this.clearSelection();
+                this.handleCanvasClick(event);
+            }
+        });
+    }
+
+    /**
+     * Handle mouse down - start selection or positioning
+     */
+    handleMouseDown(event) {
+        const rect = this.canvas.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        const y = event.clientY - rect.top;
+
+        const cellPosition = this.calculateCellPosition(x, y);
+
+        if (cellPosition !== null) {
+            this.isDragging = true;
+            this.dragStartPos = cellPosition;
+            this.dragEndPos = cellPosition;
+
+            // Start selection from current position
+            this.initializeSelection(cellPosition, cellPosition);
+            this.setCursorPosition(cellPosition);
+
+            // Prevent default to avoid text selection behavior
+            event.preventDefault();
+        }
+    }
+
+    /**
+     * Handle mouse move - update selection if dragging
+     */
+    handleMouseMove(event) {
+        if (!this.isDragging) return;
+
+        const rect = this.canvas.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        const y = event.clientY - rect.top;
+
+        const cellPosition = this.calculateCellPosition(x, y);
+
+        if (cellPosition !== null) {
+            this.dragEndPos = cellPosition;
+
+            // Update selection range
+            this.initializeSelection(this.dragStartPos, cellPosition);
+            this.setCursorPosition(cellPosition);
+            this.updateSelectionDisplay();
+
+            // Prevent default to avoid text selection behavior
+            event.preventDefault();
+        }
+    }
+
+    /**
+     * Handle mouse up - finish selection
+     */
+    handleMouseUp(event) {
+        if (this.isDragging) {
+            // Finalize selection before clearing isDragging flag
+            if (this.dragStartPos !== this.dragEndPos) {
+                this.initializeSelection(this.dragStartPos, this.dragEndPos);
+                this.updateSelectionDisplay();
+            }
+
+            // Delay clearing the dragging flag to prevent click event from clearing selection
+            setTimeout(() => {
+                this.isDragging = false;
+                this.dragStartPos = null;
+                this.dragEndPos = null;
+            }, 10);
+        }
     }
 
     /**

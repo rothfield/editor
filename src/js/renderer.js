@@ -694,36 +694,25 @@ class DOMRenderer {
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
 
-        // Calculate positions with proper lane offset
+        // Calculate positions - slur should be ABOVE the notes
         const laneOffsets = [0, 16, 32, 48]; // Visual offsets for lanes
         const laneOffset = laneOffsets[slur.start?.lane || 1] || 16;
 
         const startX = slur.start.x || (slur.start.column * 12);
-        const startY = laneOffset + (slur.start.y || 0);
+        const startY = laneOffset + (slur.start.y || 0) - 8; // Position 8px ABOVE the text line
         const endX = slur.end.x || (slur.end.column * 12);
-        const endY = laneOffset + (slur.end.y || 0);
+        const endY = laneOffset + (slur.end.y || 0) - 8; // Position 8px ABOVE the text line
 
         const width = endX - startX;
         if (width <= 0) return; // Skip invalid slur
 
-        // Calculate Bézier curve parameters
-        const curvature = slur.visual.curvature || 0.15;
-        const controlHeight = width * curvature * 2; // More pronounced curve
+        // Calculate Bézier curve parameters - arc should curve UPWARD above notes
+        const curvature = slur.visual.curvature || 0.2; // Increased curvature for more pronounced arc
+        const controlHeight = width * curvature * 3; // Even more pronounced curve upward
         const controlX = startX + width / 2;
 
-        // Determine curve direction based on slur.direction
-        let controlY;
-        switch (slur.direction) {
-            case 0: // Upward
-                controlY = startY - controlHeight;
-                break;
-            case 1: // Downward
-                controlY = startY + controlHeight;
-                break;
-            default:
-                // Default upward for undefined direction
-                controlY = startY - controlHeight;
-        }
+        // Slur always curves UPWARD above the notes
+        const controlY = startY - controlHeight; // Always curve upward, above the text
 
         // Draw smooth Bézier curve
         ctx.moveTo(startX, startY);
