@@ -149,9 +149,9 @@ fn parse_note(s: &str, pitch_system: PitchSystem, column: usize) -> Option<Cell>
     }
 }
 
-/// Parse barline (includes "|", ":", "|:", ":|", "||", etc.)
+/// Parse barline (includes "|", "|:", ":|", "||", etc.)
 fn parse_barline(s: &str, column: usize) -> Option<Cell> {
-    if matches!(s, "|" | ":" | "|:" | ":|" | "||") {
+    if matches!(s, "|" | "|:" | ":|" | "||") {
         let cell = Cell::new(s.to_string(), ElementKind::Barline, column);
         Some(cell)
     } else {

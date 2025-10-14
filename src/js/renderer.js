@@ -47,10 +47,10 @@ class DOMRenderer {
         left: 0;
         right: 0;
         bottom: -10px; /* 10px below cell */
-        height: 8px;
+        height: 5px;
         border-left: 2px solid #666;
         border-bottom: 2px solid #666;
-        border-radius: 0 0 0 8px;
+        border-radius: 0 0 0 12px;
         pointer-events: none;
         z-index: 1;
       }
@@ -62,7 +62,7 @@ class DOMRenderer {
         left: 0;
         right: 0;
         bottom: -10px;
-        height: 8px;
+        height: 5px;
         border-bottom: 2px solid #666;
         pointer-events: none;
         z-index: 1;
@@ -75,10 +75,10 @@ class DOMRenderer {
         left: 0;
         right: 0;
         bottom: -10px;
-        height: 8px;
+        height: 5px;
         border-right: 2px solid #666;
         border-bottom: 2px solid #666;
-        border-radius: 0 0 8px 0;
+        border-radius: 0 0 12px 0;
         pointer-events: none;
         z-index: 1;
       }
@@ -265,14 +265,15 @@ class DOMRenderer {
     titleElement.className = 'document-title';
     titleElement.textContent = title;
 
-    // Style the title: centered, larger, bold, with spacing below
+    // Style the title: centered, larger, bold, with blank line after
     titleElement.style.cssText = `
       text-align: center;
       font-size: 20px;
       font-weight: bold;
       margin-top: 16px;
-      margin-bottom: 16px;
+      margin-bottom: 32px;
       width: 100%;
+      display: block;
     `;
 
     this.canvas.appendChild(titleElement);
@@ -777,11 +778,11 @@ class DOMRenderer {
     beatElement.style.left = `${leftPos}px`;
     beatElement.style.width = `${widthPx}px`;
     beatElement.style.top = `${topPos}px`;
-    beatElement.style.height = `${beat.visual.loop_height_px || 8}px`;
+    beatElement.style.height = `${beat.visual.loop_height_px || 5}px`;
     // Arc outline only - no bottom border (empty bowl)
     beatElement.style.border = '2px solid #666';
     beatElement.style.borderTop = 'none';
-    beatElement.style.borderRadius = '0 0 8px 8px';
+    beatElement.style.borderRadius = '0 0 12px 12px';
     beatElement.style.backgroundColor = 'transparent';
     beatElement.style.display = shouldDisplay ? 'block' : 'none';
     beatElement.style.zIndex = '1';
@@ -880,11 +881,11 @@ class DOMRenderer {
     slurElement.style.left = `${startX}px`;
     slurElement.style.width = `${width}px`;
     slurElement.style.top = `${slurY}px`;
-    slurElement.style.height = `8px`;
+    slurElement.style.height = `5px`;
     // Arc above - top border only (upside down bowl)
     slurElement.style.border = '1.5px solid #4a5568';
     slurElement.style.borderBottom = 'none';
-    slurElement.style.borderRadius = '8px 8px 0 0';
+    slurElement.style.borderRadius = '12px 12px 0 0';
     slurElement.style.backgroundColor = 'transparent';
     slurElement.style.zIndex = '3';
     slurElement.style.pointerEvents = 'none';

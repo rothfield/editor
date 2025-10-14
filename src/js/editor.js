@@ -64,7 +64,11 @@ class MusicNotationEditor {
         removeSlur: wasmModule.removeSlur,
         hasSlurInSelection: wasmModule.hasSlurInSelection,
         // Document API
-        createNewDocument: wasmModule.createNewDocument
+        createNewDocument: wasmModule.createNewDocument,
+        setTitle: wasmModule.setTitle,
+        setStaveLabel: wasmModule.setStaveLabel,
+        setStaveLyrics: wasmModule.setStaveLyrics,
+        setStaveTala: wasmModule.setStaveTala
       };
 
       const loadTime = performance.now() - startTime;
@@ -1678,13 +1682,12 @@ class MusicNotationEditor {
      */
   async setTala(talaString) {
     try {
-      // Update document metadata
-      const state = await this.saveDocument();
-      const doc = JSON.parse(state);
-
-      if (doc.staves.length > 0) {
-        doc.staves[0].metadata.tala = talaString;
-        await this.loadDocument(JSON.stringify(doc));
+      if (this.wasmModule && this.document && this.document.lines.length > 0) {
+        // Call WASM setStaveTala function
+        const updatedDocument = await this.wasmModule.setStaveTala(this.document, 0, talaString);
+        this.document = updatedDocument;
+        this.addToConsoleLog(`Tala set to: ${talaString}`);
+        await this.render();
       }
     } catch (error) {
       console.error('Failed to set tala:', error);

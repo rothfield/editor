@@ -436,17 +436,24 @@ class UI {
   /**
      * Set document title
      */
-  setTitle() {
+  async setTitle() {
     const currentTitle = this.getDocumentTitle();
     const newTitle = prompt('Enter document title:', currentTitle);
 
     if (newTitle !== null && newTitle.trim() !== '') {
       this.updateDocumentTitle(newTitle);
 
-      if (this.editor && this.editor.document) {
-        this.editor.document.title = newTitle;
-        this.editor.addToConsoleLog(`Document title set to: ${newTitle}`);
-        this.editor.render(); // Re-render to show title on canvas
+      if (this.editor && this.editor.document && this.editor.wasmModule) {
+        // Call WASM setTitle function
+        try {
+          const updatedDocument = await this.editor.wasmModule.setTitle(this.editor.document, newTitle);
+          this.editor.document = updatedDocument;
+          this.editor.addToConsoleLog(`Document title set to: ${newTitle}`);
+          await this.editor.render(); // Re-render to show title on canvas
+        } catch (error) {
+          console.error('Failed to set title via WASM:', error);
+          this.editor.addToConsoleLog(`Error setting title: ${error.message}`);
+        }
       }
     }
   }
@@ -530,16 +537,24 @@ class UI {
   /**
      * Set line label
      */
-  setLabel() {
+  async setLabel() {
     const currentLabel = this.getLineLabel();
     const newLabel = prompt('Enter line label:', currentLabel);
 
     if (newLabel !== null && newLabel.trim() !== '') {
       this.updateLineLabelDisplay(newLabel);
 
-      if (this.editor && this.editor.document && this.editor.document.lines.length > 0) {
-        this.editor.document.lines[0].label = newLabel;
-        this.editor.addToConsoleLog(`Line label set to: ${newLabel}`);
+      if (this.editor && this.editor.document && this.editor.document.lines.length > 0 && this.editor.wasmModule) {
+        // Call WASM setStaveLabel function
+        try {
+          const updatedDocument = await this.editor.wasmModule.setStaveLabel(this.editor.document, 0, newLabel);
+          this.editor.document = updatedDocument;
+          this.editor.addToConsoleLog(`Line label set to: ${newLabel}`);
+          await this.editor.render();
+        } catch (error) {
+          console.error('Failed to set label via WASM:', error);
+          this.editor.addToConsoleLog(`Error setting label: ${error.message}`);
+        }
       }
     }
   }
@@ -581,16 +596,24 @@ class UI {
   /**
      * Set lyrics
      */
-  setLyrics() {
+  async setLyrics() {
     const currentLyrics = this.getLyrics();
     const newLyrics = prompt('Enter lyrics:', currentLyrics);
 
     if (newLyrics !== null && newLyrics.trim() !== '') {
       this.updateLyricsDisplay(newLyrics);
 
-      if (this.editor && this.editor.document && this.editor.document.lines.length > 0) {
-        this.editor.document.lines[0].lyrics = newLyrics;
-        this.editor.addToConsoleLog(`Lyrics set to: ${newLyrics}`);
+      if (this.editor && this.editor.document && this.editor.document.lines.length > 0 && this.editor.wasmModule) {
+        // Call WASM setStaveLyrics function
+        try {
+          const updatedDocument = await this.editor.wasmModule.setStaveLyrics(this.editor.document, 0, newLyrics);
+          this.editor.document = updatedDocument;
+          this.editor.addToConsoleLog(`Lyrics set to: ${newLyrics}`);
+          await this.editor.render();
+        } catch (error) {
+          console.error('Failed to set lyrics via WASM:', error);
+          this.editor.addToConsoleLog(`Error setting lyrics: ${error.message}`);
+        }
       }
     }
   }
