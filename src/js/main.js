@@ -50,6 +50,9 @@ class MusicNotationApp {
       this.ui = new UI(this.editor);
       this.resizeHandle = new ResizeHandle();
 
+      // Pass UI reference to editor so it can update UI elements
+      this.editor.ui = this.ui;
+
       // Initialize the editor
       await this.editor.initialize();
 

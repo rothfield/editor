@@ -33,13 +33,20 @@ class DOMRenderer {
   setupBeatLoopStyles() {
     const style = document.createElement('style');
     style.textContent = `
+      /* Remove padding/margin from cells to ensure tight fit */
+      .char-cell {
+        padding: 0;
+        margin: 0;
+        box-sizing: content-box;
+      }
+
       /* Beat loop arc - first cell has left edge */
       .char-cell.beat-first::after {
         content: '';
         position: absolute;
         left: 0;
+        right: 0;
         bottom: -10px; /* 10px below cell */
-        width: 100%;
         height: 8px;
         border-left: 2px solid #666;
         border-bottom: 2px solid #666;
@@ -53,8 +60,8 @@ class DOMRenderer {
         content: '';
         position: absolute;
         left: 0;
+        right: 0;
         bottom: -10px;
-        width: 100%;
         height: 8px;
         border-bottom: 2px solid #666;
         pointer-events: none;
@@ -66,8 +73,8 @@ class DOMRenderer {
         content: '';
         position: absolute;
         left: 0;
+        right: 0;
         bottom: -10px;
-        width: 100%;
         height: 8px;
         border-right: 2px solid #666;
         border-bottom: 2px solid #666;
@@ -337,43 +344,50 @@ class DOMRenderer {
       });
     }
 
-    // Calculate cumulative x positions based on actual grapheme lengths
-    let cumulativeX = 0;
-    const cellPositions = [];
-    cells.forEach((charCell) => {
-      cellPositions.push(cumulativeX);
-      const graphemeLength = (charCell.glyph || '').length;
-      cumulativeX += graphemeLength * 12; // 12px per character
-    });
+    // Position cells sequentially from left margin
+    // Start with a left margin of 5 character widths (60px)
+    // TODO: Extract this as a shared constant (LEFT_MARGIN_PX) used across renderer.js and editor.js
+    let cumulativeX = 60;
 
-    // Render each Cell and update ephemeral rendering fields
+    // Render and position cells sequentially, tracking cumulative position
     cells.forEach((charCell, cellIndex) => {
-      // Set ephemeral rendering fields (hitboxes) on the cell
-      const graphemeLength = (charCell.glyph || '').length;
-      const cellWidth = graphemeLength * 12;
-      charCell.x = cellPositions[cellIndex];
-      charCell.y = 32; // Position 32px from top (2 font heights above)
-      charCell.w = cellWidth;
+      charCell.x = cumulativeX;
+      charCell.y = 32;
       charCell.h = 16;
+      charCell.w = 0; // Will be measured after render
 
-      // Update bounding box and hit testing area
-      charCell.bbox = [charCell.x, charCell.y, charCell.x + charCell.w, charCell.y + charCell.h];
-      charCell.hit = [charCell.x - 2.0, charCell.y - 2.0, charCell.x + charCell.w + 2.0, charCell.y + charCell.h + 2.0];
-
-      console.log(`📐 Set hitbox for cell ${cellIndex} (${charCell.glyph}):`, {
-        x: charCell.x,
-        y: charCell.y,
-        w: charCell.w,
-        h: charCell.h,
-        bbox: charCell.bbox,
-        hit: charCell.hit
-      });
-
-      // Get beat position for this cell
       const beatPosition = cellBeatInfo.get(cellIndex);
+      this.renderCell(charCell, lineIndex, cellIndex, container, cumulativeX, beatPosition);
 
-      this.renderCell(charCell, lineIndex, cellIndex, container, cellPositions[cellIndex], beatPosition);
+      // Immediately measure and store the width
+      const key = `${lineIndex}-${cellIndex}`;
+      const element = this.charCellElements.get(key);
+
+      if (element) {
+        // Measure actual rendered width using getBoundingClientRect
+        const rect = element.getBoundingClientRect();
+        const actualWidth = rect.width;
+
+        charCell.w = actualWidth;
+
+        // Update bounding box and hit testing area
+        charCell.bbox = [charCell.x, charCell.y, charCell.x + charCell.w, charCell.y + charCell.h];
+        charCell.hit = [charCell.x - 2.0, charCell.y - 2.0, charCell.x + charCell.w + 2.0, charCell.y + charCell.h + 2.0];
+
+        // Advance to next position (this is where the next cell OR cursor will be)
+        cumulativeX += actualWidth;
+
+        // Store the right edge position for cursor positioning
+        charCell.rightEdge = charCell.x + charCell.w;
+
+        console.log(`📐 Cell ${cellIndex} (${charCell.glyph}): x=${charCell.x}, w=${charCell.w}, rightEdge=${charCell.rightEdge}`);
+      }
     });
+
+    // Store the final cumulative position in the line for cursor use
+    if (this.document && this.document.lines && this.document.lines[lineIndex]) {
+      this.document.lines[lineIndex].nextCursorX = cumulativeX;
+    }
 
     // Update hitboxes display after manual layout is complete
     if (this.editor && this.editor.updateHitboxesDisplay) {
@@ -400,29 +414,27 @@ class DOMRenderer {
   createCellElement(charCell, lineIndex, cellIndex, xPosition, beatPosition) {
     const element = document.createElement('span');
     element.className = this.getCellClasses(charCell);
-    element.textContent = charCell.glyph;
+    // Use non-breaking space for space characters so they have actual width
+    element.textContent = charCell.glyph === ' ' ? '\u00A0' : charCell.glyph;
 
     // Add beat position class if applicable
     if (beatPosition) {
       element.classList.add(beatPosition);
     }
 
-    // Calculate width based on actual grapheme length (e.g., "1#" = 2 chars = 24px)
-    const graphemeLength = (charCell.glyph || '').length;
-    const cellWidth = graphemeLength * 12; // 12px per character
-
     // Set positioning using inline styles
     element.style.position = 'absolute';
     element.style.left = `${charCell.x || xPosition || 0}px`;
     element.style.top = `${charCell.y || 32}px`;
-    element.style.width = `${charCell.w || cellWidth}px`;
+    // Never set width explicitly - let cells render at natural width
+    // This ensures beat loops span exactly the text content width
     element.style.height = `${charCell.h || 16}px`;
 
     // Add data attributes for debugging and CSS rendering
     element.dataset.lineIndex = lineIndex;
     element.dataset.cellIndex = cellIndex;
     element.dataset.column = charCell.col;
-    element.dataset.graphemeLength = graphemeLength;
+    element.dataset.graphemeLength = (charCell.glyph || '').length;
     element.dataset.octave = charCell.octave || 0;
 
     // Handle slur indicator - WASM returns slur_indicator (snake_case) or slurIndicator (camelCase)

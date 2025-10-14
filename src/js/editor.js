@@ -129,6 +129,11 @@ class MusicNotationEditor {
         this.document = typeof jsonString === 'string' ? JSON.parse(jsonString) : jsonString;
         await this.render();
         this.updateDocumentDisplay();
+
+        // Update UI title display
+        if (this.ui && this.document && this.document.title) {
+          this.ui.updateDocumentTitle(this.document.title);
+        }
       }
     } catch (error) {
       console.error('Failed to load document:', error);
@@ -215,12 +220,17 @@ class MusicNotationEditor {
           currentPos += cellDelta;
         }
 
-        // Update cursor position
+        // Update cursor position (just the column number, not visual position yet)
         logger.debug(LOG_CATEGORIES.CURSOR, 'Updating cursor position', {
           from: cursorPos,
           to: currentPos
         });
-        this.setCursorPosition(currentPos);
+        // Update cursor column without updating visual position (cells don't have x/w yet)
+        if (this.document && this.document.state) {
+          this.document.state.cursor.column = currentPos;
+          this.document.state.cursor.lane = 1;
+          this.updateCursorPositionDisplay();
+        }
 
         // Derive beats using WASM BeatDeriver
         this.deriveBeats(line);
@@ -243,6 +253,9 @@ class MusicNotationEditor {
       const endTime = performance.now();
       const duration = endTime - startTime;
       this.recordPerformanceMetric('typingLatency', duration);
+
+      // Show cursor after typing
+      this.showCursor();
 
       logger.timeEnd('insertText', LOG_CATEGORIES.EDITOR, { duration: `${duration.toFixed(2)}ms` });
     } catch (error) {
@@ -1139,39 +1152,39 @@ class MusicNotationEditor {
       return;
     }
 
-    // Always show selection rectangle, even if there's a slur
-    // The slur provides additional visual feedback but shouldn't replace selection
-
-    const charWidth = 12; // Approximate character width
-
-    // Get the line for accurate positioning
-    if (!this.document || !this.document.lines || this.document.lines.length === 0) {
-      return;
-    }
-
-    const line = this.document.lines[0];
-    const cells = line.cells || [];
-
-    // Calculate left position by summing widths of cells before selection.start
-    let leftPos = 0;
-    for (let i = 0; i < selection.start && i < cells.length; i++) {
-      const cell = cells[i];
-      leftPos += (cell.glyph || '').length * charWidth;
-    }
-
-    // Calculate width by summing widths of selected cells
-    let selectionWidth = 0;
-    for (let i = selection.start; i < selection.end && i < cells.length; i++) {
-      const cell = cells[i];
-      selectionWidth += (cell.glyph || '').length * charWidth;
-    }
-
     // Find the line element to append the selection to
-    // This ensures selection is positioned relative to the same container as cells and cursor
     const lineElement = this.renderer.canvas.querySelector(`[data-line="0"]`);
     if (!lineElement) {
       console.warn('❌ Line element not found, cannot position selection');
       return;
+    }
+
+    // Calculate left position and width by measuring actual DOM elements
+    let leftPos = 60;
+    let selectionWidth = 0;
+
+    // Get the start cell element
+    const startCellElement = lineElement.querySelector(`[data-cell-index="${selection.start}"]`);
+
+    if (startCellElement) {
+      const startRect = startCellElement.getBoundingClientRect();
+      const lineRect = lineElement.getBoundingClientRect();
+
+      // Left position is relative to the line element
+      leftPos = startRect.left - lineRect.left;
+
+      // Get the last selected cell (selection.end - 1)
+      const lastSelectedIndex = selection.end - 1;
+      const endCellElement = lineElement.querySelector(`[data-cell-index="${lastSelectedIndex}"]`);
+
+      if (endCellElement) {
+        const endRect = endCellElement.getBoundingClientRect();
+        // Width spans from start of first cell to end of last cell
+        selectionWidth = (endRect.left - lineRect.left + endRect.width) - leftPos;
+      } else {
+        // Just one cell selected
+        selectionWidth = startRect.width;
+      }
     }
 
     console.log('✅ Rendering selection highlight', {
@@ -1288,17 +1301,36 @@ class MusicNotationEditor {
         const line =this.document.lines[0];
         const letterLane = line.cells;
 
+        // Check if the cell at cursorPos - 1 has multiple characters
+        const cellToDelete = letterLane[cursorPos - 1];
+        const glyphLength = cellToDelete ? (cellToDelete.glyph || '').length : 0;
+        const hadMultipleChars = glyphLength > 1;
+
         logger.debug(LOG_CATEGORIES.EDITOR, 'Calling WASM deleteCharacter', {
           position: cursorPos - 1,
-          laneSize: letterLane.length
+          laneSize: letterLane.length,
+          glyphLength,
+          hadMultipleChars
         });
 
         const updatedCells = this.wasmModule.deleteCharacter(letterLane, cursorPos - 1);
         line.cells = updatedCells;
-        this.setCursorPosition(cursorPos - 1);
-        logger.info(LOG_CATEGORIES.EDITOR, 'Character deleted successfully', {
-          newLaneSize: updatedCells.length
-        });
+
+        // Only move cursor if the entire cell was deleted (had 1 char or cell is now gone)
+        // If it had multiple chars, one char was removed but cursor stays at same position
+        const cellStillExists = updatedCells[cursorPos - 1];
+        if (!hadMultipleChars || !cellStillExists) {
+          this.setCursorPosition(cursorPos - 1);
+          logger.info(LOG_CATEGORIES.EDITOR, 'Character deleted, cursor moved back', {
+            newLaneSize: updatedCells.length
+          });
+        } else {
+          // Multi-char glyph reduced but cursor stays
+          // Need to manually update cursor visual position since setCursorPosition wasn't called
+          logger.info(LOG_CATEGORIES.EDITOR, 'Character deleted from multi-char glyph, cursor stays', {
+            newLaneSize: updatedCells.length
+          });
+        }
       }
 
       // Recalculate beats after deletion
@@ -1306,6 +1338,9 @@ class MusicNotationEditor {
 
       await this.render();
       this.updateDocumentDisplay();
+
+      // Show cursor (showCursor will call updateCursorVisualPosition internally)
+      this.showCursor();
 
       // Restore visual selection after backspace
       this.updateSelectionDisplay();
@@ -1982,36 +2017,30 @@ class MusicNotationEditor {
       stavesLength: this.document?.staves?.length || 0
     });
 
-    // Calculate pixel position by summing widths of all cells before cursor
-    // Lanes have been removed - all cells are in a single array
-    let pixelPos = 0;
-    if (this.document && this.document.lines && this.document.lines.length > 0) {
-      const line = this.document.lines[0];
-      const allCells = line.cells || [];
+    // Calculate pixel position by measuring actual DOM elements
+    // Start with left margin of 5 character widths (60px)
+    // TODO: Extract this as a shared constant (LEFT_MARGIN_PX) used across renderer.js and editor.js
+    let pixelPos = 60;
 
-      console.log('🔍 Cursor position calculation:', {
-        cellIndex,
-        totalCells: allCells.length
-      });
-
-      // Sum up widths of all cells before the cursor position
-      for (let i = 0; i < cellIndex && i < allCells.length; i++) {
-        const cell = allCells[i];
-        const glyphLength = (cell.glyph || '').length;
-        pixelPos += glyphLength * charWidth;
-        console.log(`  Cell ${i}: glyph="${cell.glyph}", length=${glyphLength}, cumulative pixelPos=${pixelPos}`);
-      }
-
-      console.log('📐 Final calculated position:', {
-        pixelPos,
-        yOffset,
-        cellIndex
-      });
+    if (cellIndex === 0) {
+      // Cursor at start
+      pixelPos = 60;
     } else {
-      // Fallback if no document
-      pixelPos = cellIndex * charWidth;
-      console.log('⚠️ Using fallback calculation:', { pixelPos });
+      // Find the DOM element for the previous cell and measure it
+      const lineElement = this.canvas.querySelector('[data-line="0"]');
+      if (lineElement) {
+        const prevCellElement = lineElement.querySelector(`[data-cell-index="${cellIndex - 1}"]`);
+        if (prevCellElement) {
+          // Get the actual position from DOM
+          const rect = prevCellElement.getBoundingClientRect();
+          const lineRect = lineElement.getBoundingClientRect();
+          // Position cursor at the right edge of the previous cell
+          pixelPos = (rect.left - lineRect.left) + rect.width;
+        }
+      }
     }
+
+    console.log('📐 Cursor at cellIndex', cellIndex, 'position:', pixelPos);
 
     // Set cursor position relative to line element (same positioning context as cells)
     // The cursor is now positioned inside the line element, not the canvas

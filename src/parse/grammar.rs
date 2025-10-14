@@ -94,6 +94,14 @@ pub fn parse_with_before(prev: &Cell, c: char, pitch_system: PitchSystem) -> Opt
         log::info!("  ✅ Combined into {:?}", cell.kind);
         Some(cell)
     } else if prev.kind == ElementKind::Text {
+        // Check if the new character by itself would be a valid musical element
+        // If so, DON'T combine it with text - let it stand alone
+        let char_alone = parse_single(c, pitch_system, prev.col + 1);
+        if char_alone.kind != ElementKind::Text {
+            log::info!("  ❌ Cannot combine: '{}' is a valid {:?}, not text", c, char_alone.kind);
+            return None;
+        }
+
         // Both prev and new are text, so combine them as text
         log::info!("  ✅ Combined as text");
         Some(cell)
