@@ -81,7 +81,11 @@ class WasmIntegration {
       setTitle: wasmModule.setTitle,
       setStaveLabel: wasmModule.setStaveLabel,
       setStaveLyrics: wasmModule.setStaveLyrics,
-      setStaveTala: wasmModule.setStaveTala
+      setStaveTala: wasmModule.setStaveTala,
+
+      // Export/Import API
+      exportMusicXML: wasmModule.exportMusicXML,
+      convertMusicXMLToLilyPond: wasmModule.convertMusicXMLToLilyPond
     };
   }
 

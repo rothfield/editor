@@ -186,6 +186,66 @@ fn beat_starts_with_division(beat_cells: &[Cell]) -> bool {
         .unwrap_or(false)
 }
 
+/// Normalize beat by reducing rhythmic fractions using GCD
+/// Returns (normalized_slot_counts, effective_subdivisions)
+///
+/// Examples:
+/// - "1-2-3-" (slots: [2,2,2]) → GCD=2 → [1,1,1], subdivisions=3
+/// - "1-2---" (slots: [2,4]) → GCD=2 → [1,2], subdivisions=3
+/// - "1--" (slots: [3]) → GCD=3 → [1], subdivisions=1
+fn normalize_beat(beat_cells: &[Cell]) -> (Vec<usize>, usize) {
+    if beat_cells.is_empty() {
+        return (vec![], 0);
+    }
+
+    // Extract pitched elements and their slot counts
+    let mut slot_counts = Vec::new();
+    let mut i = 0;
+
+    while i < beat_cells.len() {
+        let cell = &beat_cells[i];
+
+        if cell.kind == ElementKind::PitchedElement {
+            // Count this note + following extensions
+            let mut slot_count = 1;
+            let mut j = i + 1;
+            while j < beat_cells.len() {
+                if beat_cells[j].kind == ElementKind::UnpitchedElement && beat_cells[j].glyph == "-" {
+                    slot_count += 1;
+                    j += 1;
+                } else {
+                    break;
+                }
+            }
+            slot_counts.push(slot_count);
+            i = j;
+        } else if cell.kind == ElementKind::UnpitchedElement && cell.glyph != "-" {
+            // Standalone rest
+            slot_counts.push(1);
+            i += 1;
+        } else {
+            // Skip standalone "-" or other elements
+            i += 1;
+        }
+    }
+
+    if slot_counts.is_empty() {
+        return (vec![], 0);
+    }
+
+    // Find GCD of all slot counts
+    let mut gcd_value = slot_counts[0];
+    for &count in &slot_counts[1..] {
+        gcd_value = gcd(gcd_value, count);
+    }
+
+    // Reduce by GCD
+    let normalized: Vec<usize> = slot_counts.iter().map(|&c| c / gcd_value).collect();
+    let effective_subdivisions: usize = normalized.iter().sum();
+
+    (normalized, effective_subdivisions)
+}
+
 /// Process a single beat with proper rhythm calculation
 fn process_beat(
     builder: &mut MusicXmlBuilder,
@@ -197,8 +257,15 @@ fn process_beat(
         return Ok(());
     }
 
-    let subdivisions = beat_cells.len();
+    // Normalize beat to get reduced slot counts and effective subdivisions
+    let (normalized_slots, subdivisions) = normalize_beat(beat_cells);
+
+    if subdivisions == 0 {
+        return Ok(());
+    }
+
     let mut i = 0;
+    let mut slot_index = 0;
 
     // Handle leading divisions (tied note from previous beat)
     if beat_starts_with_division(beat_cells) && builder.last_note.is_some() {
@@ -214,8 +281,12 @@ fn process_beat(
         if leading_div_count > 0 {
             // Write tied note using previous note's pitch
             let (prev_step, prev_alter, prev_octave) = builder.last_note.clone().unwrap();
-            let duration_divs = (measure_divisions / subdivisions) * leading_div_count;
-            let musical_duration = leading_div_count as f64 / subdivisions as f64;
+
+            // Calculate normalized duration for leading divisions
+            // These divisions belong to the previous beat, so we use the total cell count for subdivisions
+            let total_cells = beat_cells.len();
+            let duration_divs = (measure_divisions * leading_div_count) / total_cells;
+            let musical_duration = leading_div_count as f64 / total_cells as f64;
 
             // Reconstruct pitch from last_note (convert alter back to Accidental)
             let accidental = match prev_alter {
@@ -284,10 +355,17 @@ fn process_beat(
                     }
                 }
 
-                // Calculate duration based on subdivision position
-                let slot_count = 1 + extension_count;
-                let duration_divs = (measure_divisions / subdivisions) * slot_count;
-                let musical_duration = slot_count as f64 / subdivisions as f64;
+                // Use normalized slot count from the normalization result
+                if slot_index >= normalized_slots.len() {
+                    i += 1 + extension_count;
+                    continue;
+                }
+                let normalized_slot_count = normalized_slots[slot_index];
+                slot_index += 1;
+
+                // Calculate duration using normalized values
+                let duration_divs = (measure_divisions * normalized_slot_count) / subdivisions;
+                let musical_duration = normalized_slot_count as f64 / subdivisions as f64;
 
                 // Extract pitch
                 if let (Some(pitch_code), Some(pitch_system)) = (&cell.pitch_code, cell.pitch_system) {
@@ -325,8 +403,15 @@ fn process_beat(
             }
             ElementKind::UnpitchedElement if cell.glyph != "-" => {
                 // Standalone unpitched element (rest, not extension)
-                let duration_divs = measure_divisions / subdivisions;
-                let musical_duration = 1.0 / subdivisions as f64;
+                if slot_index >= normalized_slots.len() {
+                    i += 1;
+                    continue;
+                }
+                let normalized_slot_count = normalized_slots[slot_index];
+                slot_index += 1;
+
+                let duration_divs = (measure_divisions * normalized_slot_count) / subdivisions;
+                let musical_duration = normalized_slot_count as f64 / subdivisions as f64;
                 elements.push(BeatElement::Rest {
                     duration_divs,
                     musical_duration,
