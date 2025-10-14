@@ -288,7 +288,7 @@ const DevUtils = {
     console.log(`Testing notation: "${notation}"`);
     await appInstance.editor.parseText(notation);
 
-    const state = appInstance.editor.document;
+    const state = appInstance.editor.theDocument;
     console.log('Parsed state:', state);
   },
 

@@ -9,7 +9,8 @@ use wasm_bindgen::prelude::*;
 /// Enumeration of all possible musical element types that can be represented in a Cell
 #[wasm_bindgen]
 #[repr(u8)]
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(serde_repr::Serialize_repr, serde_repr::Deserialize_repr)]
 pub enum ElementKind {
     /// Unknown or uninitialized element type
     Unknown = 0,
@@ -82,85 +83,12 @@ impl Default for ElementKind {
     }
 }
 
-/// Enumeration defining the vertical positioning lanes for Cell elements
-#[wasm_bindgen]
-#[repr(u8)]
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum LaneKind {
-    /// Upper annotations and ornaments (above the main line)
-    Upper = 0,
-
-    /// Main musical notation line (primary content)
-    Letter = 1,
-
-    /// Lower annotations and marks (below the main line)
-    Lower = 2,
-
-    /// Lyrics and text below the notation
-    Lyrics = 3,
-}
-
-impl LaneKind {
-    /// Get the vertical offset for this lane relative to the baseline
-    pub fn vertical_offset(&self, font_size: f32) -> f32 {
-        match self {
-            LaneKind::Upper => -font_size * 0.8,
-            LaneKind::Letter => 0.0,
-            LaneKind::Lower => font_size * 0.4,
-            LaneKind::Lyrics => font_size * 1.2,
-        }
-    }
-
-    /// Get the baseline position for this lane
-    pub fn baseline(&self, base_y: f32, font_size: f32) -> f32 {
-        base_y + self.vertical_offset(font_size)
-    }
-
-    /// Get a human-readable name for this lane
-    pub fn name(&self) -> &'static str {
-        match self {
-            LaneKind::Upper => "Upper",
-            LaneKind::Letter => "Letter",
-            LaneKind::Lower => "Lower",
-            LaneKind::Lyrics => "Lyrics",
-        }
-    }
-
-    /// Get CSS class name for this lane
-    pub fn css_class(&self) -> &'static str {
-        match self {
-            LaneKind::Upper => "lane-upper",
-            LaneKind::Letter => "lane-letter",
-            LaneKind::Lower => "lane-lower",
-            LaneKind::Lyrics => "lane-lyrics",
-        }
-    }
-}
-
-impl Default for LaneKind {
-    fn default() -> Self {
-        LaneKind::Letter
-    }
-}
-
-impl TryFrom<u8> for LaneKind {
-    type Error = &'static str;
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        match value {
-            0 => Ok(LaneKind::Upper),
-            1 => Ok(LaneKind::Letter),
-            2 => Ok(LaneKind::Lower),
-            3 => Ok(LaneKind::Lyrics),
-            _ => Err("Invalid lane value"),
-        }
-    }
-}
 
 /// Enumeration of supported pitch systems for musical notation
 #[wasm_bindgen]
 #[repr(u8)]
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(serde_repr::Serialize_repr, serde_repr::Deserialize_repr)]
 pub enum PitchSystem {
     /// Unknown pitch system
     Unknown = 0,
@@ -385,7 +313,8 @@ impl Default for OctaveDisplay {
 /// Slur indicator for cells that start or end a slur
 #[wasm_bindgen]
 #[repr(u8)]
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(serde_repr::Serialize_repr, serde_repr::Deserialize_repr)]
 pub enum SlurIndicator {
     /// No slur indicator
     None = 0,

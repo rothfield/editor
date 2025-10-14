@@ -30,7 +30,7 @@ impl BeatDeriver {
         BeatDeriver {
             config: BeatConfig {
                 draw_single_cell_loops: false,
-                breath_ends_beat: true,
+                breath_ends_beat: false,
                 loop_offset_px: 20.0,
                 loop_height_px: 6.0,
             },
@@ -63,32 +63,34 @@ impl BeatDeriver {
 }
 
 impl BeatDeriver {
-    /// Extract implicit beats from temporal cells
+    /// Extract implicit beats from cells based on line grammar rules
+    /// Grammar: beat-element = pitched-element | unpitched-element | breath-mark
+    /// Beats are separated by anything that is NOT a beat-element (whitespace, text, barline, etc.)
     pub fn extract_implicit_beats(&self, cells: &[Cell]) -> Vec<BeatSpan> {
+        log::info!("🎵 BeatDeriver: extracting beats from {} cells", cells.len());
+
         let mut beats = Vec::new();
         let mut beat_start = None;
         let mut current_duration = 1.0;
 
         for (index, cell) in cells.iter().enumerate() {
-            if !cell.is_temporal() {
-                // End current beat if we hit a non-temporal element
-                if let Some(start) = beat_start {
-                    beats.push(BeatSpan::new(start, index - 1, current_duration));
-                    beat_start = None;
-                    current_duration = 1.0;
+            let is_beat = self.is_beat_element(cell);
+            log::info!("  Cell {}: '{}' kind={:?} is_beat_element={}",
+                index, cell.glyph, cell.kind, is_beat);
+
+            if is_beat {
+                // This cell is part of a beat
+                if beat_start.is_none() {
+                    beat_start = Some(index);
+                    log::info!("    ▶️ Starting new beat at {}", index);
                 }
-                continue;
-            }
-
-            // Start new beat if needed
-            if beat_start.is_none() {
-                beat_start = Some(index);
-            }
-
-            // Check if this cell ends the beat
-            if self.should_end_beat(cell, cells.get(index + 1)) {
+                // Continue the current beat
+            } else {
+                // This cell is NOT a beat-element (separator: whitespace, text, barline, etc.)
+                // End current beat if one is active
                 if let Some(start) = beat_start {
-                    beats.push(BeatSpan::new(start, index, current_duration));
+                    log::info!("    ⏹️ Ending beat: start={} end={}", start, index - 1);
+                    beats.push(BeatSpan::new(start, index - 1, current_duration));
                     beat_start = None;
                     current_duration = 1.0;
                 }
@@ -97,32 +99,23 @@ impl BeatDeriver {
 
         // Handle trailing beat
         if let Some(start) = beat_start {
+            log::info!("  ⏹️ Ending trailing beat: start={} end={}", start, cells.len() - 1);
             beats.push(BeatSpan::new(start, cells.len() - 1, current_duration));
         }
 
+        log::info!("✅ BeatDeriver: extracted {} beats", beats.len());
         beats
     }
 
-    /// Determine if a beat should end at this cell
-    fn should_end_beat(&self, current: &Cell, next: Option<&Cell>) -> bool {
-        // End beat before non-temporal elements
-        if let Some(next_cell) = next {
-            if !next_cell.is_temporal() {
-                return true;
-            }
-        }
-
-        // End beat at breath marks if configured
-        if current.kind == ElementKind::BreathMark && self.config.breath_ends_beat {
-            return true;
-        }
-
-        // End beat at barlines
-        if current.kind == ElementKind::Barline {
-            return true;
-        }
-
-        false
+    /// Check if element is a beat-element per grammar
+    /// beat-element = pitched-element | unpitched-element | breath-mark
+    fn is_beat_element(&self, cell: &Cell) -> bool {
+        matches!(
+            cell.kind,
+            ElementKind::PitchedElement
+            | ElementKind::UnpitchedElement
+            | ElementKind::BreathMark
+        )
     }
 }
 
@@ -130,7 +123,7 @@ impl Default for BeatConfig {
     fn default() -> Self {
         Self {
             draw_single_cell_loops: false,
-            breath_ends_beat: true,
+            breath_ends_beat: false,
             loop_offset_px: 20.0,
             loop_height_px: 6.0,
         }

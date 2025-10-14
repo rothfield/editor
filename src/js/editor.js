@@ -14,7 +14,7 @@ class MusicNotationEditor {
     // Ensure canvas has position: relative for absolute positioning of child elements
     this.canvas.style.position = 'relative';
     this.wasmModule = null;
-    this.document = null;
+    this.theDocument = null;
     this.renderer = null;
     this.eventHandlers = new Map();
     this.isInitialized = false;
@@ -50,10 +50,8 @@ class MusicNotationEditor {
 
       // Initialize WASM components
       this.wasmModule = {
-        parser: new wasmModule.CellParser(),
         beatDeriver: new wasmModule.BeatDeriver(),
         layoutRenderer: new wasmModule.LayoutRenderer(16),
-        graphemeSegmenter: new wasmModule.GraphemeSegmenter(),
         // New recursive descent API
         insertCharacter: wasmModule.insertCharacter,
         parseText: wasmModule.parseText,
@@ -130,13 +128,13 @@ class MusicNotationEditor {
   async loadDocument(jsonString) {
     try {
       if (this.wasmModule) {
-        this.document = typeof jsonString === 'string' ? JSON.parse(jsonString) : jsonString;
+        this.theDocument = typeof jsonString === 'string' ? JSON.parse(jsonString) : jsonString;
         await this.render();
         this.updateDocumentDisplay();
 
         // Update UI title display
-        if (this.ui && this.document && this.document.title) {
-          this.ui.updateDocumentTitle(this.document.title);
+        if (this.ui && this.theDocument && this.theDocument.title) {
+          this.ui.updateDocumentTitle(this.theDocument.title);
         }
       }
     } catch (error) {
@@ -151,7 +149,7 @@ class MusicNotationEditor {
      */
   async saveDocument() {
     try {
-      return JSON.stringify(this.document);
+      return JSON.stringify(this.theDocument);
     } catch (error) {
       console.error('Failed to save document:', error);
       this.showError('Failed to save document');
@@ -181,8 +179,8 @@ class MusicNotationEditor {
     const startTime = performance.now();
 
     try {
-      if (this.document && this.document.lines && this.document.lines.length > 0) {
-        const line = this.document.lines[0];
+      if (this.theDocument && this.theDocument.lines && this.theDocument.lines.length > 0) {
+        const line = this.theDocument.lines[0];
         let letterLane = line.cells; // Main line of notation
 
         logger.debug(LOG_CATEGORIES.PARSER, 'Processing characters', {
@@ -230,9 +228,9 @@ class MusicNotationEditor {
           to: currentPos
         });
         // Update cursor column without updating visual position (cells don't have x/w yet)
-        if (this.document && this.document.state) {
-          this.document.state.cursor.column = currentPos;
-          this.document.state.cursor.lane = 1;
+        if (this.theDocument && this.theDocument.state) {
+          this.theDocument.state.cursor.column = currentPos;
+          this.theDocument.state.cursor.lane = 1;
           this.updateCursorPositionDisplay();
         }
 
@@ -332,9 +330,9 @@ class MusicNotationEditor {
       const pitchSystem = this.getCurrentPitchSystem();
 
       // Parse text using WASM recursive descent parser
-      if (this.document && this.document.lines && this.document.lines.length > 0) {
+      if (this.theDocument && this.theDocument.lines && this.theDocument.lines.length > 0) {
         const cells = this.wasmModule.parseText(text, pitchSystem);
-        const line =this.document.lines[0];
+        const line =this.theDocument.lines[0];
         line.cells = cells; // Replace main line with parsed cells
       }
 
@@ -499,8 +497,8 @@ class MusicNotationEditor {
 
     try {
       // Simple deletion for POC - manual array manipulation
-      if (this.document && this.document.lines && this.document.lines.length > 0) {
-        const line =this.document.lines[0];
+      if (this.theDocument && this.theDocument.lines && this.theDocument.lines.length > 0) {
+        const line =this.theDocument.lines[0];
         const letterLane = line.cells; // Main line
 
         // Delete cells in range
@@ -523,8 +521,8 @@ class MusicNotationEditor {
      * Get current cursor position
      */
   getCursorPosition() {
-    if (this.document && this.document.state) {
-      return this.document.state.cursor.column;
+    if (this.theDocument && this.theDocument.state) {
+      return this.theDocument.state.cursor.column;
     }
     return 0;
   }
@@ -533,9 +531,9 @@ class MusicNotationEditor {
      * Set cursor position (always on main line, lane 1)
      */
   setCursorPosition(position) {
-    if (this.document && this.document.state) {
-      this.document.state.cursor.column = position;
-      this.document.state.cursor.lane = 1; // Always on main line
+    if (this.theDocument && this.theDocument.state) {
+      this.theDocument.state.cursor.column = position;
+      this.theDocument.state.cursor.lane = 1; // Always on main line
       this.updateCursorPositionDisplay();
       this.updateCursorVisualPosition();
     }
@@ -597,8 +595,8 @@ class MusicNotationEditor {
      * Get current pitch system
      */
   getCurrentPitchSystem() {
-    if (this.document) {
-      return this.document.pitch_system || 1; // Default to Number system
+    if (this.theDocument) {
+      return this.theDocument.pitch_system || 1; // Default to Number system
     }
     return 1;
   }
@@ -908,11 +906,11 @@ class MusicNotationEditor {
      * Get the maximum cell index in the main lane
      */
   getMaxCellIndex() {
-    if (!this.document || !this.document.lines || this.document.lines.length === 0) {
+    if (!this.theDocument || !this.theDocument.lines || this.theDocument.lines.length === 0) {
       return 0;
     }
 
-    const line = this.document.lines[0];
+    const line = this.theDocument.lines[0];
     const cells = line.cells || [];
 
     return cells.length; // Position after last cell
@@ -933,11 +931,11 @@ class MusicNotationEditor {
      * Initialize selection range (always on main line, lane 1)
      */
   initializeSelection(startPos, endPos) {
-    if (!this.document || !this.document.state) {
+    if (!this.theDocument || !this.theDocument.state) {
       return;
     }
 
-    this.document.state.selection = {
+    this.theDocument.state.selection = {
       start: Math.min(startPos, endPos),
       end: Math.max(startPos, endPos),
       active: true
@@ -948,8 +946,8 @@ class MusicNotationEditor {
      * Clear current selection
      */
   clearSelection() {
-    if (this.document && this.document.state) {
-      this.document.state.selection = null;
+    if (this.theDocument && this.theDocument.state) {
+      this.theDocument.state.selection = null;
     }
     this.clearSelectionVisual();
     this.updateDocumentDisplay();
@@ -959,7 +957,7 @@ class MusicNotationEditor {
      * Check if there's an active selection
      */
   hasSelection() {
-    return !!(this.document && this.document.state && this.document.state.selection && this.document.state.selection.active);
+    return !!(this.theDocument && this.theDocument.state && this.theDocument.state.selection && this.theDocument.state.selection.active);
   }
 
   /**
@@ -967,7 +965,7 @@ class MusicNotationEditor {
      */
   getSelection() {
     if (this.hasSelection()) {
-      return this.document.state.selection;
+      return this.theDocument.state.selection;
     }
     return null;
   }
@@ -981,11 +979,11 @@ class MusicNotationEditor {
       return '';
     }
 
-    if (!this.document || !this.document.lines || this.document.lines.length === 0) {
+    if (!this.theDocument || !this.theDocument.lines || this.theDocument.lines.length === 0) {
       return '';
     }
 
-    const line = this.document.lines[0];
+    const line = this.theDocument.lines[0];
     const cells = line.cells || [];
 
     if (cells.length === 0) {
@@ -1301,8 +1299,8 @@ class MusicNotationEditor {
       await this.recalculateBeats();
     } else if (cursorPos > 0) {
       // Use WASM API to delete character
-      if (this.document && this.document.lines && this.document.lines.length > 0) {
-        const line =this.document.lines[0];
+      if (this.theDocument && this.theDocument.lines && this.theDocument.lines.length > 0) {
+        const line =this.theDocument.lines[0];
         const letterLane = line.cells;
 
         // Check if the cell at cursorPos - 1 has multiple characters
@@ -1369,8 +1367,8 @@ class MusicNotationEditor {
 
       if (cursorPos < maxPos) {
         // Use WASM API to delete character
-        if (this.document && this.document.lines && this.document.lines.length > 0) {
-          const line =this.document.lines[0];
+        if (this.theDocument && this.theDocument.lines && this.theDocument.lines.length > 0) {
+          const line =this.theDocument.lines[0];
           const letterLane = line.cells;
 
           const updatedCells = this.wasmModule.deleteCharacter(letterLane, cursorPos);
@@ -1394,8 +1392,8 @@ class MusicNotationEditor {
      */
   async recalculateBeats() {
     try {
-      if (this.document && this.document.lines && this.document.lines.length > 0) {
-        const line = this.document.lines[0];
+      if (this.theDocument && this.theDocument.lines && this.theDocument.lines.length > 0) {
+        const line = this.theDocument.lines[0];
 
         // Re-derive beats using WASM BeatDeriver
         this.deriveBeats(line);
@@ -1411,11 +1409,11 @@ class MusicNotationEditor {
      * Get current text content from the document
      */
   getCurrentTextContent() {
-    if (!this.document || !this.document.lines || this.document.lines.length === 0) {
+    if (!this.theDocument || !this.theDocument.lines || this.theDocument.lines.length === 0) {
       return '';
     }
 
-    const line = this.document.lines[0];
+    const line = this.theDocument.lines[0];
     const letterLane = line.cells; // Main line
 
     return letterLane.map(cell => cell.glyph || '').join('');
@@ -1451,6 +1449,13 @@ class MusicNotationEditor {
     }
 
     return true;
+  }
+
+  /**
+     * Toggle slur on current selection
+     */
+  async toggleSlur() {
+    return this.applySlur();
   }
 
   /**
@@ -1491,8 +1496,8 @@ class MusicNotationEditor {
       } else {
         this.addToConsoleLog(`Applying slur to selection: "${selectedText}"`);
         // Apply slur using WASM API
-        if (this.document && this.document.lines && this.document.lines.length > 0) {
-          const line =this.document.lines[0];
+        if (this.theDocument && this.theDocument.lines && this.theDocument.lines.length > 0) {
+          const line =this.theDocument.lines[0];
           const letterLane = line.cells; // Main line
 
           console.log('🔧 Calling WASM applySlur:', {
@@ -1534,11 +1539,11 @@ class MusicNotationEditor {
      * Check if there's already a slur on the given selection using WASM API
      */
   hasSlurOnSelection(selection) {
-    if (!this.document || !this.document.lines || this.document.lines.length === 0) {
+    if (!this.theDocument || !this.theDocument.lines || this.theDocument.lines.length === 0) {
       return false;
     }
 
-    const line =this.document.lines[0];
+    const line =this.theDocument.lines[0];
     const letterLane = line.cells; // Main line
 
     // Call WASM API to check for slur indicators
@@ -1554,11 +1559,11 @@ class MusicNotationEditor {
      * Remove slur from the given selection using WASM API
      */
   async removeSlurFromSelection(selection) {
-    if (!this.document || !this.document.lines || this.document.lines.length === 0) {
+    if (!this.theDocument || !this.theDocument.lines || this.theDocument.lines.length === 0) {
       return;
     }
 
-    const line =this.document.lines[0];
+    const line =this.theDocument.lines[0];
     const letterLane = line.cells; // Main line
 
     // Call WASM API to remove slur
@@ -1577,19 +1582,23 @@ class MusicNotationEditor {
 
 
   /**
-     * Apply octave to current selection with enhanced validation
+     * Toggle octave on current selection
+     * If all pitched elements have the target octave, removes it (sets to 0)
+     * Otherwise, applies the target octave
      */
-  async applyOctave(octave) {
+  async toggleOctave(octave) {
+    console.log(`🎵 toggleOctave called with octave=${octave}`);
+
     if (!this.isInitialized || !this.wasmModule) {
-      logger.warn(LOG_CATEGORIES.COMMAND, 'applyOctave called before initialization');
+      logger.warn(LOG_CATEGORIES.COMMAND, 'toggleOctave called before initialization');
       return;
     }
 
-    logger.time('applyOctave', LOG_CATEGORIES.COMMAND);
+    logger.time('toggleOctave', LOG_CATEGORIES.COMMAND);
 
     // Validate selection
     if (!this.validateSelectionForCommands()) {
-      logger.warn(LOG_CATEGORIES.COMMAND, 'applyOctave called without valid selection');
+      logger.warn(LOG_CATEGORIES.COMMAND, 'toggleOctave called without valid selection');
       return;
     }
 
@@ -1597,7 +1606,7 @@ class MusicNotationEditor {
       const selection = this.getSelection();
       const selectedText = this.getSelectedText();
 
-      logger.info(LOG_CATEGORIES.COMMAND, 'Applying octave', {
+      logger.info(LOG_CATEGORIES.COMMAND, 'Toggling octave', {
         octave,
         selection: `${selection.start}..${selection.end}`,
         selectedText
@@ -1616,28 +1625,51 @@ class MusicNotationEditor {
         1: 'upper (1)'
       };
 
-      this.addToConsoleLog(`Applying octave ${octaveNames[octave]} to selection: "${selectedText}"`);
+      // For octave=0 (Alt+M), always just set to 0 (clear octave markings)
+      // For octave=1 or -1, toggle: if already set, clear (set to 0); otherwise set
+      let targetOctave;
+      let action;
+
+      if (octave === 0) {
+        // Alt+M: always clear octave markings
+        console.log('🎯 Alt+M pressed: clearing octave markings');
+        targetOctave = 0;
+        action = 'cleared';
+      } else {
+        // Alt+U or Alt+L: toggle behavior
+        console.log(`🎯 Alt+${octave === 1 ? 'U' : 'L'} pressed: checking toggle state`);
+        const shouldToggleOff = this.shouldToggleOctaveOff(selection, octave);
+        console.log(`🎯 shouldToggleOff returned: ${shouldToggleOff}`);
+        targetOctave = shouldToggleOff ? 0 : octave;
+        action = shouldToggleOff ? 'removed' : 'applied';
+        console.log(`🎯 targetOctave=${targetOctave}, action=${action}`);
+      }
+
+      const actionVerb = action === 'applied' ? 'Applying' : (action === 'removed' ? 'Removing' : 'Clearing');
+      this.addToConsoleLog(`${actionVerb} octave ${octaveNames[octave]} ${action === 'applied' ? 'to' : 'from'} selection: "${selectedText}"`);
 
       // Call WASM function to apply octave to selected cells
-      if (this.document && this.document.lines && this.document.lines.length > 0) {
-        const line =this.document.lines[0];
+      if (this.theDocument && this.theDocument.lines && this.theDocument.lines.length > 0) {
+        const line =this.theDocument.lines[0];
         const letterLane = line.cells; // Main line
 
         logger.debug(LOG_CATEGORIES.COMMAND, 'Calling WASM applyOctave', {
           laneSize: letterLane.length,
-          range: `${selection.start}..${selection.end}`
+          range: `${selection.start}..${selection.end}`,
+          targetOctave
         });
 
         const updatedCells = this.wasmModule.applyOctave(
           letterLane,
           selection.start,
           selection.end,
-          octave
+          targetOctave
         );
 
         // Debug: Check what octave values were set
         logger.debug(LOG_CATEGORIES.COMMAND, 'Octave values after WASM call:', {
           requestedOctave: octave,
+          targetOctave,
           cellsInRange: updatedCells.slice(selection.start, selection.end).map((c, i) => ({
             index: selection.start + i,
             glyph: c.glyph,
@@ -1656,15 +1688,62 @@ class MusicNotationEditor {
       // Restore visual selection after applying octave
       this.updateSelectionDisplay();
 
-      logger.timeEnd('applyOctave', LOG_CATEGORIES.COMMAND);
-      this.addToConsoleLog(`Octave ${octaveNames[octave]} applied successfully to "${selectedText}"`);
+      logger.timeEnd('toggleOctave', LOG_CATEGORIES.COMMAND);
+      const actionMessage = action === 'removed'
+        ? `Octave ${octaveNames[octave]} removed from "${selectedText}"`
+        : `Octave ${octaveNames[octave]} applied to "${selectedText}"`;
+      this.addToConsoleLog(actionMessage);
     } catch (error) {
-      logger.error(LOG_CATEGORIES.COMMAND, 'Failed to apply octave', {
+      logger.error(LOG_CATEGORIES.COMMAND, 'Failed to toggle octave', {
         error: error.message,
         stack: error.stack
       });
-      console.error('Failed to apply octave:', error);
+      console.error('Failed to toggle octave:', error);
     }
+  }
+
+  /**
+     * Apply octave to current selection (non-toggle version for backward compatibility)
+     */
+  async applyOctave(octave) {
+    return this.toggleOctave(octave);
+  }
+
+  /**
+   * Check if octave should be toggled off
+   * Returns true if ANY pitched element in selection has the requested octave
+   *
+   * @param {Object} selection - Selection range {start, end}
+   * @param {number} octave - Target octave value (-1, 0, or 1)
+   * @returns {boolean} True if octave should be toggled off
+   */
+  shouldToggleOctaveOff(selection, octave) {
+    if (!this.theDocument || !this.theDocument.lines || this.theDocument.lines.length === 0) {
+      console.log('🔍 shouldToggleOctaveOff: no document/lines');
+      return false;
+    }
+
+    const line = this.theDocument.lines[0];
+    const cells = line.cells;
+
+    if (!cells || cells.length === 0) {
+      console.log('🔍 shouldToggleOctaveOff: no cells');
+      return false;
+    }
+
+    // Check if ANY pitched element has the requested octave
+    for (let i = selection.start; i < selection.end && i < cells.length; i++) {
+      const cell = cells[i];
+      console.log(`🔍 Cell ${i}: glyph='${cell.glyph}' kind=${cell.kind} octave=${cell.octave} (checking for octave=${octave})`);
+      // Only consider pitched elements (kind === 1)
+      if (cell.kind === 1 && cell.octave === octave) {
+        console.log(`🔍 Found pitched element with octave=${octave}, will toggle OFF`);
+        return true;
+      }
+    }
+
+    console.log(`🔍 No pitched elements with octave=${octave} found, will toggle ON`);
+    return false;
   }
 
   /**
@@ -1682,10 +1761,17 @@ class MusicNotationEditor {
      */
   async setTala(talaString) {
     try {
-      if (this.wasmModule && this.document && this.document.lines.length > 0) {
+      if (this.wasmModule && this.theDocument && this.theDocument.lines.length > 0) {
+        // Preserve the state field before WASM call (it's skipped during serialization)
+        const preservedState = this.theDocument.state;
+
         // Call WASM setStaveTala function
-        const updatedDocument = await this.wasmModule.setStaveTala(this.document, 0, talaString);
-        this.document = updatedDocument;
+        const updatedDocument = await this.wasmModule.setStaveTala(this.theDocument, 0, talaString);
+
+        // Restore the state field after WASM call
+        updatedDocument.state = preservedState;
+
+        this.theDocument = updatedDocument;
         this.addToConsoleLog(`Tala set to: ${talaString}`);
         await this.render();
       }
@@ -1968,7 +2054,7 @@ class MusicNotationEditor {
 
       // Stop blinking on focus loss
       this._blinkInterval = setInterval(() => {
-        if (this.document && !this.document.state.has_focus) {
+        if (this.theDocument && !this.theDocument.state.has_focus) {
           this.stopCursorBlinking();
         }
       }, 100);
@@ -2016,8 +2102,8 @@ class MusicNotationEditor {
       cellIndex,
       lane,
       yOffset,
-      documentExists: !!this.document,
-      stavesLength: this.document?.staves?.length || 0
+      documentExists: !!this.theDocument,
+      stavesLength: this.theDocument?.staves?.length || 0
     });
 
     // Calculate pixel position by measuring actual DOM elements
@@ -2080,14 +2166,14 @@ class MusicNotationEditor {
       cursor.classList.remove('selecting');
     }
 
-    if (this.document && this.document.state && this.document.state.has_focus) {
+    if (this.theDocument && this.theDocument.state && this.theDocument.state.has_focus) {
       cursor.classList.add('focused');
     } else {
       cursor.classList.remove('focused');
     }
 
     // Ensure cursor is visible when focused
-    if (this.document && this.document.state && this.document.state.has_focus) {
+    if (this.theDocument && this.theDocument.state && this.theDocument.state.has_focus) {
       cursor.style.opacity = '1';
     }
   }
@@ -2096,10 +2182,10 @@ class MusicNotationEditor {
      * Get cursor position with lane information
      */
   getCursorPositionWithLane() {
-    if (this.document && this.document.state && this.document.state.cursor) {
+    if (this.theDocument && this.theDocument.state && this.theDocument.state.cursor) {
       return {
-        column: this.document.state.cursor.column,
-        lane: this.document.state.cursor.lane || 1
+        column: this.theDocument.state.cursor.column,
+        lane: this.theDocument.state.cursor.lane || 1
       };
     }
     return {
@@ -2112,8 +2198,8 @@ class MusicNotationEditor {
      * Set cursor position with lane information (lane always forced to 1)
      */
   setCursorPositionWithLane(position) {
-    if (this.document && this.document.state) {
-      this.document.state.cursor = {
+    if (this.theDocument && this.theDocument.state) {
+      this.theDocument.state.cursor = {
         stave: 0,
         lane: 1, // Always on main line, ignore position.lane
         column: position.column
@@ -2153,8 +2239,8 @@ class MusicNotationEditor {
     const cursorPos = document.getElementById('cursor-position');
     if (cursorPos) {
       // Get line, lane (row), and column for debugging
-      const line = this.document && this.document.state && this.document.state.cursor
-        ? this.document.state.cursor.stave
+      const line = this.theDocument && this.theDocument.state && this.theDocument.state.cursor
+        ? this.theDocument.state.cursor.stave
         : 0;
       const col = this.getCursorPosition();
       const lane = this.getCurrentLane();
@@ -2164,9 +2250,9 @@ class MusicNotationEditor {
     }
 
     const charCount = document.getElementById('char-count');
-    if (charCount && this.document && this.document.lines && this.document.lines[0]) {
+    if (charCount && this.theDocument && this.theDocument.lines && this.theDocument.lines[0]) {
       // Count all cells (lanes removed)
-      const cells = this.document.lines[0].cells || [];
+      const cells = this.theDocument.lines[0].cells || [];
       charCount.textContent = cells.length;
     }
 
@@ -2191,18 +2277,18 @@ class MusicNotationEditor {
   updateDocumentDisplay() {
     // Update ephemeral model (full document with state)
     const docJson = document.getElementById('document-json');
-    if (docJson && this.document) {
+    if (docJson && this.theDocument) {
       // Create a display-friendly version of the document
-      const displayDoc = this.createDisplayDocument(this.document);
+      const displayDoc = this.createDisplayDocument(this.theDocument);
       docJson.textContent = this.toYAML(displayDoc);
     }
 
     // Update persistent model (saveable content only, no state)
     const persistentJson = document.getElementById('persistent-json');
-    if (persistentJson && this.document) {
+    if (persistentJson && this.theDocument) {
       // Rust handles field exclusion via #[serde(skip)] on ephemeral fields (state, x, y, w, h, etc.)
       // Just exclude the runtime state field - WASM serialization handles the rest
-      const { state, ...persistentDoc } = this.document;
+      const { state, ...persistentDoc } = this.theDocument;
       const displayDoc = this.createDisplayDocument(persistentDoc);
       persistentJson.textContent = this.toYAML(displayDoc);
     }
@@ -2296,21 +2382,21 @@ class MusicNotationEditor {
     console.log('🎯 updateHitboxesDisplay called');
     const hitboxesContainer = document.getElementById('hitboxes-container');
     console.log('🔍 Hitboxes container found:', !!hitboxesContainer);
-    console.log('🔍 Document found:', !!this.document);
+    console.log('🔍 Document found:', !!this.theDocument);
 
-    if (!hitboxesContainer || !this.document) {
+    if (!hitboxesContainer || !this.theDocument) {
       console.log('❌ Early return - missing container or document');
       return;
     }
 
-    if (!this.document.lines || this.document.lines.length === 0) {
+    if (!this.theDocument.lines || this.theDocument.lines.length === 0) {
       hitboxesContainer.innerHTML = '<div class="text-gray-500 text-sm">No hitboxes available. Add some content to see hitbox information.</div>';
       return;
     }
 
     let hitboxHTML = '<div class="space-y-4">';
 
-    this.document.lines.forEach((stave, staveIndex) => {
+    this.theDocument.lines.forEach((stave, staveIndex) => {
       hitboxHTML += `<div class="mb-4">`;
       hitboxHTML += `<h4 class="font-semibold text-sm mb-2">Stave ${staveIndex} Hitboxes</h4>`;
 
@@ -2392,11 +2478,11 @@ class MusicNotationEditor {
      * This is needed because WASM operations may return cells without hitbox fields
      */
   ensureHitboxesAreSet() {
-    if (!this.document || !this.document.lines) {
+    if (!this.theDocument || !this.theDocument.lines) {
       return;
     }
 
-    this.document.lines.forEach((stave, staveIndex) => {
+    this.theDocument.lines.forEach((stave, staveIndex) => {
       const laneKinds = [0, 1, 2, 3]; // Upper, Letter, Lower, Lyrics
 
       laneKinds.forEach((laneKind, laneIndex) => {

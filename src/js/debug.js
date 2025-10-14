@@ -449,7 +449,7 @@ class DebugSystem {
   updateDocumentInfo() {
     if (!this.editor) return;
 
-    const document = this.editor.document;
+    const document = this.editor.theDocument;
     const metadata = this.editor.getDocumentMetadata();
 
     // Update document state
@@ -626,7 +626,7 @@ class DebugSystem {
 
     if (!this.editor?.document?.staves) return stats;
 
-    const document = this.editor.document;
+    const document = this.editor.theDocument;
     const kindNames = ['unknown', 'pitched', 'unpitched', 'upper-annotation', 'lower-annotation', 'text', 'barline', 'breath', 'whitespace'];
 
     document.lines.forEach((line, lineIndex) => {
@@ -679,7 +679,7 @@ class DebugSystem {
 
     if (!this.editor?.document?.staves) return stats;
 
-    const document = this.editor.document;
+    const document = this.editor.theDocument;
     let totalDuration = 0;
 
     document.lines.forEach(line => {
@@ -712,7 +712,7 @@ class DebugSystem {
   getSlurCount() {
     if (!this.editor?.document?.staves) return 0;
 
-    return this.editor.document.lines.reduce((count, line) => {
+    return this.editor.theDocument.lines.reduce((count, line) => {
       return count + (line.slurs ? line.slurs.length : 0);
     }, 0);
   }
@@ -723,7 +723,7 @@ class DebugSystem {
   getCellCount() {
     if (!this.editor?.document?.staves) return 0;
 
-    return this.editor.document.lines.reduce((count, line) => {
+    return this.editor.theDocument.lines.reduce((count, line) => {
       return count + (line.cells ? line.cells.length : 0);
     }, 0);
   }

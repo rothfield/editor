@@ -443,11 +443,18 @@ class UI {
     if (newTitle !== null && newTitle.trim() !== '') {
       this.updateDocumentTitle(newTitle);
 
-      if (this.editor && this.editor.document && this.editor.wasmModule) {
+      if (this.editor && this.editor.theDocument && this.editor.wasmModule) {
         // Call WASM setTitle function
         try {
-          const updatedDocument = await this.editor.wasmModule.setTitle(this.editor.document, newTitle);
-          this.editor.document = updatedDocument;
+          // Preserve the state field before WASM call (it's skipped during serialization)
+          const preservedState = this.editor.theDocument.state;
+
+          const updatedDocument = await this.editor.wasmModule.setTitle(this.editor.theDocument, newTitle);
+
+          // Restore the state field after WASM call
+          updatedDocument.state = preservedState;
+
+          this.editor.theDocument = updatedDocument;
           this.editor.addToConsoleLog(`Document title set to: ${newTitle}`);
           await this.editor.render(); // Re-render to show title on canvas
         } catch (error) {
@@ -468,8 +475,8 @@ class UI {
     if (newTonic !== null && newTonic.trim() !== '') {
       this.updateTonicDisplay(newTonic);
 
-      if (this.editor && this.editor.document) {
-        this.editor.document.tonic = newTonic;
+      if (this.editor && this.editor.theDocument) {
+        this.editor.theDocument.tonic = newTonic;
         this.editor.addToConsoleLog(`Document tonic set to: ${newTonic}`);
       }
     }
@@ -527,8 +534,8 @@ class UI {
     if (newSignature !== null && newSignature.trim() !== '') {
       this.updateKeySignatureDisplay(newSignature);
 
-      if (this.editor && this.editor.document) {
-        this.editor.document.key_signature = newSignature;
+      if (this.editor && this.editor.theDocument) {
+        this.editor.theDocument.key_signature = newSignature;
         this.editor.addToConsoleLog(`Document key signature set to: ${newSignature}`);
       }
     }
@@ -544,11 +551,18 @@ class UI {
     if (newLabel !== null && newLabel.trim() !== '') {
       this.updateLineLabelDisplay(newLabel);
 
-      if (this.editor && this.editor.document && this.editor.document.lines.length > 0 && this.editor.wasmModule) {
+      if (this.editor && this.editor.theDocument && this.editor.theDocument.lines.length > 0 && this.editor.wasmModule) {
         // Call WASM setStaveLabel function
         try {
-          const updatedDocument = await this.editor.wasmModule.setStaveLabel(this.editor.document, 0, newLabel);
-          this.editor.document = updatedDocument;
+          // Preserve the state field before WASM call (it's skipped during serialization)
+          const preservedState = this.editor.theDocument.state;
+
+          const updatedDocument = await this.editor.wasmModule.setStaveLabel(this.editor.theDocument, 0, newLabel);
+
+          // Restore the state field after WASM call
+          updatedDocument.state = preservedState;
+
+          this.editor.theDocument = updatedDocument;
           this.editor.addToConsoleLog(`Line label set to: ${newLabel}`);
           await this.editor.render();
         } catch (error) {
@@ -569,8 +583,8 @@ class UI {
     if (newTonic !== null && newTonic.trim() !== '') {
       this.updateLineTonicDisplay(newTonic);
 
-      if (this.editor && this.editor.document && this.editor.document.lines.length > 0) {
-        this.editor.document.lines[0].metadata.tonic = newTonic;
+      if (this.editor && this.editor.theDocument && this.editor.theDocument.lines.length > 0) {
+        this.editor.theDocument.lines[0].metadata.tonic = newTonic;
         this.editor.addToConsoleLog(`Line tonic set to: ${newTonic}`);
       }
     }
@@ -586,8 +600,8 @@ class UI {
     if (newSystem !== null) {
       this.updateLinePitchSystemDisplay(newSystem);
 
-      if (this.editor && this.editor.document && this.editor.document.lines.length > 0) {
-        this.editor.document.lines[0].metadata.pitch_system = newSystem;
+      if (this.editor && this.editor.theDocument && this.editor.theDocument.lines.length > 0) {
+        this.editor.theDocument.lines[0].metadata.pitch_system = newSystem;
         this.editor.addToConsoleLog(`Line pitch system set to: ${this.getPitchSystemName(newSystem)}`);
       }
     }
@@ -603,11 +617,18 @@ class UI {
     if (newLyrics !== null && newLyrics.trim() !== '') {
       this.updateLyricsDisplay(newLyrics);
 
-      if (this.editor && this.editor.document && this.editor.document.lines.length > 0 && this.editor.wasmModule) {
+      if (this.editor && this.editor.theDocument && this.editor.theDocument.lines.length > 0 && this.editor.wasmModule) {
         // Call WASM setStaveLyrics function
         try {
-          const updatedDocument = await this.editor.wasmModule.setStaveLyrics(this.editor.document, 0, newLyrics);
-          this.editor.document = updatedDocument;
+          // Preserve the state field before WASM call (it's skipped during serialization)
+          const preservedState = this.editor.theDocument.state;
+
+          const updatedDocument = await this.editor.wasmModule.setStaveLyrics(this.editor.theDocument, 0, newLyrics);
+
+          // Restore the state field after WASM call
+          updatedDocument.state = preservedState;
+
+          this.editor.theDocument = updatedDocument;
           this.editor.addToConsoleLog(`Lyrics set to: ${newLyrics}`);
           await this.editor.render();
         } catch (error) {
@@ -656,8 +677,8 @@ class UI {
     if (newSignature !== null && newSignature.trim() !== '') {
       this.updateLineKeySignatureDisplay(newSignature);
 
-      if (this.editor && this.editor.document && this.editor.document.lines.length > 0) {
-        this.editor.document.lines[0].metadata.key_signature = newSignature;
+      if (this.editor && this.editor.theDocument && this.editor.theDocument.lines.length > 0) {
+        this.editor.theDocument.lines[0].metadata.key_signature = newSignature;
         this.editor.addToConsoleLog(`Line key signature set to: ${newSignature}`);
       }
     }
@@ -815,40 +836,40 @@ class UI {
 
   getLineLabel() {
     if (this.editor?.document?.staves?.length > 0) {
-      return this.editor.document.lines[0].label || '';
+      return this.editor.theDocument.lines[0].label || '';
     }
     return '';
   }
 
   getLineTonic() {
     if (this.editor?.document?.staves?.length > 0) {
-      return this.editor.document.lines[0].metadata.tonic || '';
+      return this.editor.theDocument.lines[0].metadata.tonic || '';
     }
     return '';
   }
 
   getLinePitchSystem() {
     if (this.editor?.document?.staves?.length > 0) {
-      return this.editor.document.lines[0].metadata.pitch_system || 1;
+      return this.editor.theDocument.lines[0].metadata.pitch_system || 1;
     }
     return 1;
   }
 
   getLyrics() {
     if (this.editor?.document?.staves?.length > 0) {
-      return this.editor.document.lines[0].lyrics || '';
+      return this.editor.theDocument.lines[0].lyrics || '';
     }
     return '';
   }
 
   getTala() {
     return this.editor?.document?.staves?.length > 0
-      ? this.editor.document.lines[0].tala || '' : '';
+      ? this.editor.theDocument.lines[0].tala || '' : '';
   }
 
   getLineKeySignature() {
     if (this.editor?.document?.staves?.length > 0) {
-      return this.editor.document.lines[0].metadata.key_signature || '';
+      return this.editor.theDocument.lines[0].metadata.key_signature || '';
     }
     return '';
   }

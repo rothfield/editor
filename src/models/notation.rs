@@ -5,7 +5,6 @@
 
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
-use super::elements::LaneKind;
 
 /// Represents a derived beat span between two temporal elements
 #[wasm_bindgen]
@@ -79,10 +78,10 @@ impl BeatSpan {
 #[wasm_bindgen]
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct SlurSpan {
-    /// Starting element position (line, lane, column)
+    /// Starting element position (line, column)
     pub start: Position,
 
-    /// Ending element position (line, lane, column)
+    /// Ending element position (line, column)
     pub end: Position,
 
     /// Slur direction (upward or downward)
@@ -96,7 +95,6 @@ pub struct SlurSpan {
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
 pub struct Position {
     pub stave: usize,
-    pub lane: LaneKind,
     pub column: usize,
 }
 
@@ -138,7 +136,7 @@ impl SlurSpan {
 
     /// Get the horizontal span of this slur
     pub fn horizontal_span(&self) -> usize {
-        if self.start.stave == self.end.stave && self.start.lane == self.end.lane {
+        if self.start.stave == self.end.stave {
             self.end.column.abs_diff(self.start.column) + 1
         } else {
             0 // Multi-stave slur (not supported in POC)
@@ -146,9 +144,9 @@ impl SlurSpan {
     }
 
     /// Check if this slur contains a given position
-    pub fn contains(&self, stave: usize, lane: LaneKind, column: usize) -> bool {
-        // Only check if stave and lane match
-        if stave != self.start.stave || lane != self.start.lane {
+    pub fn contains(&self, stave: usize, column: usize) -> bool {
+        // Only check if stave matches
+        if stave != self.start.stave {
             return false;
         }
 
@@ -174,10 +172,7 @@ pub struct CursorPosition {
     /// Stave index (0-based)
     pub stave: usize,
 
-    /// Lane within the stave
-    pub lane: LaneKind,
-
-    /// Column within the lane (0-based)
+    /// Column within the stave (0-based)
     pub column: usize,
 }
 
@@ -186,38 +181,20 @@ impl CursorPosition {
     pub fn new() -> Self {
         Self {
             stave: 0,
-            lane: LaneKind::Letter,
             column: 0,
         }
     }
 
     /// Create a cursor position at specific coordinates
-    pub fn at(stave: usize, lane: LaneKind, column: usize) -> Self {
-        Self { stave, lane, column }
+    pub fn at(stave: usize, column: usize) -> Self {
+        Self { stave, column }
     }
 
     /// Move cursor relative to current position
-    pub fn move_by(&mut self, delta_stave: isize, delta_lane: isize, delta_column: isize) {
+    pub fn move_by(&mut self, delta_stave: isize, delta_column: isize) {
         // Update stave
         if let Some(new_stave) = self.stave.checked_add_signed(delta_stave) {
             self.stave = new_stave;
-        }
-
-        // Update lane
-        if delta_lane != 0 {
-            let current_lane = self.lane as i8;
-            let delta_i8 = delta_lane.clamp(-128, 127) as i8;
-            if let Some(new_lane) = current_lane.checked_add(delta_i8) {
-                if new_lane >= 0 && new_lane < 4 {
-                    self.lane = match new_lane {
-                        0 => LaneKind::Upper,
-                        1 => LaneKind::Letter,
-                        2 => LaneKind::Lower,
-                        3 => LaneKind::Lyrics,
-                        _ => LaneKind::Letter,
-                    };
-                }
-            }
         }
 
         // Update column
@@ -268,15 +245,15 @@ impl Selection {
     }
 
     /// Check if a position is within the selection
-    pub fn contains(&self, stave: usize, lane: LaneKind, column: usize) -> bool {
+    pub fn contains(&self, stave: usize, column: usize) -> bool {
         if !self.active {
             return false;
         }
 
         let (start, end) = self.range();
 
-        // Only check if on the same stave and lane
-        if stave != start.stave || lane != start.lane {
+        // Only check if on the same stave
+        if stave != start.stave {
             return false;
         }
 

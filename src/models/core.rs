@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
 // Re-export from other modules
-pub use super::elements::{ElementKind, LaneKind, PitchSystem, SlurIndicator};
+pub use super::elements::{ElementKind, PitchSystem, SlurIndicator};
 pub use super::notation::{BeatSpan, SlurSpan, Position, Selection, Range, CursorPosition};
 
 /// The fundamental unit representing one visible glyph in musical notation
@@ -186,7 +186,7 @@ impl Cell {
     }
 }
 
-/// Container for musical notation with simplified single-lane structure and flattened metadata
+/// Container for musical notation with simplified structure and flattened metadata
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Line {
     /// Array of cells in this line
@@ -413,7 +413,7 @@ impl Document {
 /// Application state including cursor position, selection, and focus information
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
 pub struct DocumentState {
-    /// Current cursor position (line index, lane, column)
+    /// Current cursor position (line index, column)
     pub cursor: CursorPosition,
 
     /// Selection manager for handling selection operations
@@ -725,7 +725,6 @@ impl SelectionManager {
     /// Check if a position is within the current selection
     pub fn contains_position(&self, position: &CursorPosition) -> bool {
         if let Some(selection) = &self.current_selection {
-            position.lane == selection.start.lane &&
             position.column >= selection.start.column &&
             position.column < selection.end.column
         } else {
@@ -783,12 +782,10 @@ impl SelectionManager {
             self.current_selection = Some(Selection {
                 start: CursorPosition {
                     stave: 0,
-                    lane: LaneKind::Letter,
                     column: start_col,
                 },
                 end: CursorPosition {
                     stave: 0,
-                    lane: LaneKind::Letter,
                     column: end_col,
                 },
                 active: true,
@@ -827,12 +824,10 @@ impl SelectionManager {
             self.current_selection = Some(Selection {
                 start: CursorPosition {
                     stave: position.stave,
-                    lane: position.lane,
                     column: start_col,
                 },
                 end: CursorPosition {
                     stave: position.stave,
-                    lane: position.lane,
                     column: end_col,
                 },
                 active: true,

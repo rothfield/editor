@@ -5,6 +5,8 @@
  * beat loops, slurs, and other musical notation components.
  */
 
+import CellRenderer from './cell-renderer.js';
+
 class DOMRenderer {
   constructor(canvasElement, editor) {
     this.canvas = canvasElement;
@@ -12,8 +14,9 @@ class DOMRenderer {
     this.charCellElements = new Map();
     this.beatLoopElements = new Map();
     this.slurElements = new Map();
-    this.currentDocument = null;
+    this.theDocument = null;
     this.renderCache = new Map();
+    this.cellRenderer = new CellRenderer();
 
     // Performance metrics
     this.renderStats = {
@@ -197,8 +200,8 @@ class DOMRenderer {
       this.octaveCanvas.height = rect.height;
 
       // Re-render octave markings after resize
-      if (this.currentDocument) {
-        this.renderOctaveMarkings(this.currentDocument);
+      if (this.theDocument) {
+        this.renderOctaveMarkings(this.theDocument);
       }
     }
   }
@@ -206,30 +209,30 @@ class DOMRenderer {
   /**
      * Render entire document
      */
-  renderDocument(document) {
+  renderDocument(doc) {
     const startTime = performance.now();
 
-    this.currentDocument = document;
+    this.theDocument = doc;
 
     // Clear previous content
     this.clearCanvas();
 
-    if (!document.lines || document.lines.length === 0) {
+    if (!doc.lines || doc.lines.length === 0) {
       this.showEmptyState();
       return;
     }
 
-    // Render document title at the top
-    this.renderDocumentTitle(document);
+    // Render doc title at the top
+    this.renderDocumentTitle(doc);
 
     // Render each line
-    document.lines.forEach((line, lineIndex) => {
+    doc.lines.forEach((line, lineIndex) => {
       this.renderLine(line, lineIndex);
     });
 
     // Beat loops are now rendered via CSS on cells (no separate elements needed)
     // Slurs need to be rendered as separate divs (can't use ::after because beat loops use it)
-    this.renderSlurs(document);
+    this.renderSlurs(doc);
     // Octave markings are now rendered via CSS (data-octave attribute)
 
     // Update render statistics
@@ -254,8 +257,8 @@ class DOMRenderer {
   /**
      * Render document title at the top of the canvas
      */
-  renderDocumentTitle(document) {
-    const title = document.title;
+  renderDocumentTitle(doc) {
+    const title = doc.title;
 
     if (!title || title === 'Untitled Document') {
       return; // No title to render or default title
@@ -386,8 +389,8 @@ class DOMRenderer {
     });
 
     // Store the final cumulative position in the line for cursor use
-    if (this.document && this.document.lines && this.document.lines[lineIndex]) {
-      this.document.lines[lineIndex].nextCursorX = cumulativeX;
+    if (this.theDocument && this.theDocument.lines && this.theDocument.lines[lineIndex]) {
+      this.theDocument.lines[lineIndex].nextCursorX = cumulativeX;
     }
 
     // Update hitboxes display after manual layout is complete
@@ -414,7 +417,7 @@ class DOMRenderer {
      */
   createCellElement(charCell, lineIndex, cellIndex, xPosition, beatPosition) {
     const element = document.createElement('span');
-    element.className = this.getCellClasses(charCell);
+    element.className = this.cellRenderer.getCellClasses(charCell);
     // Use non-breaking space for space characters so they have actual width
     element.textContent = charCell.glyph === ' ' ? '\u00A0' : charCell.glyph;
 
@@ -452,60 +455,6 @@ class DOMRenderer {
     this.addCellEventListeners(element, charCell);
 
     return element;
-  }
-
-  /**
-     * Get CSS classes for Cell
-     */
-  getCellClasses(charCell) {
-    const classes = ['char-cell'];
-
-    // Add lane class
-    classes.push(`lane-${this.getLaneName(charCell.lane)}`);
-
-    // Add element kind class
-    classes.push(`kind-${this.getElementKindName(charCell.kind)}`);
-
-    // Add state classes
-    if (charCell.flags & 0x02) classes.push('selected');
-    if (charCell.flags & 0x04) classes.push('focused');
-
-    // Add pitch system class if applicable
-    if (charCell.pitch_system) {
-      classes.push(`pitch-system-${this.getPitchSystemName(charCell.pitch_system)}`);
-    }
-
-    // Add head marker class
-    if (charCell.flags & 0x01) classes.push('head-marker');
-
-    return classes.join(' ');
-  }
-
-  /**
-     * Get lane name from enum
-     */
-  getLaneName(laneKind) {
-    const laneNames = ['upper', 'letter', 'lower', 'lyrics'];
-    return laneNames[laneKind] || 'unknown';
-  }
-
-  /**
-     * Get element kind name
-     */
-  getElementKindName(elementKind) {
-    const kindNames = [
-      'unknown', 'pitched', 'unpitched', 'upper-annotation',
-      'lower-annotation', 'text', 'barline', 'breath', 'whitespace'
-    ];
-    return kindNames[elementKind] || 'unknown';
-  }
-
-  /**
-     * Get pitch system name
-     */
-  getPitchSystemName(pitchSystem) {
-    const systemNames = ['unknown', 'number', 'western', 'sargam', 'bhatkhande', 'tabla'];
-    return systemNames[pitchSystem] || 'unknown';
   }
 
   /**
@@ -589,12 +538,14 @@ class DOMRenderer {
      * Render line label
      */
   renderLineLabel(label, lineElement) {
-    const labelElement = document.createElement('div');
+    const labelElement = document.createElement('span');
     labelElement.className = 'line-label text-xs text-ui-disabled-text';
     labelElement.textContent = label;
     labelElement.style.position = 'absolute';
     labelElement.style.left = '0';
-    labelElement.style.top = '-20px';
+    labelElement.style.top = '32px'; // Same vertical position as line cells
+    labelElement.style.height = '16px'; // Same height as cells
+    labelElement.style.lineHeight = '16px'; // Match cell line height for baseline alignment
 
     lineElement.appendChild(labelElement);
   }
@@ -629,7 +580,7 @@ class DOMRenderer {
   /**
      * Render beat loops with enhanced visualization
      */
-  renderBeatLoops(document) {
+  renderBeatLoops(doc) {
     // Clear existing beat loop elements
     this.beatLoopElements.forEach((element) => {
       if (element.parentElement) {
@@ -638,7 +589,7 @@ class DOMRenderer {
     });
     this.beatLoopElements.clear();
 
-    document.lines.forEach((line, lineIndex) => {
+    doc.lines.forEach((line, lineIndex) => {
       // Always use beats from line.beats array (populated by BeatDeriver)
       if (line.beats && line.beats.length > 0) {
         console.log(`Rendering ${line.beats.length} beats for line ${lineIndex}`);
@@ -802,7 +753,7 @@ class DOMRenderer {
   /**
    * Render slurs by scanning cells for slur indicators
    */
-  renderSlurs(document) {
+  renderSlurs(doc) {
     console.log('🎵 renderSlurs called');
 
     // Clear existing slur elements
@@ -813,7 +764,7 @@ class DOMRenderer {
     });
     this.slurElements.clear();
 
-    document.lines.forEach((line, lineIndex) => {
+    doc.lines.forEach((line, lineIndex) => {
       const mainLine = line.cells;
       if (!mainLine || mainLine.length === 0) {
         return;
@@ -903,7 +854,7 @@ class DOMRenderer {
   /**
      * Render octave markings using canvas overlay - simplified (no lanes)
      */
-  renderOctaveMarkings(document) {
+  renderOctaveMarkings(doc) {
     if (!this.octaveCtx) return;
 
     const startTime = performance.now();
@@ -913,7 +864,7 @@ class DOMRenderer {
 
     let octavesRendered = 0;
 
-    document.lines.forEach((line, lineIndex) => {
+    doc.lines.forEach((line, lineIndex) => {
       // Only render octave markings from main line
       const mainLine = line.cells;
       console.log(`🎵 Checking ${mainLine.length} cells for octave markings`);
