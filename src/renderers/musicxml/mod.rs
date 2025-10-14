@@ -213,15 +213,28 @@ fn process_beat(
 
         if leading_div_count > 0 {
             // Write tied note using previous note's pitch
-            let (prev_step, prev_alter, prev_octave) = builder.last_note.unwrap();
+            let (prev_step, prev_alter, prev_octave) = builder.last_note.clone().unwrap();
             let duration_divs = (measure_divisions / subdivisions) * leading_div_count;
             let musical_duration = leading_div_count as f64 / subdivisions as f64;
 
-            // Reconstruct pitch from last_note
+            // Reconstruct pitch from last_note (convert alter back to Accidental)
+            let accidental = match prev_alter {
+                -2 => crate::models::elements::Accidental::DoubleFlat,
+                -1 => crate::models::elements::Accidental::Flat,
+                0 => crate::models::elements::Accidental::Natural,
+                1 => crate::models::elements::Accidental::Sharp,
+                2 => crate::models::elements::Accidental::DoubleSharp,
+                _ => crate::models::elements::Accidental::Natural,
+            };
+
+            // Note: builder.last_note stores MusicXML octave (music-text octave + 4)
+            // So we need to convert back to music-text octave
+            let music_text_octave = prev_octave - 4;
+
             let prev_pitch = Pitch {
                 base: prev_step.to_string(),
-                accidental: crate::models::pitch::Accidental::from_semitones(prev_alter),
-                octave: prev_octave,
+                accidental,
+                octave: music_text_octave,
                 system: crate::models::PitchSystem::Western, // Assume Western for now
             };
 
@@ -229,6 +242,29 @@ fn process_beat(
             builder.write_note_with_beam(&prev_pitch, duration_divs, musical_duration, None, None, None, Some("stop"))?;
         }
     }
+
+    // Detect if tuplet is needed (only for multiple elements with non-power-of-2 subdivisions)
+    let tuplet_info = if subdivisions > 1 {
+        detect_tuplet(subdivisions)
+    } else {
+        None
+    };
+
+    // Collect all notes/rests first for tuplet bracket placement
+    #[derive(Debug)]
+    enum BeatElement {
+        Note {
+            pitch: Pitch,
+            duration_divs: usize,
+            musical_duration: f64,
+            is_last_note: bool,
+        },
+        Rest {
+            duration_divs: usize,
+            musical_duration: f64,
+        },
+    }
+    let mut elements = Vec::new();
 
     // Process remaining elements in the beat
     while i < beat_cells.len() {
@@ -265,23 +301,22 @@ fn process_beat(
 
                         // Check if this is the last note in beat and next beat starts with "-"
                         let is_last_note = {
-                            let mut j = i + 1 + extension_count;
-                            while j < beat_cells.len() {
-                                if beat_cells[j].kind == ElementKind::PitchedElement {
+                            let mut k = i + 1 + extension_count;
+                            while k < beat_cells.len() {
+                                if beat_cells[k].kind == ElementKind::PitchedElement {
                                     break;
                                 }
-                                j += 1;
+                                k += 1;
                             }
-                            j >= beat_cells.len()
+                            k >= beat_cells.len()
                         };
 
-                        let tie = if is_last_note && next_beat_starts_with_div {
-                            Some("start")
-                        } else {
-                            None
-                        };
-
-                        builder.write_note_with_beam(&pitch_with_octave, duration_divs, musical_duration, None, None, None, tie)?;
+                        elements.push(BeatElement::Note {
+                            pitch: pitch_with_octave,
+                            duration_divs,
+                            musical_duration,
+                            is_last_note,
+                        });
                     }
                 }
 
@@ -292,7 +327,10 @@ fn process_beat(
                 // Standalone unpitched element (rest, not extension)
                 let duration_divs = measure_divisions / subdivisions;
                 let musical_duration = 1.0 / subdivisions as f64;
-                builder.write_rest(duration_divs, musical_duration);
+                elements.push(BeatElement::Rest {
+                    duration_divs,
+                    musical_duration,
+                });
                 i += 1;
             }
             ElementKind::UnpitchedElement => {
@@ -309,5 +347,77 @@ fn process_beat(
         }
     }
 
+    // Write all collected elements with tuplet brackets
+    let element_count = elements.len();
+    for (idx, element) in elements.iter().enumerate() {
+        // Tuplet bracket only on first and last elements
+        let tuplet_bracket = if tuplet_info.is_some() && element_count > 1 {
+            if idx == 0 {
+                Some("start")
+            } else if idx == element_count - 1 {
+                Some("stop")
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        match element {
+            BeatElement::Note { pitch, duration_divs, musical_duration, is_last_note } => {
+                let tie = if *is_last_note && next_beat_starts_with_div {
+                    Some("start")
+                } else {
+                    None
+                };
+
+                builder.write_note_with_beam(pitch, *duration_divs, *musical_duration, None, tuplet_info, tuplet_bracket, tie)?;
+            }
+            BeatElement::Rest { duration_divs, musical_duration } => {
+                builder.write_rest_with_tuplet(*duration_divs, *musical_duration, tuplet_info, tuplet_bracket);
+            }
+        }
+    }
+
     Ok(())
+}
+
+/// Detect if beat needs tuplet notation and calculate ratio
+/// Returns Option<(actual_notes, normal_notes)>
+/// - None if standard division (1, 2, 4, 8, 16, 32, 64, 128)
+/// - Some((actual, normal)) if tuplet needed
+///
+/// Follows standard tuplet ratios:
+/// - 3:2 (triplet - 3 in the time of 2)
+/// - 5:4 (quintuplet - 5 in the time of 4)
+/// - 6:4 (sextuplet - 6 in the time of 4)
+/// - 7:4 or 7:8 (septuplet)
+/// - 9:8 (nonuplet)
+/// - etc.
+fn detect_tuplet(subdivisions: usize) -> Option<(usize, usize)> {
+    // Standard divisions don't need tuplets (powers of 2)
+    if subdivisions.is_power_of_two() && subdivisions <= 128 {
+        return None;
+    }
+
+    // Calculate normal_notes based on standard tuplet ratios
+    let normal_notes = match subdivisions {
+        3 => 2,           // Triplet: 3:2
+        5 => 4,           // Quintuplet: 5:4
+        6 => 4,           // Sextuplet: 6:4
+        7 => 4,           // Septuplet: 7:4
+        9 => 8,           // Nonuplet: 9:8
+        10 => 8,          // 10:8
+        11 => 8,          // 11:8
+        12 => 8,          // 12:8
+        13 => 8,          // 13:8
+        14 => 8,          // 14:8
+        15 => 8,          // 15:8
+        _ if subdivisions <= 32 => 16,  // Larger tuplets: x:16
+        _ if subdivisions <= 64 => 32,  // x:32
+        _ if subdivisions <= 128 => 64,  // x:64
+        _ => 128,         // Very large tuplets: x:128
+    };
+
+    Some((subdivisions, normal_notes))
 }

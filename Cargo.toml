@@ -32,6 +32,9 @@ regex = { version = "1.10.4", optional = true }
 getrandom = { version = "0.2.14", features = ["js"] }
 uuid = { version = "1.8.0", features = ["v4", "js"], optional = true }
 wasm-bindgen-test = "0.3.42"
+roxmltree = "0.19"
+num-rational = "0.4"
+thiserror = "1.0"
 
 [profile.release]
 opt-level = "s"

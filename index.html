@@ -300,7 +300,10 @@
                 <!-- Tab Navigation -->
                 <div class="bg-white border-b border-ui-border">
                     <nav class="flex">
-                        <button id="tab-ephemeral" class="tab active" data-tab="ephemeral">
+                        <button id="tab-staff-notation" class="tab active" data-tab="staff-notation">
+                            Staff Notation
+                        </button>
+                        <button id="tab-ephemeral" class="tab" data-tab="ephemeral">
                             Ephemeral Model
                         </button>
                         <button id="tab-persistent" class="tab" data-tab="persistent">
@@ -312,16 +315,21 @@
                         <button id="tab-console-log" class="tab" data-tab="console-log">
                             Console Log
                         </button>
-                        <button id="tab-staff-notation" class="tab" data-tab="staff-notation">
-                            Staff Notation
-                        </button>
                     </nav>
                 </div>
 
                 <!-- Tab Content -->
                 <div class="flex-1 flex flex-col overflow-hidden">
+                    <!-- Staff Notation Tab -->
+                    <div id="tab-content-staff-notation" data-tab-content="staff-notation" class="tab-content flex-1 flex flex-col p-4">
+                        <h3 class="text-sm font-semibold mb-2 text-gray-700">Staff Notation (OSMD/VexFlow)</h3>
+                        <div id="staff-notation-container" class="flex-1 bg-white p-4 border-2 border-gray-300 rounded overflow-auto">
+                            <div class="text-sm text-gray-500">Start typing music to see staff notation...</div>
+                        </div>
+                    </div>
+
                     <!-- Ephemeral Model Tab (full document with state) -->
-                    <div id="tab-content-ephemeral" data-tab-content="ephemeral" class="tab-content flex-1 flex flex-col p-4">
+                    <div id="tab-content-ephemeral" data-tab-content="ephemeral" class="tab-content hidden flex-1 flex flex-col p-4">
                         <h3 class="text-sm font-semibold mb-2 text-gray-700">Ephemeral Model (includes runtime state)</h3>
                         <pre id="document-json" class="flex-1 text-xs font-mono bg-white p-3 border-2 border-gray-300 rounded overflow-auto"></pre>
                     </div>
@@ -345,14 +353,6 @@
                         <h3 class="text-sm font-semibold mb-2">Console Log</h3>
                         <div id="console-log-list" class="flex-1 space-y-1 overflow-auto text-xs bg-white p-3 border-2 border-gray-300 rounded">
                             <div class="text-sm text-gray-500">No logs</div>
-                        </div>
-                    </div>
-
-                    <!-- Staff Notation Tab -->
-                    <div id="tab-content-staff-notation" data-tab-content="staff-notation" class="tab-content hidden flex-1 flex flex-col p-4">
-                        <h3 class="text-sm font-semibold mb-2 text-gray-700">Staff Notation (OSMD/VexFlow)</h3>
-                        <div id="staff-notation-container" class="flex-1 bg-white p-4 border-2 border-gray-300 rounded overflow-auto">
-                            <div class="text-sm text-gray-500">Start typing music to see staff notation...</div>
                         </div>
                     </div>
                 </div>

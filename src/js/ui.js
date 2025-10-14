@@ -9,7 +9,7 @@ class UI {
   constructor(editor) {
     this.editor = editor;
     this.activeMenu = null;
-    this.activeTab = 'ephemeral';
+    this.activeTab = 'staff-notation';
     this.menuListeners = new Map();
 
     // Bind methods
@@ -167,7 +167,7 @@ class UI {
     });
 
     // Set initial active tab
-    this.switchTab('ephemeral');
+    this.switchTab('staff-notation');
   }
 
   /**
@@ -418,10 +418,39 @@ class UI {
   }
 
   /**
-     * Export to MusicXML (stub)
+     * Export to MusicXML
      */
-  exportMusicXML() {
-    this.showStubMessage('MusicXML export is not implemented in this POC');
+  async exportMusicXML() {
+    if (this.editor) {
+      try {
+        const musicxml = await this.editor.exportMusicXML();
+
+        if (!musicxml) {
+          console.error('Failed to export MusicXML');
+          this.editor.addToConsoleLog('Error: MusicXML export failed');
+          return;
+        }
+
+        // Convert title to snake_case for filename
+        const title = this.getDocumentTitle();
+        const filename = this.toSnakeCase(title);
+
+        // Create blob and download file
+        const blob = new Blob([musicxml], { type: 'application/xml' });
+        const url = URL.createObjectURL(blob);
+
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${filename}.musicxml`;
+        a.click();
+
+        URL.revokeObjectURL(url);
+        this.editor.addToConsoleLog(`MusicXML exported: ${filename}.musicxml`);
+      } catch (error) {
+        console.error('Failed to export MusicXML:', error);
+        this.editor.addToConsoleLog(`Error exporting MusicXML: ${error.message}`);
+      }
+    }
   }
 
   /**
@@ -950,6 +979,19 @@ class UI {
       3: 'Sargam'
     };
     return names[system] || 'Unknown';
+  }
+
+  /**
+     * Helper: Convert string to snake_case
+     */
+  toSnakeCase(str) {
+    return str
+      .trim()
+      .toLowerCase()
+      .replace(/[^\w\s-]/g, '') // Remove special characters
+      .replace(/[\s-]+/g, '_')  // Replace spaces and hyphens with underscore
+      .replace(/_+/g, '_')      // Replace multiple underscores with single
+      .replace(/^_|_$/g, '');   // Remove leading/trailing underscores
   }
 }
 

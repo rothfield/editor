@@ -818,6 +818,67 @@ pub fn export_musicxml(document_js: JsValue) -> Result<String, JsValue> {
     Ok(musicxml)
 }
 
+/// Convert MusicXML to LilyPond notation
+///
+/// Takes a MusicXML string and converts it to LilyPond format.
+///
+/// # Parameters
+/// * `musicxml` - MusicXML 3.1 document as a string
+/// * `settings_json` - Optional JSON string with conversion settings (null for defaults)
+///
+/// # Returns
+/// JSON string containing:
+/// - `lilypond_source`: The generated LilyPond code
+/// - `skipped_elements`: Array of elements that couldn't be converted
+///
+/// # Example Settings JSON
+/// ```json
+/// {
+///   "target_lilypond_version": "2.24.0",
+///   "language": "English",
+///   "convert_directions": true,
+///   "convert_lyrics": true,
+///   "convert_chord_symbols": true
+/// }
+/// ```
+#[wasm_bindgen(js_name = convertMusicXMLToLilyPond)]
+pub fn convert_musicxml_to_lilypond(musicxml: String, settings_json: Option<String>) -> Result<String, JsValue> {
+    wasm_info!("convertMusicXMLToLilyPond called");
+
+    // Parse settings if provided
+    let settings = if let Some(json) = settings_json {
+        serde_json::from_str(&json)
+            .map_err(|e| {
+                wasm_error!("Settings JSON parse error: {}", e);
+                JsValue::from_str(&format!("Settings parse error: {}", e))
+            })?
+    } else {
+        None
+    };
+
+    // Convert MusicXML to LilyPond
+    let result = crate::musicxml_import::convert_musicxml_to_lilypond(&musicxml, settings)
+        .map_err(|e| {
+            wasm_error!("Conversion error: {}", e);
+            JsValue::from_str(&format!("Conversion error: {}", e))
+        })?;
+
+    // Serialize result to JSON
+    let result_json = serde_json::to_string(&result)
+        .map_err(|e| {
+            wasm_error!("Result serialization error: {}", e);
+            JsValue::from_str(&format!("Result serialization error: {}", e))
+        })?;
+
+    wasm_info!("  LilyPond generated: {} bytes", result.lilypond_source.len());
+    if !result.skipped_elements.is_empty() {
+        wasm_log!("  Skipped {} elements", result.skipped_elements.len());
+    }
+    wasm_info!("convertMusicXMLToLilyPond completed successfully");
+
+    Ok(result_json)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
