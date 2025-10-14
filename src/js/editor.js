@@ -2749,89 +2749,11 @@ class MusicNotationEditor {
   }
 
   /**
-     * Show user notification
+     * Show user notification (DISABLED)
      */
   showUserNotification(info) {
-    const notification = document.createElement('div');
-    notification.className = `notification notification-${info.type || 'error'}`;
-    notification.innerHTML = `
-            <div class="notification-content">
-                <div class="notification-title">${this.capitalizeFirst(info.type || 'error')}</div>
-                <div class="notification-message">${info.message}</div>
-            </div>
-            <button class="notification-close" onclick="this.parentElement.remove()">×</button>
-        `;
-
-    // Style the notification
-    notification.style.cssText = `
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background: ${info.type === 'error' ? '#dc2626' : info.type === 'warning' ? '#f59e0b' : '#3b82f6'};
-            color: white;
-            padding: 12px 16px;
-            border-radius: 6px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            z-index: 1000;
-            max-width: 300px;
-            animation: slideIn 0.3s ease-out;
-        `;
-
-    // Add animation
-    const style = document.createElement('style');
-    style.textContent = `
-            @keyframes slideIn {
-                from {
-                    transform: translateX(100%);
-                    opacity: 0;
-                }
-                to {
-                    transform: translateX(0);
-                    opacity: 1;
-                }
-            }
-            .notification-content {
-                margin-right: 8px;
-            }
-            .notification-title {
-                font-weight: 600;
-                margin-bottom: 4px;
-            }
-            .notification-message {
-                font-size: 14px;
-                line-height: 1.4;
-            }
-            .notification-close {
-                background: none;
-                border: none;
-                color: white;
-                font-size: 18px;
-                cursor: pointer;
-                padding: 0;
-                margin-left: 8px;
-            }
-            .notification-close:hover {
-                background: rgba(255, 255, 255, 0.2);
-            }
-        `;
-    document.head.appendChild(style);
-
-    document.body.appendChild(notification);
-
-    // Auto-remove after 5 seconds
-    setTimeout(() => {
-      if (notification.parentElement) {
-        notification.remove();
-      }
-    }, 5000);
-
-    // Handle manual close
-    const closeBtn = notification.querySelector('.notification-close');
-    if (closeBtn) {
-      closeBtn.addEventListener('click', () => {
-        notification.remove();
-      });
-    }
+    // Notification popups disabled - log to console instead
+    console.log(`[${info.type || 'info'}] ${info.message}`);
   }
 
   /**
