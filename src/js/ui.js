@@ -254,7 +254,7 @@ class UI {
   /**
      * Switch to a specific tab
      */
-  switchTab(tabName) {
+  async switchTab(tabName) {
     // Hide all tab contents
     document.querySelectorAll('[data-tab-content]').forEach(content => {
       content.classList.add('hidden');
@@ -278,6 +278,11 @@ class UI {
     }
 
     this.activeTab = tabName;
+
+    // Render staff notation if switching to staff notation tab
+    if (tabName === 'staff-notation' && this.editor) {
+      await this.editor.renderStaffNotation();
+    }
 
     // Request focus return to editor
     this.returnFocusToEditor();

@@ -785,6 +785,39 @@ pub fn create_new_document() -> Result<JsValue, JsValue> {
     Ok(result)
 }
 
+/// Export document to MusicXML format
+///
+/// # Parameters
+/// - `document_js`: JavaScript Document object
+///
+/// # Returns
+/// MusicXML string (XML format)
+#[wasm_bindgen(js_name = exportMusicXML)]
+pub fn export_musicxml(document_js: JsValue) -> Result<String, JsValue> {
+    wasm_info!("exportMusicXML called");
+
+    // Deserialize document from JavaScript
+    let document: Document = serde_wasm_bindgen::from_value(document_js)
+        .map_err(|e| {
+            wasm_error!("Deserialization error: {}", e);
+            JsValue::from_str(&format!("Deserialization error: {}", e))
+        })?;
+
+    wasm_log!("  Document has {} lines", document.lines.len());
+
+    // Export to MusicXML
+    let musicxml = crate::renderers::musicxml::to_musicxml(&document)
+        .map_err(|e| {
+            wasm_error!("MusicXML export error: {}", e);
+            JsValue::from_str(&format!("MusicXML export error: {}", e))
+        })?;
+
+    wasm_info!("  MusicXML generated: {} bytes", musicxml.len());
+    wasm_info!("exportMusicXML completed successfully");
+
+    Ok(musicxml)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

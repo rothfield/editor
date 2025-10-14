@@ -63,7 +63,7 @@ async def page(browser: Browser):
 async def editor_page(page: Page):
     """Page fixture with editor initialized."""
     # Navigate to the editor
-    await page.goto("http://localhost:3000", wait_until="domcontentloaded")
+    await page.goto("http://localhost:8080", wait_until="domcontentloaded")
 
     # Wait for the editor to initialize
     try:
@@ -96,7 +96,7 @@ async def development_server():
     import subprocess
     import time
 
-    server_url = "http://localhost:3000"
+    server_url = "http://localhost:8080"
     max_retries = 30
     retry_interval = 2
 
@@ -106,7 +106,8 @@ async def development_server():
             response = requests.get(f"{server_url}/", timeout=5)
             if response.status_code == 200:
                 print(f"✓ Development server is running at {server_url}")
-                return server_url
+                yield server_url
+                return
         except requests.exceptions.RequestException:
             pass
 
@@ -307,13 +308,13 @@ def pytest_collection_modifyitems(config, items):
     import requests
 
     try:
-        response = requests.get("http://localhost:3000/", timeout=2)
+        response = requests.get("http://localhost:8080/", timeout=2)
         server_available = response.status_code == 200
     except requests.exceptions.RequestException:
         server_available = False
 
     if not server_available:
-        skip_mark = pytest.mark.skip(reason="Development server not available at http://localhost:3000")
+        skip_mark = pytest.mark.skip(reason="Development server not available at http://localhost:8080")
         for item in items:
             if "page" in item.fixturenames or "editor_page" in item.fixturenames:
                 item.add_marker(skip_mark)

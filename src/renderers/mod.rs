@@ -6,8 +6,10 @@
 pub mod layout;
 pub mod curves;
 pub mod svg;
+pub mod musicxml;
 
 // Re-export commonly used types
 pub use layout::*;
 pub use curves::*;
 pub use svg::*;
+pub use musicxml::*;

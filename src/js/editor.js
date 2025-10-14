@@ -7,6 +7,7 @@
 
 import DOMRenderer from './renderer.js';
 import logger, { LOG_CATEGORIES } from './logger.js';
+import { OSMDRenderer } from './osmd-renderer.js';
 
 class MusicNotationEditor {
   constructor(canvasElement) {
@@ -18,6 +19,9 @@ class MusicNotationEditor {
     this.renderer = null;
     this.eventHandlers = new Map();
     this.isInitialized = false;
+
+    // Staff notation real-time update
+    this.staffNotationTimer = null;
 
     // Performance monitoring
     this.performanceMetrics = {
@@ -66,8 +70,14 @@ class MusicNotationEditor {
         setTitle: wasmModule.setTitle,
         setStaveLabel: wasmModule.setStaveLabel,
         setStaveLyrics: wasmModule.setStaveLyrics,
-        setStaveTala: wasmModule.setStaveTala
+        setStaveTala: wasmModule.setStaveTala,
+        // MusicXML export API
+        exportMusicXML: wasmModule.exportMusicXML
       };
+
+      // Initialize OSMD renderer for staff notation
+      this.osmdRenderer = new OSMDRenderer('staff-notation-container');
+      console.log('OSMD renderer initialized');
 
       const loadTime = performance.now() - startTime;
       console.log(`WASM module loaded in ${loadTime.toFixed(2)}ms`);
@@ -1797,6 +1807,26 @@ class MusicNotationEditor {
   }
 
   /**
+     * Schedule a debounced staff notation update (100ms delay)
+     * Only updates if the staff notation tab is currently active
+     */
+  scheduleStaffNotationUpdate() {
+    // Clear any pending update
+    if (this.staffNotationTimer) {
+      clearTimeout(this.staffNotationTimer);
+    }
+
+    // Schedule new update with 100ms debounce
+    this.staffNotationTimer = setTimeout(async () => {
+      // Only render if staff notation tab is active
+      if (this.ui && this.ui.activeTab === 'staff-notation') {
+        console.log('[Staff Notation] Auto-updating (debounced 100ms)');
+        await this.renderStaffNotation();
+      }
+    }, 100);
+  }
+
+  /**
      * Render the current document
      */
   async render() {
@@ -1813,6 +1843,9 @@ class MusicNotationEditor {
 
       const endTime = performance.now();
       this.recordPerformanceMetric('renderTime', endTime - startTime);
+
+      // Schedule staff notation update (debounced)
+      this.scheduleStaffNotationUpdate();
     } catch (error) {
       console.error('Failed to render document:', error);
     }
@@ -2938,6 +2971,57 @@ class MusicNotationEditor {
       }
     }
     return stats;
+  }
+
+  /**
+   * Export document to MusicXML format
+   * @returns {string|null} MusicXML string or null on error
+   */
+  async exportMusicXML() {
+    if (!this.wasmModule || !this.theDocument) {
+      console.error('Cannot export MusicXML: WASM module or document not initialized');
+      return null;
+    }
+
+    try {
+      const startTime = performance.now();
+      const musicxml = this.wasmModule.exportMusicXML(this.theDocument);
+      const exportTime = performance.now() - startTime;
+
+      console.log(`MusicXML exported: ${musicxml.length} bytes in ${exportTime.toFixed(2)}ms`);
+      return musicxml;
+    } catch (error) {
+      console.error('MusicXML export failed:', error);
+      logger.error(LOG_CATEGORIES.EDITOR, 'MusicXML export error', { error: error.message });
+      return null;
+    }
+  }
+
+  /**
+   * Render staff notation using OSMD
+   */
+  async renderStaffNotation() {
+    if (!this.osmdRenderer) {
+      console.warn('OSMD renderer not initialized');
+      return;
+    }
+
+    const musicxml = await this.exportMusicXML();
+    if (!musicxml) {
+      console.warn('Cannot render staff notation: MusicXML export failed');
+      return;
+    }
+
+    try {
+      const startTime = performance.now();
+      await this.osmdRenderer.render(musicxml);
+      const renderTime = performance.now() - startTime;
+
+      console.log(`Staff notation rendered in ${renderTime.toFixed(2)}ms`);
+    } catch (error) {
+      console.error('Staff notation rendering failed:', error);
+      logger.error(LOG_CATEGORIES.EDITOR, 'Staff notation render error', { error: error.message });
+    }
   }
 }
 

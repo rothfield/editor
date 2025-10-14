@@ -169,6 +169,9 @@
         }
     </style>
 
+    <!-- OSMD for staff notation rendering -->
+    <script src="https://unpkg.com/opensheetmusicdisplay@1.7.6/build/opensheetmusicdisplay.min.js"></script>
+
     <!-- Preload critical resources -->
     <link rel="modulepreload" href="dist/pkg/editor_wasm.js">
     <link rel="preload" href="dist/pkg/editor_wasm_bg.wasm" as="fetch" crossorigin="anonymous">
@@ -309,6 +312,9 @@
                         <button id="tab-console-log" class="tab" data-tab="console-log">
                             Console Log
                         </button>
+                        <button id="tab-staff-notation" class="tab" data-tab="staff-notation">
+                            Staff Notation
+                        </button>
                     </nav>
                 </div>
 
@@ -339,6 +345,14 @@
                         <h3 class="text-sm font-semibold mb-2">Console Log</h3>
                         <div id="console-log-list" class="flex-1 space-y-1 overflow-auto text-xs bg-white p-3 border-2 border-gray-300 rounded">
                             <div class="text-sm text-gray-500">No logs</div>
+                        </div>
+                    </div>
+
+                    <!-- Staff Notation Tab -->
+                    <div id="tab-content-staff-notation" data-tab-content="staff-notation" class="tab-content hidden flex-1 flex flex-col p-4">
+                        <h3 class="text-sm font-semibold mb-2 text-gray-700">Staff Notation (OSMD/VexFlow)</h3>
+                        <div id="staff-notation-container" class="flex-1 bg-white p-4 border-2 border-gray-300 rounded overflow-auto">
+                            <div class="text-sm text-gray-500">Start typing music to see staff notation...</div>
                         </div>
                     </div>
                 </div>
