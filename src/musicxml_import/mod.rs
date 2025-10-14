@@ -73,10 +73,15 @@ pub fn convert_musicxml_to_lilypond(
     use parser::XmlDocument;
 
     // Use provided settings or defaults
-    let settings = settings.unwrap_or_default();
+    let mut settings = settings.unwrap_or_default();
 
     // Parse XML document
     let doc = XmlDocument::parse(musicxml)?;
+
+    // Extract title from MusicXML
+    if settings.title.is_none() {
+        settings.title = doc.extract_title();
+    }
 
     // Extract parts
     let parts = doc.extract_parts()?;

@@ -11,6 +11,7 @@ pub struct MusicXmlBuilder {
     pub last_note: Option<(String, i8, i8)>, // (step, alter, octave)
     measure_started: bool,
     attributes_written: bool,
+    title: Option<String>,
 }
 
 impl MusicXmlBuilder {
@@ -22,7 +23,13 @@ impl MusicXmlBuilder {
             last_note: None,
             measure_started: false,
             attributes_written: false,
+            title: None,
         }
+    }
+
+    /// Set the document title
+    pub fn set_title(&mut self, title: Option<String>) {
+        self.title = title;
     }
 
     /// Start a new measure with optional divisions value
@@ -205,6 +212,16 @@ impl MusicXmlBuilder {
         xml.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
         xml.push_str("<!DOCTYPE score-partwise PUBLIC \"-//Recordare//DTD MusicXML 3.1 Partwise//EN\" \"http://www.musicxml.org/dtds/partwise.dtd\">\n");
         xml.push_str("<score-partwise version=\"3.1\">\n");
+
+        // Add work/movement-title if present
+        if let Some(title) = &self.title {
+            if !title.is_empty() {
+                xml.push_str("  <movement-title>");
+                xml.push_str(&xml_escape(title));
+                xml.push_str("</movement-title>\n");
+            }
+        }
+
         xml.push_str("  <part-list>\n");
         xml.push_str("    <score-part id=\"P1\">\n");
         xml.push_str("      <part-name></part-name>\n");
@@ -228,6 +245,15 @@ impl MusicXmlBuilder {
         // NO time signature per spec (FR-023)
         self.buffer.push_str("  </attributes>\n");
     }
+}
+
+/// Escape special XML characters
+fn xml_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
 }
 
 impl Default for MusicXmlBuilder {

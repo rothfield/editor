@@ -58,6 +58,10 @@ pub struct ConversionSettings {
 
     /// Whether to convert chord symbols
     pub convert_chord_symbols: bool,
+
+    /// Document title (extracted from MusicXML)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
 }
 
 impl Default for ConversionSettings {
@@ -68,6 +72,7 @@ impl Default for ConversionSettings {
             convert_directions: true,
             convert_lyrics: true,
             convert_chord_symbols: true,
+            title: None,
         }
     }
 }

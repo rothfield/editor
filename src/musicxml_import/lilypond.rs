@@ -26,6 +26,13 @@ pub fn generate_lilypond_document(
     };
     output.push_str(&format!("\\language \"{}\"\n\n", lang));
 
+    // Header block with title if present
+    if let Some(ref title) = settings.title {
+        output.push_str("\\header {\n");
+        output.push_str(&format!("  title = \"{}\"\n", escape_lilypond_string(title)));
+        output.push_str("}\n\n");
+    }
+
     // Score block
     output.push_str("\\score {\n");
 
@@ -326,4 +333,10 @@ fn text_to_lilypond(text: &TextMark) -> String {
         Placement::Above => format!("^\\markup {{ {} }}", text.text),
         Placement::Below => format!("_\\markup {{ {} }}", text.text),
     }
+}
+
+/// Escape special characters for LilyPond strings
+fn escape_lilypond_string(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace('"', "\\\"")
 }

@@ -61,6 +61,35 @@ impl<'a> XmlDocument<'a> {
         Ok(root)
     }
 
+    /// Extract title from MusicXML document
+    pub fn extract_title(&'a self) -> Option<String> {
+        let score = self.get_score_partwise().ok()?;
+
+        // Try movement-title first (more common)
+        if let Some(title_node) = get_child(score, "movement-title") {
+            if let Some(title) = get_text(title_node) {
+                let trimmed = title.trim();
+                if !trimmed.is_empty() {
+                    return Some(trimmed.to_string());
+                }
+            }
+        }
+
+        // Fallback to work/work-title
+        if let Some(work_node) = get_child(score, "work") {
+            if let Some(title_node) = get_child(work_node, "work-title") {
+                if let Some(title) = get_text(title_node) {
+                    let trimmed = title.trim();
+                    if !trimmed.is_empty() {
+                        return Some(trimmed.to_string());
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
     /// Extract all parts from the document
     pub fn extract_parts(&'a self) -> Result<Vec<PartNode<'a>>, ParseError> {
         let score = self.get_score_partwise()?;

@@ -47,6 +47,13 @@ pub fn to_musicxml(document: &Document) -> Result<String, String> {
 
     let mut builder = MusicXmlBuilder::new();
 
+    // Set document title if present
+    if let Some(title) = &document.title {
+        if !title.is_empty() && title != "Untitled Document" {
+            builder.set_title(Some(title.clone()));
+        }
+    }
+
     // Handle empty document
     if document.lines.is_empty() || document.lines.iter().all(|line| line.cells.is_empty()) {
         musicxml_log!("Empty document detected, generating single measure with whole rest");

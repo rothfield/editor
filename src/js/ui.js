@@ -548,7 +548,7 @@ class UI {
   /**
      * Set tonic
      */
-  setTonic() {
+  async setTonic() {
     const currentTonic = this.getTonic();
     const newTonic = prompt('Enter tonic (C, D, E, F, G, A, B):', currentTonic);
 
@@ -558,6 +558,7 @@ class UI {
       if (this.editor && this.editor.theDocument) {
         this.editor.theDocument.tonic = newTonic;
         this.editor.addToConsoleLog(`Document tonic set to: ${newTonic}`);
+        await this.editor.render(); // Re-render to update WebUI
       }
     }
   }
@@ -565,15 +566,17 @@ class UI {
   /**
      * Set pitch system
      */
-  setPitchSystem() {
+  async setPitchSystem() {
     const currentSystem = this.getCurrentPitchSystem();
     const newSystem = this.showPitchSystemDialog(currentSystem);
 
     if (newSystem !== null) {
       this.updatePitchSystemDisplay(newSystem);
 
-      if (this.editor) {
-        this.editor.setPitchSystem(newSystem);
+      if (this.editor && this.editor.theDocument) {
+        this.editor.theDocument.pitch_system = newSystem;
+        this.editor.addToConsoleLog(`Document pitch system set to: ${this.getPitchSystemName(newSystem)}`);
+        await this.editor.render(); // Re-render to update WebUI
       }
     }
   }
@@ -607,7 +610,7 @@ class UI {
   /**
      * Set key signature
      */
-  setKeySignature() {
+  async setKeySignature() {
     const currentSignature = this.getKeySignature();
     const newSignature = prompt('Enter key signature (e.g., C, G, D major, etc.):', currentSignature);
 
@@ -617,6 +620,7 @@ class UI {
       if (this.editor && this.editor.theDocument) {
         this.editor.theDocument.key_signature = newSignature;
         this.editor.addToConsoleLog(`Document key signature set to: ${newSignature}`);
+        await this.editor.render(); // Re-render to update WebUI
       }
     }
   }
@@ -656,7 +660,7 @@ class UI {
   /**
      * Set line tonic
      */
-  setLineTonic() {
+  async setLineTonic() {
     const currentTonic = this.getLineTonic();
     const newTonic = prompt('Enter line tonic (C, D, E, F, G, A, B):', currentTonic);
 
@@ -666,6 +670,7 @@ class UI {
       if (this.editor && this.editor.theDocument && this.editor.theDocument.lines.length > 0) {
         this.editor.theDocument.lines[0].tonic = newTonic;
         this.editor.addToConsoleLog(`Line tonic set to: ${newTonic}`);
+        await this.editor.render(); // Re-render to update WebUI
       }
     }
   }
@@ -673,7 +678,7 @@ class UI {
   /**
      * Set line pitch system
      */
-  setLinePitchSystem() {
+  async setLinePitchSystem() {
     const currentSystem = this.getLinePitchSystem();
     const newSystem = this.showPitchSystemDialog(currentSystem);
 
@@ -683,6 +688,7 @@ class UI {
       if (this.editor && this.editor.theDocument && this.editor.theDocument.lines.length > 0) {
         this.editor.theDocument.lines[0].pitch_system = newSystem;
         this.editor.addToConsoleLog(`Line pitch system set to: ${this.getPitchSystemName(newSystem)}`);
+        await this.editor.render(); // Re-render to update WebUI
       }
     }
   }
@@ -750,7 +756,7 @@ class UI {
   /**
      * Set line key signature
      */
-  setLineKeySignature() {
+  async setLineKeySignature() {
     const currentSignature = this.getLineKeySignature();
     const newSignature = prompt('Enter line key signature:', currentSignature);
 
@@ -760,6 +766,7 @@ class UI {
       if (this.editor && this.editor.theDocument && this.editor.theDocument.lines.length > 0) {
         this.editor.theDocument.lines[0].key_signature = newSignature;
         this.editor.addToConsoleLog(`Line key signature set to: ${newSignature}`);
+        await this.editor.render(); // Re-render to update WebUI
       }
     }
   }

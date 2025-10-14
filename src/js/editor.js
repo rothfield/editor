@@ -72,7 +72,8 @@ class MusicNotationEditor {
         setStaveLyrics: wasmModule.setStaveLyrics,
         setStaveTala: wasmModule.setStaveTala,
         // MusicXML export API
-        exportMusicXML: wasmModule.exportMusicXML
+        exportMusicXML: wasmModule.exportMusicXML,
+        convertMusicXMLToLilyPond: wasmModule.convertMusicXMLToLilyPond
       };
 
       // Initialize OSMD renderer for staff notation
@@ -2322,6 +2323,42 @@ class MusicNotationEditor {
   /**
      * Update document display in debug panel
      */
+  /**
+   * Update LilyPond source display
+   */
+  async updateLilyPondDisplay() {
+    const lilypondSource = document.getElementById('lilypond-source');
+    if (!lilypondSource || !this.theDocument) {
+      return;
+    }
+
+    try {
+      // Export to MusicXML first
+      const musicxml = await this.exportMusicXML();
+      console.log('[LilyPond] Exported MusicXML:', musicxml.substring(0, 300));
+
+      // Convert to LilyPond
+      const resultJson = this.wasmModule.convertMusicXMLToLilyPond(musicxml, null);
+      const result = JSON.parse(resultJson);
+
+      console.log('[LilyPond] Conversion result:', result);
+
+      // Display the LilyPond source
+      lilypondSource.textContent = result.lilypond_source;
+
+      // If there are skipped elements, add a note
+      if (result.skipped_elements && result.skipped_elements.length > 0) {
+        lilypondSource.textContent += '\n\n% Skipped elements:\n';
+        result.skipped_elements.forEach(elem => {
+          lilypondSource.textContent += `% - ${elem.element_type}: ${elem.reason}\n`;
+        });
+      }
+    } catch (error) {
+      console.error('[LilyPond] Error:', error);
+      lilypondSource.textContent = `% Error converting to LilyPond:\n% ${error.message}\n% ${error.stack}`;
+    }
+  }
+
   updateDocumentDisplay() {
     // Update ephemeral model (full document with state)
     const docJson = document.getElementById('document-json');
@@ -2347,6 +2384,11 @@ class MusicNotationEditor {
       const displayDoc = this.createDisplayDocument(persistentDoc);
       persistentJson.textContent = this.toYAML(displayDoc);
     }
+
+    // Update LilyPond source (async, non-blocking)
+    this.updateLilyPondDisplay().catch(err => {
+      console.error('Failed to update LilyPond display:', err);
+    });
 
     // Update hitboxes display
     this.updateHitboxesDisplay();

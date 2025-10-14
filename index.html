@@ -110,6 +110,7 @@
         /* Scrollbar styling for tab content */
         #document-json,
         #persistent-json,
+        #lilypond-source,
         #console-errors-list,
         #console-log-list {
             overflow-y: auto !important;
@@ -123,6 +124,7 @@
         /* Webkit scrollbar styling */
         #document-json::-webkit-scrollbar,
         #persistent-json::-webkit-scrollbar,
+        #lilypond-source::-webkit-scrollbar,
         #console-errors-list::-webkit-scrollbar,
         #console-log-list::-webkit-scrollbar {
             width: 10px;
@@ -130,6 +132,7 @@
 
         #document-json::-webkit-scrollbar-track,
         #persistent-json::-webkit-scrollbar-track,
+        #lilypond-source::-webkit-scrollbar-track,
         #console-errors-list::-webkit-scrollbar-track,
         #console-log-list::-webkit-scrollbar-track {
             background: #f3f4f6;
@@ -138,6 +141,7 @@
 
         #document-json::-webkit-scrollbar-thumb,
         #persistent-json::-webkit-scrollbar-thumb,
+        #lilypond-source::-webkit-scrollbar-thumb,
         #console-errors-list::-webkit-scrollbar-thumb,
         #console-log-list::-webkit-scrollbar-thumb {
             background: #9ca3af;
@@ -146,6 +150,7 @@
 
         #document-json::-webkit-scrollbar-thumb:hover,
         #persistent-json::-webkit-scrollbar-thumb:hover,
+        #lilypond-source::-webkit-scrollbar-thumb:hover,
         #console-errors-list::-webkit-scrollbar-thumb:hover,
         #console-log-list::-webkit-scrollbar-thumb:hover {
             background: #6b7280;
@@ -303,6 +308,9 @@
                         <button id="tab-staff-notation" class="tab active" data-tab="staff-notation">
                             Staff Notation
                         </button>
+                        <button id="tab-lilypond" class="tab" data-tab="lilypond">
+                            LilyPond
+                        </button>
                         <button id="tab-ephemeral" class="tab" data-tab="ephemeral">
                             Ephemeral Model
                         </button>
@@ -326,6 +334,12 @@
                         <div id="staff-notation-container" class="flex-1 bg-white p-4 border-2 border-gray-300 rounded overflow-auto">
                             <div class="text-sm text-gray-500">Start typing music to see staff notation...</div>
                         </div>
+                    </div>
+
+                    <!-- LilyPond Tab -->
+                    <div id="tab-content-lilypond" data-tab-content="lilypond" class="tab-content hidden flex-1 flex flex-col p-4">
+                        <h3 class="text-sm font-semibold mb-2 text-gray-700">LilyPond Source Code</h3>
+                        <pre id="lilypond-source" class="flex-1 text-xs font-mono bg-white p-3 border-2 border-gray-300 rounded overflow-auto"></pre>
                     </div>
 
                     <!-- Ephemeral Model Tab (full document with state) -->
