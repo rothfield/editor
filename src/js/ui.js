@@ -454,10 +454,56 @@ class UI {
   }
 
   /**
-     * Export to LilyPond (stub)
+     * Export to LilyPond
      */
-  exportLilyPond() {
-    this.showStubMessage('LilyPond export is not implemented in this POC');
+  async exportLilyPond() {
+    if (this.editor) {
+      try {
+        // Step 1: Export document to MusicXML
+        const musicxml = await this.editor.exportMusicXML();
+
+        if (!musicxml) {
+          console.error('Failed to export MusicXML');
+          this.editor.addToConsoleLog('Error: MusicXML export failed');
+          return;
+        }
+
+        // Step 2: Convert MusicXML to LilyPond using WASM
+        const resultJson = await this.editor.wasmModule.convertMusicXMLToLilyPond(musicxml, null);
+        const result = JSON.parse(resultJson);
+
+        if (!result || !result.lilypond_source) {
+          console.error('Failed to convert MusicXML to LilyPond');
+          this.editor.addToConsoleLog('Error: LilyPond conversion failed');
+          return;
+        }
+
+        // Log any skipped elements
+        if (result.skipped_elements && result.skipped_elements.length > 0) {
+          console.warn('Skipped elements during conversion:', result.skipped_elements);
+          this.editor.addToConsoleLog(`Warning: ${result.skipped_elements.length} elements could not be converted`);
+        }
+
+        // Convert title to snake_case for filename
+        const title = this.getDocumentTitle();
+        const filename = this.toSnakeCase(title);
+
+        // Create blob and download file
+        const blob = new Blob([result.lilypond_source], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${filename}.ly`;
+        a.click();
+
+        URL.revokeObjectURL(url);
+        this.editor.addToConsoleLog(`LilyPond exported: ${filename}.ly`);
+      } catch (error) {
+        console.error('Failed to export LilyPond:', error);
+        this.editor.addToConsoleLog(`Error exporting LilyPond: ${error.message}`);
+      }
+    }
   }
 
   /**

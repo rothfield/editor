@@ -198,9 +198,9 @@ pub fn convert_note(
         if child.tag_name().name() == "tie" {
             if let Some(tie_type) = child.attribute("type") {
                 note_event.tie = match tie_type {
-                    "start" => Some(crate::musicxml::types::Tie::Start),
-                    "stop" => Some(crate::musicxml::types::Tie::Stop),
-                    "continue" => Some(crate::musicxml::types::Tie::Continue),
+                    "start" => Some(crate::musicxml_import::types::Tie::Start),
+                    "stop" => Some(crate::musicxml_import::types::Tie::Stop),
+                    "continue" => Some(crate::musicxml_import::types::Tie::Continue),
                     _ => None,
                 };
             }
@@ -246,7 +246,7 @@ pub fn convert_attributes(
 
     // Key signature
     if let Some(key_node) = get_child(attributes_node, "key") {
-        if let Some((fifths, mode_str)) = crate::musicxml::parser::parse_key(key_node) {
+        if let Some((fifths, mode_str)) = crate::musicxml_import::parser::parse_key(key_node) {
             let mode = match mode_str.to_lowercase().as_str() {
                 "major" => Mode::Major,
                 "minor" => Mode::Minor,
@@ -260,7 +260,7 @@ pub fn convert_attributes(
 
     // Time signature
     if let Some(time_node) = get_child(attributes_node, "time") {
-        if let Some((beats, beat_type)) = crate::musicxml::parser::parse_time(time_node) {
+        if let Some((beats, beat_type)) = crate::musicxml_import::parser::parse_time(time_node) {
             if let Ok(time_sig) = TimeSignature::new(beats, beat_type) {
                 music.push(Music::TimeChange(time_sig));
             }
@@ -269,7 +269,7 @@ pub fn convert_attributes(
 
     // Clef
     if let Some(clef_node) = get_child(attributes_node, "clef") {
-        if let Some((sign, _line)) = crate::musicxml::parser::parse_clef(clef_node) {
+        if let Some((sign, _line)) = crate::musicxml_import::parser::parse_clef(clef_node) {
             let clef_type = match sign.as_str() {
                 "G" => ClefType::Treble,
                 "F" => ClefType::Bass,
@@ -368,7 +368,7 @@ fn convert_direction(
 
 /// Convert a part to sequential music
 pub fn convert_part(
-    part_node: crate::musicxml::parser::PartNode,
+    part_node: crate::musicxml_import::parser::PartNode,
     context: &mut ConversionContext,
 ) -> Result<SequentialMusic, ConversionError> {
     let mut all_music = Vec::new();
