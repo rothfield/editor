@@ -288,6 +288,13 @@ class DOMRenderer {
   renderLine(line, lineIndex) {
     const lineElement = this.getOrCreateLineElement(lineIndex);
 
+    console.log(`🎼 renderLine ${lineIndex}:`, {
+      label: line.label,
+      lyrics: line.lyrics,
+      tala: line.tala,
+      cellCount: line.cells?.length
+    });
+
     // Only render the main line (no lanes)
     const mainLine = line.cells;
     const beats = line.beats || [];
@@ -305,7 +312,10 @@ class DOMRenderer {
 
     // Render tala (direct field on line)
     if (line.tala) {
+      console.log(`  📍 About to call renderTala with: "${line.tala}"`);
       this.renderTala(line.tala, lineElement);
+    } else {
+      console.log(`  ⚠️ No tala to render (line.tala = ${JSON.stringify(line.tala)})`);
     }
   }
 

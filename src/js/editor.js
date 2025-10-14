@@ -1786,6 +1786,7 @@ class MusicNotationEditor {
         }
 
         this.theDocument = updatedDocument;
+        console.log('📝 After WASM setStaveTala, line[0].tala =', updatedDocument.lines[0]?.tala);
         this.addToConsoleLog(`Tala set to: ${talaString}`);
         await this.render();
       }
