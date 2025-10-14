@@ -298,9 +298,14 @@ class DOMRenderer {
       this.renderLineLabel(line.label, lineElement);
     }
 
-    // Render line metadata
-    if (line.metadata) {
-      this.renderLineMetadata(line.metadata, lineElement);
+    // Render lyrics (direct field on line)
+    if (line.lyrics) {
+      this.renderLyrics(line.lyrics, lineElement);
+    }
+
+    // Render tala (direct field on line)
+    if (line.tala) {
+      this.renderTala(line.tala, lineElement);
     }
   }
 
@@ -555,26 +560,62 @@ class DOMRenderer {
      */
   renderLyrics(lyrics, lineElement) {
     const lyricsElement = document.createElement('div');
-    lyricsElement.className = 'line-lyrics text-sm text-notation-text-token';
+    lyricsElement.className = 'line-lyrics text-sm';
     lyricsElement.textContent = lyrics;
     lyricsElement.style.position = 'absolute';
-    lyricsElement.style.left = '0';
-    lyricsElement.style.bottom = '-20px';
+    lyricsElement.style.left = '60px'; // Align with cells (LEFT_MARGIN_PX)
+    lyricsElement.style.top = '52px'; // Below cells (32px cell top + 16px cell height + 4px gap)
+    lyricsElement.style.fontStyle = 'italic';
+    lyricsElement.style.color = '#6b7280'; // gray-500
 
     lineElement.appendChild(lyricsElement);
   }
 
   /**
-     * Render tala notation
+     * Render tala notation - distribute characters across barlines
      */
   renderTala(tala, lineElement) {
-    const talaElement = document.createElement('div');
-    talaElement.className = 'line-tala text-xs';
-    talaElement.textContent = tala;
-    talaElement.style.position = 'absolute';
-    talaElement.style.top = '-30px';
+    if (!tala || !this.theDocument) return;
 
-    lineElement.appendChild(talaElement);
+    // Get the current line's cells to find barlines
+    const lineIndex = parseInt(lineElement.dataset.line);
+    const line = this.theDocument.lines[lineIndex];
+    if (!line || !line.cells) return;
+
+    console.log('🎵 renderTala called:', { tala, lineIndex, cellCount: line.cells.length });
+
+    // Find all barline cells (kind === 6)
+    const barlines = line.cells.filter(cell => cell.kind === 6);
+    console.log('  Found barlines:', barlines.length, barlines.map(b => ({ glyph: b.glyph, x: b.x })));
+
+    if (barlines.length === 0) {
+      console.log('  No barlines found!');
+      return;
+    }
+
+    // Distribute tala characters to barlines
+    barlines.forEach((barlineCell, barlineIndex) => {
+      // Get the tala character for this barline
+      // If we've run out of tala characters, use the last one
+      const talaCharIndex = Math.min(barlineIndex, tala.length - 1);
+      const talaChar = tala[talaCharIndex];
+
+      console.log(`  Rendering tala char "${talaChar}" at barline ${barlineIndex}, x=${barlineCell.x}`);
+
+      // Create a span element for this tala character
+      const talaElement = document.createElement('span');
+      talaElement.className = 'tala-char text-xs';
+      talaElement.textContent = talaChar;
+      talaElement.style.position = 'absolute';
+      talaElement.style.left = `${barlineCell.x}px`;
+      talaElement.style.top = '12px'; // Above the cell line (cell top is at 32px)
+      talaElement.style.transform = 'translateX(-50%)'; // Center on barline
+      talaElement.style.color = '#4b5563'; // gray-600
+      talaElement.style.fontWeight = '600';
+      talaElement.style.pointerEvents = 'none';
+
+      lineElement.appendChild(talaElement);
+    });
   }
 
   /**

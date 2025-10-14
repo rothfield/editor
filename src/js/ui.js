@@ -584,7 +584,7 @@ class UI {
       this.updateLineTonicDisplay(newTonic);
 
       if (this.editor && this.editor.theDocument && this.editor.theDocument.lines.length > 0) {
-        this.editor.theDocument.lines[0].metadata.tonic = newTonic;
+        this.editor.theDocument.lines[0].tonic = newTonic;
         this.editor.addToConsoleLog(`Line tonic set to: ${newTonic}`);
       }
     }
@@ -601,7 +601,7 @@ class UI {
       this.updateLinePitchSystemDisplay(newSystem);
 
       if (this.editor && this.editor.theDocument && this.editor.theDocument.lines.length > 0) {
-        this.editor.theDocument.lines[0].metadata.pitch_system = newSystem;
+        this.editor.theDocument.lines[0].pitch_system = newSystem;
         this.editor.addToConsoleLog(`Line pitch system set to: ${this.getPitchSystemName(newSystem)}`);
       }
     }
@@ -678,7 +678,7 @@ class UI {
       this.updateLineKeySignatureDisplay(newSignature);
 
       if (this.editor && this.editor.theDocument && this.editor.theDocument.lines.length > 0) {
-        this.editor.theDocument.lines[0].metadata.key_signature = newSignature;
+        this.editor.theDocument.lines[0].key_signature = newSignature;
         this.editor.addToConsoleLog(`Line key signature set to: ${newSignature}`);
       }
     }
@@ -819,57 +819,57 @@ class UI {
      * Getters
      */
   getDocumentTitle() {
-    return this.editor?.document?.title || 'Untitled Document';
+    return this.editor?.theDocument?.title || 'Untitled Document';
   }
 
   getTonic() {
-    return this.editor?.document?.tonic || '';
+    return this.editor?.theDocument?.tonic || '';
   }
 
   getCurrentPitchSystem() {
-    return this.editor?.document?.pitch_system || 1;
+    return this.editor?.theDocument?.pitch_system || 1;
   }
 
   getKeySignature() {
-    return this.editor?.document?.key_signature || '';
+    return this.editor?.theDocument?.key_signature || '';
   }
 
   getLineLabel() {
-    if (this.editor?.document?.staves?.length > 0) {
+    if (this.editor?.theDocument?.lines?.length > 0) {
       return this.editor.theDocument.lines[0].label || '';
     }
     return '';
   }
 
   getLineTonic() {
-    if (this.editor?.document?.staves?.length > 0) {
-      return this.editor.theDocument.lines[0].metadata.tonic || '';
+    if (this.editor?.theDocument?.lines?.length > 0) {
+      return this.editor.theDocument.lines[0].tonic || '';
     }
     return '';
   }
 
   getLinePitchSystem() {
-    if (this.editor?.document?.staves?.length > 0) {
-      return this.editor.theDocument.lines[0].metadata.pitch_system || 1;
+    if (this.editor?.theDocument?.lines?.length > 0) {
+      return this.editor.theDocument.lines[0].pitch_system || 1;
     }
     return 1;
   }
 
   getLyrics() {
-    if (this.editor?.document?.staves?.length > 0) {
+    if (this.editor?.theDocument?.lines?.length > 0) {
       return this.editor.theDocument.lines[0].lyrics || '';
     }
     return '';
   }
 
   getTala() {
-    return this.editor?.document?.staves?.length > 0
+    return this.editor?.theDocument?.lines?.length > 0
       ? this.editor.theDocument.lines[0].tala || '' : '';
   }
 
   getLineKeySignature() {
-    if (this.editor?.document?.staves?.length > 0) {
-      return this.editor.theDocument.lines[0].metadata.key_signature || '';
+    if (this.editor?.theDocument?.lines?.length > 0) {
+      return this.editor.theDocument.lines[0].key_signature || '';
     }
     return '';
   }

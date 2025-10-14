@@ -9,6 +9,7 @@ pub mod notation;
 pub mod pitch;
 pub mod pitch_systems;
 pub mod barlines;
+pub mod serde_helpers;
 
 // Re-export commonly used types
 pub use core::*;

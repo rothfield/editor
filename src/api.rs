@@ -641,7 +641,7 @@ pub fn set_stave_lyrics(
     }
 
     // Set the lyrics for the line
-    document.lines[line_index].lyrics = Some(lyrics.to_string());
+    document.lines[line_index].lyrics = lyrics.to_string();
     wasm_info!("  Line {} lyrics set to: '{}'", line_index, lyrics);
 
     // Serialize back to JavaScript
@@ -692,7 +692,7 @@ pub fn set_stave_tala(
     }
 
     // Set the tala for the line
-    document.lines[line_index].tala = Some(tala.to_string());
+    document.lines[line_index].tala = tala.to_string();
     wasm_info!("  Line {} tala set to: '{}'", line_index, tala);
 
     // Serialize back to JavaScript
@@ -737,7 +737,7 @@ pub fn set_stave_label(
     }
 
     // Set the label for the line
-    document.lines[line_index].label = Some(label.to_string());
+    document.lines[line_index].label = label.to_string();
     wasm_info!("  Line {} label set to: '{}'", line_index, label);
 
     // Serialize back to JavaScript

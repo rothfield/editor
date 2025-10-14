@@ -1771,6 +1771,20 @@ class MusicNotationEditor {
         // Restore the state field after WASM call
         updatedDocument.state = preservedState;
 
+        // Ensure all Line metadata fields exist (WASM may not include empty strings)
+        if (updatedDocument.lines && updatedDocument.lines.length > 0) {
+          updatedDocument.lines.forEach(line => {
+            line.label = line.label ?? '';
+            line.tala = line.tala ?? '';
+            line.lyrics = line.lyrics ?? '';
+            line.tonic = line.tonic ?? '';
+            line.pitch_system = line.pitch_system ?? 0;
+            line.key_signature = line.key_signature ?? '';
+            line.tempo = line.tempo ?? '';
+            line.time_signature = line.time_signature ?? '';
+          });
+        }
+
         this.theDocument = updatedDocument;
         this.addToConsoleLog(`Tala set to: ${talaString}`);
         await this.render();
@@ -2289,6 +2303,13 @@ class MusicNotationEditor {
       // Rust handles field exclusion via #[serde(skip)] on ephemeral fields (state, x, y, w, h, etc.)
       // Just exclude the runtime state field - WASM serialization handles the rest
       const { state, ...persistentDoc } = this.theDocument;
+
+      // DEBUG: Log what fields are actually present
+      console.log('Document keys:', Object.keys(persistentDoc));
+      if (persistentDoc.lines && persistentDoc.lines[0]) {
+        console.log('Line[0] keys:', Object.keys(persistentDoc.lines[0]));
+      }
+
       const displayDoc = this.createDisplayDocument(persistentDoc);
       persistentJson.textContent = this.toYAML(displayDoc);
     }
@@ -2334,8 +2355,15 @@ class MusicNotationEditor {
 
     // Handle objects
     if (type === 'object') {
-      const keys = Object.keys(obj);
+      let keys = Object.keys(obj);
       if (keys.length === 0) return '{}';
+
+      // Special ordering for root document: alphabetical with 'lines' at the end
+      if (indent === 0 && keys.includes('lines')) {
+        const linesKey = 'lines';
+        const otherKeys = keys.filter(k => k !== 'lines').sort();
+        keys = [...otherKeys, linesKey];
+      }
 
       return `\n${keys.map(key => {
         const value = this.toYAML(obj[key], indent + 1);
@@ -2356,18 +2384,39 @@ class MusicNotationEditor {
     // Deep clone the document
     const displayDoc = JSON.parse(JSON.stringify(doc));
 
+    // Ensure all document-level metadata fields are present (even if empty/null)
+    displayDoc.title = displayDoc.title ?? null;
+    displayDoc.composer = displayDoc.composer ?? null;
+    displayDoc.tonic = displayDoc.tonic ?? null;
+    displayDoc.key_signature = displayDoc.key_signature ?? null;
+    displayDoc.created_at = displayDoc.created_at ?? null;
+    displayDoc.modified_at = displayDoc.modified_at ?? null;
+    displayDoc.version = displayDoc.version ?? null;
+
     // Convert document-level pitch_system to string
-    if (displayDoc.metadata && typeof displayDoc.metadata.pitch_system === 'number') {
-      const systemNum = displayDoc.metadata.pitch_system;
-      displayDoc.metadata.pitch_system = `${this.getPitchSystemName(systemNum)} (${systemNum})`;
+    displayDoc.pitch_system = displayDoc.pitch_system ?? null;
+    if (typeof displayDoc.pitch_system === 'number') {
+      const systemNum = displayDoc.pitch_system;
+      displayDoc.pitch_system = `${this.getPitchSystemName(systemNum)} (${systemNum})`;
     }
 
-    // Convert stave-level pitch_systems to strings
-    if (displayDoc.staves && Array.isArray(displayDoc.staves)) {
-      displayDoc.staves.forEach(stave => {
-        if (line && typeof line.pitch_system === 'number') {
+    // Ensure all Line metadata fields are present (even if empty)
+    if (displayDoc.lines && Array.isArray(displayDoc.lines)) {
+      displayDoc.lines.forEach(line => {
+        // Ensure all metadata fields exist with empty string defaults
+        line.label = line.label ?? '';
+        line.tala = line.tala ?? '';
+        line.lyrics = line.lyrics ?? '';
+        line.tonic = line.tonic ?? '';
+        line.pitch_system = line.pitch_system ?? 0;
+        line.key_signature = line.key_signature ?? '';
+        line.tempo = line.tempo ?? '';
+        line.time_signature = line.time_signature ?? '';
+
+        // Convert line pitch_system to string for display
+        if (typeof line.pitch_system === 'number') {
           const systemNum = line.pitch_system;
-          line.pitch_system = `${this.getPitchSystemName(systemNum)} (${systemNum})`;
+          line.pitch_system = systemNum === 0 ? '(not set)' : `${this.getPitchSystemName(systemNum)} (${systemNum})`;
         }
       });
     }

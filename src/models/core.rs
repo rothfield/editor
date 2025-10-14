@@ -9,6 +9,7 @@ use std::collections::VecDeque;
 // Re-export from other modules
 pub use super::elements::{ElementKind, PitchSystem, SlurIndicator};
 pub use super::notation::{BeatSpan, SlurSpan, Position, Selection, Range, CursorPosition};
+use super::serde_helpers::serialize_option_as_null;
 
 /// The fundamental unit representing one visible glyph in musical notation
 #[repr(C)]
@@ -192,29 +193,37 @@ pub struct Line {
     /// Array of cells in this line
     pub cells: Vec<Cell>,
 
-    /// Optional label displayed at the beginning of the line
-    pub label: Option<String>,
+    /// Label displayed at the beginning of the line (empty string if not set)
+    #[serde(default)]
+    pub label: String,
 
-    /// Tala notation string (digits 0-9+ displayed above barlines)
-    pub tala: Option<String>,
+    /// Tala notation string (digits 0-9+ displayed above barlines, empty if not set)
+    #[serde(default)]
+    pub tala: String,
 
-    /// Lyrics text string displayed below the first pitched element
-    pub lyrics: Option<String>,
+    /// Lyrics text string displayed below the first pitched element (empty if not set)
+    #[serde(default)]
+    pub lyrics: String,
 
-    /// Musical tonic for this line (overrides composition tonic)
-    pub tonic: Option<String>,
+    /// Musical tonic for this line (overrides composition tonic, empty if not set)
+    #[serde(default)]
+    pub tonic: String,
 
-    /// Pitch system for this line (overrides composition pitch system)
-    pub pitch_system: Option<PitchSystem>,
+    /// Pitch system for this line (overrides composition pitch system, 0=Unknown if not set)
+    #[serde(default)]
+    pub pitch_system: u8,
 
-    /// Key signature for this line (sharps/flats affecting pitch interpretation)
-    pub key_signature: Option<String>,
+    /// Key signature for this line (sharps/flats affecting pitch interpretation, empty if not set)
+    #[serde(default)]
+    pub key_signature: String,
 
-    /// Tempo marking for this line
-    pub tempo: Option<String>,
+    /// Tempo marking for this line (empty if not set)
+    #[serde(default)]
+    pub tempo: String,
 
-    /// Time signature for this line
-    pub time_signature: Option<String>,
+    /// Time signature for this line (empty if not set)
+    #[serde(default)]
+    pub time_signature: String,
 
     /// Derived beat spans (calculated, not stored)
     #[serde(skip)]
@@ -230,14 +239,14 @@ impl Line {
     pub fn new() -> Self {
         Self {
             cells: Vec::new(),
-            label: None,
-            tala: None,
-            lyrics: None,
-            tonic: None,
-            pitch_system: None,
-            key_signature: None,
-            tempo: None,
-            time_signature: None,
+            label: String::new(),
+            tala: String::new(),
+            lyrics: String::new(),
+            tonic: String::new(),
+            pitch_system: 0,
+            key_signature: String::new(),
+            tempo: String::new(),
+            time_signature: String::new(),
             beats: Vec::new(),
             slurs: Vec::new(),
         }
@@ -399,14 +408,28 @@ impl Document {
 
     /// Get the effective pitch system for a line
     pub fn effective_pitch_system(&self, line: &Line) -> PitchSystem {
-        line.pitch_system
-            .or(self.pitch_system)
-            .unwrap_or(PitchSystem::Number)
+        if line.pitch_system != 0 {
+            // Convert u8 to PitchSystem
+            match line.pitch_system {
+                1 => PitchSystem::Number,
+                2 => PitchSystem::Western,
+                3 => PitchSystem::Sargam,
+                4 => PitchSystem::Bhatkhande,
+                5 => PitchSystem::Tabla,
+                _ => self.pitch_system.unwrap_or(PitchSystem::Number),
+            }
+        } else {
+            self.pitch_system.unwrap_or(PitchSystem::Number)
+        }
     }
 
     /// Get the effective tonic for a line
     pub fn effective_tonic<'a>(&'a self, line: &'a Line) -> Option<&'a String> {
-        line.tonic.as_ref().or(self.tonic.as_ref())
+        if !line.tonic.is_empty() {
+            Some(&line.tonic)
+        } else {
+            self.tonic.as_ref()
+        }
     }
 }
 
@@ -913,4 +936,23 @@ mod chrono {
     }
 
     use std::time::SystemTime;
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[test]
+    fn test_line_serialization_includes_null_fields() {
+        let line = Line::new();
+        let json = serde_json::to_string_pretty(&line).unwrap();
+        println!("Serialized Line:\n{}", json);
+        
+        // Check that null fields are present in JSON
+        assert!(json.contains("\"label\""), "label field should be present");
+        assert!(json.contains("\"tonic\""), "tonic field should be present");
+        assert!(json.contains("\"lyrics\""), "lyrics field should be present");
+        assert!(json.contains("\"tala\""), "tala field should be present");
+        assert!(json.contains("\"pitch_system\""), "pitch_system field should be present");
+        assert!(json.contains("\"key_signature\""), "key_signature field should be present");
+    }
 }
