@@ -5,7 +5,7 @@
 //! 2. parse(before, char) - Look back combination (accidentals, text)
 //! 3. parse(char, after) - Look forward combination (barlines)
 
-use crate::models::{Cell, ElementKind, LaneKind, PitchSystem};
+use crate::models::{Cell, ElementKind, PitchSystem};
 use crate::parse::pitch_system::PitchSystemDispatcher;
 
 /// Get a pitch system dispatcher (cheap to create)
@@ -83,7 +83,7 @@ pub fn parse_single(c: char, pitch_system: PitchSystem, column: usize) -> Cell {
 /// Returns Some(new_cell) if combination is valid, None otherwise
 pub fn parse_with_before(prev: &Cell, c: char, pitch_system: PitchSystem) -> Option<Cell> {
     // Build combined string
-    let combined_str = format!("{}{}", prev.grapheme, c);
+    let combined_str = format!("{}{}", prev.glyph, c);
     log::info!("  ⬅️ parse_with_before: trying '{}'", combined_str);
 
     // Try to parse the combined string
@@ -107,7 +107,7 @@ pub fn parse_with_before(prev: &Cell, c: char, pitch_system: PitchSystem) -> Opt
 /// Returns Some(new_cell) if combination is valid, None otherwise
 pub fn parse_with_after(c: char, next: &Cell, pitch_system: PitchSystem, column: usize) -> Option<Cell> {
     // Build combined string
-    let combined_str = format!("{}{}", c, next.grapheme);
+    let combined_str = format!("{}{}", c, next.glyph);
     log::info!("  ➡️ parse_with_after: trying '{}'", combined_str);
 
     // Try to parse the combined string
@@ -131,7 +131,7 @@ pub fn parse_with_after(c: char, next: &Cell, pitch_system: PitchSystem, column:
 fn parse_note(s: &str, pitch_system: PitchSystem, column: usize) -> Option<Cell> {
     let dispatcher = get_dispatcher();
     if dispatcher.lookup(s, pitch_system) {
-        let mut cell = Cell::new(s.to_string(), ElementKind::PitchedElement, LaneKind::Letter, column);
+        let mut cell = Cell::new(s.to_string(), ElementKind::PitchedElement, column);
         cell.pitch_system = Some(pitch_system);
         cell.pitch_code = Some(s.to_string());
         cell.set_head(true);
@@ -144,7 +144,7 @@ fn parse_note(s: &str, pitch_system: PitchSystem, column: usize) -> Option<Cell>
 /// Parse barline (includes "|", ":", "|:", ":|", "||", etc.)
 fn parse_barline(s: &str, column: usize) -> Option<Cell> {
     if matches!(s, "|" | ":" | "|:" | ":|" | "||") {
-        let cell = Cell::new(s.to_string(), ElementKind::Barline, LaneKind::Letter, column);
+        let cell = Cell::new(s.to_string(), ElementKind::Barline, column);
         Some(cell)
     } else {
         None
@@ -154,7 +154,7 @@ fn parse_barline(s: &str, column: usize) -> Option<Cell> {
 /// Parse whitespace
 fn parse_whitespace(s: &str, column: usize) -> Option<Cell> {
     if s == " " {
-        let cell = Cell::new(s.to_string(), ElementKind::Whitespace, LaneKind::Letter, column);
+        let cell = Cell::new(s.to_string(), ElementKind::Whitespace, column);
         Some(cell)
     } else {
         None
@@ -164,7 +164,7 @@ fn parse_whitespace(s: &str, column: usize) -> Option<Cell> {
 /// Parse unpitched element (dash, underscore)
 fn parse_unpitched(s: &str, column: usize) -> Option<Cell> {
     if s == "-" || s == "_" {
-        let cell = Cell::new(s.to_string(), ElementKind::UnpitchedElement, LaneKind::Letter, column);
+        let cell = Cell::new(s.to_string(), ElementKind::UnpitchedElement, column);
         Some(cell)
     } else {
         None
@@ -174,7 +174,7 @@ fn parse_unpitched(s: &str, column: usize) -> Option<Cell> {
 /// Parse breath mark (apostrophe, comma)
 fn parse_breath_mark(s: &str, column: usize) -> Option<Cell> {
     if s == "'" || s == "," {
-        let cell = Cell::new(s.to_string(), ElementKind::BreathMark, LaneKind::Letter, column);
+        let cell = Cell::new(s.to_string(), ElementKind::BreathMark, column);
         Some(cell)
     } else {
         None
@@ -183,7 +183,7 @@ fn parse_breath_mark(s: &str, column: usize) -> Option<Cell> {
 
 /// Parse text (fallback)
 fn parse_text(s: &str, column: usize) -> Cell {
-    Cell::new(s.to_string(), ElementKind::Text, LaneKind::Letter, column)
+    Cell::new(s.to_string(), ElementKind::Text, column)
 }
 
 // ============================================================================
@@ -204,17 +204,17 @@ pub fn try_combine_tokens(cells: &mut Vec<Cell>, insert_pos: usize, pitch_system
     }
 
     // Log current state
-    let cells_str: Vec<String> = cells.iter().map(|c| format!("'{}'[{}]", c.grapheme, c.kind as u8)).collect();
+    let cells_str: Vec<String> = cells.iter().map(|c| format!("'{}'[{}]", c.glyph, c.kind as u8)).collect();
     log::info!("  📋 Current cells: [{}]", cells_str.join(", "));
 
     // Case 2: Look back - try to combine with previous cell
     if insert_pos > 0 && insert_pos < cells.len() {
-        let current_char = cells[insert_pos].grapheme.chars().next().unwrap_or('\0');
+        let current_char = cells[insert_pos].glyph.chars().next().unwrap_or('\0');
         log::info!("  ⬅️ Case 2 (Look back): prev='{}', current_char='{}'",
-            cells[insert_pos - 1].grapheme, current_char);
+            cells[insert_pos - 1].glyph, current_char);
 
         if let Some(combined) = parse_with_before(&cells[insert_pos - 1], current_char, pitch_system) {
-            log::info!("  ✅ Combination succeeded: '{}'", combined.grapheme);
+            log::info!("  ✅ Combination succeeded: '{}'", combined.glyph);
             // Replace previous cell with combined cell
             cells[insert_pos - 1] = combined;
             // Remove current cell
@@ -227,7 +227,7 @@ pub fn try_combine_tokens(cells: &mut Vec<Cell>, insert_pos: usize, pitch_system
                 }
             }
 
-            let cells_str: Vec<String> = cells.iter().map(|c| format!("'{}'", c.grapheme)).collect();
+            let cells_str: Vec<String> = cells.iter().map(|c| format!("'{}'", c.glyph)).collect();
             log::info!("  📋 After combination: [{}]", cells_str.join(", "));
             return;
         } else {
@@ -239,12 +239,12 @@ pub fn try_combine_tokens(cells: &mut Vec<Cell>, insert_pos: usize, pitch_system
 
     // Case 3: Look forward - try to combine with next cell
     if insert_pos < cells.len() - 1 {
-        let current_char = cells[insert_pos].grapheme.chars().next().unwrap_or('\0');
+        let current_char = cells[insert_pos].glyph.chars().next().unwrap_or('\0');
         log::info!("  ➡️ Case 3 (Look forward): current_char='{}', next='{}'",
-            current_char, cells[insert_pos + 1].grapheme);
+            current_char, cells[insert_pos + 1].glyph);
 
         if let Some(combined) = parse_with_after(current_char, &cells[insert_pos + 1], pitch_system, cells[insert_pos].col) {
-            log::info!("  ✅ Combination succeeded: '{}'", combined.grapheme);
+            log::info!("  ✅ Combination succeeded: '{}'", combined.glyph);
             // Replace current cell with combined cell
             cells[insert_pos] = combined;
             // Remove next cell
@@ -257,7 +257,7 @@ pub fn try_combine_tokens(cells: &mut Vec<Cell>, insert_pos: usize, pitch_system
                 }
             }
 
-            let cells_str: Vec<String> = cells.iter().map(|c| format!("'{}'", c.grapheme)).collect();
+            let cells_str: Vec<String> = cells.iter().map(|c| format!("'{}'", c.glyph)).collect();
             log::info!("  📋 After combination: [{}]", cells_str.join(", "));
             return;
         } else {
@@ -278,14 +278,14 @@ mod tests {
     fn test_parse_single_note() {
         let cell = parse_single('1', PitchSystem::Number, 0);
         assert_eq!(cell.kind, ElementKind::PitchedElement);
-        assert_eq!(cell.grapheme, "1");
+        assert_eq!(cell.glyph, "1");
     }
 
     #[test]
     fn test_parse_single_text() {
         let cell = parse_single('x', PitchSystem::Number, 0);
         assert_eq!(cell.kind, ElementKind::Text);
-        assert_eq!(cell.grapheme, "x");
+        assert_eq!(cell.glyph, "x");
     }
 
     #[test]
@@ -295,7 +295,7 @@ mod tests {
 
         assert!(combined.is_some());
         let combined = combined.unwrap();
-        assert_eq!(combined.grapheme, "1#");
+        assert_eq!(combined.glyph, "1#");
         assert_eq!(combined.kind, ElementKind::PitchedElement);
     }
 
@@ -307,7 +307,7 @@ mod tests {
 
         assert!(double_sharp.is_some());
         let double_sharp = double_sharp.unwrap();
-        assert_eq!(double_sharp.grapheme, "1##");
+        assert_eq!(double_sharp.glyph, "1##");
     }
 
     #[test]
@@ -317,7 +317,7 @@ mod tests {
 
         assert!(combined.is_some());
         let combined = combined.unwrap();
-        assert_eq!(combined.grapheme, "c#");
+        assert_eq!(combined.glyph, "c#");
     }
 
     #[test]
@@ -330,7 +330,7 @@ mod tests {
         try_combine_tokens(&mut cells, 1, PitchSystem::Number);
 
         assert_eq!(cells.len(), 1);
-        assert_eq!(cells[0].grapheme, "1#");
+        assert_eq!(cells[0].glyph, "1#");
         assert_eq!(cells[0].kind, ElementKind::PitchedElement);
     }
 }

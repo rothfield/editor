@@ -58,7 +58,13 @@ class MusicNotationEditor {
         insertCharacter: wasmModule.insertCharacter,
         parseText: wasmModule.parseText,
         deleteCharacter: wasmModule.deleteCharacter,
-        applyOctave: wasmModule.applyOctave
+        applyOctave: wasmModule.applyOctave,
+        // Slur API
+        applySlur: wasmModule.applySlur,
+        removeSlur: wasmModule.removeSlur,
+        hasSlurInSelection: wasmModule.hasSlurInSelection,
+        // Document API
+        createNewDocument: wasmModule.createNewDocument
       };
 
       const loadTime = performance.now() - startTime;
@@ -70,10 +76,12 @@ class MusicNotationEditor {
       // Setup event handlers
       this.setupEventHandlers();
 
+      // Mark as initialized BEFORE creating document
+      this.isInitialized = true;
+
       // Create initial empty document
       await this.createNewDocument();
 
-      this.isInitialized = true;
       console.log('Music Notation Editor initialized successfully');
 
       // Show ready state
@@ -89,30 +97,27 @@ class MusicNotationEditor {
      * Create a new empty document
      */
   async createNewDocument() {
-    const emptyDoc = {
-      metadata: {
-        title: 'Untitled Document',
-        pitch_system: 1, // Number system
-        created_at: new Date().toISOString()
-      },
-      staves: [{
-        label: '',
-        upper_line: [],
-        line: [],        // Main line of notation
-        lower_line: [],
-        lyrics: [],
-        metadata: {},
-        beats: [],
-        slurs: []
-      }],
-      state: {
-        cursor: { stave: 0, lane: 1, column: 0 },
-        selection: null,
-        has_focus: false
-      }
+    if (!this.isInitialized || !this.wasmModule) {
+      console.error('Cannot create document: WASM not initialized');
+      return;
+    }
+
+    // Create document using WASM
+    const document = this.wasmModule.createNewDocument();
+
+    // Set timestamps (WASM can't access system time)
+    const now = new Date().toISOString();
+    document.created_at = now;
+    document.modified_at = now;
+
+    // Add runtime state (not persisted by WASM)
+    document.state = {
+      cursor: { stave: 0, lane: 1, column: 0 },
+      selection: null,
+      has_focus: false
     };
 
-    await this.loadDocument(emptyDoc);
+    await this.loadDocument(document);
   }
 
   /**
@@ -167,9 +172,9 @@ class MusicNotationEditor {
     const startTime = performance.now();
 
     try {
-      if (this.document && this.document.staves && this.document.staves.length > 0) {
-        const stave = this.document.staves[0];
-        let letterLane = stave.line; // Main line of notation
+      if (this.document && this.document.lines && this.document.lines.length > 0) {
+        const line = this.document.lines[0];
+        let letterLane = line.cells; // Main line of notation
 
         logger.debug(LOG_CATEGORIES.PARSER, 'Processing characters', {
           charCount: text.length,
@@ -197,7 +202,7 @@ class MusicNotationEditor {
           const lengthAfter = updatedCells.length;
 
           // Update main line with combined cells
-          stave.line = updatedCells;
+          line.cells = updatedCells;
           letterLane = updatedCells;
 
           // Adjust cursor based on actual change in cell count
@@ -218,7 +223,7 @@ class MusicNotationEditor {
         this.setCursorPosition(currentPos);
 
         // Derive beats using WASM BeatDeriver
-        this.deriveBeats(stave);
+        this.deriveBeats(line);
       }
 
       await this.render();
@@ -253,18 +258,18 @@ class MusicNotationEditor {
   /**
      * Derive beats from cells using WASM BeatDeriver
      */
-  deriveBeats(stave) {
+  deriveBeats(line) {
     if (!this.wasmModule || !this.wasmModule.beatDeriver) {
       logger.error(LOG_CATEGORIES.EDITOR, 'BeatDeriver not available - WASM module not loaded');
       console.error('CRITICAL: BeatDeriver not available. Cannot derive beats.');
-      stave.beats = [];
+      line.beats = [];
       return;
     }
 
     try {
-      const letterLane = stave.line;
+      const letterLane = line.cells;
       if (!letterLane || letterLane.length === 0) {
-        stave.beats = [];
+        line.beats = [];
         return;
       }
 
@@ -277,7 +282,7 @@ class MusicNotationEditor {
 
       console.log(`WASM BeatDeriver returned ${beats.length} beats:`, beats);
 
-      stave.beats = beats;
+      line.beats = beats;
       logger.info(LOG_CATEGORIES.EDITOR, `Derived ${beats.length} beats via WASM`);
     } catch (error) {
       logger.error(LOG_CATEGORIES.EDITOR, 'WASM BeatDeriver failed', {
@@ -285,7 +290,7 @@ class MusicNotationEditor {
         cellCount: letterLane?.length || 0
       });
       console.error('WASM BeatDeriver failed:', error);
-      stave.beats = [];
+      line.beats = [];
     }
   }
 
@@ -310,10 +315,10 @@ class MusicNotationEditor {
       const pitchSystem = this.getCurrentPitchSystem();
 
       // Parse text using WASM recursive descent parser
-      if (this.document && this.document.staves && this.document.staves.length > 0) {
+      if (this.document && this.document.lines && this.document.lines.length > 0) {
         const cells = this.wasmModule.parseText(text, pitchSystem);
-        const stave = this.document.staves[0];
-        stave.line = cells; // Replace main line with parsed cells
+        const line =this.document.lines[0];
+        line.cells = cells; // Replace main line with parsed cells
       }
 
       // Extract beats for visualization
@@ -477,9 +482,9 @@ class MusicNotationEditor {
 
     try {
       // Simple deletion for POC - manual array manipulation
-      if (this.document && this.document.staves && this.document.staves.length > 0) {
-        const stave = this.document.staves[0];
-        const letterLane = stave.line; // Main line
+      if (this.document && this.document.lines && this.document.lines.length > 0) {
+        const line =this.document.lines[0];
+        const letterLane = line.cells; // Main line
 
         // Delete cells in range
         letterLane.splice(start, end - start);
@@ -561,7 +566,7 @@ class MusicNotationEditor {
       const doc = JSON.parse(state);
 
       if (doc.metadata) {
-        doc.metadata.pitch_system = system;
+        doc.pitch_system = system;
         await this.loadDocument(JSON.stringify(doc));
         this.addToConsoleLog(`Document pitch system set to: ${this.getPitchSystemName(system)}`);
       }
@@ -575,8 +580,8 @@ class MusicNotationEditor {
      * Get current pitch system
      */
   getCurrentPitchSystem() {
-    if (this.document && this.document.metadata) {
-      return this.document.metadata.pitch_system || 1; // Default to Number system
+    if (this.document) {
+      return this.document.pitch_system || 1; // Default to Number system
     }
     return 1;
   }
@@ -886,14 +891,14 @@ class MusicNotationEditor {
      * Get the maximum cell index in the main lane
      */
   getMaxCellIndex() {
-    if (!this.document || !this.document.staves || this.document.staves.length === 0) {
+    if (!this.document || !this.document.lines || this.document.lines.length === 0) {
       return 0;
     }
 
-    const stave = this.document.staves[0];
-    const lane = stave.line; // Always use main line
+    const line = this.document.lines[0];
+    const cells = line.cells || [];
 
-    return lane.length; // Position after last cell
+    return cells.length; // Position after last cell
   }
 
 
@@ -918,8 +923,7 @@ class MusicNotationEditor {
     this.document.state.selection = {
       start: Math.min(startPos, endPos),
       end: Math.max(startPos, endPos),
-      active: true,
-      lane: 1 // Always on main line
+      active: true
     };
   }
 
@@ -960,25 +964,23 @@ class MusicNotationEditor {
       return '';
     }
 
-    if (!this.document || !this.document.staves || this.document.staves.length === 0) {
+    if (!this.document || !this.document.lines || this.document.lines.length === 0) {
       return '';
     }
 
-    const stave = this.document.staves[0];
-    const laneNames = ['upper_line', 'line', 'lower_line', 'lyrics'];
-    const laneName = laneNames[selection.lane || 1];
-    const letterLane = stave[laneName];
+    const line = this.document.lines[0];
+    const cells = line.cells || [];
 
-    if (letterLane.length === 0) {
+    if (cells.length === 0) {
       return '';
     }
 
-    // Extract text from selection range
-    const selectedCells = letterLane.filter(cell =>
-      cell.col >= selection.start && cell.col < selection.end
+    // Extract text from selection range (no lanes - just cell indices)
+    const selectedCells = cells.filter((cell, index) =>
+      index >= selection.start && index < selection.end
     );
 
-    return selectedCells.map(cell => cell.grapheme || '').join('');
+    return selectedCells.map(cell => cell.glyph || '').join('');
   }
 
   /**
@@ -1142,28 +1144,26 @@ class MusicNotationEditor {
 
     const charWidth = 12; // Approximate character width
 
-    // Get the stave and lane for accurate positioning
-    if (!this.document || !this.document.staves || this.document.staves.length === 0) {
+    // Get the line for accurate positioning
+    if (!this.document || !this.document.lines || this.document.lines.length === 0) {
       return;
     }
 
-    const stave = this.document.staves[0];
-    const laneNames = ['upper_line', 'line', 'lower_line', 'lyrics'];
-    const laneName = laneNames[selection.lane || 1];
-    const letterLane = stave[laneName];
+    const line = this.document.lines[0];
+    const cells = line.cells || [];
 
     // Calculate left position by summing widths of cells before selection.start
     let leftPos = 0;
-    for (let i = 0; i < selection.start && i < letterLane.length; i++) {
-      const cell = letterLane[i];
-      leftPos += (cell.grapheme || '').length * charWidth;
+    for (let i = 0; i < selection.start && i < cells.length; i++) {
+      const cell = cells[i];
+      leftPos += (cell.glyph || '').length * charWidth;
     }
 
     // Calculate width by summing widths of selected cells
     let selectionWidth = 0;
-    for (let i = selection.start; i < selection.end && i < letterLane.length; i++) {
-      const cell = letterLane[i];
-      selectionWidth += (cell.grapheme || '').length * charWidth;
+    for (let i = selection.start; i < selection.end && i < cells.length; i++) {
+      const cell = cells[i];
+      selectionWidth += (cell.glyph || '').length * charWidth;
     }
 
     // Find the line element to append the selection to
@@ -1284,9 +1284,9 @@ class MusicNotationEditor {
       await this.recalculateBeats();
     } else if (cursorPos > 0) {
       // Use WASM API to delete character
-      if (this.document && this.document.staves && this.document.staves.length > 0) {
-        const stave = this.document.staves[0];
-        const letterLane = stave.line;
+      if (this.document && this.document.lines && this.document.lines.length > 0) {
+        const line =this.document.lines[0];
+        const letterLane = line.cells;
 
         logger.debug(LOG_CATEGORIES.EDITOR, 'Calling WASM deleteCharacter', {
           position: cursorPos - 1,
@@ -1294,7 +1294,7 @@ class MusicNotationEditor {
         });
 
         const updatedCells = this.wasmModule.deleteCharacter(letterLane, cursorPos - 1);
-        stave.line = updatedCells;
+        line.cells = updatedCells;
         this.setCursorPosition(cursorPos - 1);
         logger.info(LOG_CATEGORIES.EDITOR, 'Character deleted successfully', {
           newLaneSize: updatedCells.length
@@ -1330,12 +1330,12 @@ class MusicNotationEditor {
 
       if (cursorPos < maxPos) {
         // Use WASM API to delete character
-        if (this.document && this.document.staves && this.document.staves.length > 0) {
-          const stave = this.document.staves[0];
-          const letterLane = stave.line;
+        if (this.document && this.document.lines && this.document.lines.length > 0) {
+          const line =this.document.lines[0];
+          const letterLane = line.cells;
 
           const updatedCells = this.wasmModule.deleteCharacter(letterLane, cursorPos);
-          stave.line = updatedCells;
+          line.cells = updatedCells;
         }
 
         // Recalculate beats after deletion
@@ -1355,11 +1355,11 @@ class MusicNotationEditor {
      */
   async recalculateBeats() {
     try {
-      if (this.document && this.document.staves && this.document.staves.length > 0) {
-        const stave = this.document.staves[0];
+      if (this.document && this.document.lines && this.document.lines.length > 0) {
+        const line = this.document.lines[0];
 
         // Re-derive beats using WASM BeatDeriver
-        this.deriveBeats(stave);
+        this.deriveBeats(line);
 
         this.addToConsoleLog(`Recalculated beats after edit`);
       }
@@ -1372,14 +1372,14 @@ class MusicNotationEditor {
      * Get current text content from the document
      */
   getCurrentTextContent() {
-    if (!this.document || !this.document.staves || this.document.staves.length === 0) {
+    if (!this.document || !this.document.lines || this.document.lines.length === 0) {
       return '';
     }
 
-    const stave = this.document.staves[0];
-    const letterLane = stave.line; // Main line
+    const line = this.document.lines[0];
+    const letterLane = line.cells; // Main line
 
-    return letterLane.map(cell => cell.grapheme || '').join('');
+    return letterLane.map(cell => cell.glyph || '').join('');
   }
 
   /**
@@ -1452,9 +1452,9 @@ class MusicNotationEditor {
       } else {
         this.addToConsoleLog(`Applying slur to selection: "${selectedText}"`);
         // Apply slur using WASM API
-        if (this.document && this.document.staves && this.document.staves.length > 0) {
-          const stave = this.document.staves[0];
-          const letterLane = stave.line; // Main line
+        if (this.document && this.document.lines && this.document.lines.length > 0) {
+          const line =this.document.lines[0];
+          const letterLane = line.cells; // Main line
 
           console.log('🔧 Calling WASM applySlur:', {
             cellCount: letterLane.length,
@@ -1473,16 +1473,15 @@ class MusicNotationEditor {
           console.log('✅ WASM returned updated cells:', updatedCells.length);
 
           // Update the line with the updated cells from WASM
-          stave.line = updatedCells;
+          line.cells = updatedCells;
 
           this.addToConsoleLog(`Applied slur via WASM: cells ${selection.start}..${selection.end}`);
         }
       }
 
       await this.render();
-      await this.updateSlurDisplay();
 
-      // Restore visual selection after applying slur
+      // Restore visual selection after applying slur (slurs now render via CSS)
       this.updateSelectionDisplay();
 
       const action = hasExistingSlur ? 'removed' : 'applied';
@@ -1496,12 +1495,12 @@ class MusicNotationEditor {
      * Check if there's already a slur on the given selection using WASM API
      */
   hasSlurOnSelection(selection) {
-    if (!this.document || !this.document.staves || this.document.staves.length === 0) {
+    if (!this.document || !this.document.lines || this.document.lines.length === 0) {
       return false;
     }
 
-    const stave = this.document.staves[0];
-    const letterLane = stave.line; // Main line
+    const line =this.document.lines[0];
+    const letterLane = line.cells; // Main line
 
     // Call WASM API to check for slur indicators
     const wasmModule = this.wasmModule;
@@ -1516,12 +1515,12 @@ class MusicNotationEditor {
      * Remove slur from the given selection using WASM API
      */
   async removeSlurFromSelection(selection) {
-    if (!this.document || !this.document.staves || this.document.staves.length === 0) {
+    if (!this.document || !this.document.lines || this.document.lines.length === 0) {
       return;
     }
 
-    const stave = this.document.staves[0];
-    const letterLane = stave.line; // Main line
+    const line =this.document.lines[0];
+    const letterLane = line.cells; // Main line
 
     // Call WASM API to remove slur
     const wasmModule = this.wasmModule;
@@ -1532,37 +1531,11 @@ class MusicNotationEditor {
     );
 
     // Update the line with the updated cells from WASM
-    stave.line = updatedCells;
+    line.cells = updatedCells;
 
     this.addToConsoleLog(`Removed slur via WASM: cells ${selection.start}..${selection.end}`);
   }
 
-  /**
-     * Update slur visual display
-     */
-  async updateSlurDisplay() {
-    // This will be enhanced when T045 (Slur Rendering with Canvas) is implemented
-    // For now, just update the console and document display
-    this.updateDocumentDisplay();
-
-    // Restore visual selection after re-rendering
-    this.updateSelectionDisplay();
-
-    const slurCount = this.getSlurCount();
-    this.addToConsoleLog(`Document now contains ${slurCount} slur(s)`);
-  }
-
-  /**
-     * Get the total number of slurs in the document
-     */
-  getSlurCount() {
-    if (!this.document || !this.document.staves || this.document.staves.length === 0) {
-      return 0;
-    }
-
-    const stave = this.document.staves[0];
-    return stave.slurs ? stave.slurs.length : 0;
-  }
 
   /**
      * Apply octave to current selection with enhanced validation
@@ -1607,9 +1580,9 @@ class MusicNotationEditor {
       this.addToConsoleLog(`Applying octave ${octaveNames[octave]} to selection: "${selectedText}"`);
 
       // Call WASM function to apply octave to selected cells
-      if (this.document && this.document.staves && this.document.staves.length > 0) {
-        const stave = this.document.staves[0];
-        const letterLane = stave.line; // Main line
+      if (this.document && this.document.lines && this.document.lines.length > 0) {
+        const line =this.document.lines[0];
+        const letterLane = line.cells; // Main line
 
         logger.debug(LOG_CATEGORIES.COMMAND, 'Calling WASM applyOctave', {
           laneSize: letterLane.length,
@@ -1628,12 +1601,12 @@ class MusicNotationEditor {
           requestedOctave: octave,
           cellsInRange: updatedCells.slice(selection.start, selection.end).map((c, i) => ({
             index: selection.start + i,
-            grapheme: c.grapheme,
+            glyph: c.glyph,
             octave: c.octave
           }))
         });
 
-        stave.line = updatedCells;
+        line.cells = updatedCells;
         logger.info(LOG_CATEGORIES.COMMAND, 'WASM applyOctave successful', {
           cellsModified: updatedCells.length
         });
@@ -2010,32 +1983,29 @@ class MusicNotationEditor {
     });
 
     // Calculate pixel position by summing widths of all cells before cursor
+    // Lanes have been removed - all cells are in a single array
     let pixelPos = 0;
-    if (this.document && this.document.staves && this.document.staves.length > 0) {
-      const stave = this.document.staves[0];
-      const laneNames = ['upper_line', 'line', 'lower_line', 'lyrics'];
-      const laneName = laneNames[lane];
-      const currentLane = stave[laneName];
+    if (this.document && this.document.lines && this.document.lines.length > 0) {
+      const line = this.document.lines[0];
+      const allCells = line.cells || [];
 
-      console.log('🔍 Lane info:', {
-        laneName,
-        laneLength: currentLane?.length || 0,
-        firstCellGrapheme: currentLane?.[0]?.grapheme || 'N/A'
+      console.log('🔍 Cursor position calculation:', {
+        cellIndex,
+        totalCells: allCells.length
       });
 
-      // Sum up widths of cells 0 through cellIndex-1
-      for (let i = 0; i < cellIndex && i < currentLane.length; i++) {
-        const cell = currentLane[i];
-        const graphemeLength = (cell.grapheme || '').length;
-        pixelPos += graphemeLength * charWidth;
-        console.log(`  Cell ${i}: grapheme="${cell.grapheme}", length=${graphemeLength}, cumulative pixelPos=${pixelPos}`);
+      // Sum up widths of all cells before the cursor position
+      for (let i = 0; i < cellIndex && i < allCells.length; i++) {
+        const cell = allCells[i];
+        const glyphLength = (cell.glyph || '').length;
+        pixelPos += glyphLength * charWidth;
+        console.log(`  Cell ${i}: glyph="${cell.glyph}", length=${glyphLength}, cumulative pixelPos=${pixelPos}`);
       }
 
       console.log('📐 Final calculated position:', {
         pixelPos,
         yOffset,
-        cellIndex,
-        cellCount: currentLane.length
+        cellIndex
       });
     } else {
       // Fallback if no document
@@ -2162,10 +2132,10 @@ class MusicNotationEditor {
     }
 
     const charCount = document.getElementById('char-count');
-    if (charCount && this.document && this.document.staves && this.document.staves[0]) {
-      // Always use main line (lane 1)
-      const lane = this.document.staves[0].line;
-      charCount.textContent = lane.length;
+    if (charCount && this.document && this.document.lines && this.document.lines[0]) {
+      // Count all cells (lanes removed)
+      const cells = this.document.lines[0].cells || [];
+      charCount.textContent = cells.length;
     }
 
     const selectionInfo = document.getElementById('selection-info');
@@ -2198,12 +2168,9 @@ class MusicNotationEditor {
     // Update persistent model (saveable content only, no state)
     const persistentJson = document.getElementById('persistent-json');
     if (persistentJson && this.document) {
-      // Rust now handles cell field exclusion via #[serde(skip)] on ephemeral rendering fields
-      // We only need to exclude the state object (runtime cursor/selection data)
-      const persistentDoc = {
-        metadata: this.document.metadata,
-        staves: this.document.staves
-      };
+      // Rust handles field exclusion via #[serde(skip)] on ephemeral fields (state, x, y, w, h, etc.)
+      // Just exclude the runtime state field - WASM serialization handles the rest
+      const { state, ...persistentDoc } = this.document;
       const displayDoc = this.createDisplayDocument(persistentDoc);
       persistentJson.textContent = this.toYAML(displayDoc);
     }
@@ -2280,9 +2247,9 @@ class MusicNotationEditor {
     // Convert stave-level pitch_systems to strings
     if (displayDoc.staves && Array.isArray(displayDoc.staves)) {
       displayDoc.staves.forEach(stave => {
-        if (stave.metadata && typeof stave.metadata.pitch_system === 'number') {
-          const systemNum = stave.metadata.pitch_system;
-          stave.metadata.pitch_system = `${this.getPitchSystemName(systemNum)} (${systemNum})`;
+        if (line && typeof line.pitch_system === 'number') {
+          const systemNum = line.pitch_system;
+          line.pitch_system = `${this.getPitchSystemName(systemNum)} (${systemNum})`;
         }
       });
     }
@@ -2304,23 +2271,23 @@ class MusicNotationEditor {
       return;
     }
 
-    if (!this.document.staves || this.document.staves.length === 0) {
+    if (!this.document.lines || this.document.lines.length === 0) {
       hitboxesContainer.innerHTML = '<div class="text-gray-500 text-sm">No hitboxes available. Add some content to see hitbox information.</div>';
       return;
     }
 
     let hitboxHTML = '<div class="space-y-4">';
 
-    this.document.staves.forEach((stave, staveIndex) => {
+    this.document.lines.forEach((stave, staveIndex) => {
       hitboxHTML += `<div class="mb-4">`;
       hitboxHTML += `<h4 class="font-semibold text-sm mb-2">Stave ${staveIndex} Hitboxes</h4>`;
 
-      // Process each lane
-      const laneNames = ['upper_line', 'line', 'lower_line', 'lyrics'];
+      // Process each lane using the new unified structure
+      const laneKinds = [0, 1, 2, 3]; // Upper, Letter, Lower, Lyrics
       const laneDisplayNames = ['Upper Lane', 'Letter Lane (Main)', 'Lower Lane', 'Lyrics Lane'];
 
-      laneNames.forEach((laneName, laneIndex) => {
-        const lane = stave[laneName];
+      laneKinds.forEach((laneKind, laneIndex) => {
+        const lane = stave.cells ? stave.cells.filter(cell => cell.lane === laneKind) : [];
         if (lane && lane.length > 0) {
           hitboxHTML += `<div class="mb-3">`;
           hitboxHTML += `<h5 class="text-xs font-medium text-gray-600 mb-1">${laneDisplayNames[laneIndex]}</h5>`;
@@ -2334,7 +2301,7 @@ class MusicNotationEditor {
           hitboxHTML += `</tr></thead><tbody>`;
 
           lane.forEach((cell, cellIndex) => {
-            console.log(`🔍 Cell ${cellIndex} (${cell.grapheme}):`, {
+            console.log(`🔍 Cell ${cellIndex} (${cell.glyph}):`, {
               x: cell.x,
               y: cell.y,
               w: cell.w,
@@ -2352,7 +2319,7 @@ class MusicNotationEditor {
 
               hitboxHTML += `<tr class="hover:bg-blue-50">`;
               hitboxHTML += `<td class="border border-gray-300 px-2 py-1">${cellIndex}</td>`;
-              hitboxHTML += `<td class="border border-gray-300 px-2 py-1 font-mono">${cell.grapheme || ''}</td>`;
+              hitboxHTML += `<td class="border border-gray-300 px-2 py-1 font-mono">${cell.glyph || ''}</td>`;
               hitboxHTML += `<td class="border border-gray-300 px-2 py-1">${cell.col || 0}</td>`;
               hitboxHTML += `<td class="border border-gray-300 px-2 py-1">`;
               hitboxHTML += `${cell.x.toFixed(1)},${cell.y.toFixed(1)} `;
@@ -2393,15 +2360,15 @@ class MusicNotationEditor {
      * This is needed because WASM operations may return cells without hitbox fields
      */
   ensureHitboxesAreSet() {
-    if (!this.document || !this.document.staves) {
+    if (!this.document || !this.document.lines) {
       return;
     }
 
-    this.document.staves.forEach((stave, staveIndex) => {
-      const laneNames = ['upper_line', 'line', 'lower_line', 'lyrics'];
+    this.document.lines.forEach((stave, staveIndex) => {
+      const laneKinds = [0, 1, 2, 3]; // Upper, Letter, Lower, Lyrics
 
-      laneNames.forEach((laneName, laneIndex) => {
-        const lane = stave[laneName];
+      laneKinds.forEach((laneKind, laneIndex) => {
+        const lane = stave.cells ? stave.cells.filter(cell => cell.lane === laneKind) : [];
         if (!lane || lane.length === 0) {
           return;
         }
@@ -2411,17 +2378,17 @@ class MusicNotationEditor {
         const cellPositions = [];
         lane.forEach((charCell) => {
           cellPositions.push(cumulativeX);
-          const graphemeLength = (charCell.grapheme || '').length;
-          cumulativeX += graphemeLength * 12; // 12px per character
+          const glyphLength = (charCell.glyph || '').length;
+          cumulativeX += glyphLength * 12; // 12px per character
         });
 
         // Set hitbox values on each cell if they're missing or zero
         lane.forEach((charCell, cellIndex) => {
-          const graphemeLength = (charCell.grapheme || '').length;
-          const cellWidth = graphemeLength * 12;
+          const glyphLength = (charCell.glyph || '').length;
+          const cellWidth = glyphLength * 12;
 
           // Debug: log current cell state
-          console.log(`🔧 Processing cell ${cellIndex} ('${charCell.grapheme}'):`, {
+          console.log(`🔧 Processing cell ${cellIndex} ('${charCell.glyph}'):`, {
             before: { x: charCell.x, y: charCell.y, w: charCell.w, h: charCell.h },
             calculated: { x: cellPositions[cellIndex], w: cellWidth, h: 16 }
           });

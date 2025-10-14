@@ -101,6 +101,55 @@
                 #3b82f6 80%,
                 transparent 100%);
         }
+
+        /* Ensure tab content areas scroll properly */
+        .tab-content {
+            min-height: 0; /* Critical for flex scrolling */
+        }
+
+        /* Scrollbar styling for tab content */
+        #document-json,
+        #persistent-json,
+        #console-errors-list,
+        #console-log-list {
+            overflow-y: auto !important;
+            overflow-x: auto !important;
+            min-height: 0; /* Critical for flex scrolling */
+            max-height: 100%; /* Constrain to parent */
+            scrollbar-width: thin;
+            scrollbar-color: #9ca3af #f3f4f6;
+        }
+
+        /* Webkit scrollbar styling */
+        #document-json::-webkit-scrollbar,
+        #persistent-json::-webkit-scrollbar,
+        #console-errors-list::-webkit-scrollbar,
+        #console-log-list::-webkit-scrollbar {
+            width: 10px;
+        }
+
+        #document-json::-webkit-scrollbar-track,
+        #persistent-json::-webkit-scrollbar-track,
+        #console-errors-list::-webkit-scrollbar-track,
+        #console-log-list::-webkit-scrollbar-track {
+            background: #f3f4f6;
+            border-radius: 4px;
+        }
+
+        #document-json::-webkit-scrollbar-thumb,
+        #persistent-json::-webkit-scrollbar-thumb,
+        #console-errors-list::-webkit-scrollbar-thumb,
+        #console-log-list::-webkit-scrollbar-thumb {
+            background: #9ca3af;
+            border-radius: 4px;
+        }
+
+        #document-json::-webkit-scrollbar-thumb:hover,
+        #persistent-json::-webkit-scrollbar-thumb:hover,
+        #console-errors-list::-webkit-scrollbar-thumb:hover,
+        #console-log-list::-webkit-scrollbar-thumb:hover {
+            background: #6b7280;
+        }
     </style>
 
     <!-- Preload critical resources -->

@@ -41,7 +41,7 @@ impl CellParser {
             }
 
             let (kind, pitch_system) = self.identify_element_kind(&segment);
-            let mut cell = Cell::new(segment.clone(), kind, LaneKind::Letter, column);
+            let mut cell = Cell::new(segment.clone(), kind, column);
 
             // Set pitch system for pitched elements
             if kind == ElementKind::PitchedElement {
@@ -91,7 +91,7 @@ impl CellParser {
             }
 
             let (kind, pitch_system) = self.identify_element_kind(segment);
-            let mut cell = Cell::new(segment.clone(), kind, LaneKind::Letter, column);
+            let mut cell = Cell::new(segment.clone(), kind, column);
 
             // Set pitch system for pitched elements
             if kind == ElementKind::PitchedElement {

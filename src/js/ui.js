@@ -444,8 +444,9 @@ class UI {
       this.updateDocumentTitle(newTitle);
 
       if (this.editor && this.editor.document) {
-        this.editor.document.metadata.title = newTitle;
+        this.editor.document.title = newTitle;
         this.editor.addToConsoleLog(`Document title set to: ${newTitle}`);
+        this.editor.render(); // Re-render to show title on canvas
       }
     }
   }
@@ -461,7 +462,7 @@ class UI {
       this.updateTonicDisplay(newTonic);
 
       if (this.editor && this.editor.document) {
-        this.editor.document.metadata.tonic = newTonic;
+        this.editor.document.tonic = newTonic;
         this.editor.addToConsoleLog(`Document tonic set to: ${newTonic}`);
       }
     }
@@ -520,7 +521,7 @@ class UI {
       this.updateKeySignatureDisplay(newSignature);
 
       if (this.editor && this.editor.document) {
-        this.editor.document.metadata.key_signature = newSignature;
+        this.editor.document.key_signature = newSignature;
         this.editor.addToConsoleLog(`Document key signature set to: ${newSignature}`);
       }
     }
@@ -536,8 +537,8 @@ class UI {
     if (newLabel !== null && newLabel.trim() !== '') {
       this.updateLineLabelDisplay(newLabel);
 
-      if (this.editor && this.editor.document && this.editor.document.staves.length > 0) {
-        this.editor.document.staves[0].label = newLabel;
+      if (this.editor && this.editor.document && this.editor.document.lines.length > 0) {
+        this.editor.document.lines[0].label = newLabel;
         this.editor.addToConsoleLog(`Line label set to: ${newLabel}`);
       }
     }
@@ -553,8 +554,8 @@ class UI {
     if (newTonic !== null && newTonic.trim() !== '') {
       this.updateLineTonicDisplay(newTonic);
 
-      if (this.editor && this.editor.document && this.editor.document.staves.length > 0) {
-        this.editor.document.staves[0].metadata.tonic = newTonic;
+      if (this.editor && this.editor.document && this.editor.document.lines.length > 0) {
+        this.editor.document.lines[0].metadata.tonic = newTonic;
         this.editor.addToConsoleLog(`Line tonic set to: ${newTonic}`);
       }
     }
@@ -570,8 +571,8 @@ class UI {
     if (newSystem !== null) {
       this.updateLinePitchSystemDisplay(newSystem);
 
-      if (this.editor && this.editor.document && this.editor.document.staves.length > 0) {
-        this.editor.document.staves[0].metadata.pitch_system = newSystem;
+      if (this.editor && this.editor.document && this.editor.document.lines.length > 0) {
+        this.editor.document.lines[0].metadata.pitch_system = newSystem;
         this.editor.addToConsoleLog(`Line pitch system set to: ${this.getPitchSystemName(newSystem)}`);
       }
     }
@@ -587,8 +588,8 @@ class UI {
     if (newLyrics !== null && newLyrics.trim() !== '') {
       this.updateLyricsDisplay(newLyrics);
 
-      if (this.editor && this.editor.document && this.editor.document.staves.length > 0) {
-        this.editor.document.staves[0].metadata.lyrics = newLyrics;
+      if (this.editor && this.editor.document && this.editor.document.lines.length > 0) {
+        this.editor.document.lines[0].lyrics = newLyrics;
         this.editor.addToConsoleLog(`Lyrics set to: ${newLyrics}`);
       }
     }
@@ -632,8 +633,8 @@ class UI {
     if (newSignature !== null && newSignature.trim() !== '') {
       this.updateLineKeySignatureDisplay(newSignature);
 
-      if (this.editor && this.editor.document && this.editor.document.staves.length > 0) {
-        this.editor.document.staves[0].metadata.key_signature = newSignature;
+      if (this.editor && this.editor.document && this.editor.document.lines.length > 0) {
+        this.editor.document.lines[0].metadata.key_signature = newSignature;
         this.editor.addToConsoleLog(`Line key signature set to: ${newSignature}`);
       }
     }
@@ -774,57 +775,57 @@ class UI {
      * Getters
      */
   getDocumentTitle() {
-    return this.editor?.document?.metadata?.title || 'Untitled Document';
+    return this.editor?.document?.title || 'Untitled Document';
   }
 
   getTonic() {
-    return this.editor?.document?.metadata?.tonic || '';
+    return this.editor?.document?.tonic || '';
   }
 
   getCurrentPitchSystem() {
-    return this.editor?.document?.metadata?.pitch_system || 1;
+    return this.editor?.document?.pitch_system || 1;
   }
 
   getKeySignature() {
-    return this.editor?.document?.metadata?.key_signature || '';
+    return this.editor?.document?.key_signature || '';
   }
 
   getLineLabel() {
     if (this.editor?.document?.staves?.length > 0) {
-      return this.editor.document.staves[0].label || '';
+      return this.editor.document.lines[0].label || '';
     }
     return '';
   }
 
   getLineTonic() {
     if (this.editor?.document?.staves?.length > 0) {
-      return this.editor.document.staves[0].metadata.tonic || '';
+      return this.editor.document.lines[0].metadata.tonic || '';
     }
     return '';
   }
 
   getLinePitchSystem() {
     if (this.editor?.document?.staves?.length > 0) {
-      return this.editor.document.staves[0].metadata.pitch_system || 1;
+      return this.editor.document.lines[0].metadata.pitch_system || 1;
     }
     return 1;
   }
 
   getLyrics() {
     if (this.editor?.document?.staves?.length > 0) {
-      return this.editor.document.staves[0].metadata.lyrics || '';
+      return this.editor.document.lines[0].lyrics || '';
     }
     return '';
   }
 
   getTala() {
     return this.editor?.document?.staves?.length > 0
-      ? this.editor.document.staves[0].metadata.tala || '' : '';
+      ? this.editor.document.lines[0].tala || '' : '';
   }
 
   getLineKeySignature() {
     if (this.editor?.document?.staves?.length > 0) {
-      return this.editor.document.staves[0].metadata.key_signature || '';
+      return this.editor.document.lines[0].metadata.key_signature || '';
     }
     return '';
   }

@@ -10,18 +10,15 @@ use std::collections::VecDeque;
 pub use super::elements::{ElementKind, LaneKind, PitchSystem, SlurIndicator};
 pub use super::notation::{BeatSpan, SlurSpan, Position, Selection, Range, CursorPosition};
 
-/// The fundamental unit representing one visible grapheme cluster in musical notation
+/// The fundamental unit representing one visible glyph in musical notation
 #[repr(C)]
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Cell {
-    /// The visible grapheme cluster (e.g., "S", "C#", "2b", "-")
-    pub grapheme: String,
+    /// The visible glyph (e.g., "S", "C#", "2b", "-")
+    pub glyph: String,
 
     /// Type of musical element this cell represents
     pub kind: ElementKind,
-
-    /// Vertical lane position (Upper, Letter, Lower, Lyrics)
-    pub lane: LaneKind,
 
     /// Physical column index (0-based) for layout calculations
     pub col: usize,
@@ -63,11 +60,10 @@ pub struct Cell {
 
 impl Cell {
     /// Create a new Cell
-    pub fn new(grapheme: String, kind: ElementKind, lane: LaneKind, col: usize) -> Self {
+    pub fn new(glyph: String, kind: ElementKind, col: usize) -> Self {
         Self {
-            grapheme,
+            glyph,
             kind,
-            lane,
             col,
             flags: 0,
             pitch_code: None,
@@ -132,7 +128,7 @@ impl Cell {
 
     /// Get the length of this token in characters
     pub fn token_length(&self) -> usize {
-        self.grapheme.chars().count()
+        self.glyph.chars().count()
     }
 
     /// Check if this cell can be selected
@@ -190,105 +186,12 @@ impl Cell {
     }
 }
 
-/// Container for musical notation with support for multiple lanes and line-level metadata
+/// Container for musical notation with simplified single-lane structure and flattened metadata
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Line {
-    /// Ordered lanes containing Cell arrays
-    pub lanes: [Vec<Cell>; 4],
+    /// Array of cells in this line
+    pub cells: Vec<Cell>,
 
-    /// Line-level metadata
-    pub metadata: LineMetadata,
-
-    /// Derived beat spans (calculated, not stored)
-    #[serde(skip)]
-    pub beats: Vec<BeatSpan>,
-
-    /// Derived slur connections (calculated, not stored)
-    #[serde(skip)]
-    pub slurs: Vec<SlurSpan>,
-}
-
-impl Line {
-    /// Create a new empty line with default metadata
-    pub fn new() -> Self {
-        Self {
-            lanes: [
-                Vec::new(), // Upper lane
-                Vec::new(), // Letter lane
-                Vec::new(), // Lower lane
-                Vec::new(), // Lyrics lane
-            ],
-            metadata: LineMetadata::new(),
-            beats: Vec::new(),
-            slurs: Vec::new(),
-        }
-    }
-
-    /// Get Cells from a specific lane
-    pub fn get_lane(&self, lane: LaneKind) -> &[Cell] {
-        &self.lanes[lane as usize]
-    }
-
-    /// Get mutable Cells from a specific lane
-    pub fn get_lane_mut(&mut self, lane: LaneKind) -> &mut Vec<Cell> {
-        &mut self.lanes[lane as usize]
-    }
-
-    /// Get all temporal Cells from the Letter lane
-    pub fn get_temporal_cells(&self) -> Vec<&Cell> {
-        self.lanes[LaneKind::Letter as usize]
-            .iter()
-            .filter(|cell| cell.is_temporal())
-            .collect()
-    }
-
-    /// Get the maximum column index across all lanes
-    pub fn max_column(&self) -> usize {
-        self.lanes
-            .iter()
-            .map(|lane| lane.last().map(|cell| cell.col).unwrap_or(0))
-            .max()
-            .unwrap_or(0)
-    }
-
-    /// Add a Cell to the specified lane
-    pub fn add_cell(&mut self, cell: Cell, lane: LaneKind) {
-        self.get_lane_mut(lane).push(cell);
-    }
-
-    /// Insert a Cell at a specific position in a lane
-    pub fn insert_cell(&mut self, cell: Cell, lane: LaneKind, index: usize) {
-        self.get_lane_mut(lane).insert(index, cell);
-    }
-
-    /// Remove a Cell from a lane
-    pub fn remove_cell(&mut self, lane: LaneKind, index: usize) -> Option<Cell> {
-        let lane_vec = self.get_lane_mut(lane);
-        if index < lane_vec.len() {
-            Some(lane_vec.remove(index))
-        } else {
-            None
-        }
-    }
-
-    /// Clear all Cells from a lane
-    pub fn clear_lane(&mut self, lane: LaneKind) {
-        self.get_lane_mut(lane).clear();
-    }
-
-    /// Clear all lanes
-    pub fn clear(&mut self) {
-        for lane in &mut self.lanes {
-            lane.clear();
-        }
-        self.beats.clear();
-        self.slurs.clear();
-    }
-}
-
-/// Metadata stored at the line level for musical and structural information
-#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
-pub struct LineMetadata {
     /// Optional label displayed at the beginning of the line
     pub label: Option<String>,
 
@@ -312,30 +215,104 @@ pub struct LineMetadata {
 
     /// Time signature for this line
     pub time_signature: Option<String>,
+
+    /// Derived beat spans (calculated, not stored)
+    #[serde(skip)]
+    pub beats: Vec<BeatSpan>,
+
+    /// Derived slur connections (calculated, not stored)
+    #[serde(skip)]
+    pub slurs: Vec<SlurSpan>,
 }
 
-impl LineMetadata {
-    /// Create new default metadata
+impl Line {
+    /// Create a new empty line with default values
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            cells: Vec::new(),
+            label: None,
+            tala: None,
+            lyrics: None,
+            tonic: None,
+            pitch_system: None,
+            key_signature: None,
+            tempo: None,
+            time_signature: None,
+            beats: Vec::new(),
+            slurs: Vec::new(),
+        }
     }
 
-    /// Check if this line has any metadata set
-    pub fn has_metadata(&self) -> bool {
-        self.label.is_some() ||
-        self.tala.is_some() ||
-        self.lyrics.is_some() ||
-        self.tonic.is_some() ||
-        self.pitch_system.is_some() ||
-        self.key_signature.is_some()
+    /// Get all cells (for compatibility)
+    pub fn get_all_cells(&self) -> &[Cell] {
+        &self.cells
+    }
+
+    /// Get mutable reference to all cells
+    pub fn get_all_cells_mut(&mut self) -> &mut Vec<Cell> {
+        &mut self.cells
+    }
+
+    /// Get the maximum column index
+    pub fn max_column(&self) -> usize {
+        self.cells
+            .iter()
+            .map(|cell| cell.col)
+            .max()
+            .unwrap_or(0)
+    }
+
+    /// Add a Cell to the line
+    pub fn add_cell(&mut self, cell: Cell) {
+        self.cells.push(cell);
+    }
+
+    /// Insert a Cell at a specific position
+    pub fn insert_cell(&mut self, cell: Cell, index: usize) {
+        self.cells.insert(index, cell);
+    }
+
+    /// Remove a Cell at a specific index
+    pub fn remove_cell(&mut self, index: usize) -> Option<Cell> {
+        if index < self.cells.len() {
+            Some(self.cells.remove(index))
+        } else {
+            None
+        }
+    }
+
+    /// Clear all Cells
+    pub fn clear(&mut self) {
+        self.cells.clear();
+        self.beats.clear();
+        self.slurs.clear();
     }
 }
 
 /// Top-level container for musical notation with support for multiple lines and composition-level metadata
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Document {
-    /// Composition-level metadata
-    pub metadata: DocumentMetadata,
+    /// Title of the composition
+    pub title: Option<String>,
+
+    /// Composer/author information
+    pub composer: Option<String>,
+
+    /// Musical tonic for the entire composition
+    pub tonic: Option<String>,
+
+    /// Default pitch system for the composition
+    pub pitch_system: Option<PitchSystem>,
+
+    /// Default key signature for the composition
+    pub key_signature: Option<String>,
+
+    /// Creation and modification timestamps
+    pub created_at: Option<String>,
+    pub modified_at: Option<String>,
+
+    /// Document version
+    pub version: Option<String>,
 
     /// Array of musical lines
     pub lines: Vec<Line>,
@@ -349,7 +326,14 @@ impl Document {
     /// Create a new empty document
     pub fn new() -> Self {
         Self {
-            metadata: DocumentMetadata::new(),
+            title: None,
+            composer: None,
+            tonic: None,
+            pitch_system: None,
+            key_signature: None,
+            created_at: None,  // Timestamps set by JavaScript layer
+            modified_at: None,  // Timestamps set by JavaScript layer
+            version: None,
             lines: Vec::new(),
             state: DocumentState::new(),
         }
@@ -378,31 +362,28 @@ impl Document {
         self.lines.first_mut().unwrap()
     }
 
-    /// Get the total number of characters across all lanes and lines
+    /// Get the total number of characters across all lines
     pub fn total_chars(&self) -> usize {
         self.lines
             .iter()
-            .map(|line| line.lanes.iter().map(|lane| lane.len()).sum::<usize>())
+            .map(|line| line.cells.len())
             .sum()
     }
 
     /// Validate document structure and content
     pub fn validate(&self) -> Result<(), ValidationError> {
-        // Ensure all lanes have consistent column alignment
+        // Ensure all cells have consistent column alignment
         for (line_idx, line) in self.lines.iter().enumerate() {
             let max_col = line.max_column();
 
-            for (lane_idx, lane) in line.lanes.iter().enumerate() {
-                for (cell_idx, cell) in lane.iter().enumerate() {
-                    if cell.col > max_col {
-                        return Err(ValidationError::ColumnAlignment {
-                            line: line_idx,
-                            lane: lane_idx,
-                            cell: cell_idx,
-                            cell_col: cell.col,
-                            max_col,
-                        });
-                    }
+            for (cell_idx, cell) in line.cells.iter().enumerate() {
+                if cell.col > max_col {
+                    return Err(ValidationError::ColumnAlignment {
+                        line: line_idx,
+                        cell: cell_idx,
+                        cell_col: cell.col,
+                        max_col,
+                    });
                 }
             }
         }
@@ -415,55 +396,17 @@ impl Document {
         self.lines.clear();
         self.state = DocumentState::new();
     }
-}
-
-/// Composition-level metadata that applies to the entire document
-#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
-pub struct DocumentMetadata {
-    /// Title of the composition
-    pub title: Option<String>,
-
-    /// Composer/author information
-    pub composer: Option<String>,
-
-    /// Musical tonic for the entire composition
-    pub tonic: Option<String>,
-
-    /// Default pitch system for the composition
-    pub pitch_system: Option<PitchSystem>,
-
-    /// Default key signature for the composition
-    pub key_signature: Option<String>,
-
-    /// Creation and modification timestamps
-    pub created_at: Option<String>,
-    pub modified_at: Option<String>,
-
-    /// Document version
-    pub version: Option<String>,
-}
-
-impl DocumentMetadata {
-    /// Create new document metadata
-    pub fn new() -> Self {
-        let now = chrono::Utc::now().to_rfc3339();
-        Self {
-            created_at: Some(now.clone()),
-            modified_at: Some(now),
-            ..Default::default()
-        }
-    }
 
     /// Get the effective pitch system for a line
-    pub fn effective_pitch_system(&self, line_metadata: &LineMetadata) -> PitchSystem {
-        line_metadata.pitch_system
+    pub fn effective_pitch_system(&self, line: &Line) -> PitchSystem {
+        line.pitch_system
             .or(self.pitch_system)
             .unwrap_or(PitchSystem::Number)
     }
 
     /// Get the effective tonic for a line
-    pub fn effective_tonic<'a>(&'a self, line_metadata: &'a LineMetadata) -> Option<&'a String> {
-        line_metadata.tonic.as_ref().or(self.tonic.as_ref())
+    pub fn effective_tonic<'a>(&'a self, line: &'a Line) -> Option<&'a String> {
+        line.tonic.as_ref().or(self.tonic.as_ref())
     }
 }
 
@@ -793,16 +736,9 @@ impl SelectionManager {
     /// Validate selection against document bounds
     pub fn validate_selection(&self, document: &Document) -> bool {
         if let Some(selection) = &self.current_selection {
-            // Check if lane is valid
-            let lane_index = selection.start.lane as usize;
-            if lane_index >= 4 {
-                return false;
-            }
-
             // Check if selection is within document bounds
             if let Some(line) = document.active_line() {
-                let lane_content = line.get_lane(selection.start.lane);
-                let max_column = lane_content.iter()
+                let max_column = line.cells.iter()
                     .map(|cell| cell.col + cell.token_length())
                     .max()
                     .unwrap_or(0);
@@ -819,14 +755,12 @@ impl SelectionManager {
     pub fn get_selected_text(&self, document: &Document) -> String {
         if let Some(selection) = &self.current_selection {
             if let Some(line) = document.active_line() {
-                let lane_content = line.get_lane(selection.start.lane);
-
-                return lane_content.iter()
+                return line.cells.iter()
                     .filter(|cell| {
                         cell.col >= selection.start.column &&
                         cell.col < selection.end.column
                     })
-                    .map(|cell| cell.grapheme.clone())
+                    .map(|cell| cell.glyph.clone())
                     .collect::<Vec<String>>()
                     .join("");
             }
@@ -837,13 +771,12 @@ impl SelectionManager {
     /// Select all content in the current line
     pub fn select_all(&mut self, document: &Document) {
         if let Some(line) = document.active_line() {
-            let current_lane = line.get_lane(LaneKind::Letter);
-            if current_lane.is_empty() {
+            if line.cells.is_empty() {
                 return;
             }
 
-            let start_col = current_lane.first().map(|c| c.col).unwrap_or(0);
-            let end_col = current_lane.last()
+            let start_col = line.cells.first().map(|c| c.col).unwrap_or(0);
+            let end_col = line.cells.last()
                 .map(|c| c.col + c.token_length())
                 .unwrap_or(start_col + 1);
 
@@ -869,14 +802,12 @@ impl SelectionManager {
     /// Select word at cursor position
     pub fn select_word(&mut self, position: &CursorPosition, document: &Document) {
         if let Some(line) = document.active_line() {
-            let lane_content = line.get_lane(position.lane.into());
-
             // Find word boundaries around the cursor position
             let mut start_col = position.column;
             let mut end_col = position.column;
 
             // Find start of word (go left until non-temporal character)
-            for cell in lane_content.iter().rev() {
+            for cell in line.cells.iter().rev() {
                 if cell.col < position.column && cell.is_temporal() {
                     start_col = cell.col;
                 } else {
@@ -885,7 +816,7 @@ impl SelectionManager {
             }
 
             // Find end of word (go right until non-temporal character)
-            for cell in lane_content.iter() {
+            for cell in line.cells.iter() {
                 if cell.col >= position.column && cell.is_temporal() {
                     end_col = cell.col + cell.token_length();
                 } else if cell.col > position.column {
@@ -916,10 +847,9 @@ impl SelectionManager {
 /// Errors that can occur during document validation
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum ValidationError {
-    /// Column alignment mismatch between lanes
+    /// Column alignment mismatch
     ColumnAlignment {
         line: usize,
-        lane: usize,
         cell: usize,
         cell_col: usize,
         max_col: usize,
@@ -928,7 +858,6 @@ pub enum ValidationError {
     /// Invalid pitch notation
     InvalidPitch {
         line: usize,
-        lane: usize,
         column: usize,
         pitch: String,
     },
@@ -936,9 +865,8 @@ pub enum ValidationError {
     /// Invalid character encoding
     InvalidEncoding {
         line: usize,
-        lane: usize,
         column: usize,
-        grapheme: String,
+        glyph: String,
     },
 
     /// Document structure inconsistency
@@ -951,15 +879,15 @@ impl ValidationError {
     /// Get a human-readable error message
     pub fn message(&self) -> String {
         match self {
-            ValidationError::ColumnAlignment { line, lane, cell, cell_col, max_col } => {
-                format!("Column alignment error at line {}, lane {}, cell {}: column {} exceeds maximum {}",
-                       line, lane, cell, cell_col, max_col)
+            ValidationError::ColumnAlignment { line, cell, cell_col, max_col } => {
+                format!("Column alignment error at line {}, cell {}: column {} exceeds maximum {}",
+                       line, cell, cell_col, max_col)
             },
-            ValidationError::InvalidPitch { line, lane, column, pitch } => {
-                format!("Invalid pitch notation '{}' at line {}, lane {}, column {}", pitch, line, lane, column)
+            ValidationError::InvalidPitch { line, column, pitch } => {
+                format!("Invalid pitch notation '{}' at line {}, column {}", pitch, line, column)
             },
-            ValidationError::InvalidEncoding { line, lane, column, grapheme } => {
-                format!("Invalid character encoding '{}' at line {}, lane {}, column {}", grapheme, line, lane, column)
+            ValidationError::InvalidEncoding { line, column, glyph } => {
+                format!("Invalid character encoding '{}' at line {}, column {}", glyph, line, column)
             },
             ValidationError::StructureError { description } => {
                 format!("Document structure error: {}", description)

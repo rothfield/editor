@@ -28,18 +28,15 @@ impl LayoutRenderer {
 
     /// Calculate positions for Cell array
     #[wasm_bindgen(js_name = calculatePositions)]
-    pub fn calculate_positions(&self, char_cells: &JsValue, lane: u8) -> Result<JsValue, JsValue> {
+    pub fn calculate_positions(&self, char_cells: &JsValue) -> Result<JsValue, JsValue> {
         let cells: Vec<Cell> = serde_wasm_bindgen::from_value(char_cells.clone())
             .map_err(|e| JsValue::from_str(&format!("Deserialization error: {}", e)))?;
-
-        let lane_kind = LaneKind::try_from(lane)
-            .map_err(|_| JsValue::from_str("Invalid lane"))?;
 
         let mut positioned_cells = Vec::new();
 
         for (index, mut cell) in cells.into_iter().enumerate() {
             let x = index as f32 * self.char_width;
-            let y = lane_kind.baseline(0.0, self.font_size);
+            let y = 0.0; // All cells on the same baseline now
 
             cell.update_layout(x, y, self.char_width, self.font_size);
             positioned_cells.push(cell);
@@ -175,15 +172,15 @@ impl LayoutRenderer {
     /// Calculate position for a single Cell
     pub fn calculate_cell_position(&self, cell: &Cell) -> (f32, f32, f32, f32) {
         let x = cell.col as f32 * self.char_width;
-        let y = cell.lane.baseline(0.0, self.font_size);
+        let y = 0.0; // All cells on the same baseline now
 
         (x, y, self.char_width, self.font_size)
     }
 
     /// Calculate cursor position for rendering
-    pub fn calculate_cursor_position(&self, column: usize, lane: LaneKind) -> (f32, f32, f32, f32) {
+    pub fn calculate_cursor_position(&self, column: usize) -> (f32, f32, f32, f32) {
         let x = column as f32 * self.char_width;
-        let y = lane.baseline(0.0, self.font_size);
+        let y = 0.0; // Cursor on the same baseline
 
         (x, y, 2.0, self.font_size) // 2px wide cursor
     }

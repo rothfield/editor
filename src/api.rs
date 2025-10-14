@@ -4,7 +4,7 @@
 //! and token combination using the recursive descent parser.
 
 use wasm_bindgen::prelude::*;
-use crate::models::{Cell, PitchSystem, SlurIndicator};
+use crate::models::{Cell, PitchSystem, Document, Line};
 use crate::parse::grammar::{parse, parse_single, try_combine_tokens};
 
 // Logging macros for WASM
@@ -98,7 +98,7 @@ pub fn insert_character(
         cells.last().map(|c| c.col + 1).unwrap_or(0)
     };
 
-    let mut new_cell = parse_single(c, pitch_system, column);
+    let new_cell = parse_single(c, pitch_system, column);
 
     // Insert the new cell at the cursor position
     let insert_pos = cursor_pos.min(cells.len());
@@ -208,8 +208,8 @@ pub fn parse_text(text: &str, pitch_system: u8) -> Result<js_sys::Array, JsValue
 /// Delete a character at the cursor position
 ///
 /// For multi-character cells (e.g., "1#", "C#", "xyz"), this removes the LAST character
-/// and re-parses the truncated grapheme while PRESERVING all associated musical data
-/// (octave, flags, pitch_code, etc.). Only the grapheme and kind are updated.
+/// and re-parses the truncated glyph while PRESERVING all associated musical data
+/// (octave, flags, pitch_code, etc.). Only the glyph and kind are updated.
 ///
 /// For single-character cells, the entire cell is deleted.
 ///
@@ -244,24 +244,23 @@ pub fn delete_character(
 
     // Get the cell being modified
     let cell = &cells[cursor_pos];
-    let grapheme = &cell.grapheme;
-    let grapheme_len = grapheme.chars().count();
+    let glyph = &cell.glyph;
+    let glyph_len = glyph.chars().count();
 
-    wasm_log!("  Cell at position {}: grapheme='{}' (len={}), kind={:?}",
-             cursor_pos, grapheme, grapheme_len, cell.kind);
+    wasm_log!("  Cell at position {}: glyph='{}' (len={}), kind={:?}",
+             cursor_pos, glyph, glyph_len, cell.kind);
 
-    if grapheme_len > 1 {
+    if glyph_len > 1 {
         // Multi-character cell: remove last character, re-parse, PRESERVE ALL DATA
-        let mut chars: Vec<char> = grapheme.chars().collect();
+        let mut chars: Vec<char> = glyph.chars().collect();
         let removed_char = chars.pop().unwrap();
-        let truncated_grapheme: String = chars.into_iter().collect();
+        let truncated_glyph: String = chars.into_iter().collect();
 
         wasm_info!("  Truncating multi-char cell: '{}' -> '{}' (removed '{}')",
-                  grapheme, truncated_grapheme, removed_char);
+                  glyph, truncated_glyph, removed_char);
 
         // Preserve data from old cell before re-parsing
         let old_cell = &cells[cursor_pos];
-        let preserved_lane = old_cell.lane;
         let preserved_col = old_cell.col;
         let preserved_flags = old_cell.flags;
         let preserved_pitch_code = old_cell.pitch_code.clone();
@@ -269,17 +268,16 @@ pub fn delete_character(
         let preserved_octave = old_cell.octave;
         let preserved_slur_indicator = old_cell.slur_indicator;
 
-        // Re-parse truncated grapheme to get correct kind
+        // Re-parse truncated glyph to get correct kind
         let pitch_system = preserved_pitch_system.unwrap_or(PitchSystem::Unknown);
-        let reparsed = parse(&truncated_grapheme, pitch_system, preserved_col);
+        let reparsed = parse(&truncated_glyph, pitch_system, preserved_col);
 
         wasm_info!("  Re-parsed: kind={:?} (old kind was {:?})", reparsed.kind, old_cell.kind);
 
         // Create new cell with reparsed kind but preserved data
         cells[cursor_pos] = Cell {
-            grapheme: truncated_grapheme,
+            glyph: truncated_glyph,
             kind: reparsed.kind,  // Updated from re-parse
-            lane: preserved_lane,
             col: preserved_col,
             flags: preserved_flags,
             pitch_code: preserved_pitch_code,
@@ -371,7 +369,7 @@ pub fn apply_octave(
         if cells[i].kind == crate::models::ElementKind::PitchedElement {
             cells[i].octave = octave;
             modified_count += 1;
-            wasm_log!("  Applied octave {} to cell {}: '{}'", octave, i, cells[i].grapheme);
+            wasm_log!("  Applied octave {} to cell {}: '{}'", octave, i, cells[i].glyph);
         }
     }
 
@@ -508,7 +506,7 @@ pub fn remove_slur(
         if cells[i].has_slur() {
             cells[i].clear_slur();
             removed_count += 1;
-            wasm_log!("  Removed slur indicator from cell {}: '{}'", i, cells[i].grapheme);
+            wasm_log!("  Removed slur indicator from cell {}: '{}'", i, cells[i].glyph);
         }
     }
 
@@ -573,6 +571,218 @@ pub fn has_slur_in_selection(
 
     wasm_info!("  No slur indicators found in selection range");
     Ok(false)
+}
+
+/// Set the document title
+///
+/// # Parameters
+/// - `document_js`: JavaScript Document object
+/// - `title`: The new title for the document
+///
+/// # Returns
+/// Updated JavaScript Document object with the title set
+#[wasm_bindgen(js_name = setTitle)]
+pub fn set_title(
+    document_js: JsValue,
+    title: &str,
+) -> Result<JsValue, JsValue> {
+    wasm_info!("setTitle called: title='{}'", title);
+
+    // Deserialize document from JavaScript
+    let mut document: Document = serde_wasm_bindgen::from_value(document_js)
+        .map_err(|e| {
+            wasm_error!("Deserialization error: {}", e);
+            JsValue::from_str(&format!("Deserialization error: {}", e))
+        })?;
+
+    // Set the title
+    document.title = Some(title.to_string());
+    wasm_info!("  Document title set to: '{}'", title);
+
+    // Serialize back to JavaScript
+    let result = serde_wasm_bindgen::to_value(&document)
+        .map_err(|e| {
+            wasm_error!("Serialization error: {}", e);
+            JsValue::from_str(&format!("Serialization error: {}", e))
+        })?;
+
+    wasm_info!("setTitle completed successfully");
+    Ok(result)
+}
+
+/// Set lyrics for a specific line (stave)
+///
+/// # Parameters
+/// - `document_js`: JavaScript Document object
+/// - `line_index`: Index of the line to set lyrics for (0-based)
+/// - `lyrics`: The lyrics text to set
+///
+/// # Returns
+/// Updated JavaScript Document object with the lyrics set
+#[wasm_bindgen(js_name = setStaveLyrics)]
+pub fn set_stave_lyrics(
+    document_js: JsValue,
+    line_index: usize,
+    lyrics: &str,
+) -> Result<JsValue, JsValue> {
+    wasm_info!("setStaveLyrics called: line_index={}, lyrics='{}'", line_index, lyrics);
+
+    // Deserialize document from JavaScript
+    let mut document: Document = serde_wasm_bindgen::from_value(document_js)
+        .map_err(|e| {
+            wasm_error!("Deserialization error: {}", e);
+            JsValue::from_str(&format!("Deserialization error: {}", e))
+        })?;
+
+    // Validate line index
+    if line_index >= document.lines.len() {
+        wasm_error!("Line index {} out of bounds (max: {})", line_index, document.lines.len() - 1);
+        return Err(JsValue::from_str("Line index out of bounds"));
+    }
+
+    // Set the lyrics for the line
+    document.lines[line_index].lyrics = Some(lyrics.to_string());
+    wasm_info!("  Line {} lyrics set to: '{}'", line_index, lyrics);
+
+    // Serialize back to JavaScript
+    let result = serde_wasm_bindgen::to_value(&document)
+        .map_err(|e| {
+            wasm_error!("Serialization error: {}", e);
+            JsValue::from_str(&format!("Serialization error: {}", e))
+        })?;
+
+    wasm_info!("setStaveLyrics completed successfully");
+    Ok(result)
+}
+
+/// Set tala for a specific line (stave)
+///
+/// # Parameters
+/// - `document_js`: JavaScript Document object
+/// - `line_index`: Index of the line to set tala for (0-based)
+/// - `tala`: The tala string (digits 0-9+)
+///
+/// # Returns
+/// Updated JavaScript Document object with the tala set
+#[wasm_bindgen(js_name = setStaveTala)]
+pub fn set_stave_tala(
+    document_js: JsValue,
+    line_index: usize,
+    tala: &str,
+) -> Result<JsValue, JsValue> {
+    wasm_info!("setStaveTala called: line_index={}, tala='{}'", line_index, tala);
+
+    // Deserialize document from JavaScript
+    let mut document: Document = serde_wasm_bindgen::from_value(document_js)
+        .map_err(|e| {
+            wasm_error!("Deserialization error: {}", e);
+            JsValue::from_str(&format!("Deserialization error: {}", e))
+        })?;
+
+    // Validate line index
+    if line_index >= document.lines.len() {
+        wasm_error!("Line index {} out of bounds (max: {})", line_index, document.lines.len() - 1);
+        return Err(JsValue::from_str("Line index out of bounds"));
+    }
+
+    // Validate tala format (only digits 0-9 and +)
+    if !tala.chars().all(|c| c.is_ascii_digit() || c == '+') {
+        wasm_error!("Invalid tala format: '{}' (only digits 0-9 and + allowed)", tala);
+        return Err(JsValue::from_str("Invalid tala format"));
+    }
+
+    // Set the tala for the line
+    document.lines[line_index].tala = Some(tala.to_string());
+    wasm_info!("  Line {} tala set to: '{}'", line_index, tala);
+
+    // Serialize back to JavaScript
+    let result = serde_wasm_bindgen::to_value(&document)
+        .map_err(|e| {
+            wasm_error!("Serialization error: {}", e);
+            JsValue::from_str(&format!("Serialization error: {}", e))
+        })?;
+
+    wasm_info!("setStaveTala completed successfully");
+    Ok(result)
+}
+
+/// Set label for a specific line (stave)
+///
+/// # Parameters
+/// - `document_js`: JavaScript Document object
+/// - `line_index`: Index of the line to set label for (0-based)
+/// - `label`: The label text to set
+///
+/// # Returns
+/// Updated JavaScript Document object with the label set
+#[wasm_bindgen(js_name = setStaveLabel)]
+pub fn set_stave_label(
+    document_js: JsValue,
+    line_index: usize,
+    label: &str,
+) -> Result<JsValue, JsValue> {
+    wasm_info!("setStaveLabel called: line_index={}, label='{}'", line_index, label);
+
+    // Deserialize document from JavaScript
+    let mut document: Document = serde_wasm_bindgen::from_value(document_js)
+        .map_err(|e| {
+            wasm_error!("Deserialization error: {}", e);
+            JsValue::from_str(&format!("Deserialization error: {}", e))
+        })?;
+
+    // Validate line index
+    if line_index >= document.lines.len() {
+        wasm_error!("Line index {} out of bounds (max: {})", line_index, document.lines.len() - 1);
+        return Err(JsValue::from_str("Line index out of bounds"));
+    }
+
+    // Set the label for the line
+    document.lines[line_index].label = Some(label.to_string());
+    wasm_info!("  Line {} label set to: '{}'", line_index, label);
+
+    // Serialize back to JavaScript
+    let result = serde_wasm_bindgen::to_value(&document)
+        .map_err(|e| {
+            wasm_error!("Serialization error: {}", e);
+            JsValue::from_str(&format!("Serialization error: {}", e))
+        })?;
+
+    wasm_info!("setStaveLabel completed successfully");
+    Ok(result)
+}
+
+/// Create a new empty document
+///
+/// # Returns
+/// JavaScript Document object with default structure
+#[wasm_bindgen(js_name = createNewDocument)]
+pub fn create_new_document() -> Result<JsValue, JsValue> {
+    wasm_info!("createNewDocument called");
+
+    // Create new document with default structure
+    let mut document = Document::new();
+
+    // Set default title
+    document.title = Some("Untitled Document".to_string());
+
+    // Set default pitch system
+    document.pitch_system = Some(PitchSystem::Number);
+
+    // Add one empty line
+    let line = Line::new();
+    document.lines.push(line);
+
+    wasm_info!("  Created document with {} line(s)", document.lines.len());
+
+    // Serialize to JavaScript
+    let result = serde_wasm_bindgen::to_value(&document)
+        .map_err(|e| {
+            wasm_error!("Serialization error: {}", e);
+            JsValue::from_str(&format!("Serialization error: {}", e))
+        })?;
+
+    wasm_info!("createNewDocument completed successfully");
+    Ok(result)
 }
 
 #[cfg(test)]

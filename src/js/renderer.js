@@ -11,6 +11,7 @@ class DOMRenderer {
     this.editor = editor; // Store reference to editor instance
     this.charCellElements = new Map();
     this.beatLoopElements = new Map();
+    this.slurElements = new Map();
     this.currentDocument = null;
     this.renderCache = new Map();
 
@@ -75,35 +76,6 @@ class DOMRenderer {
         z-index: 1;
       }
 
-      /* Slur rendering - first note of slur (SlurStart = 1) */
-      .char-cell[data-slur-indicator="1"]::after {
-        content: '';
-        position: absolute;
-        left: 0;
-        top: -10px; /* 10px above cell */
-        width: 100%;
-        height: 8px;
-        border-left: 1.5px solid #4a5568;
-        border-top: 1.5px solid #4a5568;
-        border-radius: 8px 0 0 0;
-        pointer-events: none;
-        z-index: 3;
-      }
-
-      /* Slur rendering - last note of slur (SlurEnd = 2) */
-      .char-cell[data-slur-indicator="2"]::after {
-        content: '';
-        position: absolute;
-        left: 0;
-        top: -10px; /* 10px above cell */
-        width: 100%;
-        height: 8px;
-        border-right: 1.5px solid #4a5568;
-        border-top: 1.5px solid #4a5568;
-        border-radius: 0 8px 0 0;
-        pointer-events: none;
-        z-index: 3;
-      }
 
       /* Octave dots using ::before pseudo-element */
       /* Upper octave: one dot ABOVE cell (outside bbox) */
@@ -167,44 +139,6 @@ class DOMRenderer {
     document.head.appendChild(style);
   }
 
-  /**
-     * Setup canvas overlay for slur rendering with enhanced styling
-     */
-  setupSlurCanvas() {
-    this.slurCanvas = document.createElement('canvas');
-    this.slurCanvas.className = 'slur-canvas-overlay';
-    this.slurCanvas.style.position = 'absolute';
-    this.slurCanvas.style.top = '0';
-    this.slurCanvas.style.left = '0';
-    this.slurCanvas.style.pointerEvents = 'none';
-    this.slurCanvas.style.width = '100%';
-    this.slurCanvas.style.height = '100%';
-    this.slurCanvas.style.zIndex = '3'; // Above content
-    this.slurCanvas.style.opacity = '0.8'; // Slight transparency
-
-    // Add CSS for smooth transitions
-    const style = document.createElement('style');
-    style.textContent = `
-        .slur-canvas-overlay {
-        transition: opacity 0.2s ease-in-out;
-        }
-        .slur-canvas-overlay.animating {
-        opacity: 1;
-        }
-    `;
-    document.head.appendChild(style);
-
-    this.canvas.appendChild(this.slurCanvas);
-    this.slurCtx = this.slurCanvas.getContext('2d');
-
-    // Set initial canvas size
-    this.resizeSlurCanvas();
-
-    // Add resize listener to keep canvas sized correctly
-    window.addEventListener('resize', () => {
-      this.resizeSlurCanvas();
-    });
-  }
 
   /**
      * Setup canvas overlay for octave rendering
@@ -245,21 +179,6 @@ class DOMRenderer {
     });
   }
 
-  /**
-     * Resize slur canvas to match container
-     */
-  resizeSlurCanvas() {
-    if (this.slurCanvas && this.canvas) {
-      const rect = this.canvas.getBoundingClientRect();
-      this.slurCanvas.width = rect.width;
-      this.slurCanvas.height = rect.height;
-
-      // Re-render slurs after resize
-      if (this.currentDocument) {
-        this.renderSlurs(this.currentDocument);
-      }
-    }
-  }
 
   /**
      * Resize octave canvas to match container
@@ -288,21 +207,22 @@ class DOMRenderer {
     // Clear previous content
     this.clearCanvas();
 
-    if (!document.staves || document.staves.length === 0) {
+    if (!document.lines || document.lines.length === 0) {
       this.showEmptyState();
       return;
     }
 
-    // Render each stave
-    document.staves.forEach((stave, staveIndex) => {
-      this.renderStave(stave, staveIndex);
+    // Render document title at the top
+    this.renderDocumentTitle(document);
+
+    // Render each line
+    document.lines.forEach((line, lineIndex) => {
+      this.renderLine(line, lineIndex);
     });
 
     // Beat loops are now rendered via CSS on cells (no separate elements needed)
-
-    // Render slurs
+    // Slurs need to be rendered as separate divs (can't use ::after because beat loops use it)
     this.renderSlurs(document);
-
     // Octave markings are now rendered via CSS (data-octave attribute)
 
     // Update render statistics
@@ -325,31 +245,58 @@ class DOMRenderer {
   }
 
   /**
-     * Render a single stave - simplified to only render main line
+     * Render document title at the top of the canvas
      */
-  renderStave(stave, staveIndex) {
-    const staveElement = this.getOrCreateLineElement(staveIndex);
+  renderDocumentTitle(document) {
+    const title = document.title;
 
-    // Only render the main line (no lanes)
-    const mainLine = stave.line;
-    const beats = stave.beats || [];
-    this.renderLine(mainLine, staveIndex, staveElement, beats);
-
-    // Render stave label
-    if (stave.label) {
-      this.renderLineLabel(stave.label, staveElement);
+    if (!title || title === 'Untitled Document') {
+      return; // No title to render or default title
     }
 
-    // Render stave metadata
-    if (stave.metadata) {
-      this.renderLineMetadata(stave.metadata, staveElement);
+    const titleElement = document.createElement('div');
+    titleElement.className = 'document-title';
+    titleElement.textContent = title;
+
+    // Style the title: centered, larger, bold, with spacing below
+    titleElement.style.cssText = `
+      text-align: center;
+      font-size: 20px;
+      font-weight: bold;
+      margin-top: 16px;
+      margin-bottom: 16px;
+      width: 100%;
+    `;
+
+    this.canvas.appendChild(titleElement);
+  }
+
+  /**
+     * Render a single line - simplified to only render main line
+     */
+  renderLine(line, lineIndex) {
+    const lineElement = this.getOrCreateLineElement(lineIndex);
+
+    // Only render the main line (no lanes)
+    const mainLine = line.cells;
+    const beats = line.beats || [];
+    this.renderCells(mainLine, lineIndex, lineElement, beats);
+
+    // Render line label
+    if (line.label) {
+      this.renderLineLabel(line.label, lineElement);
+    }
+
+    // Render line metadata
+    if (line.metadata) {
+      this.renderLineMetadata(line.metadata, lineElement);
     }
   }
 
   /**
-     * Render the main line with Cell elements - simplified (no lanes)
+     * Render the cells of a line - simplified (no lanes)
      */
-  renderLine(cells, lineIndex, lineElement, beats) {
+  renderCells(cells, lineIndex, lineElement, beats) {
     // Clear existing content
     lineElement.innerHTML = '';
 
@@ -395,14 +342,14 @@ class DOMRenderer {
     const cellPositions = [];
     cells.forEach((charCell) => {
       cellPositions.push(cumulativeX);
-      const graphemeLength = (charCell.grapheme || '').length;
+      const graphemeLength = (charCell.glyph || '').length;
       cumulativeX += graphemeLength * 12; // 12px per character
     });
 
     // Render each Cell and update ephemeral rendering fields
     cells.forEach((charCell, cellIndex) => {
       // Set ephemeral rendering fields (hitboxes) on the cell
-      const graphemeLength = (charCell.grapheme || '').length;
+      const graphemeLength = (charCell.glyph || '').length;
       const cellWidth = graphemeLength * 12;
       charCell.x = cellPositions[cellIndex];
       charCell.y = 32; // Position 32px from top (2 font heights above)
@@ -413,7 +360,7 @@ class DOMRenderer {
       charCell.bbox = [charCell.x, charCell.y, charCell.x + charCell.w, charCell.y + charCell.h];
       charCell.hit = [charCell.x - 2.0, charCell.y - 2.0, charCell.x + charCell.w + 2.0, charCell.y + charCell.h + 2.0];
 
-      console.log(`📐 Set hitbox for cell ${cellIndex} (${charCell.grapheme}):`, {
+      console.log(`📐 Set hitbox for cell ${cellIndex} (${charCell.glyph}):`, {
         x: charCell.x,
         y: charCell.y,
         w: charCell.w,
@@ -453,7 +400,7 @@ class DOMRenderer {
   createCellElement(charCell, lineIndex, cellIndex, xPosition, beatPosition) {
     const element = document.createElement('span');
     element.className = this.getCellClasses(charCell);
-    element.textContent = charCell.grapheme;
+    element.textContent = charCell.glyph;
 
     // Add beat position class if applicable
     if (beatPosition) {
@@ -461,7 +408,7 @@ class DOMRenderer {
     }
 
     // Calculate width based on actual grapheme length (e.g., "1#" = 2 chars = 24px)
-    const graphemeLength = (charCell.grapheme || '').length;
+    const graphemeLength = (charCell.glyph || '').length;
     const cellWidth = graphemeLength * 12; // 12px per character
 
     // Set positioning using inline styles
@@ -471,12 +418,22 @@ class DOMRenderer {
     element.style.width = `${charCell.w || cellWidth}px`;
     element.style.height = `${charCell.h || 16}px`;
 
-    // Add data attributes for debugging
+    // Add data attributes for debugging and CSS rendering
     element.dataset.lineIndex = lineIndex;
     element.dataset.cellIndex = cellIndex;
     element.dataset.column = charCell.col;
     element.dataset.graphemeLength = graphemeLength;
     element.dataset.octave = charCell.octave || 0;
+
+    // Handle slur indicator - WASM returns slur_indicator (snake_case) or slurIndicator (camelCase)
+    // Convert string values to numbers: "SlurStart" = 1, "SlurEnd" = 2, "None" = 0
+    let slurIndicator = charCell.slurIndicator || charCell.slur_indicator || 0;
+    if (typeof slurIndicator === 'string') {
+      if (slurIndicator === 'SlurStart') slurIndicator = 1;
+      else if (slurIndicator === 'SlurEnd') slurIndicator = 2;
+      else slurIndicator = 0;
+    }
+    element.dataset.slurIndicator = slurIndicator;
 
     // Add event listeners
     this.addCellEventListeners(element, charCell);
@@ -668,15 +625,15 @@ class DOMRenderer {
     });
     this.beatLoopElements.clear();
 
-    document.staves.forEach((stave, staveIndex) => {
-      // Always use beats from stave.beats array (populated by BeatDeriver)
-      if (stave.beats && stave.beats.length > 0) {
-        console.log(`Rendering ${stave.beats.length} beats for stave ${staveIndex}`);
-        stave.beats.forEach((beat, beatIndex) => {
-          this.renderBeatLoop(beat, staveIndex, beatIndex);
+    document.lines.forEach((line, lineIndex) => {
+      // Always use beats from line.beats array (populated by BeatDeriver)
+      if (line.beats && line.beats.length > 0) {
+        console.log(`Rendering ${line.beats.length} beats for line ${lineIndex}`);
+        line.beats.forEach((beat, beatIndex) => {
+          this.renderBeatLoop(beat, lineIndex, beatIndex);
         });
       } else {
-        console.log(`No beats found in stave ${staveIndex}, stave.beats:`, stave.beats);
+        console.log(`No beats found in line ${lineIndex}, line.beats:`, line.beats);
       }
     });
   }
@@ -684,8 +641,8 @@ class DOMRenderer {
   /**
      * Extract beats from Cell data and render them
      */
-  extractAndRenderBeatsFromCells(stave, staveIndex) {
-    const letterLane = stave.line; // Main line contains temporal elements
+  extractAndRenderBeatsFromCells(line, lineIndex) {
+    const letterLane = line.cells; // Main line contains temporal elements
     if (!letterLane || letterLane.length === 0) {
       console.log('No cells in main line for beat extraction');
       return;
@@ -702,11 +659,11 @@ class DOMRenderer {
         startX: beat.visual.start_x,
         visualWidth: beat.visual.width
       });
-      this.renderBeatLoop(beat, staveIndex, beatIndex);
+      this.renderBeatLoop(beat, lineIndex, beatIndex);
     });
 
-    // Store beats back in stave for caching
-    stave.beats = beats;
+    // Store beats back in line for caching
+    line.beats = beats;
   }
 
   /**
@@ -767,8 +724,8 @@ class DOMRenderer {
      */
   isTemporalCell(cell) {
     const isTemporal = cell.kind === 1 || cell.kind === 2; // PitchedElement or UnpitchedElement
-    if (!isTemporal && cell.grapheme) {
-      console.log(`Cell "${cell.grapheme}" is not temporal (kind: ${cell.kind})`);
+    if (!isTemporal && cell.glyph) {
+      console.log(`Cell "${cell.glyph}" is not temporal (kind: ${cell.kind})`);
     }
     return isTemporal;
   }
@@ -830,146 +787,105 @@ class DOMRenderer {
   }
 
   /**
-     * Render slurs using canvas - scan cells for slurStart/slurEnd indicators (simplified)
-     */
+   * Render slurs by scanning cells for slur indicators
+   */
   renderSlurs(document) {
-    if (!this.slurCtx) return;
+    console.log('🎵 renderSlurs called');
 
-    // Clear canvas
-    this.slurCtx.clearRect(0, 0, this.slurCanvas.width, this.slurCanvas.height);
+    // Clear existing slur elements
+    this.slurElements.forEach((element) => {
+      if (element.parentElement) {
+        element.parentElement.removeChild(element);
+      }
+    });
+    this.slurElements.clear();
 
-    document.staves.forEach((stave, staveIndex) => {
-      // Scan main line for cells with slurStart/slurEnd
-      const mainLine = stave.line;
-      if (mainLine) {
-        let slurStartCell = null;
-
-        mainLine.forEach((cell, cellIndex) => {
-          if (cell.slurIndicator === 1 && !slurStartCell) {
-            // Start of a new slur (SlurStart = 1)
-            slurStartCell = cell;
-          } else if (cell.slurIndicator === 2 && slurStartCell) {
-            // End of current slur (SlurEnd = 2) - render it
-            this.renderCellSlur(slurStartCell, cell);
-            slurStartCell = null;
-          }
-        });
+    document.lines.forEach((line, lineIndex) => {
+      const mainLine = line.cells;
+      if (!mainLine || mainLine.length === 0) {
+        return;
       }
 
-      // Also render legacy stave.slurs if they exist
-      if (stave.slurs) {
-        stave.slurs.forEach((slur, slurIndex) => {
-          this.renderSlur(slur, staveIndex, slurIndex);
-        });
+      console.log(`  Scanning ${mainLine.length} cells for slur indicators in line ${lineIndex}`);
+
+      // Scan for slur pairs (SlurStart and SlurEnd)
+      let slurStartCell = null;
+      let slurStartIndex = null;
+
+      mainLine.forEach((cell, cellIndex) => {
+        const indicator = cell.slurIndicator || cell.slur_indicator;
+        console.log(`    Cell ${cellIndex} (${cell.glyph}): slur_indicator=${cell.slur_indicator}, slurIndicator=${cell.slurIndicator}, indicator=${indicator}`);
+
+        // Check for SlurStart (slurIndicator = 1 or "SlurStart")
+        if (indicator === 1 || indicator === 'SlurStart') {
+          console.log(`      ✅ Found SlurStart at cell ${cellIndex}`);
+          slurStartCell = cell;
+          slurStartIndex = cellIndex;
+        }
+        // Check for SlurEnd (slurIndicator = 2 or "SlurEnd")
+        else if ((indicator === 2 || indicator === 'SlurEnd') && slurStartCell) {
+          console.log(`      ✅ Found SlurEnd at cell ${cellIndex}, rendering slur from ${slurStartIndex} to ${cellIndex}`);
+          // Render slur from start to end
+          this.renderSlur(slurStartCell, cell, slurStartIndex, cellIndex, lineIndex);
+          slurStartCell = null;
+          slurStartIndex = null;
+        }
+      });
+
+      if (slurStartCell) {
+        console.warn(`  ⚠️ Unclosed slur starting at cell ${slurStartIndex}`);
       }
     });
   }
 
   /**
-     * Render slur between two cells using their current positions - simplified (no lanes)
-     */
-  renderCellSlur(startCell, endCell) {
-    const ctx = this.slurCtx;
+   * Render a single slur arc as a div element
+   */
+  renderSlur(startCell, endCell, startIndex, endIndex, lineIndex) {
+    const key = `slur-${lineIndex}-${startIndex}-${endIndex}`;
 
-    // Set slur styling
-    ctx.beginPath();
-    ctx.strokeStyle = '#4a5568'; // Dark gray for normal slurs
-    ctx.lineWidth = 1.5;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
+    // Get the line element to append to
+    const lineElement = this.getOrCreateLineElement(lineIndex);
 
-    // Calculate positions using cell coordinates (no lane offsets)
+    // Create slur element
+    const slurElement = document.createElement('div');
+    slurElement.className = 'slur-arc';
+    slurElement.dataset.lineIndex = lineIndex;
+    slurElement.dataset.startIndex = startIndex;
+    slurElement.dataset.endIndex = endIndex;
+
+    // Calculate slur position and width
     const startX = startCell.x || 0;
-    const startY = (startCell.y || 0) - 8; // 8px ABOVE the text line
-    const endX = (endCell.x || 0) + (endCell.w || 12); // Use end of cell
-    const endY = (endCell.y || 0) - 8;   // 8px ABOVE the text line
-
+    const endX = (endCell.x || 0) + (endCell.w || 12);
     const width = endX - startX;
-    if (width <= 0) return; // Skip invalid slur
 
-    // Calculate Bézier curve parameters - same curvature as beat loops
-    const curvature = 0.15; // Same curvature as beat loops
-    const controlHeight = width * curvature * 2; // Same gentle curve as beats
-    const controlX = startX + width / 2;
+    // Position above the cells (10px above cell top)
+    const cellY = 32; // Cells start at 32px
+    const slurY = cellY - 10; // 10px above cell
 
-    // Slur always curves UPWARD above the notes
-    const controlY = startY - controlHeight;
+    // Style the slur arc - same as beat loops but upside down
+    slurElement.style.position = 'absolute';
+    slurElement.style.left = `${startX}px`;
+    slurElement.style.width = `${width}px`;
+    slurElement.style.top = `${slurY}px`;
+    slurElement.style.height = `8px`;
+    // Arc above - top border only (upside down bowl)
+    slurElement.style.border = '1.5px solid #4a5568';
+    slurElement.style.borderBottom = 'none';
+    slurElement.style.borderRadius = '8px 8px 0 0';
+    slurElement.style.backgroundColor = 'transparent';
+    slurElement.style.zIndex = '3';
+    slurElement.style.pointerEvents = 'none';
 
-    // Draw smooth Bézier curve
-    ctx.moveTo(startX, startY);
-    ctx.quadraticCurveTo(controlX, controlY, endX, endY);
-    ctx.stroke();
+    console.log(`Rendered slur: cells ${startIndex}..${endIndex}, left=${startX}px, width=${width}px`);
 
-    // Add small circles at endpoints for better visibility
-    this.renderSlurEndpoints(ctx, startX, startY, endX, endY);
+    lineElement.appendChild(slurElement);
+    this.slurElements.set(key, slurElement);
   }
 
-  /**
-     * Render single slur with enhanced Bézier curve rendering - simplified (no lanes)
-     */
-  renderSlur(slur, lineIndex, slurIndex) {
-    const ctx = this.slurCtx;
 
-    // Set slur styling
-    ctx.beginPath();
 
-    // Use different colors based on slur state
-    if (slur.visual.highlighted) {
-      ctx.strokeStyle = '#ff6b35'; // Orange for highlighted
-      ctx.lineWidth = (slur.visual.thickness || 1.5) + 0.5; // Thicker when highlighted
-    } else {
-      ctx.strokeStyle = '#4a5568'; // Dark gray for normal slurs
-      ctx.lineWidth = slur.visual.thickness || 1.5;
-    }
 
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-
-    // Calculate positions (no lane offsets)
-    const startX = slur.start.x || (slur.start.column * 12);
-    const startY = (slur.start.y || 0) - 8; // Position 8px ABOVE the text line
-    const endX = slur.end.x || (slur.end.column * 12);
-    const endY = (slur.end.y || 0) - 8; // Position 8px ABOVE the text line
-
-    const width = endX - startX;
-    if (width <= 0) return; // Skip invalid slur
-
-    // Calculate Bézier curve parameters - slur should match beat arc curvature
-    const curvature = slur.visual.curvature || 0.15; // Same curvature as beat loops
-    const controlHeight = width * curvature * 2; // Same gentle curve as beats
-    const controlX = startX + width / 2;
-
-    // Slur curves UPWARD with same gentle arc as beat loops
-    const controlY = startY - controlHeight; // Upward curve above the text
-
-    // Draw smooth Bézier curve
-    ctx.moveTo(startX, startY);
-    ctx.quadraticCurveTo(controlX, controlY, endX, endY);
-    ctx.stroke();
-
-    // Add small circles at endpoints for better visibility
-    this.renderSlurEndpoints(ctx, startX, startY, endX, endY);
-  }
-
-  /**
-     * Render small circles at slur endpoints for better visibility
-     */
-  renderSlurEndpoints(ctx, startX, startY, endX, endY) {
-    ctx.save();
-
-    // Start endpoint
-    ctx.beginPath();
-    ctx.fillStyle = ctx.strokeStyle; // Same color as slur
-    ctx.arc(startX, startY, 2, 0, Math.PI * 2);
-    ctx.fill();
-
-    // End endpoint
-    ctx.beginPath();
-    ctx.arc(endX, endY, 2, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.restore();
-  }
 
   /**
      * Render octave markings using canvas overlay - simplified (no lanes)
@@ -984,15 +900,15 @@ class DOMRenderer {
 
     let octavesRendered = 0;
 
-    document.staves.forEach((stave, staveIndex) => {
+    document.lines.forEach((line, lineIndex) => {
       // Only render octave markings from main line
-      const mainLine = stave.line;
+      const mainLine = line.cells;
       console.log(`🎵 Checking ${mainLine.length} cells for octave markings`);
       mainLine.forEach((charCell, cellIndex) => {
-        console.log(`  Cell ${cellIndex} (${charCell.grapheme}): octave=${charCell.octave}`);
+        console.log(`  Cell ${cellIndex} (${charCell.glyph}): octave=${charCell.octave}`);
         if (this.hasOctaveMarking(charCell)) {
           console.log(`  ✅ Rendering octave dot for cell ${cellIndex}`);
-          this.renderOctaveDot(charCell, staveIndex, cellIndex);
+          this.renderOctaveDot(charCell, lineIndex, cellIndex);
           octavesRendered++;
         }
       });
@@ -1022,7 +938,7 @@ class DOMRenderer {
     const baseY = (charCell.y || 0);
     const cellHeight = charCell.h || 16;
 
-    console.log(`🎨 renderOctaveDot: cell=${charCell.grapheme}, centerX=${centerX}, baseY=${baseY}, octave=${charCell.octave}`);
+    console.log(`🎨 renderOctaveDot: cell=${charCell.glyph}, centerX=${centerX}, baseY=${baseY}, octave=${charCell.octave}`);
 
     // Dot size: Make dots more visible - 3px radius
     const dotRadius = 3; // Larger for visibility
@@ -1069,7 +985,7 @@ class DOMRenderer {
       ctx.fill();
     }
 
-    console.log(`✅ Finished rendering ${dotCount} dot(s) for cell ${charCell.grapheme}`);
+    console.log(`✅ Finished rendering ${dotCount} dot(s) for cell ${charCell.glyph}`);
   }
 
   /**
@@ -1087,26 +1003,17 @@ class DOMRenderer {
     });
     this.beatLoopElements.clear();
 
-    // Collect all children that are not canvas overlays
-    const childrenToRemove = [];
-    for (const child of this.canvas.children) {
-      if (child !== this.slurCanvas) {
-        childrenToRemove.push(child);
+    // Remove slur elements from DOM before clearing map
+    this.slurElements.forEach((element) => {
+      if (element.parentElement) {
+        element.parentElement.removeChild(element);
       }
-    }
+    });
+    this.slurElements.clear();
 
-    // Remove all non-canvas children (line elements and their children)
+    // Remove all line elements
+    const childrenToRemove = Array.from(this.canvas.children);
     childrenToRemove.forEach(child => this.canvas.removeChild(child));
-
-    // Clear slur canvas
-    if (this.slurCtx) {
-      this.slurCtx.clearRect(0, 0, this.slurCanvas.width, this.slurCanvas.height);
-    }
-
-    // Re-setup canvas if it was removed
-    if (!this.slurCanvas.parentElement) {
-      this.setupSlurCanvas();
-    }
   }
 
 
@@ -1133,11 +1040,7 @@ class DOMRenderer {
      * Resize canvas to match container
      */
   resize() {
-    // Update slur canvas size
-    if (this.slurCanvas) {
-      this.slurCanvas.width = this.canvas.offsetWidth;
-      this.slurCanvas.height = this.canvas.offsetHeight;
-    }
+    // No canvas elements to resize - everything is CSS-based now
   }
 }
 
