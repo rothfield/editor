@@ -27,7 +27,6 @@ class DOMRenderer {
     this.editor = editor; // Store reference to editor instance
     this.charCellElements = new Map();
     this.beatLoopElements = new Map();
-    this.slurElements = new Map();
     this.theDocument = null;
     this.renderCache = new Map();
     this.cellRenderer = new CellRenderer();
@@ -40,7 +39,6 @@ class DOMRenderer {
     this.renderStats = {
       cellsRendered: 0,
       beatsRendered: 0,
-      slursRendered: 0,
       lastRenderTime: 0
     };
 
@@ -54,59 +52,59 @@ class DOMRenderer {
   setupBeatLoopStyles() {
     const style = document.createElement('style');
     style.textContent = `
-      /* Remove padding/margin from cells to ensure tight fit */
+      /* Shared custom properties for arc configuration */
       .char-cell {
+        --arc-offset: 10px;
+        --arc-height: 5px;
+        --arc-stroke: 2px;
         padding: 0;
         margin: 0;
         box-sizing: content-box;
       }
 
-      /* Beat loop arc - first cell has left edge */
+      /* LOWER beat arcs (using ::after) */
       .char-cell.beat-first::after {
         content: '';
         position: absolute;
         left: 0;
         right: 0;
-        bottom: -10px; /* 10px below cell */
-        height: 5px;
-        border-left: 2px solid #666;
-        border-bottom: 2px solid #666;
+        bottom: calc(-1 * var(--arc-offset));
+        height: var(--arc-height);
+        border-left: var(--arc-stroke) solid #666;
+        border-bottom: var(--arc-stroke) solid #666;
         border-radius: 0 0 0 12px;
         pointer-events: none;
         z-index: 1;
       }
 
-      /* Middle cells only have bottom border */
       .char-cell.beat-middle::after {
         content: '';
         position: absolute;
         left: 0;
         right: 0;
-        bottom: -10px;
-        height: 5px;
-        border-bottom: 2px solid #666;
+        bottom: calc(-1 * var(--arc-offset));
+        height: var(--arc-height);
+        border-bottom: var(--arc-stroke) solid #666;
         pointer-events: none;
         z-index: 1;
       }
 
-      /* Last cell has right edge */
       .char-cell.beat-last::after {
         content: '';
         position: absolute;
         left: 0;
         right: 0;
-        bottom: -10px;
-        height: 5px;
-        border-right: 2px solid #666;
-        border-bottom: 2px solid #666;
+        bottom: calc(-1 * var(--arc-offset));
+        height: var(--arc-height);
+        border-right: var(--arc-stroke) solid #666;
+        border-bottom: var(--arc-stroke) solid #666;
         border-radius: 0 0 12px 0;
         pointer-events: none;
         z-index: 1;
       }
 
-
       /* Octave dots using ::before pseudo-element */
-      /* Upper octave: one dot ABOVE cell (outside bbox) */
+      /* Note: Slur arcs also use ::before, so cells with slurs won't show octave dots */
       .char-cell[data-octave="1"]::before {
         content: '•';
         position: absolute;
@@ -120,7 +118,6 @@ class DOMRenderer {
         z-index: 2;
       }
 
-      /* Upper octave: two dots ABOVE cell (outside bbox) */
       .char-cell[data-octave="2"]::before {
         content: '••';
         position: absolute;
@@ -135,7 +132,6 @@ class DOMRenderer {
         z-index: 2;
       }
 
-      /* Lower octave: one dot BELOW cell (outside bbox) */
       .char-cell[data-octave="-1"]::before {
         content: '•';
         position: absolute;
@@ -149,7 +145,6 @@ class DOMRenderer {
         z-index: 2;
       }
 
-      /* Lower octave: two dots BELOW cell (outside bbox) */
       .char-cell[data-octave="-2"]::before {
         content: '••';
         position: absolute;
@@ -162,6 +157,48 @@ class DOMRenderer {
         letter-spacing: 2px;
         pointer-events: none;
         z-index: 2;
+      }
+
+      /* UPPER slur arcs (using ::before, pure CSS) */
+      /* These will override octave dots on the same cell */
+      .char-cell.slur-first::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: calc(-1 * var(--arc-offset));
+        height: var(--arc-height);
+        border-left: var(--arc-stroke) solid #4a5568;
+        border-top: var(--arc-stroke) solid #4a5568;
+        border-radius: 12px 0 0 0;
+        pointer-events: none;
+        z-index: 3;
+      }
+
+      .char-cell.slur-middle::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: calc(-1 * var(--arc-offset));
+        height: var(--arc-height);
+        border-top: var(--arc-stroke) solid #4a5568;
+        pointer-events: none;
+        z-index: 3;
+      }
+
+      .char-cell.slur-last::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: calc(-1 * var(--arc-offset));
+        height: var(--arc-height);
+        border-right: var(--arc-stroke) solid #4a5568;
+        border-top: var(--arc-stroke) solid #4a5568;
+        border-radius: 0 12px 0 0;
+        pointer-events: none;
+        z-index: 3;
       }
     `;
     document.head.appendChild(style);
@@ -250,9 +287,7 @@ class DOMRenderer {
       this.renderLine(line, lineIndex);
     });
 
-    // Beat loops are now rendered via CSS on cells (no separate elements needed)
-    // Slurs need to be rendered as separate divs (can't use ::after because beat loops use it)
-    this.renderSlurs(doc);
+    // Beat loops and slurs are now rendered via CSS on cells (no separate elements needed)
     // Octave markings are now rendered via CSS (data-octave attribute)
 
     // Update render statistics
@@ -425,6 +460,9 @@ class DOMRenderer {
       });
     }
 
+    // Build map of cell index to slur position (pure CSS approach)
+    const cellSlurInfo = this.buildSlurPositionMap(cells);
+
     // ========== PASS 1: Distribute lyrics and measure widths ==========
 
     // Get lyrics for this line
@@ -446,7 +484,7 @@ class DOMRenderer {
 
     cells.forEach((charCell, cellIndex) => {
       // First, render the cell temporarily to measure its width
-      const tempElement = this.createCellElement(charCell, lineIndex, cellIndex, 0, cellBeatInfo.get(cellIndex));
+      const tempElement = this.createCellElement(charCell, lineIndex, cellIndex, 0, cellBeatInfo.get(cellIndex), cellSlurInfo.get(cellIndex));
       tempElement.style.visibility = 'hidden'; // Hide but still render
       container.appendChild(tempElement);
 
@@ -481,8 +519,9 @@ class DOMRenderer {
       // charCell.w already set in Pass 1
 
       const beatPosition = cellBeatInfo.get(cellIndex);
+      const slurPosition = cellSlurInfo.get(cellIndex);
       const effectiveWidth = effectiveWidths[cellIndex];
-      this.renderCellWithWidth(charCell, lineIndex, cellIndex, container, cumulativeX, beatPosition, effectiveWidth);
+      this.renderCellWithWidth(charCell, lineIndex, cellIndex, container, cumulativeX, beatPosition, slurPosition, effectiveWidth);
 
       // Update bounding box and hit testing area (based on ACTUAL cell width, not allocated)
       charCell.bbox = [charCell.x, charCell.y, charCell.x + charCell.w, charCell.y + charCell.h];
@@ -524,8 +563,8 @@ class DOMRenderer {
   /**
      * Render a single Cell with explicit width for beat loop spanning
      */
-  renderCellWithWidth(charCell, lineIndex, cellIndex, container, xPosition, beatPosition, effectiveWidth) {
-    const element = this.createCellElement(charCell, lineIndex, cellIndex, xPosition, beatPosition, effectiveWidth);
+  renderCellWithWidth(charCell, lineIndex, cellIndex, container, xPosition, beatPosition, slurPosition, effectiveWidth) {
+    const element = this.createCellElement(charCell, lineIndex, cellIndex, xPosition, beatPosition, slurPosition, effectiveWidth);
     container.appendChild(element);
 
     // Cache the element for future updates
@@ -536,7 +575,7 @@ class DOMRenderer {
   /**
      * Create DOM element for Cell - simplified (no lanes)
      */
-  createCellElement(charCell, lineIndex, cellIndex, xPosition, beatPosition, effectiveWidth = null) {
+  createCellElement(charCell, lineIndex, cellIndex, xPosition, beatPosition, slurPosition, effectiveWidth = null) {
     const element = document.createElement('span');
     element.className = this.cellRenderer.getCellClasses(charCell);
     // Use non-breaking space for space characters so they have actual width
@@ -545,6 +584,11 @@ class DOMRenderer {
     // Add beat position class if applicable
     if (beatPosition) {
       element.classList.add(beatPosition);
+    }
+
+    // Add slur position class if applicable (pure CSS slurs)
+    if (slurPosition) {
+      element.classList.add(slurPosition);
     }
 
     // Set positioning using inline styles
@@ -562,7 +606,7 @@ class DOMRenderer {
     element.dataset.lineIndex = lineIndex;
     element.dataset.cellIndex = cellIndex;
     element.dataset.column = charCell.col;
-    element.dataset.graphemeLength = (charCell.glyph || '').length;
+    element.dataset.glyphLength = (charCell.glyph || '').length;
     element.dataset.octave = charCell.octave || 0;
 
     // Handle slur indicator - WASM returns slur_indicator (snake_case) or slurIndicator (camelCase)
@@ -957,101 +1001,55 @@ class DOMRenderer {
   }
 
   /**
-   * Render slurs by scanning cells for slur indicators
+   * Build slur position map by scanning cells for slur indicators
+   * Returns a Map of cellIndex → slurRole ('slur-first', 'slur-middle', 'slur-last')
    */
-  renderSlurs(doc) {
-    console.log('🎵 renderSlurs called');
+  buildSlurPositionMap(cells) {
+    const slurPositionMap = new Map();
 
-    // Clear existing slur elements
-    this.slurElements.forEach((element) => {
-      if (element.parentElement) {
-        element.parentElement.removeChild(element);
+    if (!cells || cells.length === 0) {
+      return slurPositionMap;
+    }
+
+    console.log(`  Building slur position map for ${cells.length} cells`);
+
+    // Scan for slur pairs (SlurStart and SlurEnd)
+    let slurStartIndex = null;
+
+    cells.forEach((cell, cellIndex) => {
+      const indicator = cell.slurIndicator || cell.slur_indicator;
+
+      // Check for SlurStart (slurIndicator = 1 or "SlurStart")
+      if (indicator === 1 || indicator === 'SlurStart') {
+        console.log(`      ✅ Found SlurStart at cell ${cellIndex}`);
+        slurStartIndex = cellIndex;
+      }
+      // Check for SlurEnd (slurIndicator = 2 or "SlurEnd")
+      else if ((indicator === 2 || indicator === 'SlurEnd') && slurStartIndex !== null) {
+        console.log(`      ✅ Found SlurEnd at cell ${cellIndex}, marking slur from ${slurStartIndex} to ${cellIndex}`);
+
+        // Mark all cells in the slur span
+        for (let i = slurStartIndex; i <= cellIndex; i++) {
+          if (i === slurStartIndex) {
+            slurPositionMap.set(i, 'slur-first');
+          } else if (i === cellIndex) {
+            slurPositionMap.set(i, 'slur-last');
+          } else {
+            slurPositionMap.set(i, 'slur-middle');
+          }
+        }
+
+        slurStartIndex = null;
       }
     });
-    this.slurElements.clear();
 
-    doc.lines.forEach((line, lineIndex) => {
-      const mainLine = line.cells;
-      if (!mainLine || mainLine.length === 0) {
-        return;
-      }
+    if (slurStartIndex !== null) {
+      console.warn(`  ⚠️ Unclosed slur starting at cell ${slurStartIndex}`);
+    }
 
-      console.log(`  Scanning ${mainLine.length} cells for slur indicators in line ${lineIndex}`);
-
-      // Scan for slur pairs (SlurStart and SlurEnd)
-      let slurStartCell = null;
-      let slurStartIndex = null;
-
-      mainLine.forEach((cell, cellIndex) => {
-        const indicator = cell.slurIndicator || cell.slur_indicator;
-        console.log(`    Cell ${cellIndex} (${cell.glyph}): slur_indicator=${cell.slur_indicator}, slurIndicator=${cell.slurIndicator}, indicator=${indicator}`);
-
-        // Check for SlurStart (slurIndicator = 1 or "SlurStart")
-        if (indicator === 1 || indicator === 'SlurStart') {
-          console.log(`      ✅ Found SlurStart at cell ${cellIndex}`);
-          slurStartCell = cell;
-          slurStartIndex = cellIndex;
-        }
-        // Check for SlurEnd (slurIndicator = 2 or "SlurEnd")
-        else if ((indicator === 2 || indicator === 'SlurEnd') && slurStartCell) {
-          console.log(`      ✅ Found SlurEnd at cell ${cellIndex}, rendering slur from ${slurStartIndex} to ${cellIndex}`);
-          // Render slur from start to end
-          this.renderSlur(slurStartCell, cell, slurStartIndex, cellIndex, lineIndex);
-          slurStartCell = null;
-          slurStartIndex = null;
-        }
-      });
-
-      if (slurStartCell) {
-        console.warn(`  ⚠️ Unclosed slur starting at cell ${slurStartIndex}`);
-      }
-    });
+    return slurPositionMap;
   }
 
-  /**
-   * Render a single slur arc as a div element
-   */
-  renderSlur(startCell, endCell, startIndex, endIndex, lineIndex) {
-    const key = `slur-${lineIndex}-${startIndex}-${endIndex}`;
-
-    // Get the line element to append to
-    const lineElement = this.getOrCreateLineElement(lineIndex);
-
-    // Create slur element
-    const slurElement = document.createElement('div');
-    slurElement.className = 'slur-arc';
-    slurElement.dataset.lineIndex = lineIndex;
-    slurElement.dataset.startIndex = startIndex;
-    slurElement.dataset.endIndex = endIndex;
-
-    // Calculate slur position and width
-    const startX = startCell.x || 0;
-    const endX = (endCell.x || 0) + (endCell.w || 12);
-    const width = endX - startX;
-
-    // Position above the cells (10px above cell top)
-    const cellY = CELL_VERTICAL_PADDING; // Cells start at this Y offset
-    const slurY = cellY - 10; // 10px above cell
-
-    // Style the slur arc - same as beat loops but upside down
-    slurElement.style.position = 'absolute';
-    slurElement.style.left = `${startX}px`;
-    slurElement.style.width = `${width}px`;
-    slurElement.style.top = `${slurY}px`;
-    slurElement.style.height = `5px`;
-    // Arc above - top border only (upside down bowl)
-    slurElement.style.border = '1.5px solid #4a5568';
-    slurElement.style.borderBottom = 'none';
-    slurElement.style.borderRadius = '12px 12px 0 0';
-    slurElement.style.backgroundColor = 'transparent';
-    slurElement.style.zIndex = '3';
-    slurElement.style.pointerEvents = 'none';
-
-    console.log(`Rendered slur: cells ${startIndex}..${endIndex}, left=${startX}px, width=${width}px`);
-
-    lineElement.appendChild(slurElement);
-    this.slurElements.set(key, slurElement);
-  }
 
 
 
@@ -1072,13 +1070,7 @@ class DOMRenderer {
     });
     this.beatLoopElements.clear();
 
-    // Remove slur elements from DOM before clearing map
-    this.slurElements.forEach((element) => {
-      if (element.parentElement) {
-        element.parentElement.removeChild(element);
-      }
-    });
-    this.slurElements.clear();
+    // Slurs are now rendered via CSS on cells (no separate elements to clean up)
 
     // Remove all line elements
     const childrenToRemove = Array.from(this.element.children);

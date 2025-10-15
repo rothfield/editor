@@ -2310,6 +2310,65 @@ class MusicNotationEditor {
     }
   }
 
+  /**
+   * Update HTML display showing rendered notation line
+   */
+  updateHTMLDisplay() {
+    const htmlContent = document.getElementById('html-content');
+    if (!htmlContent || !this.renderer || !this.renderer.element) {
+      return;
+    }
+
+    try {
+      // Get the first notation line element
+      const lineElements = this.renderer.element.querySelectorAll('[data-line]');
+
+      if (lineElements.length > 0) {
+        const firstLine = lineElements[0];
+        const htmlString = this.formatHTML(firstLine.outerHTML);
+        htmlContent.textContent = htmlString;
+      } else {
+        htmlContent.textContent = '<!-- No lines rendered yet -->';
+      }
+    } catch (error) {
+      console.error('Error updating HTML display:', error);
+      htmlContent.textContent = `<!-- Error: ${error.message} -->`;
+    }
+  }
+
+  /**
+   * Format HTML string for display with proper indentation
+   */
+  formatHTML(html) {
+    let formatted = html;
+    let indent = 0;
+    const indentSize = 2;
+
+    // Add newlines between tags
+    formatted = formatted.replace(/></g, '>\n<');
+    const lines = formatted.split('\n');
+
+    const formattedLines = lines.map(line => {
+      const trimmed = line.trim();
+
+      // Decrease indent for closing tags
+      if (trimmed.match(/^<\//)) {
+        indent = Math.max(0, indent - indentSize);
+      }
+
+      const indented = ' '.repeat(indent) + trimmed;
+
+      // Increase indent for opening tags (but not self-closing or inline)
+      if (trimmed.match(/^<[^/!]/) && !trimmed.match(/\/>$/) && !trimmed.match(/<\/.*>$/)) {
+        indent += indentSize;
+      }
+
+      return indented;
+    });
+
+    return formattedLines.join('\n');
+  }
+
   updateDocumentDisplay() {
     // Update ephemeral model (full document with state)
     const docJson = document.getElementById('document-json');
@@ -2340,6 +2399,9 @@ class MusicNotationEditor {
     this.updateLilyPondDisplay().catch(err => {
       console.error('Failed to update LilyPond display:', err);
     });
+
+    // Update HTML display
+    this.updateHTMLDisplay();
 
     // Update hitboxes display
     this.updateHitboxesDisplay();

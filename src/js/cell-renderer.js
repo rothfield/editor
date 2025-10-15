@@ -75,7 +75,7 @@ class CellRenderer {
     element.dataset.lineIndex = lineIndex;
     element.dataset.cellIndex = cellIndex;
     element.dataset.column = cell.col;
-    element.dataset.graphemeLength = (cell.glyph || '').length;
+    element.dataset.glyphLength = (cell.glyph || '').length;
     element.dataset.octave = cell.octave || 0;
 
     // Handle slur indicator
