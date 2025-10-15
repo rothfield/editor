@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Test Cursor Positions</title>
+</head>
+<body>
+    <h1>Cursor Positions Test</h1>
+    <pre id="output"></pre>
+
+    <script type="module">
+        const output = document.getElementById('output');
+
+        async function test() {
+            try {
+                // Load WASM module
+                const wasmModule = await import('/static/pkg/editor_wasm.js');
+                await wasmModule.default();
+
+                // Create a test document
+                const doc = wasmModule.createNewDocument();
+
+                // Add some test data
+                if (doc.lines && doc.lines.length > 0) {
+                    const line = doc.lines[0];
+
+                    // Insert some characters using parseText
+                    const cells = wasmModule.parseText("SRGM", 0); // Number pitch system
+                    line.cells = cells;
+                }
+
+                // Create layout config
+                const config = {
+                    cell_widths: [12, 12, 12, 12],
+                    syllable_widths: [],
+                    font_size: 16,
+                    line_height: 20,
+                    left_margin: 60,
+                    cell_y_offset: 32,
+                    cell_height: 16,
+                    min_syllable_padding: 4.0
+                };
+
+                // Compute layout
+                const displayList = wasmModule.computeLayout(doc, config);
+
+                // Display results
+                output.textContent = 'DisplayList:\n' + JSON.stringify(displayList, null, 2);
+
+                // Check cursor positions specifically
+                console.log('First line cells:', displayList.lines[0].cells);
+                displayList.lines[0].cells.forEach((cell, idx) => {
+                    console.log(`Cell ${idx}: glyph="${cell.glyph}", x=${cell.x}, cursor_left=${cell.cursor_left}, cursor_right=${cell.cursor_right}`);
+                });
+
+            } catch (error) {
+                output.textContent = 'Error: ' + error.message + '\n' + error.stack;
+                console.error(error);
+            }
+        }
+
+        test();
+    </script>
+</body>
+</html>

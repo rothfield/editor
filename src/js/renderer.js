@@ -5,20 +5,13 @@
  * beat loops, slurs, and other musical notation components.
  */
 
-import CellRenderer from './cell-renderer.js';
-import { renderLyrics, distributeLyrics } from './lyrics-renderer.js';
 import {
   BASE_FONT_SIZE,
   BASE_LINE_HEIGHT,
   SMALL_FONT_SIZE,
   LEFT_MARGIN_PX,
   CELL_Y_OFFSET,
-  CELL_HEIGHT,
-  CELL_VERTICAL_PADDING,
-  CELL_BOTTOM_PADDING,
-  LINE_CONTAINER_HEIGHT,
-  TALA_VERTICAL_OFFSET,
-  LYRICS_TOP_OFFSET
+  CELL_HEIGHT
 } from './constants.js';
 
 class DOMRenderer {
@@ -29,11 +22,6 @@ class DOMRenderer {
     this.beatLoopElements = new Map();
     this.theDocument = null;
     this.renderCache = new Map();
-    this.cellRenderer = new CellRenderer();
-
-    // Syllable width cache: Map<"text|fontSignature", width>
-    this.syllableWidthCache = new Map();
-    this.fontSignature = null;
 
     // Performance metrics
     this.renderStats = {
@@ -43,7 +31,6 @@ class DOMRenderer {
     };
 
     this.setupBeatLoopStyles(); // Sets up beat loops, octave dots, and slur CSS
-    this.updateFontSignature();
   }
 
   /**
@@ -205,67 +192,8 @@ class DOMRenderer {
   }
 
   /**
-   * Update font signature for cache invalidation
-   * Called when fonts change or on initialization
+   * Render entire document using Rust layout engine + thin JS DOM layer
    */
-  updateFontSignature() {
-    const bodyStyle = getComputedStyle(document.body);
-    this.fontSignature = `${bodyStyle.fontFamily}|${bodyStyle.fontSize}|${bodyStyle.fontWeight}`;
-  }
-
-  /**
-   * Clear syllable width cache
-   * Call this when fonts change or window resizes
-   */
-  clearSyllableCache() {
-    this.syllableWidthCache.clear();
-    console.log('Syllable width cache cleared');
-  }
-
-  /**
-   * Measure syllable width with font-aware caching
-   * Cache key: "text|fontSignature"
-   *
-   * @param {string} syllable - The syllable text to measure
-   * @param {boolean} useCache - Whether to use cached measurements (default true)
-   * @returns {number} Width in pixels
-   */
-  measureSyllableWidth(syllable, useCache = true) {
-    if (!syllable) return 0;
-
-    const cacheKey = `${syllable}|${this.fontSignature}`;
-
-    // Check cache first
-    if (useCache && this.syllableWidthCache.has(cacheKey)) {
-      return this.syllableWidthCache.get(cacheKey);
-    }
-
-    // Create temporary invisible element to measure
-    const tempElement = document.createElement('span');
-    tempElement.className = 'lyric-syllable text-sm';
-    tempElement.textContent = syllable;
-    tempElement.style.position = 'absolute';
-    tempElement.style.left = '-9999px';
-    tempElement.style.fontStyle = 'italic';
-    tempElement.style.visibility = 'hidden';
-    tempElement.style.whiteSpace = 'nowrap';
-
-    document.body.appendChild(tempElement);
-    const width = tempElement.getBoundingClientRect().width;
-    document.body.removeChild(tempElement);
-
-    // Cache the result
-    if (useCache) {
-      this.syllableWidthCache.set(cacheKey, width);
-    }
-
-    return width;
-  }
-
-
-  /**
-     * Render entire document
-     */
   renderDocument(doc) {
     const startTime = performance.now();
 
@@ -279,42 +207,155 @@ class DOMRenderer {
       return;
     }
 
-    // Render doc title at the top
-    this.renderDocumentTitle(doc);
+    // STEP 1: Measure all widths (JS-only, native DOM)
+    const measureStart = performance.now();
+    const measurements = this.measureAllWidths(doc);
+    const measureTime = performance.now() - measureStart;
+    console.log(`⏱️ Measurements completed in ${measureTime.toFixed(2)}ms`);
 
-    // Render each line
-    doc.lines.forEach((line, lineIndex) => {
-      this.renderLine(line, lineIndex);
-    });
+    // STEP 2: Call Rust ONCE to compute layout
+    const layoutStart = performance.now();
+    const config = {
+      cell_widths: measurements.cellWidths,
+      syllable_widths: measurements.syllableWidths,
+      font_size: BASE_FONT_SIZE,
+      line_height: BASE_LINE_HEIGHT,
+      left_margin: LEFT_MARGIN_PX,
+      cell_y_offset: CELL_Y_OFFSET,
+      cell_height: CELL_HEIGHT,
+      min_syllable_padding: 4.0,
+    };
 
-    // Beat loops and slurs are now rendered via CSS on cells (no separate elements needed)
-    // Octave markings are now rendered via CSS (data-octave attribute)
+    const displayList = this.editor.wasmModule.computeLayout(doc, config);
+    const layoutTime = performance.now() - layoutStart;
+    console.log(`⏱️ Rust layout computed in ${layoutTime.toFixed(2)}ms`);
+
+    // Cache DisplayList for cursor positioning
+    this.displayList = displayList;
+
+    // STEP 3: Render from DisplayList (fast native JS DOM)
+    const renderStart = performance.now();
+    this.renderFromDisplayList(displayList);
+    const renderTime = performance.now() - renderStart;
+    console.log(`⏱️ DOM rendering completed in ${renderTime.toFixed(2)}ms`);
 
     // Update render statistics
     const endTime = performance.now();
     this.renderStats.lastRenderTime = endTime - startTime;
 
-    console.log(`Document rendered in ${this.renderStats.lastRenderTime.toFixed(2)}ms`);
+    console.log(`✅ Document rendered in ${this.renderStats.lastRenderTime.toFixed(2)}ms (measure: ${measureTime.toFixed(2)}ms, layout: ${layoutTime.toFixed(2)}ms, render: ${renderTime.toFixed(2)}ms)`);
   }
 
   /**
-     * Show empty state when no content
-     */
-  showEmptyState() {
-    const lineElement = this.getOrCreateLineElement(0);
-    lineElement.innerHTML = `
-        <div class="text-ui-disabled-text text-sm">
-        Click to start entering musical notation...
-        </div>
-    `;
+   * Measure all cell widths and syllable widths for the document
+   * This is done in JavaScript using temporary DOM elements
+   *
+   * @param {Object} doc - The document to measure
+   * @returns {Object} {cellWidths: number[], syllableWidths: number[]}
+   */
+  measureAllWidths(doc) {
+    const cellWidths = [];
+    const syllableWidths = [];
+
+    // Create temporary invisible container for measurements
+    const temp = document.createElement('div');
+    temp.style.cssText = 'position:absolute; left:-9999px; visibility:hidden; pointer-events:none;';
+    document.body.appendChild(temp);
+
+    for (const line of doc.lines) {
+      // Measure each cell
+      for (const cell of line.cells) {
+        const span = document.createElement('span');
+        span.className = 'char-cell';
+        span.textContent = cell.glyph === ' ' ? '\u00A0' : cell.glyph;
+        temp.appendChild(span);
+        cellWidths.push(span.getBoundingClientRect().width);
+        temp.removeChild(span);
+      }
+
+      // Measure lyrics syllables if present
+      if (line.lyrics) {
+        const syllables = this.extractSyllablesSimple(line.lyrics);
+        for (const syllable of syllables) {
+          const span = document.createElement('span');
+          span.className = 'lyric-syllable text-sm';
+          span.style.fontStyle = 'italic';
+          span.textContent = syllable;
+          temp.appendChild(span);
+          syllableWidths.push(span.getBoundingClientRect().width);
+          temp.removeChild(span);
+        }
+      }
+    }
+
+    document.body.removeChild(temp);
+
+    console.log(`📏 Measured ${cellWidths.length} cells, ${syllableWidths.length} syllables`);
+    return { cellWidths, syllableWidths };
   }
 
   /**
-     * Render document title at the top of the canvas
-     */
-  renderDocumentTitle(doc) {
-    const title = doc.title;
-    const composer = doc.composer;
+   * Extract syllables from lyrics string (simple version for measurement)
+   * Just splits on whitespace and hyphens to get syllable count
+   *
+   * @param {string} lyrics - Lyrics string
+   * @returns {string[]} Array of syllables
+   */
+  extractSyllablesSimple(lyrics) {
+    if (!lyrics) return [];
+
+    // Simple extraction: split on whitespace, then on hyphens
+    const words = lyrics.trim().split(/\s+/);
+    const syllables = [];
+
+    for (const word of words) {
+      // Split on hyphens but keep them
+      const parts = word.split(/(-)/);
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+        if (part === '') continue;
+
+        if (part === '-') {
+          syllables.push('-');
+        } else if (i < parts.length - 1 && parts[i + 1] === '-') {
+          syllables.push(part + '-');
+          i++; // Skip the hyphen
+        } else {
+          syllables.push(part);
+        }
+      }
+    }
+
+    return syllables;
+  }
+
+  /**
+   * Render document from DisplayList returned by Rust
+   * Pure DOM rendering with no layout calculations
+   *
+   * @param {Object} displayList - DisplayList from Rust computeLayout
+   */
+  renderFromDisplayList(displayList) {
+    // Render header if present
+    if (displayList.header) {
+      this.renderHeaderFromDisplayList(displayList.header);
+    }
+
+    // Render each line from DisplayList
+    displayList.lines.forEach(renderLine => {
+      const lineElement = this.renderLineFromDisplayList(renderLine);
+      this.element.appendChild(lineElement);
+    });
+  }
+
+  /**
+   * Render document header from DisplayList
+   *
+   * @param {Object} header - Header data from DisplayList
+   */
+  renderHeaderFromDisplayList(header) {
+    const title = header.title;
+    const composer = header.composer;
 
     // Skip if neither title nor composer
     if ((!title || title === 'Untitled Document') && !composer) {
@@ -369,283 +410,127 @@ class DOMRenderer {
   }
 
   /**
-     * Render a single line - simplified to only render main line
-     */
-  renderLine(line, lineIndex) {
-    const lineElement = this.getOrCreateLineElement(lineIndex);
+   * Render a single line from DisplayList
+   * Pure DOM rendering with pre-calculated positions
+   *
+   * @param {Object} renderLine - RenderLine data from DisplayList
+   * @returns {HTMLElement} The created line element
+   */
+  renderLineFromDisplayList(renderLine) {
+    const line = document.createElement('div');
+    line.className = 'notation-line';
+    line.dataset.line = renderLine.line_index;
+    line.style.cssText = `position:relative; height:${renderLine.height}px; width:100%;`;
 
-    console.log(`🎼 renderLine ${lineIndex}:`, {
-      label: line.label,
-      lyrics: line.lyrics,
-      tala: line.tala,
-      cellCount: line.cells?.length
-    });
-
-    // Only render the main line (no lanes)
-    const mainLine = line.cells;
-    const beats = line.beats || [];
-    this.renderCells(mainLine, lineIndex, lineElement, beats);
-
-    // Render line label
-    if (line.label) {
-      this.renderLineLabel(line.label, lineElement);
+    // Render label if present
+    if (renderLine.label) {
+      const labelElement = document.createElement('span');
+      labelElement.className = 'line-label text-ui-disabled-text';
+      labelElement.textContent = renderLine.label;
+      labelElement.style.cssText = `
+        position: absolute;
+        left: 0;
+        top: ${CELL_Y_OFFSET}px;
+        height: ${CELL_HEIGHT}px;
+        line-height: ${BASE_LINE_HEIGHT}px;
+        font-size: ${BASE_FONT_SIZE}px;
+        display: inline-flex;
+        align-items: baseline;
+      `;
+      line.appendChild(labelElement);
     }
 
-    // Render lyrics (direct field on line)
-    const hasLyrics = line.lyrics && line.lyrics.trim() !== '';
-    if (hasLyrics) {
-      this.renderLyrics(line.lyrics, lineElement);
-    }
+    // Render cells (fast native JS)
+    renderLine.cells.forEach(cellData => {
+      const span = document.createElement('span');
+      span.className = cellData.classes.join(' ');
+      span.textContent = cellData.glyph === ' ' ? '\u00A0' : cellData.glyph;
+      span.style.cssText = `
+        position: absolute;
+        left: ${cellData.x}px;
+        top: ${cellData.y}px;
+        width: ${cellData.w}px;
+        height: ${cellData.h}px;
+      `;
 
-    // Render tala (direct field on line)
-    if (line.tala) {
-      console.log(`  📍 About to call renderTala with: "${line.tala}"`);
-      this.renderTala(line.tala, lineElement);
-    } else {
-      console.log(`  ⚠️ No tala to render (line.tala = ${JSON.stringify(line.tala)})`);
-    }
+      // Set data attributes
+      for (const [key, value] of Object.entries(cellData.dataset)) {
+        span.dataset[key] = value;
+      }
 
-    // Detect if the line has beat loops (multi-cell beats)
-    const hasBeatLoops = beats && beats.length > 0 &&
-                         beats.some(beat => (beat.end - beat.start) >= 1);
+      // Add event handlers (JS-only)
+      const lineIndex = renderLine.line_index;
+      const cellIndex = parseInt(cellData.dataset.cellIndex);
+      const cell = this.theDocument.lines[lineIndex].cells[cellIndex];
 
-    // Adjust line height based on content
-    this.adjustLineHeight(lineElement, hasLyrics, hasBeatLoops);
-  }
-
-  /**
-     * Render the cells of a line - simplified (no lanes)
-     */
-  renderCells(cells, lineIndex, lineElement, beats) {
-    // Clear existing content
-    lineElement.innerHTML = '';
-
-    console.log('🔧 Rendering line:', { lineIndex, cellCount: cells.length });
-
-    // Handle empty line - nothing to render
-    if (!cells || cells.length === 0) {
-      console.log('📭 Empty line, nothing to render');
-      return;
-    }
-
-    // Use manual layout calculation
-    console.log('📋 Using manual layout calculation');
-    this.renderCellsManually(cells, lineIndex, lineElement, beats);
-  }
-
-  /**
-     * Manual layout rendering with lyrics-aware spacing (two-pass)
-     *
-     * Pass 1: Measure syllable widths and calculate effective cell widths
-     * Pass 2: Position and render cells using effective widths
-     */
-  renderCellsManually(cells, lineIndex, container, beats) {
-    console.log('🔧 Using manual layout rendering with lyrics-aware spacing');
-
-    // Build map of cell index to beat position
-    const cellBeatInfo = new Map();
-    if (beats && beats.length > 0) {
-      beats.forEach((beat) => {
-        if (beat.end - beat.start >= 1) { // Multi-cell beat
-          for (let i = beat.start; i <= beat.end; i++) {
-            if (i === beat.start) {
-              cellBeatInfo.set(i, 'beat-first');
-            } else if (i === beat.end) {
-              cellBeatInfo.set(i, 'beat-last');
-            } else {
-              cellBeatInfo.set(i, 'beat-middle');
-            }
-          }
-        }
+      span.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.handleCellClick(cell, e);
       });
-    }
 
-    // Build map of cell index to slur position (pure CSS approach)
-    const cellSlurInfo = this.buildSlurPositionMap(cells);
+      span.addEventListener('mouseenter', () => {
+        this.handleCellHover(cell, true);
+      });
 
-    // ========== PASS 1: Distribute lyrics and measure widths ==========
+      span.addEventListener('mouseleave', () => {
+        this.handleCellHover(cell, false);
+      });
 
-    // Get lyrics for this line
-    const line = this.theDocument?.lines[lineIndex];
-    const lyrics = line?.lyrics;
-
-    // Distribute syllables to cells using FSM
-    const syllableAssignments = lyrics ? distributeLyrics(lyrics, cells) : [];
-
-    // Create a map of cellIndex → syllable for easy lookup
-    const cellSyllableMap = new Map();
-    syllableAssignments.forEach(assignment => {
-      cellSyllableMap.set(assignment.cellIndex, assignment.syllable);
+      line.appendChild(span);
     });
 
-    // Measure syllable widths and calculate effective cell widths
-    const effectiveWidths = [];
-    const MIN_SYLLABLE_PADDING = 4; // Minimum padding between syllables (px)
-
-    cells.forEach((charCell, cellIndex) => {
-      // First, render the cell temporarily to measure its width
-      const tempElement = this.createCellElement(charCell, lineIndex, cellIndex, 0, cellBeatInfo.get(cellIndex), cellSlurInfo.get(cellIndex));
-      tempElement.style.visibility = 'hidden'; // Hide but still render
-      container.appendChild(tempElement);
-
-      const cellWidth = tempElement.getBoundingClientRect().width;
-
-      // Measure syllable width if this cell has one
-      const syllable = cellSyllableMap.get(cellIndex);
-      const syllableWidth = syllable ? this.measureSyllableWidth(syllable) : 0;
-
-      // Effective width = max(cellWidth, syllableWidth + padding)
-      const effectiveWidth = Math.max(cellWidth, syllableWidth + MIN_SYLLABLE_PADDING);
-      effectiveWidths.push(effectiveWidth);
-
-      // Store cell width (actual character width, not allocated width)
-      charCell.w = cellWidth;
-
-      // Remove temporary element
-      container.removeChild(tempElement);
-
-      console.log(`📏 Cell ${cellIndex} (${charCell.glyph}): cellW=${cellWidth.toFixed(1)}px, syllable="${syllable || ''}", syllableW=${syllableWidth.toFixed(1)}px, effectiveW=${effectiveWidth.toFixed(1)}px`);
+    // Render lyrics (positioned syllables from DisplayList)
+    renderLine.lyrics.forEach(lyric => {
+      const span = document.createElement('span');
+      span.className = 'lyric-syllable text-sm';
+      span.textContent = lyric.text;
+      span.style.cssText = `
+        position: absolute;
+        left: ${lyric.x}px;
+        top: ${lyric.y}px;
+        font-style: italic;
+        color: #6b7280;
+        transform: translateX(-50%);
+        pointer-events: none;
+        white-space: nowrap;
+      `;
+      line.appendChild(span);
     });
 
-    // ========== PASS 2: Position and render cells using effective widths ==========
-
-    let cumulativeX = LEFT_MARGIN_PX;
-
-    cells.forEach((charCell, cellIndex) => {
-      // Position the cell
-      charCell.x = cumulativeX;
-      charCell.y = CELL_VERTICAL_PADDING;
-      charCell.h = CELL_HEIGHT;
-      // charCell.w already set in Pass 1
-
-      const beatPosition = cellBeatInfo.get(cellIndex);
-      const slurPosition = cellSlurInfo.get(cellIndex);
-      const effectiveWidth = effectiveWidths[cellIndex];
-      this.renderCellWithWidth(charCell, lineIndex, cellIndex, container, cumulativeX, beatPosition, slurPosition, effectiveWidth);
-
-      // Update bounding box and hit testing area (based on ACTUAL cell width, not allocated)
-      charCell.bbox = [charCell.x, charCell.y, charCell.x + charCell.w, charCell.y + charCell.h];
-      charCell.hit = [charCell.x - 2.0, charCell.y - 2.0, charCell.x + charCell.w + 2.0, charCell.y + charCell.h + 2.0];
-
-      // Store the right edge position for cursor positioning (character edge, not allocated edge)
-      charCell.rightEdge = charCell.x + charCell.w;
-
-      // Advance cumulative position by EFFECTIVE width (includes syllable space)
-      cumulativeX += effectiveWidth;
-
-      console.log(`📐 Cell ${cellIndex} (${charCell.glyph}): x=${charCell.x}, w=${charCell.w}, rightEdge=${charCell.rightEdge}, nextX=${cumulativeX}`);
+    // Render tala (positioned characters from DisplayList)
+    renderLine.tala.forEach(talaChar => {
+      const span = document.createElement('span');
+      span.className = 'tala-char text-xs';
+      span.textContent = talaChar.text;
+      span.style.cssText = `
+        position: absolute;
+        left: ${talaChar.x}px;
+        top: ${talaChar.y}px;
+        transform: translateX(-50%);
+        color: #4b5563;
+        font-weight: 600;
+        pointer-events: none;
+      `;
+      line.appendChild(span);
     });
 
-    // Store the final cumulative position in the line for cursor use
-    if (this.theDocument && this.theDocument.lines && this.theDocument.lines[lineIndex]) {
-      this.theDocument.lines[lineIndex].nextCursorX = cumulativeX;
-    }
-
-    // Update hitboxes display after manual layout is complete
-    if (this.editor && this.editor.updateHitboxesDisplay) {
-      console.log('🔄 Updating hitboxes display');
-      this.editor.updateHitboxesDisplay();
-    }
+    return line;
   }
 
   /**
-     * Render a single Cell - simplified (no lanes)
-     */
-  renderCell(charCell, lineIndex, cellIndex, container, xPosition, beatPosition) {
-    const element = this.createCellElement(charCell, lineIndex, cellIndex, xPosition, beatPosition);
-    container.appendChild(element);
-
-    // Cache the element for future updates
-    const key = `${lineIndex}-${cellIndex}`;
-    this.charCellElements.set(key, element);
+   * Show empty state when no content
+   */
+  showEmptyState() {
+    this.element.innerHTML = `
+      <div class="text-ui-disabled-text text-sm">
+        Click to start entering musical notation...
+      </div>
+    `;
   }
 
   /**
-     * Render a single Cell with explicit width for beat loop spanning
-     */
-  renderCellWithWidth(charCell, lineIndex, cellIndex, container, xPosition, beatPosition, slurPosition, effectiveWidth) {
-    const element = this.createCellElement(charCell, lineIndex, cellIndex, xPosition, beatPosition, slurPosition, effectiveWidth);
-    container.appendChild(element);
-
-    // Cache the element for future updates
-    const key = `${lineIndex}-${cellIndex}`;
-    this.charCellElements.set(key, element);
-  }
-
-  /**
-     * Create DOM element for Cell - simplified (no lanes)
-     */
-  createCellElement(charCell, lineIndex, cellIndex, xPosition, beatPosition, slurPosition, effectiveWidth = null) {
-    const element = document.createElement('span');
-    element.className = this.cellRenderer.getCellClasses(charCell);
-    // Use non-breaking space for space characters so they have actual width
-    element.textContent = charCell.glyph === ' ' ? '\u00A0' : charCell.glyph;
-
-    // Add beat position class if applicable
-    if (beatPosition) {
-      element.classList.add(beatPosition);
-    }
-
-    // Add slur position class if applicable (pure CSS slurs)
-    if (slurPosition) {
-      element.classList.add(slurPosition);
-    }
-
-    // Set positioning using inline styles
-    element.style.position = 'absolute';
-    element.style.left = `${charCell.x || xPosition || 0}px`;
-    element.style.top = `${charCell.y || CELL_VERTICAL_PADDING}px`;
-    // Set width to effectiveWidth if provided (for beat loops to span correctly)
-    // Otherwise let cells render at natural width
-    if (effectiveWidth !== null) {
-      element.style.width = `${effectiveWidth}px`;
-    }
-    element.style.height = `${charCell.h || CELL_HEIGHT}px`;
-
-    // Add data attributes for debugging and CSS rendering
-    element.dataset.lineIndex = lineIndex;
-    element.dataset.cellIndex = cellIndex;
-    element.dataset.column = charCell.col;
-    element.dataset.glyphLength = (charCell.glyph || '').length;
-    element.dataset.octave = charCell.octave || 0;
-
-    // Handle slur indicator - WASM returns slur_indicator (snake_case) or slurIndicator (camelCase)
-    // Convert string values to numbers: "SlurStart" = 1, "SlurEnd" = 2, "None" = 0
-    let slurIndicator = charCell.slurIndicator || charCell.slur_indicator || 0;
-    if (typeof slurIndicator === 'string') {
-      if (slurIndicator === 'SlurStart') slurIndicator = 1;
-      else if (slurIndicator === 'SlurEnd') slurIndicator = 2;
-      else slurIndicator = 0;
-    }
-    element.dataset.slurIndicator = slurIndicator;
-
-    // Add event listeners
-    this.addCellEventListeners(element, charCell);
-
-    return element;
-  }
-
-  /**
-     * Add event listeners to Cell element
-     */
-  addCellEventListeners(element, charCell) {
-    element.addEventListener('click', (event) => {
-      event.stopPropagation();
-      this.handleCellClick(charCell, event);
-    });
-
-    element.addEventListener('mouseenter', () => {
-      this.handleCellHover(charCell, true);
-    });
-
-    element.addEventListener('mouseleave', () => {
-      this.handleCellHover(charCell, false);
-    });
-  }
-
-  /**
-     * Handle Cell click
-     */
+   * Handle Cell click
+   */
   handleCellClick(charCell, event) {
     console.log('Cell clicked:', charCell);
 
@@ -656,8 +541,8 @@ class DOMRenderer {
   }
 
   /**
-     * Handle Cell hover
-     */
+   * Handle Cell hover
+   */
   handleCellHover(charCell, isHovering) {
     // Could add hover effects here
     if (isHovering) {
@@ -665,422 +550,24 @@ class DOMRenderer {
     }
   }
 
-  /**
-     * Get or create line element - simplified (no lanes)
-     */
-  getOrCreateLineElement(lineIndex) {
-    let lineElement = this.element.querySelector(`[data-line="${lineIndex}"]`);
 
-    if (!lineElement) {
-      lineElement = document.createElement('div');
-      lineElement.className = 'notation-line';
-      lineElement.dataset.line = lineIndex;
-      lineElement.style.position = 'relative';
-      lineElement.style.height = `${LINE_CONTAINER_HEIGHT}px`;
-      lineElement.style.width = '100%';
-
-      this.element.appendChild(lineElement);
-    }
-
-    return lineElement;
-  }
 
   /**
-   * Adjust line height based on content (lyrics, beat loops)
-   *
-   * Calculations:
-   * - Base: 32px (top) + 16px (cell) + 32px (bottom) = 80px
-   * - With lyrics + beats: 65px (lyrics Y) + 14px (text) + 8px (padding) = 87px
-   * - With lyrics, no beats: 57px (lyrics Y) + 14px (text) + 8px (padding) = 79px
-   *
-   * @param {HTMLElement} lineElement - The line container element
-   * @param {boolean} hasLyrics - Whether the line has lyrics
-   * @param {boolean} hasBeatLoops - Whether the line has beat loops
+   * Clear editor element content
    */
-  adjustLineHeight(lineElement, hasLyrics, hasBeatLoops) {
-    const LYRICS_FONT_SIZE = 14; // text-sm
-    const LYRICS_BOTTOM_PADDING = 8; // Space below lyrics for descenders
-
-    let lineHeight;
-
-    if (hasLyrics) {
-      // Lyrics Y positions (from lyrics-renderer.js)
-      const LYRICS_Y_WITH_BEATS = 65;
-      const LYRICS_Y_WITHOUT_BEATS = 57;
-
-      const lyricsY = hasBeatLoops ? LYRICS_Y_WITH_BEATS : LYRICS_Y_WITHOUT_BEATS;
-      lineHeight = lyricsY + LYRICS_FONT_SIZE + LYRICS_BOTTOM_PADDING;
-
-      console.log(`📏 Adjusting line height for lyrics: ${lineHeight}px (hasBeats=${hasBeatLoops})`);
-    } else {
-      // No lyrics - use default height
-      lineHeight = LINE_CONTAINER_HEIGHT;
-    }
-
-    lineElement.style.height = `${lineHeight}px`;
-  }
-
-  /**
-     * Render line metadata
-     */
-  renderLineMetadata(metadata, lineElement) {
-    if (!metadata) return;
-
-    // Render lyrics if present
-    if (metadata.lyrics) {
-      this.renderLyrics(metadata.lyrics, lineElement);
-    }
-
-    // Render tala if present
-    if (metadata.tala) {
-      this.renderTala(metadata.tala, lineElement);
-    }
-  }
-
-  /**
-     * Render line label
-     */
-  renderLineLabel(label, lineElement) {
-    const labelElement = document.createElement('span');
-    labelElement.className = 'line-label text-ui-disabled-text';
-    labelElement.textContent = label;
-    labelElement.style.position = 'absolute';
-    labelElement.style.left = '0';
-    labelElement.style.top = `${CELL_VERTICAL_PADDING}px`; // Same vertical position as line cells
-    labelElement.style.height = `${CELL_HEIGHT}px`; // Same height as cells
-    labelElement.style.lineHeight = `${BASE_LINE_HEIGHT}px`; // Match cell line height for baseline alignment
-    labelElement.style.fontSize = `${BASE_FONT_SIZE}px`; // Match cell font size
-    labelElement.style.display = 'inline-flex'; // Use flexbox for precise alignment
-    labelElement.style.alignItems = 'baseline'; // Align baseline with cells
-
-    lineElement.appendChild(labelElement);
-  }
-
-  /**
-     * Render lyrics using Lilypond-style syllable distribution
-     */
-  renderLyrics(lyrics, lineElement) {
-    // Get the line index from the element
-    const lineIndex = parseInt(lineElement.dataset.line);
-    const line = this.theDocument?.lines[lineIndex];
-
-    if (!line || !line.cells) {
-      console.warn('Cannot render lyrics: line or cells not found');
-      return;
-    }
-
-    // Detect if the line has beat loops
-    // Beat loops are present if line.beats array exists and has multi-cell beats
-    const hasBeatLoops = line.beats && line.beats.length > 0 &&
-                         line.beats.some(beat => (beat.end - beat.start) >= 1);
-
-    console.log(`🎵 renderLyrics: hasBeatLoops=${hasBeatLoops}, beats count=${line.beats?.length || 0}`);
-
-    // Use the new lyrics renderer with FSM-based distribution
-    renderLyrics(lyrics, line.cells, lineElement, hasBeatLoops);
-  }
-
-  /**
-     * Render tala notation - distribute characters across barlines
-     */
-  renderTala(tala, lineElement) {
-    if (!tala || !this.theDocument) return;
-
-    // Get the current line's cells to find barlines
-    const lineIndex = parseInt(lineElement.dataset.line);
-    const line = this.theDocument.lines[lineIndex];
-    if (!line || !line.cells) return;
-
-    console.log('🎵 renderTala called:', { tala, lineIndex, cellCount: line.cells.length });
-
-    // Find all barline cells (kind === 6)
-    const barlines = line.cells.filter(cell => cell.kind === 6);
-    console.log('  Found barlines:', barlines.length, barlines.map(b => ({ glyph: b.glyph, x: b.x })));
-
-    if (barlines.length === 0) {
-      console.log('  No barlines found!');
-      return;
-    }
-
-    // Distribute tala characters to barlines
-    barlines.forEach((barlineCell, barlineIndex) => {
-      // Get the tala character for this barline
-      // If we've run out of tala characters, use the last one
-      const talaCharIndex = Math.min(barlineIndex, tala.length - 1);
-      const talaChar = tala[talaCharIndex];
-
-      console.log(`  Rendering tala char "${talaChar}" at barline ${barlineIndex}, x=${barlineCell.x}`);
-
-      // Create a span element for this tala character
-      const talaElement = document.createElement('span');
-      talaElement.className = 'tala-char text-xs';
-      talaElement.textContent = talaChar;
-      talaElement.style.position = 'absolute';
-      talaElement.style.left = `${barlineCell.x}px`;
-      talaElement.style.top = `${TALA_VERTICAL_OFFSET}px`; // Above the cell line
-      talaElement.style.transform = 'translateX(-50%)'; // Center on barline
-      talaElement.style.color = '#4b5563'; // gray-600
-      talaElement.style.fontWeight = '600';
-      talaElement.style.pointerEvents = 'none';
-
-      lineElement.appendChild(talaElement);
-    });
-  }
-
-  /**
-     * Render beat loops with enhanced visualization
-     */
-  renderBeatLoops(doc) {
-    // Clear existing beat loop elements
-    this.beatLoopElements.forEach((element) => {
-      if (element.parentElement) {
-        element.parentElement.removeChild(element);
-      }
-    });
-    this.beatLoopElements.clear();
-
-    doc.lines.forEach((line, lineIndex) => {
-      // Always use beats from line.beats array (populated by BeatDeriver)
-      if (line.beats && line.beats.length > 0) {
-        console.log(`Rendering ${line.beats.length} beats for line ${lineIndex}`);
-        line.beats.forEach((beat, beatIndex) => {
-          this.renderBeatLoop(beat, lineIndex, beatIndex);
-        });
-      } else {
-        console.log(`No beats found in line ${lineIndex}, line.beats:`, line.beats);
-      }
-    });
-  }
-
-  /**
-     * Extract beats from Cell data and render them
-     */
-  extractAndRenderBeatsFromCells(line, lineIndex) {
-    const cells = line.cells;
-    if (!cells || cells.length === 0) {
-      console.log('No cells in line for beat extraction');
-      return;
-    }
-
-    const beats = this.extractBeatsFromCells(cells);
-    console.log(`Extracted ${beats.length} beats from ${cells.length} cells:`, beats);
-
-    beats.forEach((beat, beatIndex) => {
-      console.log(`Rendering beat ${beatIndex}:`, {
-        start: beat.start,
-        end: beat.end,
-        width: beat.end - beat.start + 1,
-        startX: beat.visual.start_x,
-        visualWidth: beat.visual.width
-      });
-      this.renderBeatLoop(beat, lineIndex, beatIndex);
-    });
-
-    // Store beats back in line for caching
-    line.beats = beats;
-  }
-
-  /**
-     * Extract beat spans from Cell array
-     */
-  extractBeatsFromCells(cells) {
-    const beats = [];
-    let currentBeat = null;
-    let beatStart = 0;
-
-    for (let i = 0; i < cells.length; i++) {
-      const cell = cells[i];
-
-      if (this.isTemporalCell(cell)) {
-        if (!currentBeat) {
-          // Start new beat
-          currentBeat = {
-            start: i,
-            cells: [cell],
-            duration: 1.0,
-            visual: {
-              start_x: cell.x || (i * 12),
-              width: cell.w || 12,
-              loop_offset_px: 20,
-              loop_height_px: 6,
-              draw_single_cell: false
-            }
-          };
-          beatStart = i;
-        } else {
-          // Add cell to current beat
-          currentBeat.cells.push(cell);
-          currentBeat.duration = currentBeat.cells.length;
-        }
-      } else {
-        // Non-temporal cell - end current beat
-        if (currentBeat) {
-          currentBeat.end = i - 1;
-          currentBeat.visual.width = (currentBeat.end - currentBeat.start + 1) * 12;
-          beats.push(currentBeat);
-          currentBeat = null;
-        }
-      }
-    }
-
-    // Handle trailing beat
-    if (currentBeat) {
-      currentBeat.end = cells.length - 1;
-      currentBeat.visual.width = (currentBeat.end - currentBeat.start + 1) * 12;
-      beats.push(currentBeat);
-    }
-
-    return beats;
-  }
-
-  /**
-     * Check if cell is temporal (part of musical timing)
-     */
-  isTemporalCell(cell) {
-    const isTemporal = cell.kind === 1 || cell.kind === 2; // PitchedElement or UnpitchedElement
-    if (!isTemporal && cell.glyph) {
-      console.log(`Cell "${cell.glyph}" is not temporal (kind: ${cell.kind})`);
-    }
-    return isTemporal;
-  }
-
-  /**
-     * Render single beat loop
-     */
-  renderBeatLoop(beat, lineIndex, beatIndex) {
-    const key = `beat-${lineIndex}-${beatIndex}`;
-
-    // Get the line element to append to
-    const lineElement = this.getOrCreateLineElement(lineIndex);
-
-    // Create beat loop element
-    const beatElement = document.createElement('div');
-    beatElement.className = 'beat-loop';
-    beatElement.dataset.lineIndex = lineIndex;
-    beatElement.dataset.beatIndex = beatIndex;
-
-    // Calculate beat width from start/end positions
-    const beatWidth = (beat.end - beat.start + 1);
-    const shouldDisplay = beat.visual.draw_single_cell || beatWidth > 1;
-
-    console.log(`Beat loop ${beatIndex}: width=${beatWidth}, shouldDisplay=${shouldDisplay}, draw_single_cell=${beat.visual.draw_single_cell}`);
-
-    // Position below the cells (simplified - no lanes)
-    const cellY = CELL_VERTICAL_PADDING; // Cells start at this Y offset
-    const cellHeight = CELL_HEIGHT; // Cell height
-    const loopOffsetBelow = 2; // Offset below the cell bottom (2px gap)
-
-    const leftPos = beat.visual.start_x || (beat.start * 12);
-    const widthPx = beat.visual.width || (beatWidth * 12);
-    const topPos = cellY + cellHeight + loopOffsetBelow; // Position below cells
-
-    // Update position and appearance - arc beneath beats (no bottom fill)
-    beatElement.style.position = 'absolute';
-    beatElement.style.left = `${leftPos}px`;
-    beatElement.style.width = `${widthPx}px`;
-    beatElement.style.top = `${topPos}px`;
-    beatElement.style.height = `${beat.visual.loop_height_px || 5}px`;
-    // Arc outline only - no bottom border (empty bowl)
-    beatElement.style.border = '2px solid #666';
-    beatElement.style.borderTop = 'none';
-    beatElement.style.borderRadius = '0 0 12px 12px';
-    beatElement.style.backgroundColor = 'transparent';
-    beatElement.style.display = shouldDisplay ? 'block' : 'none';
-    beatElement.style.zIndex = '1';
-    beatElement.style.pointerEvents = 'none';
-
-    console.log(`Beat loop element created:`, {
-      left: leftPos,
-      width: widthPx,
-      top: topPos,
-      display: beatElement.style.display
-    });
-
-    lineElement.appendChild(beatElement);
-    this.beatLoopElements.set(key, beatElement);
-  }
-
-  /**
-   * Build slur position map by scanning cells for slur indicators
-   * Returns a Map of cellIndex → slurRole ('slur-first', 'slur-middle', 'slur-last')
-   */
-  buildSlurPositionMap(cells) {
-    const slurPositionMap = new Map();
-
-    if (!cells || cells.length === 0) {
-      return slurPositionMap;
-    }
-
-    console.log(`  Building slur position map for ${cells.length} cells`);
-
-    // Scan for slur pairs (SlurStart and SlurEnd)
-    let slurStartIndex = null;
-
-    cells.forEach((cell, cellIndex) => {
-      const indicator = cell.slurIndicator || cell.slur_indicator;
-
-      // Check for SlurStart (slurIndicator = 1 or "SlurStart")
-      if (indicator === 1 || indicator === 'SlurStart') {
-        console.log(`      ✅ Found SlurStart at cell ${cellIndex}`);
-        slurStartIndex = cellIndex;
-      }
-      // Check for SlurEnd (slurIndicator = 2 or "SlurEnd")
-      else if ((indicator === 2 || indicator === 'SlurEnd') && slurStartIndex !== null) {
-        console.log(`      ✅ Found SlurEnd at cell ${cellIndex}, marking slur from ${slurStartIndex} to ${cellIndex}`);
-
-        // Mark all cells in the slur span
-        for (let i = slurStartIndex; i <= cellIndex; i++) {
-          if (i === slurStartIndex) {
-            slurPositionMap.set(i, 'slur-first');
-          } else if (i === cellIndex) {
-            slurPositionMap.set(i, 'slur-last');
-          } else {
-            slurPositionMap.set(i, 'slur-middle');
-          }
-        }
-
-        slurStartIndex = null;
-      }
-    });
-
-    if (slurStartIndex !== null) {
-      console.warn(`  ⚠️ Unclosed slur starting at cell ${slurStartIndex}`);
-    }
-
-    return slurPositionMap;
-  }
-
-
-
-
-
-
-  /**
-     * Clear editor element content
-     */
   clearElement() {
     // Remove all Cell elements from maps
     this.charCellElements.clear();
-
-    // Remove beat loop elements from DOM before clearing map
-    this.beatLoopElements.forEach((element) => {
-      if (element.parentElement) {
-        element.parentElement.removeChild(element);
-      }
-    });
     this.beatLoopElements.clear();
 
-    // Slurs are now rendered via CSS on cells (no separate elements to clean up)
-
-    // Remove all line elements
+    // Remove all child elements
     const childrenToRemove = Array.from(this.element.children);
     childrenToRemove.forEach(child => this.element.removeChild(child));
   }
 
-
   /**
-     * Get render statistics
-     */
+   * Get render statistics
+   */
   getRenderStats() {
     return {
       ...this.renderStats,
@@ -1090,16 +577,16 @@ class DOMRenderer {
   }
 
   /**
-     * Update element visibility based on viewport
-     */
+   * Update element visibility based on viewport
+   */
   updateVisibility() {
     // This would be used for optimization in a real implementation
     // to only render elements that are currently visible
   }
 
   /**
-     * Resize canvas to match container
-     */
+   * Resize canvas to match container
+   */
   resize() {
     // No canvas elements to resize - everything is CSS-based now
   }

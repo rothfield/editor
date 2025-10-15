@@ -614,6 +614,7 @@ class UI {
         this.editor.theDocument.tonic = newTonic;
         this.editor.addToConsoleLog(`Document tonic set to: ${newTonic}`);
         await this.editor.render(); // Re-render to update WebUI
+        this.editor.updateDocumentDisplay(); // Update tabs
       }
     }
   }
@@ -632,6 +633,7 @@ class UI {
         this.editor.theDocument.pitch_system = newSystem;
         this.editor.addToConsoleLog(`Document pitch system set to: ${this.getPitchSystemName(newSystem)}`);
         await this.editor.render(); // Re-render to update WebUI
+        this.editor.updateDocumentDisplay(); // Update tabs
       }
     }
   }
@@ -676,6 +678,7 @@ class UI {
         this.editor.theDocument.key_signature = newSignature;
         this.editor.addToConsoleLog(`Document key signature set to: ${newSignature}`);
         await this.editor.render(); // Re-render to update WebUI
+        this.editor.updateDocumentDisplay(); // Update tabs
       }
     }
   }
@@ -730,6 +733,7 @@ class UI {
         this.editor.theDocument.lines[0].tonic = newTonic;
         this.editor.addToConsoleLog(`Line tonic set to: ${newTonic}`);
         await this.editor.render(); // Re-render to update WebUI
+        this.editor.updateDocumentDisplay(); // Update tabs
       }
     }
   }
@@ -748,6 +752,7 @@ class UI {
         this.editor.theDocument.lines[0].pitch_system = newSystem;
         this.editor.addToConsoleLog(`Line pitch system set to: ${this.getPitchSystemName(newSystem)}`);
         await this.editor.render(); // Re-render to update WebUI
+        this.editor.updateDocumentDisplay(); // Update tabs
       }
     }
   }
@@ -830,6 +835,7 @@ class UI {
         this.editor.theDocument.lines[0].key_signature = newSignature;
         this.editor.addToConsoleLog(`Line key signature set to: ${newSignature}`);
         await this.editor.render(); // Re-render to update WebUI
+        this.editor.updateDocumentDisplay(); // Update tabs
       }
     }
   }

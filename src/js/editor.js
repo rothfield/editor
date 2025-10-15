@@ -22,20 +22,6 @@ class MusicNotationEditor {
 
     // Staff notation real-time update
     this.staffNotationTimer = null;
-
-    // Performance monitoring
-    this.performanceMetrics = {
-      typingLatency: [],
-      beatDerivation: [],
-      renderTime: [],
-      focusActivation: [],
-      navigationLatency: [],
-      selectionLatency: [],
-      commandLatency: [] // Musical command performance
-    };
-
-    // Initialize performance monitoring
-    this.startPerformanceMonitoring();
   }
 
   /**
@@ -72,6 +58,8 @@ class MusicNotationEditor {
         setLineLabel: wasmModule.setLineLabel,
         setLineLyrics: wasmModule.setLineLyrics,
         setLineTala: wasmModule.setLineTala,
+        // Layout API
+        computeLayout: wasmModule.computeLayout,
         // MusicXML export API
         exportMusicXML: wasmModule.exportMusicXML,
         convertMusicXMLToLilyPond: wasmModule.convertMusicXMLToLilyPond
@@ -97,9 +85,6 @@ class MusicNotationEditor {
       await this.createNewDocument();
 
       console.log('Music Notation Editor initialized successfully');
-
-      // Show ready state
-      this.updatePerformanceIndicator('ready');
     } catch (error) {
       console.error('Failed to initialize editor:', error);
       this.showError('Failed to initialize music notation engine');
@@ -282,7 +267,6 @@ class MusicNotationEditor {
 
       const endTime = performance.now();
       const duration = endTime - startTime;
-      this.recordPerformanceMetric('typingLatency', duration);
 
       // Show cursor after typing
       this.showCursor();
@@ -370,9 +354,6 @@ class MusicNotationEditor {
       // Render updated document
       await this.render();
       this.updateDocumentDisplay();
-
-      const endTime = performance.now();
-      this.recordPerformanceMetric('beatDerivation', endTime - startTime);
 
       // Log successful parsing
       this.addToConsoleLog(`Parsed notation: "${text}"`);
@@ -565,6 +546,7 @@ class MusicNotationEditor {
       this.theDocument.state.cursor.column = validatedPosition;
       this.updateCursorPositionDisplay();
       this.updateCursorVisualPosition();
+      this.showCursor();
     }
   }
 
@@ -737,8 +719,6 @@ class MusicNotationEditor {
      * Handle Alt+key commands (musical commands) with enhanced validation
      */
   handleAltCommand(key) {
-    const startTime = performance.now();
-
     // Log command for debugging
     this.addToConsoleLog(`Musical command: Alt+${key.toLowerCase()}`);
 
@@ -766,10 +746,6 @@ class MusicNotationEditor {
         });
         return;
     }
-
-    // Record command performance
-    const endTime = performance.now();
-    this.recordPerformanceMetric('commandLatency', endTime - startTime);
   }
 
   /**
@@ -777,7 +753,6 @@ class MusicNotationEditor {
      */
   handleShiftCommand(key) {
     console.log('🔵 handleShiftCommand called:', key);
-    const startTime = performance.now();
     let handled = false;
 
     switch (key) {
@@ -817,11 +792,7 @@ class MusicNotationEditor {
         return;
     }
 
-    // Only record performance for actual selection commands
     if (handled) {
-      const endTime = performance.now();
-      this.recordPerformanceMetric('selectionLatency', endTime - startTime);
-
       // Update display
       console.log('  → Updating selection display');
       this.updateSelectionDisplay();
@@ -864,8 +835,6 @@ class MusicNotationEditor {
      * Handle navigation keys with enhanced functionality
      */
   handleNavigation(key) {
-    const startTime = performance.now();
-
     switch (key) {
       case 'ArrowLeft':
         this.navigateLeft();
@@ -889,10 +858,6 @@ class MusicNotationEditor {
         console.log('Unknown navigation key:', key);
         return;
     }
-
-    // Record navigation performance
-    const endTime = performance.now();
-    this.recordPerformanceMetric('navigationLatency', endTime - startTime);
   }
 
   /**
@@ -1049,7 +1014,6 @@ class MusicNotationEditor {
      * Extend selection to the left (cell-based)
      */
   extendSelectionLeft() {
-    const startTime = performance.now();
     const currentCellIndex = this.getCursorPosition();
     let selection = this.getSelection();
 
@@ -1071,10 +1035,6 @@ class MusicNotationEditor {
       }
       this.setCursorPosition(newIndex);
     }
-
-    // Record performance
-    const endTime = performance.now();
-    this.recordPerformanceMetric('selectionLatency', endTime - startTime);
   }
 
   /**
@@ -1082,7 +1042,6 @@ class MusicNotationEditor {
      */
   extendSelectionRight() {
     console.log('🟢 extendSelectionRight called');
-    const startTime = performance.now();
     const currentCellIndex = this.getCursorPosition();
     const maxCellIndex = this.getMaxCellIndex();
     let selection = this.getSelection();
@@ -1117,10 +1076,6 @@ class MusicNotationEditor {
     } else {
       console.log('  → At max position, cannot extend');
     }
-
-    // Record performance
-    const endTime = performance.now();
-    this.recordPerformanceMetric('selectionLatency', endTime - startTime);
   }
 
   /**
@@ -1873,15 +1828,10 @@ class MusicNotationEditor {
       return;
     }
 
-    const startTime = performance.now();
-
     try {
       const state = await this.saveDocument();
       const doc = JSON.parse(state);
       this.renderer.renderDocument(doc);
-
-      const endTime = performance.now();
-      this.recordPerformanceMetric('renderTime', endTime - startTime);
 
       // Schedule staff notation update (debounced)
       this.scheduleStaffNotationUpdate();
@@ -1900,35 +1850,23 @@ class MusicNotationEditor {
     // Focus events
     this.element.addEventListener('focus', () => {
       this.element.classList.add('focused');
+      if (this.theDocument && this.theDocument.state) {
+        this.theDocument.state.has_focus = true;
+      }
       this.showCursor();
-      this.recordFocusActivation();
     });
 
     this.element.addEventListener('blur', () => {
       this.element.classList.remove('focused');
+      if (this.theDocument && this.theDocument.state) {
+        this.theDocument.state.has_focus = false;
+      }
       this.hideCursor();
     });
 
-    // Mouse drag selection support
-    this.element.addEventListener('mousedown', (event) => {
-      this.handleMouseDown(event);
-    });
-
-    this.element.addEventListener('mousemove', (event) => {
-      this.handleMouseMove(event);
-    });
-
-    this.element.addEventListener('mouseup', (event) => {
-      this.handleMouseUp(event);
-    });
-
-    // Click events for caret positioning (when not selecting)
+    // Click events - just focus the editor
     this.element.addEventListener('click', (event) => {
-      if (!this.isDragging) {
-        // Clear selection when clicking
-        this.clearSelection();
-        this.handleCanvasClick(event);
-      }
+      this.element.focus();
     });
   }
 
@@ -1936,24 +1874,9 @@ class MusicNotationEditor {
      * Handle mouse down - start selection or positioning
      */
   handleMouseDown(event) {
-    const rect = this.element.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
-
-    const cellPosition = this.calculateCellPosition(x, y);
-
-    if (cellPosition !== null) {
-      this.isDragging = true;
-      this.dragStartPos = cellPosition;
-      this.dragEndPos = cellPosition;
-
-      // Start selection from current position
-      this.initializeSelection(cellPosition, cellPosition);
-      this.setCursorPosition(cellPosition);
-
-      // Prevent default to avoid text selection behavior
-      event.preventDefault();
-    }
+    // Just focus the editor for now
+    this.element.focus();
+    event.preventDefault();
   }
 
   /**
@@ -2020,14 +1943,50 @@ class MusicNotationEditor {
   }
 
   /**
-     * Calculate Cell position from coordinates
+     * Calculate Cell position from coordinates using DisplayList data
      */
   calculateCellPosition(x, y) {
-    // Calculate column position from x coordinate
-    const charWidth = 12; // Approximate character width
-    const column = Math.floor(x / charWidth);
+    // Use DisplayList for accurate cursor positioning
+    if (!this.renderer || !this.renderer.displayList) {
+      console.warn('DisplayList not available, using fallback');
+      return 0;
+    }
 
-    return Math.max(0, column);
+    const displayList = this.renderer.displayList;
+    const firstLine = displayList.lines && displayList.lines[0];
+
+    if (!firstLine || !firstLine.cells || firstLine.cells.length === 0) {
+      return 0;
+    }
+
+    // Build array of cursor positions:
+    // [0] = cursor_left of first cell
+    // [1] = cursor_right of first cell
+    // [2] = cursor_right of second cell
+    // ...
+    const cursorPositions = [];
+
+    // Position 0: before first cell
+    cursorPositions.push(firstLine.cells[0].cursor_left);
+
+    // Positions 1..N: after each cell
+    for (const cell of firstLine.cells) {
+      cursorPositions.push(cell.cursor_right);
+    }
+
+    // Find the cursor position closest to the click
+    let closestIndex = 0;
+    let minDistance = Math.abs(x - cursorPositions[0]);
+
+    for (let i = 1; i < cursorPositions.length; i++) {
+      const distance = Math.abs(x - cursorPositions[i]);
+      if (distance < minDistance) {
+        minDistance = distance;
+        closestIndex = i;
+      }
+    }
+
+    return closestIndex;
   }
 
   /**
@@ -2180,27 +2139,42 @@ class MusicNotationEditor {
       stavesLength: this.theDocument?.staves?.length || 0
     });
 
-    // Calculate pixel position by measuring actual DOM elements
-    // Start with left margin of 5 character widths (60px)
-    // TODO: Extract this as a shared constant (LEFT_MARGIN_PX) used across renderer.js and editor.js
-    let pixelPos = 60;
+    // Get cursor position from cached DisplayList (pre-calculated in Rust)
+    let pixelPos = 60; // Fallback to left margin
 
-    if (cellIndex === 0) {
-      // Cursor at start
-      pixelPos = 60;
-    } else {
-      // Find the DOM element for the previous cell and measure it
-      const lineElement = this.element.querySelector('[data-line="0"]');
-      if (lineElement) {
-        const prevCellElement = lineElement.querySelector(`[data-cell-index="${cellIndex - 1}"]`);
-        if (prevCellElement) {
-          // Get the actual position from DOM
-          const rect = prevCellElement.getBoundingClientRect();
-          const lineRect = lineElement.getBoundingClientRect();
-          // Position cursor at the right edge of the previous cell
-          pixelPos = (rect.left - lineRect.left) + rect.width;
+    console.log('🔍 Cursor positioning debug:', {
+      hasRenderer: !!this.renderer,
+      hasDisplayList: !!(this.renderer && this.renderer.displayList),
+      cellIndex,
+      displayList: this.renderer?.displayList
+    });
+
+    if (this.renderer && this.renderer.displayList) {
+      const displayList = this.renderer.displayList;
+      const firstLine = displayList.lines && displayList.lines[0];
+
+      console.log('🔍 DisplayList first line:', {
+        hasFirstLine: !!firstLine,
+        cellsCount: firstLine?.cells?.length || 0,
+        firstCell: firstLine?.cells?.[0]
+      });
+
+      if (firstLine && firstLine.cells) {
+        if (cellIndex === 0) {
+          // Cursor before first cell - use cursor_left of first cell
+          if (firstLine.cells.length > 0) {
+            pixelPos = firstLine.cells[0].cursor_left;
+            console.log('✅ Using cursor_left from first cell:', pixelPos);
+          }
+        } else if (cellIndex > 0 && cellIndex <= firstLine.cells.length) {
+          // Cursor after a cell - use cursor_right of previous cell
+          const prevCell = firstLine.cells[cellIndex - 1];
+          pixelPos = prevCell.cursor_right;
+          console.log('✅ Using cursor_right from cell', cellIndex - 1, ':', pixelPos, prevCell);
         }
       }
+    } else {
+      console.warn('⚠️ DisplayList not available, using fallback position:', pixelPos);
     }
 
     console.log('📐 Cursor at cellIndex', cellIndex, 'position:', pixelPos);
@@ -2717,75 +2691,6 @@ class MusicNotationEditor {
   }
 
   /**
-     * Record performance metrics
-     */
-  recordPerformanceMetric(operation, duration) {
-    if (!this.performanceMetrics[operation]) {
-      this.performanceMetrics[operation] = [];
-    }
-    this.performanceMetrics[operation].push(duration);
-
-    // Keep only last 100 measurements
-    if (this.performanceMetrics[operation].length > 100) {
-      this.performanceMetrics[operation].shift();
-    }
-  }
-
-  /**
-     * Record focus activation time
-     */
-  recordFocusActivation() {
-    this.recordPerformanceMetric('focusActivation', 5); // Simulated time
-  }
-
-  /**
-     * Start performance monitoring
-     */
-  startPerformanceMonitoring() {
-    // Monitor performance periodically
-    setInterval(() => {
-      this.checkPerformanceTargets();
-    }, 5000);
-  }
-
-  /**
-     * Check performance against targets
-     */
-  checkPerformanceTargets() {
-    const targets = {
-      focusActivation: 10,      // ms
-      typingLatency: 50,        // ms
-      beatDerivation: 10,       // ms
-      renderTime: 10,          // ms
-      navigationLatency: 16,    // ms (60fps target)
-      selectionLatency: 16,     // ms (60fps target)
-      commandLatency: 20       // ms (musical commands target)
-    };
-
-    for (const [operation, target] of Object.entries(targets)) {
-      const measurements = this.performanceMetrics[operation];
-      if (measurements && measurements.length > 0) {
-        const avg = measurements.reduce((a, b) => a + b, 0) / measurements.length;
-        if (avg > target) {
-          console.warn(`Performance warning: ${operation} averaging ${avg.toFixed(2)}ms (target: ${target}ms)`);
-        }
-      }
-    }
-  }
-
-  /**
-     * Update performance indicator
-     */
-  updatePerformanceIndicator(status) {
-    const indicator = document.getElementById('performance-indicator');
-    if (indicator) {
-      indicator.className = `text-${status === 'ready' ? 'success' : 'error'}`;
-      indicator.textContent = status === 'ready' ? 'Ready' : 'Error';
-      indicator.classList.remove('hidden');
-    }
-  }
-
-  /**
      * Show error message with enhanced handling
      */
   showError(message, options = {}) {
@@ -2799,14 +2704,12 @@ class MusicNotationEditor {
 
     console.error(message, errorInfo);
     this.addToConsoleErrors(errorInfo);
-    this.updatePerformanceIndicator('error');
 
     // Show user notification if recoverable
     if (errorInfo.recoverable) {
       this.showUserNotification(errorInfo);
     }
 
-    // Log to performance metrics
     this.recordError(errorInfo);
   }
 
@@ -3035,28 +2938,6 @@ class MusicNotationEditor {
      */
   capitalizeFirst(str) {
     return str.charAt(0).toUpperCase() + str.slice(1);
-  }
-
-  /**
-     * Get performance statistics
-     */
-  getPerformanceStats() {
-    const stats = {};
-    for (const [operation, measurements] of Object.entries(this.performanceMetrics)) {
-      if (measurements && measurements.length > 0) {
-        const avg = measurements.reduce((a, b) => a + b, 0) / measurements.length;
-        const min = Math.min(...measurements);
-        const max = Math.max(...measurements);
-
-        stats[operation] = {
-          average: avg,
-          min,
-          max,
-          count: measurements.length
-        };
-      }
-    }
-    return stats;
   }
 
   /**

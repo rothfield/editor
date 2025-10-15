@@ -934,6 +934,59 @@ pub fn convert_musicxml_to_lilypond(musicxml: String, settings_json: Option<Stri
     Ok(result_json)
 }
 
+/// Compute complete layout for a document
+///
+/// Takes a document and measurements from JavaScript, performs all layout calculations,
+/// and returns a DisplayList ready for DOM rendering.
+///
+/// # Parameters
+/// * `document_js` - JavaScript Document object
+/// * `config_js` - LayoutConfig with measurements (cell_widths, syllable_widths, etc.)
+///
+/// # Returns
+/// DisplayList with all positioning, classes, and rendering data
+#[wasm_bindgen(js_name = computeLayout)]
+pub fn compute_layout(
+    document_js: JsValue,
+    config_js: JsValue,
+) -> Result<JsValue, JsValue> {
+    wasm_info!("computeLayout called");
+
+    // Deserialize document from JavaScript
+    let document: Document = serde_wasm_bindgen::from_value(document_js)
+        .map_err(|e| {
+            wasm_error!("Document deserialization error: {}", e);
+            JsValue::from_str(&format!("Document deserialization error: {}", e))
+        })?;
+
+    // Deserialize config from JavaScript
+    let config: crate::renderers::layout_engine::LayoutConfig = serde_wasm_bindgen::from_value(config_js)
+        .map_err(|e| {
+            wasm_error!("Config deserialization error: {}", e);
+            JsValue::from_str(&format!("Config deserialization error: {}", e))
+        })?;
+
+    wasm_log!("  Document has {} lines", document.lines.len());
+    wasm_log!("  Config: {} cell widths, {} syllable widths",
+             config.cell_widths.len(), config.syllable_widths.len());
+
+    // Create layout engine and compute layout
+    let engine = crate::renderers::layout_engine::LayoutEngine::new();
+    let display_list = engine.compute_layout(&document, &config);
+
+    wasm_info!("  DisplayList generated: {} lines", display_list.lines.len());
+
+    // Serialize display list back to JavaScript
+    let result = serde_wasm_bindgen::to_value(&display_list)
+        .map_err(|e| {
+            wasm_error!("DisplayList serialization error: {}", e);
+            JsValue::from_str(&format!("DisplayList serialization error: {}", e))
+        })?;
+
+    wasm_info!("computeLayout completed successfully");
+    Ok(result)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
