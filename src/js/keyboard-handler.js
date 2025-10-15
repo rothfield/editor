@@ -210,8 +210,8 @@ class KeyboardHandler {
    * @returns {boolean} True if editor is focused
    */
   isEditorFocused() {
-    const canvas = document.getElementById('notation-canvas');
-    return canvas === document.activeElement || canvas?.contains(document.activeElement);
+    const editorElement = document.getElementById('notation-editor');
+    return editorElement === document.activeElement || editorElement?.contains(document.activeElement);
   }
 
   /**

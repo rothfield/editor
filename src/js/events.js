@@ -260,9 +260,9 @@ class EventManager {
     if (this.focusState.hasFocus) {
       // Hide focus indicators
       if (this.focusSettings.focusIndicators) {
-        const canvas = document.getElementById('notation-canvas');
-        if (canvas) {
-          canvas.classList.remove('editor-focused');
+        const editorElement = document.getElementById('notation-editor');
+        if (editorElement) {
+          editorElement.classList.remove('editor-focused');
         }
         document.body.classList.remove('editor-active');
       }
@@ -410,12 +410,12 @@ class EventManager {
   }
 
   /**
-     * Return focus to editor canvas
+     * Return focus to editor element
      */
   returnFocusToEditor() {
-    const canvas = document.getElementById('notation-canvas');
-    if (canvas) {
-      canvas.focus();
+    const editorElement = document.getElementById('notation-editor');
+    if (editorElement) {
+      editorElement.focus();
     }
   }
 
@@ -495,8 +495,8 @@ Focus Management:
      * Check if editor currently has focus
      */
   editorFocus() {
-    const canvas = document.getElementById('notation-canvas');
-    return canvas === document.activeElement || canvas.contains(document.activeElement);
+    const editorElement = document.getElementById('notation-editor');
+    return editorElement === document.activeElement || editorElement.contains(document.activeElement);
   }
 
   /**
@@ -505,8 +505,8 @@ Focus Management:
   isEditorElement(element) {
     if (!element) return false;
 
-    const canvas = document.getElementById('notation-canvas');
-    return element === canvas || element.closest('#notation-canvas, #editor-container');
+    const editorElement = document.getElementById('notation-editor');
+    return element === editorElement || element.closest('#notation-editor, #editor-container');
   }
 
   /**
@@ -520,7 +520,7 @@ Focus Management:
       'textarea:not([disabled])',
       'a[href]',
       '[tabindex]:not([tabindex="-1"])',
-      '#notation-canvas'
+      '#notation-editor'
     ];
 
     return Array.from(document.querySelectorAll(selectors.join(', ')))

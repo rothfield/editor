@@ -107,21 +107,6 @@ export const OCTAVE_POSITIONS = {
 // ============================================================================
 
 /**
- * Lane types (vertical position in staff)
- */
-export const LANE_TYPES = {
-  UPPER: 0,
-  LETTER: 1,
-  LOWER: 2,
-  LYRICS: 3
-};
-
-/**
- * Lane names mapping
- */
-export const LANE_NAMES = ['upper', 'letter', 'lower', 'lyrics'];
-
-/**
  * Element kind types
  */
 export const ELEMENT_KINDS = {
@@ -350,7 +335,6 @@ export const DEFAULT_DOCUMENT = {
  */
 export const DEFAULT_CURSOR = {
   STAVE: 0,
-  LANE: LANE_TYPES.LETTER,
   COLUMN: 0
 };
 

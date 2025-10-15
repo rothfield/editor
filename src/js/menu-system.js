@@ -321,9 +321,9 @@ class MenuSystem {
    */
   returnFocusToEditor() {
     setTimeout(() => {
-      const canvas = document.getElementById('notation-canvas');
-      if (canvas) {
-        canvas.focus();
+      const editorElement = document.getElementById('notation-editor');
+      if (editorElement) {
+        editorElement.focus();
       }
     }, FOCUS_RETURN_TIMEOUT_MS);
   }

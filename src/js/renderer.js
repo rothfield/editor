@@ -22,8 +22,8 @@ import {
 } from './constants.js';
 
 class DOMRenderer {
-  constructor(canvasElement, editor) {
-    this.canvas = canvasElement;
+  constructor(editorElement, editor) {
+    this.element = editorElement;
     this.editor = editor; // Store reference to editor instance
     this.charCellElements = new Map();
     this.beatLoopElements = new Map();
@@ -41,7 +41,6 @@ class DOMRenderer {
       cellsRendered: 0,
       beatsRendered: 0,
       slursRendered: 0,
-      octavesRendered: 0,
       lastRenderTime: 0
     };
 
@@ -226,61 +225,6 @@ class DOMRenderer {
     return width;
   }
 
-  /**
-     * Setup canvas overlay for octave rendering
-     */
-  setupOctaveCanvas() {
-    this.octaveCanvas = document.createElement('canvas');
-    this.octaveCanvas.className = 'octave-canvas-overlay';
-    this.octaveCanvas.style.position = 'absolute';
-    this.octaveCanvas.style.top = '0';
-    this.octaveCanvas.style.left = '0';
-    this.octaveCanvas.style.pointerEvents = 'none';
-    this.octaveCanvas.style.width = '100%';
-    this.octaveCanvas.style.height = '100%';
-    this.octaveCanvas.style.zIndex = '2'; // Below slurs but above content
-    this.octaveCanvas.style.opacity = '1.0'; // Fully opaque for visibility
-
-    // Add CSS for octave dots
-    const style = document.createElement('style');
-    style.textContent = `
-        .octave-canvas-overlay {
-        transition: opacity 0.15s ease-in-out;
-        }
-        .octave-canvas-overlay.animating {
-        opacity: 1;
-        }
-    `;
-    document.head.appendChild(style);
-
-    this.canvas.appendChild(this.octaveCanvas);
-    this.octaveCtx = this.octaveCanvas.getContext('2d');
-
-    // Set initial canvas size
-    this.resizeOctaveCanvas();
-
-    // Add resize listener to keep canvas sized correctly
-    window.addEventListener('resize', () => {
-      this.resizeOctaveCanvas();
-    });
-  }
-
-
-  /**
-     * Resize octave canvas to match container
-     */
-  resizeOctaveCanvas() {
-    if (this.octaveCanvas && this.canvas) {
-      const rect = this.canvas.getBoundingClientRect();
-      this.octaveCanvas.width = rect.width;
-      this.octaveCanvas.height = rect.height;
-
-      // Re-render octave markings after resize
-      if (this.theDocument) {
-        this.renderOctaveMarkings(this.theDocument);
-      }
-    }
-  }
 
   /**
      * Render entire document
@@ -291,7 +235,7 @@ class DOMRenderer {
     this.theDocument = doc;
 
     // Clear previous content
-    this.clearCanvas();
+    this.clearElement();
 
     if (!doc.lines || doc.lines.length === 0) {
       this.showEmptyState();
@@ -386,7 +330,7 @@ class DOMRenderer {
       headerContainer.appendChild(composerElement);
     }
 
-    this.canvas.appendChild(headerContainer);
+    this.element.appendChild(headerContainer);
   }
 
   /**
@@ -681,7 +625,7 @@ class DOMRenderer {
      * Get or create line element - simplified (no lanes)
      */
   getOrCreateLineElement(lineIndex) {
-    let lineElement = this.canvas.querySelector(`[data-line="${lineIndex}"]`);
+    let lineElement = this.element.querySelector(`[data-line="${lineIndex}"]`);
 
     if (!lineElement) {
       lineElement = document.createElement('div');
@@ -691,7 +635,7 @@ class DOMRenderer {
       lineElement.style.height = `${LINE_CONTAINER_HEIGHT}px`;
       lineElement.style.width = '100%';
 
-      this.canvas.appendChild(lineElement);
+      this.element.appendChild(lineElement);
     }
 
     return lineElement;
@@ -868,14 +812,14 @@ class DOMRenderer {
      * Extract beats from Cell data and render them
      */
   extractAndRenderBeatsFromCells(line, lineIndex) {
-    const letterLane = line.cells; // Main line contains temporal elements
-    if (!letterLane || letterLane.length === 0) {
-      console.log('No cells in main line for beat extraction');
+    const cells = line.cells;
+    if (!cells || cells.length === 0) {
+      console.log('No cells in line for beat extraction');
       return;
     }
 
-    const beats = this.extractBeatsFromCells(letterLane);
-    console.log(`Extracted ${beats.length} beats from ${letterLane.length} cells:`, beats);
+    const beats = this.extractBeatsFromCells(cells);
+    console.log(`Extracted ${beats.length} beats from ${cells.length} cells:`, beats);
 
     beats.forEach((beat, beatIndex) => {
       console.log(`Rendering beat ${beatIndex}:`, {
@@ -1114,110 +1058,9 @@ class DOMRenderer {
 
 
   /**
-     * Render octave markings using canvas overlay - simplified (no lanes)
+     * Clear editor element content
      */
-  renderOctaveMarkings(doc) {
-    if (!this.octaveCtx) return;
-
-    const startTime = performance.now();
-
-    // Clear canvas
-    this.octaveCtx.clearRect(0, 0, this.octaveCanvas.width, this.octaveCanvas.height);
-
-    let octavesRendered = 0;
-
-    doc.lines.forEach((line, lineIndex) => {
-      // Only render octave markings from main line
-      const mainLine = line.cells;
-      console.log(`🎵 Checking ${mainLine.length} cells for octave markings`);
-      mainLine.forEach((charCell, cellIndex) => {
-        console.log(`  Cell ${cellIndex} (${charCell.glyph}): octave=${charCell.octave}`);
-        if (this.hasOctaveMarking(charCell)) {
-          console.log(`  ✅ Rendering octave dot for cell ${cellIndex}`);
-          this.renderOctaveDot(charCell, lineIndex, cellIndex);
-          octavesRendered++;
-        }
-      });
-    });
-
-    // Update performance statistics
-    this.renderStats.octavesRendered = octavesRendered;
-    const endTime = performance.now();
-    console.log(`Rendered ${octavesRendered} octave markings in ${(endTime - startTime).toFixed(2)}ms`);
-  }
-
-  /**
-     * Check if a Cell has octave marking
-     */
-  hasOctaveMarking(charCell) {
-    return charCell.octave !== 0;
-  }
-
-  /**
-     * Render single octave dot above or below an element - simplified (no lanes)
-     */
-  renderOctaveDot(charCell, lineIndex, cellIndex) {
-    const ctx = this.octaveCtx;
-
-    // Calculate position relative to cell
-    const centerX = (charCell.x || (cellIndex * 12)) + (charCell.w || 12) / 2;
-    const baseY = (charCell.y || 0);
-    const cellHeight = charCell.h || CELL_HEIGHT;
-
-    console.log(`🎨 renderOctaveDot: cell=${charCell.glyph}, centerX=${centerX}, baseY=${baseY}, octave=${charCell.octave}`);
-
-    // Dot size: Make dots more visible - 3px radius
-    const dotRadius = 3; // Larger for visibility
-
-    // Determine dot position based on octave value
-    // Position dots closer to the cell
-    let dotY; let dotCount;
-
-    switch (charCell.octave) {
-      case 1: // Octave up - dot above
-        dotY = baseY - 6; // 6px above cell top
-        dotCount = 1;
-        break;
-      case 2: // Two octaves up - two dots above
-        dotY = baseY - 6;
-        dotCount = 2;
-        break;
-      case -1: // Octave down - dot below
-        dotY = baseY + cellHeight + 6; // 6px below cell bottom
-        dotCount = 1;
-        break;
-      case -2: // Two octaves down - two dots below
-        dotY = baseY + cellHeight + 6;
-        dotCount = 2;
-        break;
-      default:
-        return; // No octave marking for octave 0
-    }
-
-    // Set dot styling - solid black circles
-    ctx.fillStyle = '#000000'; // Black
-    ctx.lineWidth = 0; // No border
-
-    // Draw dots based on count
-    const dotSpacing = dotRadius * 3; // Space dots 3× their radius apart
-    for (let i = 0; i < dotCount; i++) {
-      const offsetX = centerX + (i - (dotCount - 1) / 2) * dotSpacing;
-
-      console.log(`  🔵 Drawing dot at x=${offsetX}, y=${dotY}, radius=${dotRadius}`);
-
-      // Draw filled circle
-      ctx.beginPath();
-      ctx.arc(offsetX, dotY, dotRadius, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    console.log(`✅ Finished rendering ${dotCount} dot(s) for cell ${charCell.glyph}`);
-  }
-
-  /**
-     * Clear canvas content
-     */
-  clearCanvas() {
+  clearElement() {
     // Remove all Cell elements from maps
     this.charCellElements.clear();
 
@@ -1238,8 +1081,8 @@ class DOMRenderer {
     this.slurElements.clear();
 
     // Remove all line elements
-    const childrenToRemove = Array.from(this.canvas.children);
-    childrenToRemove.forEach(child => this.canvas.removeChild(child));
+    const childrenToRemove = Array.from(this.element.children);
+    childrenToRemove.forEach(child => this.element.removeChild(child));
   }
 
 

@@ -8,7 +8,6 @@ import {
   LEFT_MARGIN_PX,
   CELL_Y_OFFSET,
   CELL_HEIGHT,
-  LANE_NAMES,
   ELEMENT_KIND_NAMES,
   PITCH_SYSTEM_NAMES,
   CELL_FLAGS
@@ -102,10 +101,6 @@ class CellRenderer {
    */
   getCellClasses(cell) {
     const classes = ['char-cell'];
-
-    // Lane class
-    const laneName = LANE_NAMES[cell.lane] || 'unknown';
-    classes.push(`lane-${laneName}`);
 
     // Element kind class
     const kindName = ELEMENT_KIND_NAMES[cell.kind] || 'unknown';

@@ -172,18 +172,11 @@ class DebugSystem {
                     </div>
                 </div>
 
-                <div>
-                    <h4 class="font-semibold mb-2">Performance Graph</h4>
-                    <canvas class="debug-perf-chart w-full h-32 bg-gray-50 rounded"></canvas>
-                </div>
             </div>
         `;
 
     container.appendChild(panel);
     this.content.performance = panel;
-
-    // Setup performance chart
-    this.setupPerformanceChart();
   }
 
   /**
@@ -201,16 +194,6 @@ class DebugSystem {
                         <div>Temporal Cells: <span class="debug-temporal-cells font-mono">0</span></div>
                         <div>Pitched Cells: <span class="debug-pitched-cells font-mono">0</span></div>
                         <div>Annotation Cells: <span class="debug-annotation-cells font-mono">0</span></div>
-                    </div>
-                </div>
-
-                <div>
-                    <h4 class="font-semibold mb-2">Lane Distribution</h4>
-                    <div class="bg-gray-50 p-2 rounded space-y-1">
-                        <div>Upper: <span class="debug-lane-upper font-mono">0</span></div>
-                        <div>Letter: <span class="debug-lane-letter font-mono">0</span></div>
-                        <div>Lower: <span class="debug-lane-lower font-mono">0</span></div>
-                        <div>Lyrics: <span class="debug-lane-lyrics font-mono">0</span></div>
                     </div>
                 </div>
 
@@ -527,12 +510,6 @@ class DebugSystem {
     this.querySelector('.debug-pitched-cells').textContent = stats.pitched;
     this.querySelector('.debug-annotation-cells').textContent = stats.annotations;
 
-    // Update lane distribution
-    this.querySelector('.debug-lane-upper').textContent = stats.lanes.upper || 0;
-    this.querySelector('.debug-lane-letter').textContent = stats.lanes.letter || 0;
-    this.querySelector('.debug-lane-lower').textContent = stats.lanes.lower || 0;
-    this.querySelector('.debug-lane-lyrics').textContent = stats.lanes.lyrics || 0;
-
     // Update element kinds
     this.querySelector('.debug-kind-unknown').textContent = stats.kinds.unknown || 0;
     this.querySelector('.debug-kind-pitched').textContent = stats.kinds.pitched || 0;
@@ -544,7 +521,7 @@ class DebugSystem {
     const recentCells = this.querySelector('.debug-recent-cells');
     if (stats.recent && stats.recent.length > 0) {
       recentCells.innerHTML = stats.recent.map(cell =>
-        `<div>${cell.glyph} [${cell.line},${cell.lane},${cell.col}] ${cell.kindName}</div>`
+        `<div>${cell.glyph} [${cell.line},${cell.col}] ${cell.kindName}</div>`
       ).join('');
     } else {
       recentCells.textContent = '(no cells)';
@@ -619,7 +596,6 @@ class DebugSystem {
       temporal: 0,
       pitched: 0,
       annotations: 0,
-      lanes: { upper: 0, letter: 0, lower: 0, lyrics: 0 },
       kinds: { unknown: 0, pitched: 0, unpitched: 0, text: 0, whitespace: 0 },
       recent: []
     };
@@ -755,21 +731,6 @@ class DebugSystem {
         visualization.appendChild(beatDiv);
       });
     }
-  }
-
-  /**
-     * Setup performance chart
-     */
-  setupPerformanceChart() {
-    const canvas = this.querySelector('.debug-perf-chart');
-    const ctx = canvas.getContext('2d');
-
-    // Set canvas size
-    canvas.width = canvas.offsetWidth;
-    canvas.height = canvas.offsetHeight;
-
-    // Simple chart setup would go here
-    // For POC, we'll just leave it as a placeholder
   }
 
   /**

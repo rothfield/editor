@@ -37,14 +37,14 @@ class MusicNotationApp {
     try {
       console.log('🎵 Starting Music Notation Editor POC...');
 
-      // Get the editor canvas element
-      const canvas = document.getElementById('notation-canvas');
-      if (!canvas) {
-        throw new Error('Editor canvas element not found');
+      // Get the editor element
+      const editorElement = document.getElementById('notation-editor');
+      if (!editorElement) {
+        throw new Error('Editor element not found');
       }
 
       // Initialize core components
-      this.editor = new MusicNotationEditor(canvas);
+      this.editor = new MusicNotationEditor(editorElement);
       this.fileOperations = new FileOperations(this.editor);
       this.eventManager = new EventManager(this.editor, this.fileOperations);
       this.ui = new UI(this.editor, this.fileOperations);
@@ -123,9 +123,9 @@ class MusicNotationApp {
      * Handle initialization errors
      */
   handleInitializationError(error) {
-    const canvas = document.getElementById('notation-canvas');
-    if (canvas) {
-      canvas.innerHTML = `
+    const editorElement = document.getElementById('notation-editor');
+    if (editorElement) {
+      editorElement.innerHTML = `
                 <div class="error p-4 text-center">
                     <h3 class="text-lg font-semibold text-error mb-2">Failed to Initialize Editor</h3>
                     <p class="text-sm mb-2">${error.message}</p>
@@ -150,12 +150,12 @@ class MusicNotationApp {
   }
 
   /**
-     * Focus the editor canvas
+     * Focus the editor element
      */
   focusEditor() {
-    const canvas = document.getElementById('notation-canvas');
-    if (canvas) {
-      canvas.focus();
+    const editorElement = document.getElementById('notation-editor');
+    if (editorElement) {
+      editorElement.focus();
     }
   }
 

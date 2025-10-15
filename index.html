@@ -266,9 +266,9 @@
             <!-- Editor Canvas -->
             <section class="flex-1 flex flex-col overflow-hidden" id="editor-section">
                 <div id="editor-container" class="flex-1 relative overflow-hidden p-4">
-                    <!-- Notation Canvas -->
-                    <div id="notation-canvas"
-                         class="notation-canvas focusable"
+                    <!-- Notation Editor -->
+                    <div id="notation-editor"
+                         class="notation-editor focusable"
                          tabindex="0"
                          role="textbox"
                          aria-label="Music notation editor"
@@ -279,9 +279,6 @@
                             <div class="text-ui-disabled-text text-sm">Click to start entering musical notation...</div>
                         </div>
                     </div>
-
-                    <!-- Slur rendering canvas overlay -->
-                    <canvas id="slur-canvas" class="absolute top-0 left-0 pointer-events-none z-slur" style="display: none;"></canvas>
                 </div>
 
                 <!-- Status Bar -->

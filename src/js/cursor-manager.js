@@ -50,7 +50,7 @@ class CursorManager {
   /**
    * Get current cursor position
    *
-   * @returns {Object} Cursor position {stave, lane, column}
+   * @returns {Object} Cursor position {stave, column}
    */
   getPosition() {
     if (!this.document || !this.document.state || !this.document.state.cursor) {
@@ -64,10 +64,9 @@ class CursorManager {
    * Set cursor position
    *
    * @param {number} column - Column position
-   * @param {number} [lane] - Lane position (optional)
    * @param {number} [stave] - Stave position (optional)
    */
-  setPosition(column, lane = null, stave = null) {
+  setPosition(column, stave = null) {
     if (!this.document || !this.document.state) {
       logger.warn(LOG_CATEGORIES.CURSOR, 'Cannot set cursor position: document not available');
       return;
@@ -77,7 +76,6 @@ class CursorManager {
 
     // Update position
     this.document.state.cursor.column = column;
-    if (lane !== null) this.document.state.cursor.lane = lane;
     if (stave !== null) this.document.state.cursor.stave = stave;
 
     logger.debug(LOG_CATEGORIES.CURSOR, 'Cursor position updated', {
@@ -292,7 +290,7 @@ class CursorManager {
    * Reset cursor to default position
    */
   reset() {
-    this.setPosition(DEFAULT_CURSOR.COLUMN, DEFAULT_CURSOR.LANE, DEFAULT_CURSOR.STAVE);
+    this.setPosition(DEFAULT_CURSOR.COLUMN, DEFAULT_CURSOR.STAVE);
   }
 
   /**

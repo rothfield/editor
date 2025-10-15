@@ -10,10 +10,10 @@ import logger, { LOG_CATEGORIES } from './logger.js';
 import { OSMDRenderer } from './osmd-renderer.js';
 
 class MusicNotationEditor {
-  constructor(canvasElement) {
-    this.canvas = canvasElement;
-    // Ensure canvas has position: relative for absolute positioning of child elements
-    this.canvas.style.position = 'relative';
+  constructor(editorElement) {
+    this.element = editorElement;
+    // Ensure editor element has position: relative for absolute positioning of child elements
+    this.element.style.position = 'relative';
     this.wasmModule = null;
     this.theDocument = null;
     this.renderer = null;
@@ -85,7 +85,7 @@ class MusicNotationEditor {
       console.log(`WASM module loaded in ${loadTime.toFixed(2)}ms`);
 
       // Initialize renderer
-      this.renderer = new DOMRenderer(this.canvas, this);
+      this.renderer = new DOMRenderer(this.element, this);
 
       // Setup event handlers
       this.setupEventHandlers();
@@ -126,7 +126,7 @@ class MusicNotationEditor {
 
     // Add runtime state (not persisted by WASM)
     document.state = {
-      cursor: { stave: 0, lane: 1, column: 0 },
+      cursor: { stave: 0, column: 0 },
       selection: null,
       has_focus: false
     };
@@ -196,26 +196,26 @@ class MusicNotationEditor {
     try {
       if (this.theDocument && this.theDocument.lines && this.theDocument.lines.length > 0) {
         const line = this.theDocument.lines[0];
-        let letterLane = line.cells; // Main line of notation
+        let cells = line.cells;
 
         logger.debug(LOG_CATEGORIES.PARSER, 'Processing characters', {
           charCount: text.length,
-          initialLaneSize: letterLane.length
+          initialCellCount: cells.length
         });
 
         // Insert each character using recursive descent parser
         let currentPos = cursorPos;
         for (const char of text) {
-          const lengthBefore = letterLane.length;
+          const lengthBefore = cells.length;
 
           logger.debug(LOG_CATEGORIES.PARSER, `Inserting char '${char}'`, {
             position: currentPos,
-            laneSizeBefore: lengthBefore
+            cellCountBefore: lengthBefore
           });
 
           // Call WASM recursive descent API
           const updatedCells = this.wasmModule.insertCharacter(
-            letterLane,
+            cells,
             char,
             currentPos,
             pitchSystem
@@ -225,7 +225,7 @@ class MusicNotationEditor {
 
           // Update main line with combined cells
           line.cells = updatedCells;
-          letterLane = updatedCells;
+          cells = updatedCells;
 
           // Adjust cursor based on actual change in cell count
           // If cells combined, length might not increase by 1
@@ -245,7 +245,6 @@ class MusicNotationEditor {
         // Update cursor column without updating visual position (cells don't have x/w yet)
         if (this.theDocument && this.theDocument.state) {
           this.theDocument.state.cursor.column = currentPos;
-          this.theDocument.state.cursor.lane = 1;
           this.updateCursorPositionDisplay();
         }
 
@@ -297,18 +296,18 @@ class MusicNotationEditor {
     }
 
     try {
-      const letterLane = line.cells;
-      if (!letterLane || letterLane.length === 0) {
+      const cells = line.cells;
+      if (!cells || cells.length === 0) {
         line.beats = [];
         return;
       }
 
       logger.debug(LOG_CATEGORIES.EDITOR, 'Deriving beats via WASM', {
-        cellCount: letterLane.length
+        cellCount: cells.length
       });
 
       // Call WASM BeatDeriver.deriveImplicitBeats method (exposed as deriveImplicitBeats in JS)
-      const beats = this.wasmModule.beatDeriver.deriveImplicitBeats(letterLane);
+      const beats = this.wasmModule.beatDeriver.deriveImplicitBeats(cells);
 
       console.log(`WASM BeatDeriver returned ${beats.length} beats:`, beats);
 
@@ -317,7 +316,7 @@ class MusicNotationEditor {
     } catch (error) {
       logger.error(LOG_CATEGORIES.EDITOR, 'WASM BeatDeriver failed', {
         error: error.message,
-        cellCount: letterLane?.length || 0
+        cellCount: cells?.length || 0
       });
       console.error('WASM BeatDeriver failed:', error);
       line.beats = [];
@@ -513,11 +512,11 @@ class MusicNotationEditor {
     try {
       // Simple deletion for POC - manual array manipulation
       if (this.theDocument && this.theDocument.lines && this.theDocument.lines.length > 0) {
-        const line =this.theDocument.lines[0];
-        const letterLane = line.cells; // Main line
+        const line = this.theDocument.lines[0];
+        const cells = line.cells;
 
         // Delete cells in range
-        letterLane.splice(start, end - start);
+        cells.splice(start, end - start);
       }
 
       this.setCursorPosition(start);
@@ -543,12 +542,11 @@ class MusicNotationEditor {
   }
 
   /**
-     * Set cursor position (always on main line, lane 1)
+     * Set cursor position
      */
   setCursorPosition(position) {
     if (this.theDocument && this.theDocument.state) {
       this.theDocument.state.cursor.column = position;
-      this.theDocument.state.cursor.lane = 1; // Always on main line
       this.updateCursorPositionDisplay();
       this.updateCursorVisualPosition();
     }
@@ -932,14 +930,6 @@ class MusicNotationEditor {
   }
 
 
-  /**
-     * Get current lane index (always returns 1 for main line)
-     */
-  getCurrentLane() {
-    // Cursor is always on the main line (lane 1)
-    return 1;
-  }
-
   // ==================== SELECTION MANAGEMENT ====================
 
   /**
@@ -1165,12 +1155,12 @@ class MusicNotationEditor {
      * Render visual selection highlighting
      */
   renderSelectionVisual(selection) {
-    if (!this.renderer || !this.renderer.canvas) {
+    if (!this.renderer || !this.renderer.element) {
       return;
     }
 
     // Find the line element to append the selection to
-    const lineElement = this.renderer.canvas.querySelector(`[data-line="0"]`);
+    const lineElement = this.renderer.element.querySelector(`[data-line="0"]`);
     if (!lineElement) {
       console.warn('❌ Line element not found, cannot position selection');
       return;
@@ -1243,12 +1233,14 @@ class MusicNotationEditor {
     }
 
     // Also clean up any orphaned selection highlights that might remain
-    const orphanedSelections = this.renderer.canvas.querySelectorAll('.selection-highlight');
-    orphanedSelections.forEach(element => {
-      if (element.parentElement) {
-        element.parentElement.removeChild(element);
-      }
-    });
+    if (this.renderer && this.renderer.element) {
+      const orphanedSelections = this.renderer.element.querySelectorAll('.selection-highlight');
+      orphanedSelections.forEach(element => {
+        if (element.parentElement) {
+          element.parentElement.removeChild(element);
+        }
+      });
+    }
   }
 
   /**
@@ -1315,22 +1307,22 @@ class MusicNotationEditor {
     } else if (cursorPos > 0) {
       // Use WASM API to delete character
       if (this.theDocument && this.theDocument.lines && this.theDocument.lines.length > 0) {
-        const line =this.theDocument.lines[0];
-        const letterLane = line.cells;
+        const line = this.theDocument.lines[0];
+        const cells = line.cells;
 
         // Check if the cell at cursorPos - 1 has multiple characters
-        const cellToDelete = letterLane[cursorPos - 1];
+        const cellToDelete = cells[cursorPos - 1];
         const glyphLength = cellToDelete ? (cellToDelete.glyph || '').length : 0;
         const hadMultipleChars = glyphLength > 1;
 
         logger.debug(LOG_CATEGORIES.EDITOR, 'Calling WASM deleteCharacter', {
           position: cursorPos - 1,
-          laneSize: letterLane.length,
+          cellCount: cells.length,
           glyphLength,
           hadMultipleChars
         });
 
-        const updatedCells = this.wasmModule.deleteCharacter(letterLane, cursorPos - 1);
+        const updatedCells = this.wasmModule.deleteCharacter(cells, cursorPos - 1);
         line.cells = updatedCells;
 
         // Only move cursor if the entire cell was deleted (had 1 char or cell is now gone)
@@ -1384,9 +1376,9 @@ class MusicNotationEditor {
         // Use WASM API to delete character
         if (this.theDocument && this.theDocument.lines && this.theDocument.lines.length > 0) {
           const line =this.theDocument.lines[0];
-          const letterLane = line.cells;
+          const cells = line.cells;
 
-          const updatedCells = this.wasmModule.deleteCharacter(letterLane, cursorPos);
+          const updatedCells = this.wasmModule.deleteCharacter(cells, cursorPos);
           line.cells = updatedCells;
         }
 
@@ -1429,9 +1421,9 @@ class MusicNotationEditor {
     }
 
     const line = this.theDocument.lines[0];
-    const letterLane = line.cells; // Main line
+    const cells = line.cells;
 
-    return letterLane.map(cell => cell.glyph || '').join('');
+    return cells.map(cell => cell.glyph || '').join('');
   }
 
   /**
@@ -1512,11 +1504,11 @@ class MusicNotationEditor {
         this.addToConsoleLog(`Applying slur to selection: "${selectedText}"`);
         // Apply slur using WASM API
         if (this.theDocument && this.theDocument.lines && this.theDocument.lines.length > 0) {
-          const line =this.theDocument.lines[0];
-          const letterLane = line.cells; // Main line
+          const line = this.theDocument.lines[0];
+          const cells = line.cells;
 
           console.log('🔧 Calling WASM applySlur:', {
-            cellCount: letterLane.length,
+            cellCount: cells.length,
             start: selection.start,
             end: selection.end
           });
@@ -1524,7 +1516,7 @@ class MusicNotationEditor {
           // Call WASM API to apply slur
           const wasmModule = this.wasmModule;
           const updatedCells = wasmModule.applySlur(
-            letterLane,
+            cells,
             selection.start,
             selection.end
           );
@@ -1558,13 +1550,13 @@ class MusicNotationEditor {
       return false;
     }
 
-    const line =this.theDocument.lines[0];
-    const letterLane = line.cells; // Main line
+    const line = this.theDocument.lines[0];
+    const cells = line.cells;
 
     // Call WASM API to check for slur indicators
     const wasmModule = this.wasmModule;
     return wasmModule.hasSlurInSelection(
-      letterLane,
+      cells,
       selection.start,
       selection.end
     );
@@ -1578,13 +1570,13 @@ class MusicNotationEditor {
       return;
     }
 
-    const line =this.theDocument.lines[0];
-    const letterLane = line.cells; // Main line
+    const line = this.theDocument.lines[0];
+    const cells = line.cells;
 
     // Call WASM API to remove slur
     const wasmModule = this.wasmModule;
     const updatedCells = wasmModule.removeSlur(
-      letterLane,
+      cells,
       selection.start,
       selection.end
     );
@@ -1665,17 +1657,17 @@ class MusicNotationEditor {
 
       // Call WASM function to apply octave to selected cells
       if (this.theDocument && this.theDocument.lines && this.theDocument.lines.length > 0) {
-        const line =this.theDocument.lines[0];
-        const letterLane = line.cells; // Main line
+        const line = this.theDocument.lines[0];
+        const cells = line.cells;
 
         logger.debug(LOG_CATEGORIES.COMMAND, 'Calling WASM applyOctave', {
-          laneSize: letterLane.length,
+          cellCount: cells.length,
           range: `${selection.start}..${selection.end}`,
           targetOctave
         });
 
         const updatedCells = this.wasmModule.applyOctave(
-          letterLane,
+          cells,
           selection.start,
           selection.end,
           targetOctave
@@ -1864,32 +1856,32 @@ class MusicNotationEditor {
     // to avoid duplicate event handling
 
     // Focus events
-    this.canvas.addEventListener('focus', () => {
-      this.canvas.classList.add('focused');
+    this.element.addEventListener('focus', () => {
+      this.element.classList.add('focused');
       this.showCursor();
       this.recordFocusActivation();
     });
 
-    this.canvas.addEventListener('blur', () => {
-      this.canvas.classList.remove('focused');
+    this.element.addEventListener('blur', () => {
+      this.element.classList.remove('focused');
       this.hideCursor();
     });
 
     // Mouse drag selection support
-    this.canvas.addEventListener('mousedown', (event) => {
+    this.element.addEventListener('mousedown', (event) => {
       this.handleMouseDown(event);
     });
 
-    this.canvas.addEventListener('mousemove', (event) => {
+    this.element.addEventListener('mousemove', (event) => {
       this.handleMouseMove(event);
     });
 
-    this.canvas.addEventListener('mouseup', (event) => {
+    this.element.addEventListener('mouseup', (event) => {
       this.handleMouseUp(event);
     });
 
     // Click events for caret positioning (when not selecting)
-    this.canvas.addEventListener('click', (event) => {
+    this.element.addEventListener('click', (event) => {
       if (!this.isDragging) {
         // Clear selection when clicking
         this.clearSelection();
@@ -1902,7 +1894,7 @@ class MusicNotationEditor {
      * Handle mouse down - start selection or positioning
      */
   handleMouseDown(event) {
-    const rect = this.canvas.getBoundingClientRect();
+    const rect = this.element.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
 
@@ -1928,7 +1920,7 @@ class MusicNotationEditor {
   handleMouseMove(event) {
     if (!this.isDragging) return;
 
-    const rect = this.canvas.getBoundingClientRect();
+    const rect = this.element.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
 
@@ -1971,7 +1963,7 @@ class MusicNotationEditor {
      * Handle canvas click for caret positioning
      */
   handleCanvasClick(event) {
-    const rect = this.canvas.getBoundingClientRect();
+    const rect = this.element.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
 
@@ -1981,7 +1973,7 @@ class MusicNotationEditor {
 
     if (charCellPosition !== null) {
       this.setCursorPosition(charCellPosition);
-      this.canvas.focus();
+      this.element.focus();
     }
   }
 
@@ -1989,18 +1981,7 @@ class MusicNotationEditor {
      * Calculate Cell position from coordinates
      */
   calculateCellPosition(x, y) {
-    // Calculate which lane was clicked
-    const lineHeight = 16;
-    const clickedLane = Math.floor(y / lineHeight);
-    const laneNames = ['upper_line', 'line', 'lower_line', 'lyrics'];
-
-    // Log clicks on non-main lines
-    if (clickedLane !== 1) {
-      console.log(`Clicked on ${laneNames[clickedLane] || 'unknown'} (lane ${clickedLane}) at y=${y}`);
-      return null; // Don't move cursor for non-main line clicks
-    }
-
-    // Calculate column position for main line clicks
+    // Calculate column position from x coordinate
     const charWidth = 12; // Approximate character width
     const column = Math.floor(x / charWidth);
 
@@ -2035,7 +2016,7 @@ class MusicNotationEditor {
      */
   getCursorElement() {
     let cursor = document.querySelector('.cursor-indicator');
-    const lineElement = this.canvas.querySelector('[data-line="0"]');
+    const lineElement = this.element.querySelector('[data-line="0"]');
 
     if (!cursor) {
       // Create new cursor element
@@ -2047,10 +2028,10 @@ class MusicNotationEditor {
     if (lineElement && cursor.parentElement !== lineElement) {
       console.log('🔧 Moving cursor to line element for proper positioning context');
       lineElement.appendChild(cursor);
-    } else if (!lineElement && cursor.parentElement !== this.canvas) {
+    } else if (!lineElement && cursor.parentElement !== this.element) {
       // Fallback: append to canvas if line element not found
       console.warn('⚠️ Line element not found, appending cursor to canvas');
-      this.canvas.appendChild(cursor);
+      this.element.appendChild(cursor);
     }
 
     return cursor;
@@ -2140,20 +2121,18 @@ class MusicNotationEditor {
     }
 
     const cellIndex = this.getCursorPosition(); // This is now a cell index (0, 1, 2, ...)
-    const lane = this.getCurrentLane();
 
     const charWidth = 12; // Approximate character width
     const lineHeight = 16; // Line height in pixels
 
     // Calculate Y offset for positioning within the line element
     // Since the cursor is now a child of the line element (same as cells),
-    // it should be positioned at top: 32px for the main line (lane 1)
+    // it should be positioned at top: 32px
     // This matches how cells are positioned in renderer.js (line 255: y: 32px)
     const yOffset = 32; // Always 32px since cursor is inside line element, same as cells
 
     console.log('🎯 updateCursorVisualPosition called:', {
       cellIndex,
-      lane,
       yOffset,
       documentExists: !!this.theDocument,
       stavesLength: this.theDocument?.staves?.length || 0
@@ -2169,7 +2148,7 @@ class MusicNotationEditor {
       pixelPos = 60;
     } else {
       // Find the DOM element for the previous cell and measure it
-      const lineElement = this.canvas.querySelector('[data-line="0"]');
+      const lineElement = this.element.querySelector('[data-line="0"]');
       if (lineElement) {
         const prevCellElement = lineElement.querySelector(`[data-cell-index="${cellIndex - 1}"]`);
         if (prevCellElement) {
@@ -2232,38 +2211,7 @@ class MusicNotationEditor {
   }
 
   /**
-     * Get cursor position with lane information
-     */
-  getCursorPositionWithLane() {
-    if (this.theDocument && this.theDocument.state && this.theDocument.state.cursor) {
-      return {
-        column: this.theDocument.state.cursor.column,
-        lane: this.theDocument.state.cursor.lane || 1
-      };
-    }
-    return {
-      column: 0,
-      lane: 1
-    };
-  }
-
-  /**
-     * Set cursor position with lane information (lane always forced to 1)
-     */
-  setCursorPositionWithLane(position) {
-    if (this.theDocument && this.theDocument.state) {
-      this.theDocument.state.cursor = {
-        stave: 0,
-        lane: 1, // Always on main line, ignore position.lane
-        column: position.column
-      };
-      this.updateCursorPositionDisplay();
-      this.updateCursorVisualPosition();
-    }
-  }
-
-  /**
-     * Animate cursor to new position (always on main line, lane 1)
+     * Animate cursor to new position
      */
   async animateCursorTo(position) {
     const cursor = this.getCursorElement();
@@ -2280,7 +2228,7 @@ class MusicNotationEditor {
 
     // Update internal position after animation
     setTimeout(() => {
-      this.setCursorPositionWithLane(position);
+      this.setCursorPosition(position.column);
       cursor.style.transition = '';
     }, 150);
   }
@@ -2296,10 +2244,9 @@ class MusicNotationEditor {
         ? this.theDocument.state.cursor.stave
         : 0;
       const col = this.getCursorPosition();
-      const lane = this.getCurrentLane();
 
       // Display in "Line: X, Col: Y" format for debugging
-      cursorPos.textContent = `Line: ${line}, Col: ${col} (Lane: ${lane})`;
+      cursorPos.textContent = `Line: ${line}, Col: ${col}`;
     }
 
     const charCount = document.getElementById('char-count');
@@ -2529,67 +2476,60 @@ class MusicNotationEditor {
       hitboxHTML += `<div class="mb-4">`;
       hitboxHTML += `<h4 class="font-semibold text-sm mb-2">Stave ${staveIndex} Hitboxes</h4>`;
 
-      // Process each lane using the new unified structure
-      const laneKinds = [0, 1, 2, 3]; // Upper, Letter, Lower, Lyrics
-      const laneDisplayNames = ['Upper Lane', 'Letter Lane (Main)', 'Lower Lane', 'Lyrics Lane'];
+      const cells = stave.cells || [];
+      if (cells && cells.length > 0) {
+        hitboxHTML += `<div class="mb-3">`;
+        hitboxHTML += `<table class="w-full text-xs border-collapse">`;
+        hitboxHTML += `<thead><tr class="bg-gray-100">`;
+        hitboxHTML += `<th class="border border-gray-300 px-2 py-1 text-left">Idx</th>`;
+        hitboxHTML += `<th class="border border-gray-300 px-2 py-1 text-left">Char</th>`;
+        hitboxHTML += `<th class="border border-gray-300 px-2 py-1 text-left">Pos</th>`;
+        hitboxHTML += `<th class="border border-gray-300 px-2 py-1 text-left">Hitbox</th>`;
+        hitboxHTML += `<th class="border border-gray-300 px-2 py-1 text-left">Center</th>`;
+        hitboxHTML += `</tr></thead><tbody>`;
 
-      laneKinds.forEach((laneKind, laneIndex) => {
-        const lane = stave.cells ? stave.cells.filter(cell => cell.lane === laneKind) : [];
-        if (lane && lane.length > 0) {
-          hitboxHTML += `<div class="mb-3">`;
-          hitboxHTML += `<h5 class="text-xs font-medium text-gray-600 mb-1">${laneDisplayNames[laneIndex]}</h5>`;
-          hitboxHTML += `<table class="w-full text-xs border-collapse">`;
-          hitboxHTML += `<thead><tr class="bg-gray-100">`;
-          hitboxHTML += `<th class="border border-gray-300 px-2 py-1 text-left">Idx</th>`;
-          hitboxHTML += `<th class="border border-gray-300 px-2 py-1 text-left">Char</th>`;
-          hitboxHTML += `<th class="border border-gray-300 px-2 py-1 text-left">Pos</th>`;
-          hitboxHTML += `<th class="border border-gray-300 px-2 py-1 text-left">Hitbox</th>`;
-          hitboxHTML += `<th class="border border-gray-300 px-2 py-1 text-left">Center</th>`;
-          hitboxHTML += `</tr></thead><tbody>`;
+        cells.forEach((cell, cellIndex) => {
+          console.log(`🔍 Cell ${cellIndex} (${cell.glyph}):`, {
+            x: cell.x,
+            y: cell.y,
+            w: cell.w,
+            h: cell.h,
+            hasValidHitbox: cell.x !== undefined && cell.y !== undefined &&
+                                        cell.w !== undefined && cell.h !== undefined
+          });
 
-          lane.forEach((cell, cellIndex) => {
-            console.log(`🔍 Cell ${cellIndex} (${cell.glyph}):`, {
+          const hasValidHitbox = cell.x !== undefined && cell.y !== undefined &&
+                                           cell.w !== undefined && cell.h !== undefined;
+
+          if (hasValidHitbox) {
+            const centerX = cell.x + (cell.w / 2);
+            const centerY = cell.y + (cell.h / 2);
+
+            hitboxHTML += `<tr class="hover:bg-blue-50">`;
+            hitboxHTML += `<td class="border border-gray-300 px-2 py-1">${cellIndex}</td>`;
+            hitboxHTML += `<td class="border border-gray-300 px-2 py-1 font-mono">${cell.glyph || ''}</td>`;
+            hitboxHTML += `<td class="border border-gray-300 px-2 py-1">${cell.col || 0}</td>`;
+            hitboxHTML += `<td class="border border-gray-300 px-2 py-1">`;
+            hitboxHTML += `${cell.x.toFixed(1)},${cell.y.toFixed(1)} `;
+            hitboxHTML += `${cell.w.toFixed(1)}×${cell.h.toFixed(1)}`;
+            hitboxHTML += `</td>`;
+            hitboxHTML += `<td class="border border-gray-300 px-2 py-1">`;
+            hitboxHTML += `(${centerX.toFixed(1)}, ${centerY.toFixed(1)})`;
+            hitboxHTML += `</td>`;
+            hitboxHTML += `</tr>`;
+          } else {
+            console.log(`❌ Cell ${cellIndex} missing hitbox data:`, {
               x: cell.x,
               y: cell.y,
               w: cell.w,
-              h: cell.h,
-              hasValidHitbox: cell.x !== undefined && cell.y !== undefined &&
-                                          cell.w !== undefined && cell.h !== undefined
+              h: cell.h
             });
+          }
+        });
 
-            const hasValidHitbox = cell.x !== undefined && cell.y !== undefined &&
-                                             cell.w !== undefined && cell.h !== undefined;
-
-            if (hasValidHitbox) {
-              const centerX = cell.x + (cell.w / 2);
-              const centerY = cell.y + (cell.h / 2);
-
-              hitboxHTML += `<tr class="hover:bg-blue-50">`;
-              hitboxHTML += `<td class="border border-gray-300 px-2 py-1">${cellIndex}</td>`;
-              hitboxHTML += `<td class="border border-gray-300 px-2 py-1 font-mono">${cell.glyph || ''}</td>`;
-              hitboxHTML += `<td class="border border-gray-300 px-2 py-1">${cell.col || 0}</td>`;
-              hitboxHTML += `<td class="border border-gray-300 px-2 py-1">`;
-              hitboxHTML += `${cell.x.toFixed(1)},${cell.y.toFixed(1)} `;
-              hitboxHTML += `${cell.w.toFixed(1)}×${cell.h.toFixed(1)}`;
-              hitboxHTML += `</td>`;
-              hitboxHTML += `<td class="border border-gray-300 px-2 py-1">`;
-              hitboxHTML += `(${centerX.toFixed(1)}, ${centerY.toFixed(1)})`;
-              hitboxHTML += `</td>`;
-              hitboxHTML += `</tr>`;
-            } else {
-              console.log(`❌ Cell ${cellIndex} missing hitbox data:`, {
-                x: cell.x,
-                y: cell.y,
-                w: cell.w,
-                h: cell.h
-              });
-            }
-          });
-
-          hitboxHTML += `</tbody></table>`;
-          hitboxHTML += `</div>`;
-        }
-      });
+        hitboxHTML += `</tbody></table>`;
+        hitboxHTML += `</div>`;
+      }
 
       hitboxHTML += `</div>`;
     });
@@ -2612,64 +2552,60 @@ class MusicNotationEditor {
     }
 
     this.theDocument.lines.forEach((stave, staveIndex) => {
-      const laneKinds = [0, 1, 2, 3]; // Upper, Letter, Lower, Lyrics
+      const cells = stave.cells || [];
+      if (cells.length === 0) {
+        return;
+      }
 
-      laneKinds.forEach((laneKind, laneIndex) => {
-        const lane = stave.cells ? stave.cells.filter(cell => cell.lane === laneKind) : [];
-        if (!lane || lane.length === 0) {
-          return;
+      // Calculate cumulative x positions
+      let cumulativeX = 0;
+      const cellPositions = [];
+      cells.forEach((charCell) => {
+        cellPositions.push(cumulativeX);
+        const glyphLength = (charCell.glyph || '').length;
+        cumulativeX += glyphLength * 12; // 12px per character
+      });
+
+      // Set hitbox values on each cell if they're missing or zero
+      cells.forEach((charCell, cellIndex) => {
+        const glyphLength = (charCell.glyph || '').length;
+        const cellWidth = glyphLength * 12;
+
+        // Debug: log current cell state
+        console.log(`🔧 Processing cell ${cellIndex} ('${charCell.glyph}'):`, {
+          before: { x: charCell.x, y: charCell.y, w: charCell.w, h: charCell.h },
+          calculated: { x: cellPositions[cellIndex], w: cellWidth, h: 16 }
+        });
+
+        // Only set if values are missing or zero
+        if (charCell.x === undefined || charCell.x === 0) {
+          charCell.x = cellPositions[cellIndex];
+          console.log(`  ✅ Set x to ${cellPositions[cellIndex]}`);
+        }
+        if (charCell.y === undefined || charCell.y === 0) {
+          charCell.y = 0; // Y position relative to line container
+          console.log(`  ✅ Set y to 0`);
+        }
+        if (charCell.w === undefined || charCell.w === 0) {
+          charCell.w = cellWidth;
+          console.log(`  ✅ Set w to ${cellWidth}`);
+        }
+        if (charCell.h === undefined || charCell.h === 0) {
+          charCell.h = 16;
+          console.log(`  ✅ Set h to 16`);
         }
 
-        // Calculate cumulative x positions for this lane
-        let cumulativeX = 0;
-        const cellPositions = [];
-        lane.forEach((charCell) => {
-          cellPositions.push(cumulativeX);
-          const glyphLength = (charCell.glyph || '').length;
-          cumulativeX += glyphLength * 12; // 12px per character
-        });
+        console.log(`  📋 After updates:`, { x: charCell.x, y: charCell.y, w: charCell.w, h: charCell.h });
 
-        // Set hitbox values on each cell if they're missing or zero
-        lane.forEach((charCell, cellIndex) => {
-          const glyphLength = (charCell.glyph || '').length;
-          const cellWidth = glyphLength * 12;
-
-          // Debug: log current cell state
-          console.log(`🔧 Processing cell ${cellIndex} ('${charCell.glyph}'):`, {
-            before: { x: charCell.x, y: charCell.y, w: charCell.w, h: charCell.h },
-            calculated: { x: cellPositions[cellIndex], w: cellWidth, h: 16 }
-          });
-
-          // Only set if values are missing or zero
-          if (charCell.x === undefined || charCell.x === 0) {
-            charCell.x = cellPositions[cellIndex];
-            console.log(`  ✅ Set x to ${cellPositions[cellIndex]}`);
-          }
-          if (charCell.y === undefined || charCell.y === 0) {
-            charCell.y = 0; // Y position relative to lane container
-            console.log(`  ✅ Set y to 0`);
-          }
-          if (charCell.w === undefined || charCell.w === 0) {
-            charCell.w = cellWidth;
-            console.log(`  ✅ Set w to ${cellWidth}`);
-          }
-          if (charCell.h === undefined || charCell.h === 0) {
-            charCell.h = 16;
-            console.log(`  ✅ Set h to 16`);
-          }
-
-          console.log(`  📋 After updates:`, { x: charCell.x, y: charCell.y, w: charCell.w, h: charCell.h });
-
-          // Update bounding box and hit testing area
-          if (!charCell.bbox || charCell.bbox.length === 0 ||
-                        charCell.bbox.every(val => val === 0)) {
-            charCell.bbox = [charCell.x, charCell.y, charCell.x + charCell.w, charCell.y + charCell.h];
-          }
-          if (!charCell.hit || charCell.hit.length === 0 ||
-                        charCell.hit.every(val => val === 0)) {
-            charCell.hit = [charCell.x - 2.0, charCell.y - 2.0, charCell.x + charCell.w + 2.0, charCell.y + charCell.h + 2.0];
-          }
-        });
+        // Update bounding box and hit testing area
+        if (!charCell.bbox || charCell.bbox.length === 0 ||
+                      charCell.bbox.every(val => val === 0)) {
+          charCell.bbox = [charCell.x, charCell.y, charCell.x + charCell.w, charCell.y + charCell.h];
+        }
+        if (!charCell.hit || charCell.hit.length === 0 ||
+                      charCell.hit.every(val => val === 0)) {
+          charCell.hit = [charCell.x - 2.0, charCell.y - 2.0, charCell.x + charCell.w + 2.0, charCell.y + charCell.h + 2.0];
+        }
       });
     });
 

@@ -14,7 +14,7 @@ export default [
     },
     rules: {
       // Error prevention
-      "no-console": "warn",
+      "no-console": "off",
       "no-debugger": "error",
       "no-unused-vars": "error",
       "no-undef": "error",
