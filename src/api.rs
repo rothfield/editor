@@ -53,18 +53,18 @@ macro_rules! wasm_error {
 /// # Parameters
 /// - `cells_js`: JavaScript array of Cell objects
 /// - `c`: The character to insert
-/// - `cursor_pos`: The position where to insert (0-based index)
+/// - `cursor_pos`: The CELL index where to insert (0-based, NOT character position)
 /// - `pitch_system`: The pitch system to use (0=Unknown, 1=Number, 2=Western, 3=Sargam)
 ///
 /// # Returns
-/// Updated JavaScript array of Cell objects with the character inserted and tokens combined
+/// JavaScript object with `cells` (updated array) and `newCursorPos` (new character position)
 #[wasm_bindgen(js_name = insertCharacter)]
 pub fn insert_character(
     cells_js: JsValue,
     c: char,
     cursor_pos: usize,
     pitch_system: u8,
-) -> Result<js_sys::Array, JsValue> {
+) -> Result<JsValue, JsValue> {
     wasm_info!("insertCharacter called: char='{}', cursor_pos={}, pitch_system={}", c, cursor_pos, pitch_system);
 
     // Deserialize cells from JavaScript
@@ -117,19 +117,59 @@ pub fn insert_character(
     let cells_delta = cells_after as i32 - cells_before as i32;
     wasm_info!("  After combination: {} cells (delta: {:+})", cells_after, cells_delta);
 
-    // Convert back to JavaScript array
-    let result = js_sys::Array::new();
+    // Calculate new cursor position (CHARACTER position, not cell index)
+    // Cursor should be positioned after the cell where insertion happened
+    let mut new_cursor_pos = 0;
+    wasm_log!("  Calculating cursor position: insert_pos={}, cells.len()={}", insert_pos, cells.len());
+    for (i, cell) in cells.iter().enumerate() {
+        if i == insert_pos {
+            // Add this cell's length and stop
+            new_cursor_pos += cell.glyph.chars().count();
+            wasm_log!("    Cell[{}] = '{}' (len={}), cumulative={} [INSERTED HERE, STOPPING]",
+                     i, cell.glyph, cell.glyph.chars().count(), new_cursor_pos);
+            break;
+        } else {
+            new_cursor_pos += cell.glyph.chars().count();
+            wasm_log!("    Cell[{}] = '{}' (len={}), cumulative={}",
+                     i, cell.glyph, cell.glyph.chars().count(), new_cursor_pos);
+        }
+    }
+
+    wasm_info!("  New cursor position (char-based): {}", new_cursor_pos);
+
+    // Convert cells back to JavaScript array
+    let cells_array = js_sys::Array::new();
     for cell in cells {
         let cell_js = serde_wasm_bindgen::to_value(&cell)
             .map_err(|e| {
-                wasm_error!("Serialization error: {}", e);
-                JsValue::from_str(&format!("Serialization error: {}", e))
+                wasm_error!("Cell serialization error: {}", e);
+                JsValue::from_str(&format!("Cell serialization error: {}", e))
             })?;
-        result.push(&cell_js);
+        cells_array.push(&cell_js);
     }
 
+    // Create result object manually using js_sys::Object
+    let result = js_sys::Object::new();
+    js_sys::Reflect::set(
+        &result,
+        &JsValue::from_str("cells"),
+        &cells_array.into()
+    ).map_err(|e| {
+        wasm_error!("Failed to set cells property: {:?}", e);
+        JsValue::from_str("Failed to set cells property")
+    })?;
+
+    js_sys::Reflect::set(
+        &result,
+        &JsValue::from_str("newCursorPos"),
+        &JsValue::from_f64(new_cursor_pos as f64)
+    ).map_err(|e| {
+        wasm_error!("Failed to set newCursorPos property: {:?}", e);
+        JsValue::from_str("Failed to set newCursorPos property")
+    })?;
+
     wasm_info!("insertCharacter completed successfully");
-    Ok(result)
+    Ok(result.into())
 }
 
 /// Parse a string of text into cells (for initial document loading)
@@ -991,9 +1031,106 @@ pub fn compute_layout(
 mod tests {
     use super::*;
 
+    /// Helper to calculate cursor position after insertion (pure Rust, no JsValue)
+    fn calculate_cursor_pos_after_insert(cells: &[Cell], insert_pos: usize) -> usize {
+        let mut new_cursor_pos = 0;
+        for (i, cell) in cells.iter().enumerate() {
+            if i == insert_pos {
+                new_cursor_pos += cell.glyph.chars().count();
+                break;
+            } else {
+                new_cursor_pos += cell.glyph.chars().count();
+            }
+        }
+        new_cursor_pos
+    }
+
+    /// Helper to create a simple Cell for testing
+    fn make_cell(glyph: &str, col: usize) -> Cell {
+        Cell {
+            glyph: glyph.to_string(),
+            kind: crate::models::ElementKind::Unknown,
+            col,
+            flags: 0,
+            pitch_code: None,
+            pitch_system: None,
+            octave: 0,
+            slur_indicator: crate::models::SlurIndicator::None,
+            x: 0.0,
+            y: 0.0,
+            w: 0.0,
+            h: 0.0,
+            bbox: (0.0, 0.0, 0.0, 0.0),
+            hit: (0.0, 0.0, 0.0, 0.0),
+        }
+    }
+
     #[test]
-    fn test_insert_character_creates_note() {
-        // This would need to be tested via wasm-bindgen-test in a browser/node environment
-        // since it uses JsValue. Unit tests here would be for the underlying logic.
+    fn test_cursor_after_insert_at_end() {
+        // Test: Type 'p', then 'q' → cursor should be at char position 2
+        let cells = vec![
+            make_cell("p", 0),
+            make_cell("q", 1),
+        ];
+
+        let cursor = calculate_cursor_pos_after_insert(&cells, 1);
+        assert_eq!(cursor, 2, "After inserting 'q' at position 1, cursor should be at char pos 2");
+    }
+
+    #[test]
+    fn test_cursor_after_insert_in_middle() {
+        // Test: Type 'p', 'q', then insert 'r' in the middle → cursor should be at char position 2
+        // Cells: ['p', 'r', 'q']
+        // Insert position: 1 (where 'r' was just inserted)
+        let cells = vec![
+            make_cell("p", 0),
+            make_cell("r", 1),
+            make_cell("q", 2),
+        ];
+
+        let cursor = calculate_cursor_pos_after_insert(&cells, 1);
+        assert_eq!(cursor, 2, "After inserting 'r' at cell index 1, cursor should be at char pos 2 (after 'pr')");
+    }
+
+    #[test]
+    fn test_cursor_with_multichar_glyph() {
+        // Test: Type '1', then '#' which combines to '1#'
+        // Cells: ['1#']
+        // Insert position: 0 (combination happened at position 0)
+        let cells = vec![
+            make_cell("1#", 0),
+        ];
+
+        let cursor = calculate_cursor_pos_after_insert(&cells, 0);
+        assert_eq!(cursor, 2, "After inserting into multi-char glyph '1#', cursor should be at char pos 2");
+    }
+
+    #[test]
+    fn test_cursor_multichar_in_middle() {
+        // Test: Type 'p', 'q', left arrow, then 'r'
+        // But if 'qr' combines into a multi-char glyph 'qr'
+        // Cells: ['p', 'qr']
+        // Insert position: 1 (where the combination happened)
+        let cells = vec![
+            make_cell("p", 0),
+            make_cell("qr", 1),
+        ];
+
+        let cursor = calculate_cursor_pos_after_insert(&cells, 1);
+        assert_eq!(cursor, 3, "After inserting 'r' which forms 'qr', cursor should be at char pos 3 (after 'pqr')");
+    }
+
+    #[test]
+    fn test_cursor_at_start() {
+        // Test: Insert at position 0
+        // Cells: ['r', 'p', 'q']
+        let cells = vec![
+            make_cell("r", 0),
+            make_cell("p", 1),
+            make_cell("q", 2),
+        ];
+
+        let cursor = calculate_cursor_pos_after_insert(&cells, 0);
+        assert_eq!(cursor, 1, "After inserting 'r' at position 0, cursor should be at char pos 1");
     }
 }

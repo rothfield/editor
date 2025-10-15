@@ -60,9 +60,16 @@ class TextInputHandler {
       for (const char of text) {
         const lengthBefore = cells.length;
 
+        // Calculate total character count before insertion
+        let charCountBefore = 0;
+        for (let i = 0; i < lengthBefore; i++) {
+          charCountBefore += cells[i].glyph.length;
+        }
+
         logger.debug(LOG_CATEGORIES.PARSER, `Inserting char '${char}'`, {
           position: currentPos,
-          cellCount: lengthBefore
+          cellCount: lengthBefore,
+          charCountBefore
         });
 
         // Call WASM to insert character
@@ -74,11 +81,19 @@ class TextInputHandler {
         );
 
         const lengthAfter = cells.length;
+
+        // Calculate total character count after insertion
+        let charCountAfter = 0;
+        for (let i = 0; i < lengthAfter; i++) {
+          charCountAfter += cells[i].glyph.length;
+        }
+
         const cellDelta = lengthAfter - lengthBefore;
+        const charDelta = charCountAfter - charCountBefore;
 
-        currentPos += cellDelta;
+        currentPos += charDelta;
 
-        logger.trace(LOG_CATEGORIES.PARSER, `Cell delta: ${cellDelta}`);
+        logger.trace(LOG_CATEGORIES.PARSER, `Cell delta: ${cellDelta}, char delta: ${charDelta}`);
       }
 
       // Update line cells

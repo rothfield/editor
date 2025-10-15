@@ -19,6 +19,10 @@ pub struct LayoutConfig {
     /// Measured syllable widths from JavaScript (parallel to syllable assignments)
     pub syllable_widths: Vec<f32>,
 
+    /// Measured character widths for each cell (flattened array)
+    /// Each cell contributes glyph.chars().count() widths
+    pub char_widths: Vec<f32>,
+
     /// Font size in pixels
     pub font_size: f32,
 
@@ -66,6 +70,7 @@ impl LayoutEngine {
         let mut lines = Vec::new();
         let mut cell_width_offset = 0;
         let mut syllable_width_offset = 0;
+        let mut char_width_offset = 0;
 
         // Process each line
         for (line_idx, line) in document.lines.iter().enumerate() {
@@ -90,16 +95,28 @@ impl LayoutEngine {
                 &[]
             };
 
+            // Count total characters in this line
+            let char_count: usize = line.cells.iter().map(|cell| cell.glyph.chars().count()).sum();
+
+            // Get character widths for this line
+            let char_widths = if char_width_offset < config.char_widths.len() {
+                &config.char_widths[char_width_offset..(char_width_offset + char_count).min(config.char_widths.len())]
+            } else {
+                &[]
+            };
+
             let render_line = self.compute_line_layout(
                 line,
                 line_idx,
                 config,
                 cell_widths,
                 syllable_widths,
+                char_widths,
             );
 
             cell_width_offset += line.cells.len();
             syllable_width_offset += syllable_count;
+            char_width_offset += char_count;
 
             lines.push(render_line);
         }
@@ -121,6 +138,7 @@ impl LayoutEngine {
         config: &LayoutConfig,
         cell_widths: &[f32],
         syllable_widths: &[f32],
+        char_widths: &[f32],
     ) -> RenderLine {
         // Derive beats using WASM BeatDeriver
         let beats = self.beat_deriver.extract_implicit_beats(&line.cells);
@@ -147,6 +165,7 @@ impl LayoutEngine {
         // Render cells with cumulative X positioning
         let mut cells = Vec::new();
         let mut cumulative_x = config.left_margin;
+        let mut char_width_offset = 0;
 
         for (cell_idx, cell) in line.cells.iter().enumerate() {
             // Build CSS classes
@@ -191,6 +210,28 @@ impl LayoutEngine {
             // Get actual cell width (for cursor positioning, not including syllable padding)
             let actual_cell_width = cell_widths.get(cell_idx).copied().unwrap_or(12.0);
 
+            // Calculate character positions for this cell
+            let char_count = cell.glyph.chars().count();
+            let mut char_positions = Vec::with_capacity(char_count + 1);
+            char_positions.push(cumulative_x); // Position before first character
+
+            // Add position after each character
+            let mut char_x = cumulative_x;
+            for i in 0..char_count {
+                if let Some(&width) = char_widths.get(char_width_offset + i) {
+                    char_x += width;
+                } else {
+                    // Fallback to proportional width
+                    char_x += actual_cell_width / char_count as f32;
+                }
+                char_positions.push(char_x);
+            }
+
+            char_width_offset += char_count;
+
+            // cursor_right should be at the position after the last character
+            let cursor_right = *char_positions.last().unwrap_or(&(cumulative_x + actual_cell_width));
+
             cells.push(RenderCell {
                 glyph: cell.glyph.clone(),
                 x: cumulative_x,
@@ -200,7 +241,8 @@ impl LayoutEngine {
                 classes,
                 dataset,
                 cursor_left: cumulative_x,
-                cursor_right: cumulative_x + actual_cell_width,
+                cursor_right,
+                char_positions,
             });
 
             cumulative_x += effective_width;

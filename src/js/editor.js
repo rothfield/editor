@@ -204,22 +204,39 @@ class MusicNotationEditor {
         });
 
         // Insert each character using recursive descent parser
-        let currentPos = cursorPos;
+        // cursorPos is a CHARACTER position, but WASM insertCharacter expects a CELL index
+        let currentCharPos = cursorPos;
+
         for (const char of text) {
           const lengthBefore = cells.length;
 
+          // Convert character position to cell index for WASM API
+          const { cellIndex, charOffsetInCell } = this.charPosToCellIndex(currentCharPos);
+
+          // If we're past the start of a cell, insert after it
+          // (WASM API inserts between cells, not within cells)
+          const insertCellIndex = charOffsetInCell > 0 ? cellIndex + 1 : cellIndex;
+
           logger.debug(LOG_CATEGORIES.PARSER, `Inserting char '${char}'`, {
-            position: currentPos,
+            charPos: currentCharPos,
+            cellIndex,
+            charOffsetInCell,
+            insertCellIndex,
             cellCountBefore: lengthBefore
           });
 
-          // Call WASM recursive descent API
-          const updatedCells = this.wasmModule.insertCharacter(
+          // Call WASM recursive descent API with CELL index
+          // WASM returns { cells, newCursorPos }
+          const result = this.wasmModule.insertCharacter(
             cells,
             char,
-            currentPos,
+            insertCellIndex,
             pitchSystem
           );
+
+          // Extract cells and new cursor position from WASM result
+          const updatedCells = result.cells;
+          currentCharPos = result.newCursorPos;
 
           const lengthAfter = updatedCells.length;
 
@@ -227,24 +244,22 @@ class MusicNotationEditor {
           line.cells = updatedCells;
           cells = updatedCells;
 
-          // Adjust cursor based on actual change in cell count
-          // If cells combined, length might not increase by 1
           const cellDelta = lengthAfter - lengthBefore;
-          logger.trace(LOG_CATEGORIES.PARSER, `Cell delta: ${cellDelta}`, {
+
+          logger.trace(LOG_CATEGORIES.PARSER, `Cell delta: ${cellDelta}, WASM cursor pos: ${currentCharPos}`, {
             lengthBefore,
             lengthAfter
           });
-          currentPos += cellDelta;
         }
 
-        // Update cursor position (just the column number, not visual position yet)
+        // Update cursor position (character-based position from WASM)
         logger.debug(LOG_CATEGORIES.CURSOR, 'Updating cursor position', {
           from: cursorPos,
-          to: currentPos
+          to: currentCharPos
         });
-        // Update cursor column without updating visual position (cells don't have x/w yet)
+        // Update cursor column with WASM-provided character position
         if (this.theDocument && this.theDocument.state) {
-          this.theDocument.state.cursor.column = currentPos;
+          this.theDocument.state.cursor.column = currentCharPos;
           this.updateCursorPositionDisplay();
         }
 
@@ -1049,19 +1064,12 @@ class MusicNotationEditor {
       return cell.cursor_left;
     }
 
-    // Calculate position within cell using character widths
-    if (this.renderer.characterWidthData) {
-      const charData = this.renderer.characterWidthData.find(cd => cd.cellIndex === cellIndex);
-      if (charData && charData.charWidths) {
-        let offset = 0;
-        for (let i = 0; i < charOffsetInCell && i < charData.charWidths.length; i++) {
-          offset += charData.charWidths[i];
-        }
-        return cell.x + offset;
-      }
+    // Use pre-calculated character positions from Rust DisplayList
+    if (cell.char_positions && charOffsetInCell < cell.char_positions.length) {
+      return cell.char_positions[charOffsetInCell];
     }
 
-    // Fallback: proportional split
+    // Fallback: proportional split (if char_positions not available)
     const cellLength = cell.glyph.length;
     const cellWidth = cell.cursor_right - cell.cursor_left;
     const charWidth = cellWidth / cellLength;

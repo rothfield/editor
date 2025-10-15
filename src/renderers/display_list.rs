@@ -78,6 +78,11 @@ pub struct RenderCell {
 
     /// X position for cursor AFTER this cell (at right edge of glyph, not allocated width)
     pub cursor_right: f32,
+
+    /// X positions for cursor at each character boundary within this cell
+    /// Length = glyph.chars().count() + 1
+    /// [0] = before first char, [1] = after first char, ..., [n] = after last char
+    pub char_positions: Vec<f32>,
 }
 
 /// A positioned lyric syllable

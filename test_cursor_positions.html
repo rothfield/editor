@@ -17,22 +17,61 @@
                 const wasmModule = await import('/static/pkg/editor_wasm.js');
                 await wasmModule.default();
 
-                // Create a test document
+                // Test 1: Parse text with multi-character glyphs
+                output.textContent = '=== Test 1: Parse text with multi-character glyphs ===\n';
                 const doc = wasmModule.createNewDocument();
 
-                // Add some test data
                 if (doc.lines && doc.lines.length > 0) {
                     const line = doc.lines[0];
-
-                    // Insert some characters using parseText
-                    const cells = wasmModule.parseText("SRGM", 0); // Number pitch system
+                    const cells = wasmModule.parseText("1# 2 3b 4", 0);
                     line.cells = cells;
                 }
 
-                // Create layout config
+                output.textContent += 'Parsed: "1# 2 3b 4"\n';
+                output.textContent += `Cells: ${doc.lines[0].cells.map(c => c.glyph).join('|')}\n\n`;
+
+                // Test 2: Insert character in middle (pq←r should produce prq)
+                output.textContent += '=== Test 2: Insert in middle (pq<-r should produce prq) ===\n';
+                const doc2 = wasmModule.createNewDocument();
+                let testCells = [];
+
+                // Insert 'p' at position 0
+                let result = wasmModule.insertCharacter(testCells, 'p', 0, 0);
+                testCells = result.cells;
+                output.textContent += `After inserting 'p': ${testCells.map(c => c.glyph).join('')}, cursor at ${result.newCursorPos}\n`;
+
+                // Insert 'q' at position 1 (after p)
+                result = wasmModule.insertCharacter(testCells, 'q', 1, 0);
+                testCells = result.cells;
+                output.textContent += `After inserting 'q': ${testCells.map(c => c.glyph).join('')}, cursor at ${result.newCursorPos}\n`;
+
+                // Insert 'r' at position 1 (between p and q) - should produce 'prq'
+                result = wasmModule.insertCharacter(testCells, 'r', 1, 0);
+                testCells = result.cells;
+                output.textContent += `After inserting 'r' at position 1: ${testCells.map(c => c.glyph).join('')}, cursor at ${result.newCursorPos}\n`;
+                output.textContent += `Expected: 'prq' or 'pqr' with cursor after 'r'\n`;
+                output.textContent += `Result: ${testCells.map(c => c.glyph).join('') === 'prq' || testCells.map(c => c.glyph).join('') === 'pqr' ? 'PASS' : 'FAIL'}\n\n`;
+
+                // Test 3: Multi-character glyphs (qr insertion)
+                output.textContent += '=== Test 3: Multi-character glyphs (qr) ===\n';
+                const doc3 = wasmModule.createNewDocument();
+                testCells = [];
+
+                result = wasmModule.insertCharacter(testCells, 'q', 0, 0);
+                testCells = result.cells;
+                output.textContent += `After 'q': ${testCells.map(c => c.glyph).join('')}, cursor at ${result.newCursorPos}\n`;
+
+                result = wasmModule.insertCharacter(testCells, 'r', result.newCursorPos === 1 ? 1 : 0, 0);
+                testCells = result.cells;
+                output.textContent += `After 'r': ${testCells.map(c => c.glyph).join('')}, cursor at ${result.newCursorPos}\n`;
+                output.textContent += `Expected: 'qr' combined or separate, cursor after both characters\n\n`;
+
+                // Test 4: Layout computation with character positions
+                output.textContent += '=== Test 4: Layout with char_positions ===\n';
                 const config = {
-                    cell_widths: [12, 12, 12, 12],
+                    cell_widths: [20, 12, 20, 12],
                     syllable_widths: [],
+                    char_widths: [10, 10, 5, 10, 10, 5], // Widths for each character: '1','#',' ','2',' ','3','b',' ','4'
                     font_size: 16,
                     line_height: 20,
                     left_margin: 60,
@@ -41,16 +80,18 @@
                     min_syllable_padding: 4.0
                 };
 
-                // Compute layout
+                // Compute layout for first document
                 const displayList = wasmModule.computeLayout(doc, config);
 
-                // Display results
-                output.textContent = 'DisplayList:\n' + JSON.stringify(displayList, null, 2);
-
-                // Check cursor positions specifically
+                // Check cursor positions and character positions
                 console.log('First line cells:', displayList.lines[0].cells);
                 displayList.lines[0].cells.forEach((cell, idx) => {
-                    console.log(`Cell ${idx}: glyph="${cell.glyph}", x=${cell.x}, cursor_left=${cell.cursor_left}, cursor_right=${cell.cursor_right}`);
+                    const charPosInfo = cell.char_positions ?
+                        `char_positions=[${cell.char_positions.join(', ')}]` :
+                        'NO char_positions';
+                    const info = `Cell ${idx}: glyph="${cell.glyph}" (${cell.glyph.length} chars), x=${cell.x}, cursor_left=${cell.cursor_left}, cursor_right=${cell.cursor_right}, ${charPosInfo}`;
+                    console.log(info);
+                    output.textContent += info + '\n';
                 });
 
             } catch (error) {

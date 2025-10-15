@@ -217,11 +217,18 @@ class DOMRenderer {
     const measureTime = performance.now() - measureStart;
     console.log(`⏱️ Measurements completed in ${measureTime.toFixed(2)}ms`);
 
+    // Flatten character widths for Rust
+    const flattenedCharWidths = [];
+    for (const charData of this.characterWidthData) {
+      flattenedCharWidths.push(...charData.charWidths);
+    }
+
     // STEP 2: Call Rust ONCE to compute layout
     const layoutStart = performance.now();
     const config = {
       cell_widths: measurements.cellWidths,
       syllable_widths: measurements.syllableWidths,
+      char_widths: flattenedCharWidths,
       font_size: BASE_FONT_SIZE,
       line_height: BASE_LINE_HEIGHT,
       left_margin: LEFT_MARGIN_PX,
