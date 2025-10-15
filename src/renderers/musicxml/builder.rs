@@ -71,14 +71,15 @@ impl MusicXmlBuilder {
 
     /// Write note with pitch and duration
     pub fn write_note(&mut self, pitch: &Pitch, duration_divs: usize, musical_duration: f64) -> Result<(), String> {
-        self.write_note_with_beam(pitch, duration_divs, musical_duration, None, None, None, None)
+        self.write_note_with_beam(pitch, duration_divs, musical_duration, None, None, None, None, None)
     }
 
-    /// Write note with pitch, duration, and optional beam, time_modification, tuplet_bracket, and tie
+    /// Write note with pitch, duration, and optional beam, time_modification, tuplet_bracket, tie, and slur
     /// time_modification: Option<(usize, usize)> = (actual_notes, normal_notes) - written on ALL tuplet notes
     /// tuplet_bracket: Option<&str> = "start" or "stop" - only on first/last tuplet notes
     /// tie: Option<&str> = "start" or "stop"
-    pub fn write_note_with_beam(&mut self, pitch: &Pitch, duration_divs: usize, musical_duration: f64, beam: Option<&str>, time_modification: Option<(usize, usize)>, tuplet_bracket: Option<&str>, tie: Option<&str>) -> Result<(), String> {
+    /// slur: Option<&str> = "start" or "stop"
+    pub fn write_note_with_beam(&mut self, pitch: &Pitch, duration_divs: usize, musical_duration: f64, beam: Option<&str>, time_modification: Option<(usize, usize)>, tuplet_bracket: Option<&str>, tie: Option<&str>, slur: Option<&str>) -> Result<(), String> {
         let (step, alter) = pitch_to_step_alter(pitch)?;
         let xml_octave = pitch.octave + 4; // music-text octave 0 = MIDI octave 4 (middle C)
 
@@ -124,11 +125,12 @@ impl MusicXmlBuilder {
             self.buffer.push_str(&format!("  <beam number=\"1\">{}</beam>\n", beam_type));
         }
 
-        // Add notations if tuplet bracket or tie
+        // Add notations if tuplet bracket, tie, or slur
         let has_tuplet_bracket = tuplet_bracket.is_some();
         let has_tie = tie.is_some();
+        let has_slur = slur.is_some();
 
-        if has_tuplet_bracket || has_tie {
+        if has_tuplet_bracket || has_tie || has_slur {
             self.buffer.push_str("  <notations>\n");
 
             // Add tuplet bracket notation if specified (only start/stop)
@@ -139,6 +141,11 @@ impl MusicXmlBuilder {
             // Add tied element if specified (visual representation)
             if let Some(tie_type) = tie {
                 self.buffer.push_str(&format!("    <tied type=\"{}\"/>\n", tie_type));
+            }
+
+            // Add slur element if specified
+            if let Some(slur_type) = slur {
+                self.buffer.push_str(&format!("    <slur type=\"{}\" number=\"1\"/>\n", slur_type));
             }
 
             self.buffer.push_str("  </notations>\n");
@@ -153,7 +160,8 @@ impl MusicXmlBuilder {
 
     /// Write note using PitchCode (system-agnostic, works for all pitch systems)
     /// This is the PREFERRED method for MusicXML export
-    pub fn write_note_with_beam_from_pitch_code(&mut self, pitch_code: &PitchCode, octave: i8, duration_divs: usize, musical_duration: f64, beam: Option<&str>, time_modification: Option<(usize, usize)>, tuplet_bracket: Option<&str>, tie: Option<&str>) -> Result<(), String> {
+    /// slur: Option<&str> = "start" or "stop"
+    pub fn write_note_with_beam_from_pitch_code(&mut self, pitch_code: &PitchCode, octave: i8, duration_divs: usize, musical_duration: f64, beam: Option<&str>, time_modification: Option<(usize, usize)>, tuplet_bracket: Option<&str>, tie: Option<&str>, slur: Option<&str>) -> Result<(), String> {
         let (step, alter) = pitch_code_to_step_alter(pitch_code);
         let xml_octave = octave + 4; // music-text octave 0 = MIDI octave 4 (middle C)
 
@@ -197,11 +205,12 @@ impl MusicXmlBuilder {
             self.buffer.push_str(&format!("  <beam number=\"1\">{}</beam>\n", beam_type));
         }
 
-        // Add notations if tuplet bracket or tie
+        // Add notations if tuplet bracket, tie, or slur
         let has_tuplet_bracket = tuplet_bracket.is_some();
         let has_tie = tie.is_some();
+        let has_slur = slur.is_some();
 
-        if has_tuplet_bracket || has_tie {
+        if has_tuplet_bracket || has_tie || has_slur {
             self.buffer.push_str("  <notations>\n");
 
             // Add tuplet bracket notation if specified (only start/stop)
@@ -212,6 +221,11 @@ impl MusicXmlBuilder {
             // Add tied element if specified (visual representation)
             if let Some(tie_type) = tie {
                 self.buffer.push_str(&format!("    <tied type=\"{}\"/>\n", tie_type));
+            }
+
+            // Add slur element if specified
+            if let Some(slur_type) = slur {
+                self.buffer.push_str(&format!("    <slur type=\"{}\" number=\"1\"/>\n", slur_type));
             }
 
             self.buffer.push_str("  </notations>\n");

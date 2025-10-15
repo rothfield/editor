@@ -8,6 +8,7 @@
 import DOMRenderer from './renderer.js';
 import logger, { LOG_CATEGORIES } from './logger.js';
 import { OSMDRenderer } from './osmd-renderer.js';
+import { LEFT_MARGIN_PX } from './constants.js';
 
 class MusicNotationEditor {
   constructor(editorElement) {
@@ -527,7 +528,7 @@ class MusicNotationEditor {
   }
 
   /**
-     * Get current cursor position
+     * Get current cursor position (character offset)
      */
   getCursorPosition() {
     if (this.theDocument && this.theDocument.state) {
@@ -537,7 +538,7 @@ class MusicNotationEditor {
   }
 
   /**
-     * Set cursor position with bounds checking
+     * Set cursor position with bounds checking (character offset)
      */
   setCursorPosition(position) {
     if (this.theDocument && this.theDocument.state) {
@@ -551,16 +552,14 @@ class MusicNotationEditor {
   }
 
   /**
-     * Validate and clamp cursor position to valid range
+     * Validate and clamp cursor position to valid range (character-based)
      */
   validateCursorPosition(position) {
     if (!this.theDocument || !this.theDocument.lines || this.theDocument.lines.length === 0) {
       return 0;
     }
 
-    const line = this.theDocument.lines[0];
-    const cells = line.cells || [];
-    const maxPosition = cells.length;
+    const maxPosition = this.getMaxCharPosition();
 
     // Clamp position to valid range [0, maxPosition]
     const clampedPosition = Math.max(0, Math.min(position, maxPosition));
@@ -861,31 +860,31 @@ class MusicNotationEditor {
   }
 
   /**
-     * Navigate left one cell (like Excel)
+     * Navigate left one character
      */
   navigateLeft() {
     logger.debug(LOG_CATEGORIES.CURSOR, 'Navigate left');
-    const currentCellIndex = this.getCursorPosition();
+    const currentCharPos = this.getCursorPosition();
 
-    if (currentCellIndex > 0) {
-      // Move to previous cell
-      this.setCursorPosition(currentCellIndex - 1);
-      logger.debug(LOG_CATEGORIES.CURSOR, 'Moved to cell', { index: currentCellIndex - 1 });
+    if (currentCharPos > 0) {
+      // Move to previous character
+      this.setCursorPosition(currentCharPos - 1);
+      logger.debug(LOG_CATEGORIES.CURSOR, 'Moved to char position', { pos: currentCharPos - 1 });
     }
   }
 
   /**
-     * Navigate right one cell (like Excel)
+     * Navigate right one character
      */
   navigateRight() {
     logger.debug(LOG_CATEGORIES.CURSOR, 'Navigate right');
-    const currentCellIndex = this.getCursorPosition();
-    const maxCellIndex = this.getMaxCellIndex();
+    const currentCharPos = this.getCursorPosition();
+    const maxCharPos = this.getMaxCharPosition();
 
-    if (currentCellIndex < maxCellIndex) {
-      // Move to next cell
-      this.setCursorPosition(currentCellIndex + 1);
-      logger.debug(LOG_CATEGORIES.CURSOR, 'Moved to cell', { index: currentCellIndex + 1 });
+    if (currentCharPos < maxCharPos) {
+      // Move to next character
+      this.setCursorPosition(currentCharPos + 1);
+      logger.debug(LOG_CATEGORIES.CURSOR, 'Moved to char position', { pos: currentCharPos + 1 });
     }
   }
 
@@ -918,8 +917,8 @@ class MusicNotationEditor {
      */
   navigateEnd() {
     logger.debug(LOG_CATEGORIES.CURSOR, 'Navigate end');
-    const maxCellIndex = this.getMaxCellIndex();
-    this.setCursorPosition(maxCellIndex);
+    const maxCharPos = this.getMaxCharPosition();
+    this.setCursorPosition(maxCharPos);
   }
 
   /**
@@ -934,6 +933,139 @@ class MusicNotationEditor {
     const cells = line.cells || [];
 
     return cells.length; // Position after last cell
+  }
+
+  /**
+     * Get the maximum character position in the line
+     */
+  getMaxCharPosition() {
+    if (!this.theDocument || !this.theDocument.lines || this.theDocument.lines.length === 0) {
+      return 0;
+    }
+
+    const line = this.theDocument.lines[0];
+    const cells = line.cells || [];
+
+    // Sum up lengths of all cell glyphs
+    let totalChars = 0;
+    for (const cell of cells) {
+      totalChars += cell.glyph.length;
+    }
+
+    return totalChars;
+  }
+
+  /**
+     * Convert character position to cell index
+     * @param {number} charPos - Character position (0-based)
+     * @returns {Object} {cellIndex, charOffsetInCell}
+     */
+  charPosToCellIndex(charPos) {
+    if (!this.theDocument || !this.theDocument.lines || this.theDocument.lines.length === 0) {
+      return { cellIndex: 0, charOffsetInCell: 0 };
+    }
+
+    const line = this.theDocument.lines[0];
+    const cells = line.cells || [];
+
+    let accumulatedChars = 0;
+    for (let cellIndex = 0; cellIndex < cells.length; cellIndex++) {
+      const cellLength = cells[cellIndex].glyph.length;
+
+      if (charPos <= accumulatedChars + cellLength) {
+        return {
+          cellIndex,
+          charOffsetInCell: charPos - accumulatedChars
+        };
+      }
+
+      accumulatedChars += cellLength;
+    }
+
+    // Position after last cell
+    return {
+      cellIndex: cells.length,
+      charOffsetInCell: 0
+    };
+  }
+
+  /**
+     * Convert cell index to character position
+     * @param {number} cellIndex - Cell index (0-based)
+     * @returns {number} Character position at the start of this cell
+     */
+  cellIndexToCharPos(cellIndex) {
+    if (!this.theDocument || !this.theDocument.lines || this.theDocument.lines.length === 0) {
+      return 0;
+    }
+
+    const line = this.theDocument.lines[0];
+    const cells = line.cells || [];
+
+    let charPos = 0;
+    for (let i = 0; i < cellIndex && i < cells.length; i++) {
+      charPos += cells[i].glyph.length;
+    }
+
+    return charPos;
+  }
+
+  /**
+     * Calculate pixel position for a character position
+     * @param {number} charPos - Character position (0-based)
+     * @returns {number} Pixel X position
+     */
+  charPosToPixel(charPos) {
+    if (!this.renderer || !this.renderer.displayList) {
+      return LEFT_MARGIN_PX;
+    }
+
+    const displayList = this.renderer.displayList;
+    const firstLine = displayList.lines && displayList.lines[0];
+
+    if (!firstLine || !firstLine.cells || firstLine.cells.length === 0) {
+      return LEFT_MARGIN_PX;
+    }
+
+    // Convert char position to cell + offset
+    const { cellIndex, charOffsetInCell } = this.charPosToCellIndex(charPos);
+
+    // If before first cell
+    if (cellIndex === 0 && charOffsetInCell === 0) {
+      return firstLine.cells[0].cursor_left;
+    }
+
+    // If after all cells
+    if (cellIndex >= firstLine.cells.length) {
+      const lastCell = firstLine.cells[firstLine.cells.length - 1];
+      return lastCell.cursor_right;
+    }
+
+    // Get cell from DisplayList
+    const cell = firstLine.cells[cellIndex];
+
+    // If at start of cell
+    if (charOffsetInCell === 0) {
+      return cell.cursor_left;
+    }
+
+    // Calculate position within cell using character widths
+    if (this.renderer.characterWidthData) {
+      const charData = this.renderer.characterWidthData.find(cd => cd.cellIndex === cellIndex);
+      if (charData && charData.charWidths) {
+        let offset = 0;
+        for (let i = 0; i < charOffsetInCell && i < charData.charWidths.length; i++) {
+          offset += charData.charWidths[i];
+        }
+        return cell.x + offset;
+      }
+    }
+
+    // Fallback: proportional split
+    const cellLength = cell.glyph.length;
+    const cellWidth = cell.cursor_right - cell.cursor_left;
+    const charWidth = cellWidth / cellLength;
+    return cell.x + (charWidth * charOffsetInCell);
   }
 
 
@@ -1149,95 +1281,45 @@ class MusicNotationEditor {
   }
 
   /**
-     * Render visual selection highlighting
+     * Render visual selection highlighting by adding 'selected' class to cells
+     * This is a lightweight DOM update, not a full re-render
      */
   renderSelectionVisual(selection) {
+    if (!this.renderer || !this.renderer.element) {
+      console.warn('❌ No renderer or renderer element');
+      return;
+    }
+
+    // Find the line element
+    const lineElement = this.renderer.element.querySelector(`[data-line="0"]`);
+    if (!lineElement) {
+      console.warn('❌ Line element not found, cannot render selection');
+      return;
+    }
+
+    // Add 'selected' class to all cells in the selection range
+    for (let i = selection.start; i < selection.end; i++) {
+      const cellElement = lineElement.querySelector(`[data-cell-index="${i}"]`);
+      if (cellElement) {
+        cellElement.classList.add('selected');
+      }
+    }
+  }
+
+  /**
+     * Clear visual selection by removing 'selected' class from all cells
+     * This is a lightweight DOM update, not a full re-render
+     */
+  clearSelectionVisual() {
     if (!this.renderer || !this.renderer.element) {
       return;
     }
 
-    // Find the line element to append the selection to
-    const lineElement = this.renderer.element.querySelector(`[data-line="0"]`);
-    if (!lineElement) {
-      console.warn('❌ Line element not found, cannot position selection');
-      return;
-    }
-
-    // Calculate left position and width by measuring actual DOM elements
-    let leftPos = 60;
-    let selectionWidth = 0;
-
-    // Get the start cell element
-    const startCellElement = lineElement.querySelector(`[data-cell-index="${selection.start}"]`);
-
-    if (startCellElement) {
-      const startRect = startCellElement.getBoundingClientRect();
-      const lineRect = lineElement.getBoundingClientRect();
-
-      // Left position is relative to the line element
-      leftPos = startRect.left - lineRect.left;
-
-      // Get the last selected cell (selection.end - 1)
-      const lastSelectedIndex = selection.end - 1;
-      const endCellElement = lineElement.querySelector(`[data-cell-index="${lastSelectedIndex}"]`);
-
-      if (endCellElement) {
-        const endRect = endCellElement.getBoundingClientRect();
-        // Width spans from start of first cell to end of last cell
-        selectionWidth = (endRect.left - lineRect.left + endRect.width) - leftPos;
-      } else {
-        // Just one cell selected
-        selectionWidth = startRect.width;
-      }
-    }
-
-    console.log('✅ Rendering selection highlight', {
-      start: selection.start,
-      end: selection.end,
-      leftPos,
-      selectionWidth,
-      lineElement: lineElement.className
+    // Remove 'selected' class from all cells
+    const selectedCells = this.renderer.element.querySelectorAll('.char-cell.selected');
+    selectedCells.forEach(cell => {
+      cell.classList.remove('selected');
     });
-
-    // Create selection highlight
-    const selectionElement = document.createElement('div');
-    selectionElement.className = 'selection-highlight';
-    selectionElement.style.cssText = `
-            position: absolute;
-            left: ${leftPos}px;
-            top: 32px; /* Position relative to line element, same as cells and cursor */
-            width: ${selectionWidth}px;
-            height: 16px;
-            background-color: rgba(59, 130, 246, 0.3); /* Blue with transparency */
-            pointer-events: none;
-            z-index: 2;
-        `;
-
-    // Append to the line element (same container as cells and cursor)
-    lineElement.appendChild(selectionElement);
-
-    // Store reference for later clearing
-    this._currentSelectionElement = selectionElement;
-  }
-
-  /**
-     * Clear visual selection
-     */
-  clearSelectionVisual() {
-    if (this._currentSelectionElement && this._currentSelectionElement.parentElement) {
-      this._currentSelectionElement.parentElement.removeChild(this._currentSelectionElement);
-      this._currentSelectionElement = null;
-    }
-
-    // Also clean up any orphaned selection highlights that might remain
-    if (this.renderer && this.renderer.element) {
-      const orphanedSelections = this.renderer.element.querySelectorAll('.selection-highlight');
-      orphanedSelections.forEach(element => {
-        if (element.parentElement) {
-          element.parentElement.removeChild(element);
-        }
-      });
-    }
   }
 
   /**
@@ -1289,10 +1371,10 @@ class MusicNotationEditor {
      */
   async handleBackspace() {
     logger.time('handleBackspace', LOG_CATEGORIES.EDITOR);
-    const cursorPos = this.getCursorPosition();
+    const charPos = this.getCursorPosition();
 
     logger.info(LOG_CATEGORIES.EDITOR, 'Backspace pressed', {
-      cursorPos,
+      charPos,
       hasSelection: this.hasSelection()
     });
 
@@ -1301,40 +1383,34 @@ class MusicNotationEditor {
       logger.debug(LOG_CATEGORIES.EDITOR, 'Deleting selection via backspace');
       await this.deleteSelection();
       await this.recalculateBeats();
-    } else if (cursorPos > 0) {
-      // Use WASM API to delete character
+    } else if (charPos > 0) {
+      // Convert character position to cell index
+      const { cellIndex, charOffsetInCell } = this.charPosToCellIndex(charPos);
+
+      // Use WASM API to delete character (cell-based operation)
       if (this.theDocument && this.theDocument.lines && this.theDocument.lines.length > 0) {
         const line = this.theDocument.lines[0];
         const cells = line.cells;
 
-        // Check if the cell at cursorPos - 1 has multiple characters
-        const cellToDelete = cells[cursorPos - 1];
-        const glyphLength = cellToDelete ? (cellToDelete.glyph || '').length : 0;
-        const hadMultipleChars = glyphLength > 1;
+        // Determine which cell to delete: if at cell boundary, delete previous cell
+        const cellIndexToDelete = charOffsetInCell === 0 ? cellIndex - 1 : cellIndex;
 
-        logger.debug(LOG_CATEGORIES.EDITOR, 'Calling WASM deleteCharacter', {
-          position: cursorPos - 1,
-          cellCount: cells.length,
-          glyphLength,
-          hadMultipleChars
-        });
-
-        const updatedCells = this.wasmModule.deleteCharacter(cells, cursorPos - 1);
-        line.cells = updatedCells;
-
-        // Only move cursor if the entire cell was deleted (had 1 char or cell is now gone)
-        // If it had multiple chars, one char was removed but cursor stays at same position
-        const cellStillExists = updatedCells[cursorPos - 1];
-        if (!hadMultipleChars || !cellStillExists) {
-          this.setCursorPosition(cursorPos - 1);
-          logger.info(LOG_CATEGORIES.EDITOR, 'Character deleted, cursor moved back', {
-            newLaneSize: updatedCells.length
+        if (cellIndexToDelete >= 0 && cellIndexToDelete < cells.length) {
+          logger.debug(LOG_CATEGORIES.EDITOR, 'Calling WASM deleteCharacter', {
+            cellIndexToDelete,
+            cellCount: cells.length
           });
-        } else {
-          // Multi-char glyph reduced but cursor stays
-          // Need to manually update cursor visual position since setCursorPosition wasn't called
-          logger.info(LOG_CATEGORIES.EDITOR, 'Character deleted from multi-char glyph, cursor stays', {
-            newLaneSize: updatedCells.length
+
+          const updatedCells = this.wasmModule.deleteCharacter(cells, cellIndexToDelete);
+          line.cells = updatedCells;
+
+          // Move cursor to start of deleted cell
+          const newCharPos = this.cellIndexToCharPos(cellIndexToDelete);
+          this.setCursorPosition(newCharPos);
+
+          logger.info(LOG_CATEGORIES.EDITOR, 'Cell deleted, cursor moved back', {
+            newCellCount: updatedCells.length,
+            newCharPos
           });
         }
       }
@@ -1366,17 +1442,22 @@ class MusicNotationEditor {
       await this.deleteSelection();
       await this.recalculateBeats();
     } else {
-      const cursorPos = this.getCursorPosition();
-      const maxPos = this.getMaxCellIndex();
+      const charPos = this.getCursorPosition();
+      const maxCharPos = this.getMaxCharPosition();
 
-      if (cursorPos < maxPos) {
-        // Use WASM API to delete character
+      if (charPos < maxCharPos) {
+        // Convert character position to cell index
+        const { cellIndex } = this.charPosToCellIndex(charPos);
+
+        // Use WASM API to delete character (cell-based operation)
         if (this.theDocument && this.theDocument.lines && this.theDocument.lines.length > 0) {
-          const line =this.theDocument.lines[0];
+          const line = this.theDocument.lines[0];
           const cells = line.cells;
 
-          const updatedCells = this.wasmModule.deleteCharacter(cells, cursorPos);
-          line.cells = updatedCells;
+          if (cellIndex >= 0 && cellIndex < cells.length) {
+            const updatedCells = this.wasmModule.deleteCharacter(cells, cellIndex);
+            line.cells = updatedCells;
+          }
         }
 
         // Recalculate beats after deletion
@@ -2121,91 +2202,27 @@ class MusicNotationEditor {
       return;
     }
 
-    const cellIndex = this.getCursorPosition(); // This is now a cell index (0, 1, 2, ...)
+    const charPos = this.getCursorPosition(); // Character position (0, 1, 2, ...)
 
-    const charWidth = 12; // Approximate character width
     const lineHeight = 16; // Line height in pixels
-
-    // Calculate Y offset for positioning within the line element
-    // Since the cursor is now a child of the line element (same as cells),
-    // it should be positioned at top: 32px
-    // This matches how cells are positioned in renderer.js (line 255: y: 32px)
-    const yOffset = 32; // Always 32px since cursor is inside line element, same as cells
+    const yOffset = 32; // Y position in line element (matches cells)
 
     console.log('🎯 updateCursorVisualPosition called:', {
-      cellIndex,
+      charPos,
       yOffset,
-      documentExists: !!this.theDocument,
-      stavesLength: this.theDocument?.staves?.length || 0
+      documentExists: !!this.theDocument
     });
 
-    // Get cursor position from cached DisplayList (pre-calculated in Rust)
-    let pixelPos = 60; // Fallback to left margin
+    // Calculate pixel position using character-level positioning
+    const pixelPos = this.charPosToPixel(charPos);
 
-    console.log('🔍 Cursor positioning debug:', {
-      hasRenderer: !!this.renderer,
-      hasDisplayList: !!(this.renderer && this.renderer.displayList),
-      cellIndex,
-      displayList: this.renderer?.displayList
-    });
+    console.log('📐 Cursor at character position', charPos, '-> pixel:', pixelPos);
 
-    if (this.renderer && this.renderer.displayList) {
-      const displayList = this.renderer.displayList;
-      const firstLine = displayList.lines && displayList.lines[0];
-
-      console.log('🔍 DisplayList first line:', {
-        hasFirstLine: !!firstLine,
-        cellsCount: firstLine?.cells?.length || 0,
-        firstCell: firstLine?.cells?.[0]
-      });
-
-      if (firstLine && firstLine.cells) {
-        if (cellIndex === 0) {
-          // Cursor before first cell - use cursor_left of first cell
-          if (firstLine.cells.length > 0) {
-            pixelPos = firstLine.cells[0].cursor_left;
-            console.log('✅ Using cursor_left from first cell:', pixelPos);
-          }
-        } else if (cellIndex > 0 && cellIndex <= firstLine.cells.length) {
-          // Cursor after a cell - use cursor_right of previous cell
-          const prevCell = firstLine.cells[cellIndex - 1];
-          pixelPos = prevCell.cursor_right;
-          console.log('✅ Using cursor_right from cell', cellIndex - 1, ':', pixelPos, prevCell);
-        }
-      }
-    } else {
-      console.warn('⚠️ DisplayList not available, using fallback position:', pixelPos);
-    }
-
-    console.log('📐 Cursor at cellIndex', cellIndex, 'position:', pixelPos);
-
-    // Set cursor position relative to line element (same positioning context as cells)
-    // The cursor is now positioned inside the line element, not the canvas
-    // This matches how cells are positioned: position: absolute, top: 0px (renderer.js:178-180)
-    console.log('✏️ Setting cursor styles:', {
-      left: `${pixelPos}px`,
-      top: `${yOffset}px`,
-      height: `${lineHeight}px`,
-      note: 'Cursor positioned inside line element, same context as cells'
-    });
-
+    // Set cursor position
     cursor.style.position = 'absolute';
     cursor.style.left = `${pixelPos}px`;
     cursor.style.top = `${yOffset}px`;
     cursor.style.height = `${lineHeight}px`;
-
-    // Verify the styles were set
-    console.log('✅ Cursor styles after setting:', {
-      left: cursor.style.left,
-      top: cursor.style.top,
-      height: cursor.style.height,
-      computedLeft: window.getComputedStyle(cursor).left,
-      computedTop: window.getComputedStyle(cursor).top,
-      parentElement: cursor.parentElement?.tagName,
-      parentClass: cursor.parentElement?.className,
-      parentDataLine: cursor.parentElement?.dataset?.line,
-      isInLineElement: cursor.parentElement?.dataset?.line === '0'
-    });
 
     // Update cursor appearance based on state
     if (this.hasSelection()) {
@@ -2290,6 +2307,32 @@ class MusicNotationEditor {
   /**
      * Update document display in debug panel
      */
+  /**
+   * Update MusicXML source display
+   */
+  async updateMusicXMLDisplay() {
+    const musicxmlSource = document.getElementById('musicxml-source');
+    if (!musicxmlSource || !this.theDocument) {
+      return;
+    }
+
+    try {
+      // Export to MusicXML
+      const musicxml = await this.exportMusicXML();
+
+      if (!musicxml) {
+        musicxmlSource.textContent = '<!-- Error: MusicXML export failed -->';
+        return;
+      }
+
+      // Display the MusicXML source
+      musicxmlSource.textContent = musicxml;
+    } catch (error) {
+      console.error('[MusicXML] Error:', error);
+      musicxmlSource.textContent = `<!-- Error exporting to MusicXML:\n${error.message}\n${error.stack} -->`;
+    }
+  }
+
   /**
    * Update LilyPond source display
    */
@@ -2410,6 +2453,11 @@ class MusicNotationEditor {
       const displayDoc = this.createDisplayDocument(persistentDoc);
       persistentJson.textContent = this.toYAML(displayDoc);
     }
+
+    // Update MusicXML source (async, non-blocking)
+    this.updateMusicXMLDisplay().catch(err => {
+      console.error('Failed to update MusicXML display:', err);
+    });
 
     // Update LilyPond source (async, non-blocking)
     this.updateLilyPondDisplay().catch(err => {

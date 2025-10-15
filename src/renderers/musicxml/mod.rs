@@ -10,7 +10,7 @@ pub use duration::*;
 pub use pitch::*;
 pub use builder::*;
 
-use crate::models::{Document, ElementKind, Cell, PitchCode};
+use crate::models::{Document, ElementKind, Cell, PitchCode, SlurIndicator};
 use crate::parse::beats::BeatDeriver;
 
 // Logging for MusicXML export (mirrors api.rs logging macros)
@@ -295,7 +295,7 @@ fn process_beat(
             let musical_duration = leading_div_count as f64 / total_cells as f64;
 
             // Write note with tie="stop" using PitchCode
-            builder.write_note_with_beam_from_pitch_code(&prev_pitch_code, prev_octave, duration_divs, musical_duration, None, None, None, Some("stop"))?;
+            builder.write_note_with_beam_from_pitch_code(&prev_pitch_code, prev_octave, duration_divs, musical_duration, None, None, None, Some("stop"), None)?;
         }
     }
 
@@ -315,6 +315,7 @@ fn process_beat(
             duration_divs: usize,
             musical_duration: f64,
             is_last_note: bool,
+            slur_indicator: SlurIndicator,
         },
         Rest {
             duration_divs: usize,
@@ -373,6 +374,7 @@ fn process_beat(
                         duration_divs,
                         musical_duration,
                         is_last_note,
+                        slur_indicator: cell.slur_indicator,
                     });
                 }
 
@@ -427,14 +429,21 @@ fn process_beat(
         };
 
         match element {
-            BeatElement::Note { pitch_code, octave, duration_divs, musical_duration, is_last_note } => {
+            BeatElement::Note { pitch_code, octave, duration_divs, musical_duration, is_last_note, slur_indicator } => {
                 let tie = if *is_last_note && next_beat_starts_with_div {
                     Some("start")
                 } else {
                     None
                 };
 
-                builder.write_note_with_beam_from_pitch_code(pitch_code, *octave, *duration_divs, *musical_duration, None, tuplet_info, tuplet_bracket, tie)?;
+                // Determine slur type based on indicator
+                let slur = match slur_indicator {
+                    SlurIndicator::SlurStart => Some("start"),
+                    SlurIndicator::SlurEnd => Some("stop"),
+                    SlurIndicator::None => None,
+                };
+
+                builder.write_note_with_beam_from_pitch_code(pitch_code, *octave, *duration_divs, *musical_duration, None, tuplet_info, tuplet_bracket, tie, slur)?;
             }
             BeatElement::Rest { duration_divs, musical_duration } => {
                 builder.write_rest_with_tuplet(*duration_divs, *musical_duration, tuplet_info, tuplet_bracket);

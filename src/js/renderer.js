@@ -210,6 +210,10 @@ class DOMRenderer {
     // STEP 1: Measure all widths (JS-only, native DOM)
     const measureStart = performance.now();
     const measurements = this.measureAllWidths(doc);
+
+    // Also measure character widths for cursor positioning
+    this.characterWidthData = this.measureCharacterWidths(doc);
+
     const measureTime = performance.now() - measureStart;
     console.log(`⏱️ Measurements completed in ${measureTime.toFixed(2)}ms`);
 
@@ -330,6 +334,53 @@ class DOMRenderer {
   }
 
   /**
+   * Measure character widths within each cell for accurate cursor positioning
+   * Returns array of {cellIndex, charWidths:[]} for all cells in the document
+   *
+   * @param {Object} doc - The document to measure
+   * @returns {Array} Array of character width data per cell
+   */
+  measureCharacterWidths(doc) {
+    const characterData = [];
+
+    // Create temporary invisible container for measurements
+    const temp = document.createElement('div');
+    temp.style.cssText = 'position:absolute; left:-9999px; visibility:hidden; pointer-events:none;';
+    document.body.appendChild(temp);
+
+    let cellIndex = 0;
+    for (const line of doc.lines) {
+      for (const cell of line.cells) {
+        const charWidths = [];
+
+        // Measure each character in the cell's glyph
+        for (const char of cell.glyph) {
+          const span = document.createElement('span');
+          span.className = 'char-cell';
+          span.textContent = char === ' ' ? '\u00A0' : char;
+          temp.appendChild(span);
+          charWidths.push(span.getBoundingClientRect().width);
+          temp.removeChild(span);
+        }
+
+        characterData.push({
+          cellIndex,
+          cellCol: cell.col,
+          glyph: cell.glyph,
+          charWidths
+        });
+
+        cellIndex++;
+      }
+    }
+
+    document.body.removeChild(temp);
+
+    console.log(`📏 Measured character widths for ${characterData.length} cells`);
+    return characterData;
+  }
+
+  /**
    * Render document from DisplayList returned by Rust
    * Pure DOM rendering with no layout calculations
    *
@@ -441,7 +492,7 @@ class DOMRenderer {
     }
 
     // Render cells (fast native JS)
-    renderLine.cells.forEach(cellData => {
+    renderLine.cells.forEach((cellData, idx) => {
       const span = document.createElement('span');
       span.className = cellData.classes.join(' ');
       span.textContent = cellData.glyph === ' ' ? '\u00A0' : cellData.glyph;
@@ -453,14 +504,54 @@ class DOMRenderer {
         height: ${cellData.h}px;
       `;
 
-      // Set data attributes
-      for (const [key, value] of Object.entries(cellData.dataset)) {
-        span.dataset[key] = value;
+      // Set data attributes (handle both Map and plain objects)
+      if (cellData.dataset) {
+        // Debug logging for first cell to verify Map handling
+        if (idx === 0) {
+          console.log('🔍 DEBUG: Dataset type:', cellData.dataset.constructor.name);
+          console.log('🔍 DEBUG: Is Map?', cellData.dataset instanceof Map);
+          console.log('🔍 DEBUG: Dataset contents:', cellData.dataset);
+        }
+
+        // Check if it's a Map (from Rust) or plain object
+        if (cellData.dataset instanceof Map) {
+          // It's a Map from Rust
+          console.log('🔍 DEBUG: Using Map iteration');
+          for (const [key, value] of cellData.dataset.entries()) {
+            span.dataset[key] = value;
+            if (idx === 0) {
+              console.log(`🔍 DEBUG: Set data-${key}="${value}"`);
+            }
+          }
+        } else {
+          // It's a plain object
+          console.log('🔍 DEBUG: Using Object iteration');
+          for (const [key, value] of Object.entries(cellData.dataset)) {
+            span.dataset[key] = value;
+            if (idx === 0) {
+              console.log(`🔍 DEBUG: Set data-${key}="${value}" (from object)`);
+            }
+          }
+        }
+
+        // Verify the attributes were actually set
+        if (idx === 0) {
+          console.log('🔍 DEBUG: Resulting span.dataset:', span.dataset);
+          console.log('🔍 DEBUG: Resulting HTML:', span.outerHTML);
+        }
       }
 
       // Add event handlers (JS-only)
       const lineIndex = renderLine.line_index;
-      const cellIndex = parseInt(cellData.dataset.cellIndex);
+      // Get cellIndex from dataset (handle both Map and plain object)
+      let cellIndex = idx;
+      if (cellData.dataset) {
+        if (cellData.dataset instanceof Map) {
+          cellIndex = parseInt(cellData.dataset.get('cellIndex'));
+        } else {
+          cellIndex = parseInt(cellData.dataset.cellIndex);
+        }
+      }
       const cell = this.theDocument.lines[lineIndex].cells[cellIndex];
 
       span.addEventListener('click', (e) => {
