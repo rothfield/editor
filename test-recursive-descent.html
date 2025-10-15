@@ -79,7 +79,7 @@
         function displayCells(cells) {
             return cells.map(cell => {
                 const kind = cell.kind === 1 ? 'note' : 'text';
-                return `<span class="cell-display ${kind}">${cell.grapheme} (kind: ${cell.kind})</span>`;
+                return `<span class="cell-display ${kind}">${cell.glyph} (kind: ${cell.kind})</span>`;
             }).join('');
         }
 

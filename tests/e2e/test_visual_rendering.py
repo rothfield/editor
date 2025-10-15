@@ -68,7 +68,7 @@ class TestVisualRendering:
                             cells.push({
                                 laneIndex,
                                 cellIndex,
-                                grapheme: cell.grapheme || '',
+                                glyph: cell.glyph || '',
                                 x: cell.x || 0,
                                 y: cell.y || 0,
                                 w: cell.w || 0,
@@ -288,7 +288,7 @@ class TestVisualRendering:
 
                 print("\n=== Cell Positioning Test ===")
                 for i, cell in enumerate(main_lane_cells[:7]):
-                    print(f"Cell {i}: '{cell['grapheme']}' at ({cell['x']:.1f}, {cell['y']:.1f}) size {cell['w']:.1f}×{cell['h']:.1f}")
+                    print(f"Cell {i}: '{cell['glyph']}' at ({cell['x']:.1f}, {cell['y']:.1f}) size {cell['w']:.1f}×{cell['h']:.1f}")
 
                     # Validate cell positioning
                     expected_x = i * 12  # 12px per character
@@ -451,7 +451,7 @@ class TestVisualRendering:
                     char_count = len(test_input)
                     expected_width = char_count * 12
 
-                    print(f"Accidental '{test_input}': '{cell['grapheme']}' at ({cell['x']:.1f}, {cell['y']:.1f}) size {cell['w']:.1f}×{cell['h']:.1f}")
+                    print(f"Accidental '{test_input}': '{cell['glyph']}' at ({cell['x']:.1f}, {cell['y']:.1f}) size {cell['w']:.1f}×{cell['h']:.1f}")
 
                     # Validate multi-character cell width
                     assert abs(cell['w'] - expected_width) <= 1, f"Accidental cell width {cell['w']} too far from expected {expected_width}"
@@ -550,7 +550,7 @@ class TestVisualRendering:
                     click_x = cell['x'] + cell['w'] / 2
                     click_y = cell['y'] + cell['h'] / 2 + 16  # Add lane offset (main lane is at y=16)
 
-                    print(f"Clicking on cell {i} '{cell['grapheme']}' at ({click_x:.1f}, {click_y:.1f})")
+                    print(f"Clicking on cell {i} '{cell['glyph']}' at ({click_x:.1f}, {click_y:.1f})")
 
                     # Clear selection and click
                     await page.keyboard.press("Escape")  # Clear any selection
@@ -689,7 +689,7 @@ class TestVisualRendering:
                     char_count = len(test_input)
                     expected_width = char_count * 12
 
-                    print(f"Complex '{test_input}': rendered as '{cell['grapheme']}'")
+                    print(f"Complex '{test_input}': rendered as '{cell['glyph']}'")
                     print(f"  Position: ({cell['x']:.1f}, {cell['y']:.1f})")
                     print(f"  Size: {cell['w']:.1f}×{cell['h']:.1f} (expected width: {expected_width})")
 

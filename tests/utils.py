@@ -80,7 +80,7 @@ class MusicNotationTestUtils:
                 for lane_index, lane in enumerate(line['lanes']):
                     for cell in lane:
                         cells.append({
-                            'grapheme': cell.get('grapheme', ''),
+                            'glyph': cell.get('glyph', ''),
                             'kind': cell.get('kind', 0),
                             'lane': lane_index,
                             'col': cell.get('col', 0),

@@ -30,7 +30,7 @@ The fundamental unit representing one visible grapheme cluster in the musical no
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct Cell {
     /// The visible grapheme cluster (e.g., "S", "C#", "2b", "-")
-    pub grapheme: String,
+    pub glyph: String,
 
     /// Type of musical element this cell represents
     pub kind: ElementKind,
@@ -708,7 +708,7 @@ pub enum ValidationError {
         stave: usize,
         lane: usize,
         column: usize,
-        grapheme: String,
+        glyph: String,
     },
 
     /// Document structure inconsistency
@@ -728,7 +728,7 @@ impl ValidationError {
             ValidationError::InvalidPitch { stave, lane, column, pitch } => {
                 format!("Invalid pitch notation '{}' at stave {}, lane {}, column {}", pitch, stave, lane, column)
             },
-            ValidationError::InvalidEncoding { stave, lane, column, grapheme } => {
+            ValidationError::InvalidEncoding { stave, lane, column, glyph } => {
                 format!("Invalid character encoding '{}' at stave {}, lane {}, column {}", grapheme, stave, lane, column)
             },
             ValidationError::StructureError { description } => {

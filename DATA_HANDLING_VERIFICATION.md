@@ -48,7 +48,7 @@ Location: `src/models/core.rs` (lines 16-61)
 ```rust
 pub struct Cell {
     // MUSICAL DATA FIELDS - ALL PERSISTED ✅
-    pub grapheme: String,                // ✅ PERSISTED
+    pub glyph: String,                // ✅ PERSISTED
     pub kind: ElementKind,               // ✅ PERSISTED
     pub lane: LaneKind,                  // ✅ PERSISTED
     pub col: usize,                      // ✅ PERSISTED

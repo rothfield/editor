@@ -1,7 +1,7 @@
 //! Core data structures for the Music Notation Editor POC
 //!
 //! This module defines the fundamental Cell-based architecture
-//! for representing musical notation with grapheme-safe indexing.
+//! for representing musical notation with glyph-safe indexing.
 
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;

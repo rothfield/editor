@@ -141,6 +141,20 @@ class MusicNotationEditor {
     try {
       if (this.wasmModule) {
         this.theDocument = typeof jsonString === 'string' ? JSON.parse(jsonString) : jsonString;
+
+        // Validate and fix cursor position after loading document
+        if (this.theDocument && this.theDocument.state && this.theDocument.state.cursor) {
+          const currentCursor = this.theDocument.state.cursor.column;
+          const validatedCursor = this.validateCursorPosition(currentCursor);
+          if (validatedCursor !== currentCursor) {
+            logger.warn(LOG_CATEGORIES.CURSOR, 'Document loaded with invalid cursor position, correcting', {
+              loaded: currentCursor,
+              corrected: validatedCursor
+            });
+            this.theDocument.state.cursor.column = validatedCursor;
+          }
+        }
+
         await this.render();
         this.updateDocumentDisplay();
 
@@ -542,14 +556,42 @@ class MusicNotationEditor {
   }
 
   /**
-     * Set cursor position
+     * Set cursor position with bounds checking
      */
   setCursorPosition(position) {
     if (this.theDocument && this.theDocument.state) {
-      this.theDocument.state.cursor.column = position;
+      // Validate and clamp cursor position to valid range
+      const validatedPosition = this.validateCursorPosition(position);
+      this.theDocument.state.cursor.column = validatedPosition;
       this.updateCursorPositionDisplay();
       this.updateCursorVisualPosition();
     }
+  }
+
+  /**
+     * Validate and clamp cursor position to valid range
+     */
+  validateCursorPosition(position) {
+    if (!this.theDocument || !this.theDocument.lines || this.theDocument.lines.length === 0) {
+      return 0;
+    }
+
+    const line = this.theDocument.lines[0];
+    const cells = line.cells || [];
+    const maxPosition = cells.length;
+
+    // Clamp position to valid range [0, maxPosition]
+    const clampedPosition = Math.max(0, Math.min(position, maxPosition));
+
+    if (clampedPosition !== position) {
+      logger.warn(LOG_CATEGORIES.CURSOR, 'Cursor position clamped', {
+        requested: position,
+        clamped: clampedPosition,
+        maxPosition
+      });
+    }
+
+    return clampedPosition;
   }
 
   /**

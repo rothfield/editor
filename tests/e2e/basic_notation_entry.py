@@ -70,7 +70,7 @@ class TestBasicNotationEntry:
                 lines: doc.lines ? doc.lines.length : 0,
                 content: doc.lines ? doc.lines.map(line =>
                     line.lanes.map(lane =>
-                        lane.map(cell => cell.grapheme || '').join('')
+                        lane.map(cell => cell.glyph || '').join('')
                     ).join(' | ')
                 ) : [],
                 metadata: metadata,

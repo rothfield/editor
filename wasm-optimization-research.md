@@ -87,7 +87,7 @@ use smallvec::SmallVec;
 #[derive(Clone, Copy, Debug)]
 pub struct Cell {
     // Use u32 for compact storage with packed flags
-    grapheme: u32,          // Index into string interner
+    glyph: u32,          // Index into string interner
     kind: u8,              // ElementKind enum
     lane: u8,              // LaneKind enum
     flags: u8,             // Packed boolean flags
@@ -96,9 +96,9 @@ pub struct Cell {
 
 impl Cell {
     #[inline]
-    pub const fn new(grapheme: u32, kind: ElementKind, lane: LaneKind) -> Self {
+    pub const fn new(glyph: u32, kind: ElementKind, lane: LaneKind) -> Self {
         Self {
-            grapheme,
+            glyph,
             kind: kind as u8,
             lane: lane as u8,
             flags: 0,
@@ -177,7 +177,7 @@ pub fn extract_beats_optimized(
 
     for (idx, cell) in cells.iter().enumerate() {
         // Skip excluded cells
-        if exclude_set.contains(&cell.grapheme) {
+        if exclude_set.contains(&cell.glyph) {
             if let Some(start) = current_start.take() {
                 beats.push(BeatSpan {
                     start,
@@ -201,7 +201,7 @@ pub fn extract_beats_optimized(
             if current_start.is_none() {
                 current_start = Some(idx);
             }
-            current_elements.push(cell.grapheme);
+            current_elements.push(cell.glyph);
         } else {
             // Non-temporal elements break beats
             if let Some(start) = current_start.take() {
@@ -467,7 +467,7 @@ impl BeatExtractor {
 
         while let Some(grapheme) = grapheme_iter.next() {
             let interned = self.interner.intern(grapheme.to_string());
-            let kind = self.classify_grapheme(grapheme);
+            let kind = self.classify_glyph(grapheme);
             let cell = Cell::new(interned, kind, LaneKind::Letter);
             cells.push(cell);
         }
@@ -475,9 +475,9 @@ impl BeatExtractor {
         cells
     }
 
-    fn classify_grapheme(&self, grapheme: &str) -> ElementKind {
+    fn classify_glyph(&self, grapheme: &str) -> ElementKind {
         // Fast classification using lookup table for common cases
-        match grapheme {
+        match glyph {
             "1" | "2" | "3" | "4" | "5" | "6" | "7" => ElementKind::PitchedElement,
             "c" | "d" | "e" | "f" | "g" | "a" | "b" |
             "C" | "D" | "E" | "F" | "G" | "A" | "B" => ElementKind::PitchedElement,
@@ -487,7 +487,7 @@ impl BeatExtractor {
             "'" => ElementKind::BreathMark,
             _ => {
                 // Check for accidentals and complex patterns
-                if self.has_accidental(grapheme) {
+                if self.has_accidental(glyph) {
                     ElementKind::PitchedElement
                 } else {
                     ElementKind::Text
@@ -496,7 +496,7 @@ impl BeatExtractor {
         }
     }
 
-    fn has_accidental(&self, grapheme: &str) -> bool {
+    fn has_accidental(&self, glyph: &str) -> bool {
         grapheme.contains('#') || grapheme.contains('b')
     }
 }

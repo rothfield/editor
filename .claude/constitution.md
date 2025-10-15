@@ -59,7 +59,7 @@ ecs-editor/
 │   │   │       ├── bhatkhande.rs # Bhatkhande system
 │   │   │       └── tabla.rs     # Tabla notation
 │   │   ├── parse/         # Text processing and analysis
-│   │   │   ├── cell.rs # Cell parsing and grapheme handling
+│   │   │   ├── cell.rs # Cell parsing and glyph handling
 │   │   │   ├── beats.rs    # Beat derivation algorithms
 │   │   │   ├── tokens.rs   # Token recognition and validation
 │   │   │   └── grammar.rs  # Musical grammar parsing
@@ -77,7 +77,7 @@ ecs-editor/
 │   │   │       ├── export.rs # LilyPond export functionality
 │   │   │       └── notation.rs # LilyPond notation mapping
 │   │   └── utils/         # Utility functions and helpers
-│   │       ├── grapheme.rs # Grapheme cluster handling
+│   │       ├── glyph.rs # Glyph cluster handling
 │   │       └── performance.rs # Performance optimization utilities
 │   ├── js/                # JavaScript host application
 │   │   ├── main.js        # Application entry point and initialization

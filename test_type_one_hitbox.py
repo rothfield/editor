@@ -84,7 +84,7 @@ class TestTypeOneHitboxValidation:
                             cells.push({
                                 laneIndex,
                                 cellIndex,
-                                grapheme: cell.grapheme || '',
+                                glyph: cell.grapheme || '',
                                 x: cell.x || 0,
                                 y: cell.y || 0,
                                 w: cell.w || 0,
@@ -146,7 +146,7 @@ class TestTypeOneHitboxValidation:
 
                 print(f"Cells BEFORE ensureHitboxesAreSet:")
                 for cell in cells:
-                    print(f"  {cell['grapheme']}: x={cell['x']}, w={cell['w']}, h={cell['h']}")
+                    print(f"  {cell['glyph']}: x={cell['x']}, w={cell['w']}, h={cell['h']}")
 
                 # Manually call ensureHitboxesAreSet to force the fix
                 function_result = await page.evaluate("""
@@ -170,7 +170,7 @@ class TestTypeOneHitboxValidation:
 
                 print(f"Cells AFTER ensureHitboxesAreSet:")
                 for cell in cells_after:
-                    print(f"  {cell['grapheme']}: x={cell['x']}, w={cell['w']}, h={cell['h']}, bbox={cell['bbox']}, hit={cell['hit']}")
+                    print(f"  {cell['glyph']}: x={cell['x']}, w={cell['w']}, h={cell['h']}, bbox={cell['bbox']}, hit={cell['hit']}")
 
                 # Use the updated cells for validation
                 cells = cells_after
@@ -213,7 +213,7 @@ class TestTypeOneHitboxValidation:
                 non_zero_hitboxes_found = False
                 for i, cell in enumerate(main_lane_cells):
                     print(f"\nCell {i}:")
-                    print(f"  Grapheme: '{cell['grapheme']}'")
+                    print(f"  Grapheme: '{cell['glyph']}'")
                     print(f"  Position: ({cell['x']}, {cell['y']})")
                     print(f"  Size: {cell['w']} × {cell['h']}")
                     print(f"  Bbox: {cell['bbox']}")
@@ -297,7 +297,7 @@ class TestTypeOneHitboxValidation:
                 # Validate each cell has progressively increasing X positions
                 previous_x = -1
                 for i, cell in enumerate(main_lane_cells[:3]):
-                    print(f"\nCell {i} ('{cell['grapheme']}'):")
+                    print(f"\nCell {i} ('{cell['glyph']}'):")
                     print(f"  Position: x={cell['x']}, y={cell['y']}")
                     print(f"  Size: w={cell['w']}, h={cell['h']}")
 

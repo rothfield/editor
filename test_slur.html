@@ -162,7 +162,7 @@
 
                 // Display cell details
                 cells.forEach((cell, index) => {
-                    log(`Cell ${index}: "${cell.grapheme}" (kind: ${cell.kind}, slurIndicator: ${cell.slurIndicator})`);
+                    log(`Cell ${index}: "${cell.glyph}" (kind: ${cell.kind}, slurIndicator: ${cell.slurIndicator})`);
                 });
 
                 // Apply slur to "r R" (cells 1-2)
@@ -170,8 +170,8 @@
                 log(`✅ Applied slur to "r R" (cells 1-2)`);
 
                 // Verify slur indicators
-                log(`Cell 1 "${cellsWithSlur[1].grapheme}" slurIndicator: ${cellsWithSlur[1].slurIndicator} (should be 1)`);
-                log(`Cell 2 "${cellsWithSlur[2].grapheme}" slurIndicator: ${cellsWithSlur[2].slurIndicator} (should be 2)`);
+                log(`Cell 1 "${cellsWithSlur[1].glyph}" slurIndicator: ${cellsWithSlur[1].slurIndicator} (should be 1)`);
+                log(`Cell 2 "${cellsWithSlur[2].glyph}" slurIndicator: ${cellsWithSlur[2].slurIndicator} (should be 2)`);
 
                 // Test character insertion with slur preservation
                 log("Testing character insertion with slur preservation...");

@@ -31,7 +31,7 @@ pub struct Line {
 }
 
 pub struct Cell {
-    pub grapheme: String,        // "S", "C#", "3b", "-", "'", "|"
+    pub glyph: String,        // "S", "C#", "3b", "-", "'", "|"
     pub lane: LaneKind,          // Upper, Letter, Lower
     pub kind: ElementKind,       // PitchedElement, UnpitchedElement, etc.
     pub col: usize,              // Physical column index (0-based)
@@ -349,17 +349,17 @@ pub struct Line {
       "label": "Alap",
       "lanes": [
         [
-          {"grapheme": ".", "lane": "Upper", "kind": "UpperAnnotation", "col": 0, "upper_dots": 1, "lower_dots": 0},
-          {"grapheme": ":", "lane": "Upper", "kind": "Accent", "col": 1, "upper_dots": 2, "lower_dots": 0}
+          {"glyph": ".", "lane": "Upper", "kind": "UpperAnnotation", "col": 0, "upper_dots": 1, "lower_dots": 0},
+          {"glyph": ":", "lane": "Upper", "kind": "Accent", "col": 1, "upper_dots": 2, "lower_dots": 0}
         ],
         [
-          {"grapheme": "S", "lane": "Letter", "kind": "PitchedElement", "col": 0, "pitch_code": "C", "notation": "Sargam"},
-          {"grapheme": "-", "lane": "Letter", "kind": "UnpitchedElement", "col": 1},
-          {"grapheme": "-", "lane": "Letter", "kind": "UnpitchedElement", "col": 2},
-          {"grapheme": "r", "lane": "Letter", "kind": "PitchedElement", "col": 3, "pitch_code": "Db", "notation": "Sargam"}
+          {"glyph": "S", "lane": "Letter", "kind": "PitchedElement", "col": 0, "pitch_code": "C", "notation": "Sargam"},
+          {"glyph": "-", "lane": "Letter", "kind": "UnpitchedElement", "col": 1},
+          {"glyph": "-", "lane": "Letter", "kind": "UnpitchedElement", "col": 2},
+          {"glyph": "r", "lane": "Letter", "kind": "PitchedElement", "col": 3, "pitch_code": "Db", "notation": "Sargam"}
         ],
         [
-          {"grapheme": ".", "lane": "Lower", "kind": "LowerAnnotation", "col": 3, "upper_dots": 0, "lower_dots": 1}
+          {"glyph": ".", "lane": "Lower", "kind": "LowerAnnotation", "col": 3, "upper_dots": 0, "lower_dots": 1}
         ]
       ]
     }
