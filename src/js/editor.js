@@ -68,9 +68,10 @@ class MusicNotationEditor {
         // Document API
         createNewDocument: wasmModule.createNewDocument,
         setTitle: wasmModule.setTitle,
-        setStaveLabel: wasmModule.setStaveLabel,
-        setStaveLyrics: wasmModule.setStaveLyrics,
-        setStaveTala: wasmModule.setStaveTala,
+        setComposer: wasmModule.setComposer,
+        setLineLabel: wasmModule.setLineLabel,
+        setLineLyrics: wasmModule.setLineLyrics,
+        setLineTala: wasmModule.setLineTala,
         // MusicXML export API
         exportMusicXML: wasmModule.exportMusicXML,
         convertMusicXMLToLilyPond: wasmModule.convertMusicXMLToLilyPond
@@ -78,7 +79,7 @@ class MusicNotationEditor {
 
       // Initialize OSMD renderer for staff notation
       this.osmdRenderer = new OSMDRenderer('staff-notation-container');
-      console.log('OSMD renderer initialized');
+      console.log('OSMD renderer initialized (with audio playback support)');
 
       const loadTime = performance.now() - startTime;
       console.log(`WASM module loaded in ${loadTime.toFixed(2)}ms`);
@@ -143,9 +144,12 @@ class MusicNotationEditor {
         await this.render();
         this.updateDocumentDisplay();
 
-        // Update UI title display
-        if (this.ui && this.theDocument && this.theDocument.title) {
-          this.ui.updateDocumentTitle(this.theDocument.title);
+        // Update UI displays
+        if (this.ui && this.theDocument) {
+          if (this.theDocument.title) {
+            this.ui.updateDocumentTitle(this.theDocument.title);
+          }
+          this.ui.updateCurrentPitchSystemDisplay();
         }
       }
     } catch (error) {
@@ -1777,7 +1781,7 @@ class MusicNotationEditor {
         const preservedState = this.theDocument.state;
 
         // Call WASM setStaveTala function
-        const updatedDocument = await this.wasmModule.setStaveTala(this.theDocument, 0, talaString);
+        const updatedDocument = await this.wasmModule.setLineTala(this.theDocument, 0, talaString);
 
         // Restore the state field after WASM call
         updatedDocument.state = preservedState;

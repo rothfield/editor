@@ -599,6 +599,9 @@ pub fn set_title(
     document.title = Some(title.to_string());
     wasm_info!("  Document title set to: '{}'", title);
 
+    // Compute glyphs before serialization
+    document.compute_glyphs();
+
     // Serialize back to JavaScript
     let result = serde_wasm_bindgen::to_value(&document)
         .map_err(|e| {
@@ -610,7 +613,47 @@ pub fn set_title(
     Ok(result)
 }
 
-/// Set lyrics for a specific line (stave)
+/// Set the document composer
+///
+/// # Parameters
+/// - `document_js`: JavaScript Document object
+/// - `composer`: The new composer name for the document
+///
+/// # Returns
+/// Updated JavaScript Document object with the composer set
+#[wasm_bindgen(js_name = setComposer)]
+pub fn set_composer(
+    document_js: JsValue,
+    composer: &str,
+) -> Result<JsValue, JsValue> {
+    wasm_info!("setComposer called: composer='{}'", composer);
+
+    // Deserialize document from JavaScript
+    let mut document: Document = serde_wasm_bindgen::from_value(document_js)
+        .map_err(|e| {
+            wasm_error!("Deserialization error: {}", e);
+            JsValue::from_str(&format!("Deserialization error: {}", e))
+        })?;
+
+    // Set the composer
+    document.composer = Some(composer.to_string());
+    wasm_info!("  Document composer set to: '{}'", composer);
+
+    // Compute glyphs before serialization
+    document.compute_glyphs();
+
+    // Serialize back to JavaScript
+    let result = serde_wasm_bindgen::to_value(&document)
+        .map_err(|e| {
+            wasm_error!("Serialization error: {}", e);
+            JsValue::from_str(&format!("Serialization error: {}", e))
+        })?;
+
+    wasm_info!("setComposer completed successfully");
+    Ok(result)
+}
+
+/// Set lyrics for a specific line
 ///
 /// # Parameters
 /// - `document_js`: JavaScript Document object
@@ -619,13 +662,13 @@ pub fn set_title(
 ///
 /// # Returns
 /// Updated JavaScript Document object with the lyrics set
-#[wasm_bindgen(js_name = setStaveLyrics)]
-pub fn set_stave_lyrics(
+#[wasm_bindgen(js_name = setLineLyrics)]
+pub fn set_line_lyrics(
     document_js: JsValue,
     line_index: usize,
     lyrics: &str,
 ) -> Result<JsValue, JsValue> {
-    wasm_info!("setStaveLyrics called: line_index={}, lyrics='{}'", line_index, lyrics);
+    wasm_info!("setLineLyrics called: line_index={}, lyrics='{}'", line_index, lyrics);
 
     // Deserialize document from JavaScript
     let mut document: Document = serde_wasm_bindgen::from_value(document_js)
@@ -644,6 +687,9 @@ pub fn set_stave_lyrics(
     document.lines[line_index].lyrics = lyrics.to_string();
     wasm_info!("  Line {} lyrics set to: '{}'", line_index, lyrics);
 
+    // Compute glyphs before serialization
+    document.compute_glyphs();
+
     // Serialize back to JavaScript
     let result = serde_wasm_bindgen::to_value(&document)
         .map_err(|e| {
@@ -651,11 +697,11 @@ pub fn set_stave_lyrics(
             JsValue::from_str(&format!("Serialization error: {}", e))
         })?;
 
-    wasm_info!("setStaveLyrics completed successfully");
+    wasm_info!("setLineLyrics completed successfully");
     Ok(result)
 }
 
-/// Set tala for a specific line (stave)
+/// Set tala for a specific line
 ///
 /// # Parameters
 /// - `document_js`: JavaScript Document object
@@ -664,13 +710,13 @@ pub fn set_stave_lyrics(
 ///
 /// # Returns
 /// Updated JavaScript Document object with the tala set
-#[wasm_bindgen(js_name = setStaveTala)]
-pub fn set_stave_tala(
+#[wasm_bindgen(js_name = setLineTala)]
+pub fn set_line_tala(
     document_js: JsValue,
     line_index: usize,
     tala: &str,
 ) -> Result<JsValue, JsValue> {
-    wasm_info!("setStaveTala called: line_index={}, tala='{}'", line_index, tala);
+    wasm_info!("setLineTala called: line_index={}, tala='{}'", line_index, tala);
 
     // Deserialize document from JavaScript
     let mut document: Document = serde_wasm_bindgen::from_value(document_js)
@@ -695,6 +741,9 @@ pub fn set_stave_tala(
     document.lines[line_index].tala = tala.to_string();
     wasm_info!("  Line {} tala set to: '{}'", line_index, tala);
 
+    // Compute glyphs before serialization
+    document.compute_glyphs();
+
     // Serialize back to JavaScript
     let result = serde_wasm_bindgen::to_value(&document)
         .map_err(|e| {
@@ -702,11 +751,11 @@ pub fn set_stave_tala(
             JsValue::from_str(&format!("Serialization error: {}", e))
         })?;
 
-    wasm_info!("setStaveTala completed successfully");
+    wasm_info!("setLineTala completed successfully");
     Ok(result)
 }
 
-/// Set label for a specific line (stave)
+/// Set label for a specific line
 ///
 /// # Parameters
 /// - `document_js`: JavaScript Document object
@@ -715,13 +764,13 @@ pub fn set_stave_tala(
 ///
 /// # Returns
 /// Updated JavaScript Document object with the label set
-#[wasm_bindgen(js_name = setStaveLabel)]
-pub fn set_stave_label(
+#[wasm_bindgen(js_name = setLineLabel)]
+pub fn set_line_label(
     document_js: JsValue,
     line_index: usize,
     label: &str,
 ) -> Result<JsValue, JsValue> {
-    wasm_info!("setStaveLabel called: line_index={}, label='{}'", line_index, label);
+    wasm_info!("setLineLabel called: line_index={}, label='{}'", line_index, label);
 
     // Deserialize document from JavaScript
     let mut document: Document = serde_wasm_bindgen::from_value(document_js)
@@ -740,6 +789,9 @@ pub fn set_stave_label(
     document.lines[line_index].label = label.to_string();
     wasm_info!("  Line {} label set to: '{}'", line_index, label);
 
+    // Compute glyphs before serialization
+    document.compute_glyphs();
+
     // Serialize back to JavaScript
     let result = serde_wasm_bindgen::to_value(&document)
         .map_err(|e| {
@@ -747,7 +799,7 @@ pub fn set_stave_label(
             JsValue::from_str(&format!("Serialization error: {}", e))
         })?;
 
-    wasm_info!("setStaveLabel completed successfully");
+    wasm_info!("setLineLabel completed successfully");
     Ok(result)
 }
 
@@ -773,6 +825,9 @@ pub fn create_new_document() -> Result<JsValue, JsValue> {
     document.lines.push(line);
 
     wasm_info!("  Created document with {} line(s)", document.lines.len());
+
+    // Compute glyphs before serialization
+    document.compute_glyphs();
 
     // Serialize to JavaScript
     let result = serde_wasm_bindgen::to_value(&document)

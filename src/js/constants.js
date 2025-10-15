@@ -6,6 +6,18 @@
  */
 
 // ============================================================================
+// Typography Constants
+// ============================================================================
+
+/**
+ * Base typography values
+ * All layout dimensions are derived from these foundational typography measurements
+ */
+export const BASE_FONT_SIZE = 16;       // Base font size in pixels (body text)
+export const BASE_LINE_HEIGHT = 16;     // Base line height in pixels
+export const SMALL_FONT_SIZE = 12;      // Small font size for octave dots and tala
+
+// ============================================================================
 // Layout Constants
 // ============================================================================
 
@@ -22,14 +34,24 @@ export const DEFAULT_CHAR_WIDTH_PX = 12;
 
 /**
  * Cell vertical positioning and spacing
+ * These values are typography-based: derived from BASE_FONT_SIZE
  */
-export const CELL_Y_OFFSET = 32; // Distance from top of line container to cell baseline
-export const CELL_HEIGHT = 16;   // Default cell height in pixels
+export const CELL_Y_OFFSET = 32;        // Distance from top of line container to cell baseline (2 * BASE_FONT_SIZE)
+export const CELL_HEIGHT = BASE_LINE_HEIGHT;      // Cell height matches base line height
+export const CELL_VERTICAL_PADDING = 32; // Space above cells in line container (2 * BASE_FONT_SIZE)
+export const CELL_BOTTOM_PADDING = 32;   // Space below cells in line container (2 * BASE_FONT_SIZE)
 
 /**
  * Line container dimensions
  */
 export const LINE_CONTAINER_HEIGHT = 80; // Total height: 32px above + 16px cell + 32px below
+
+/**
+ * Metadata and annotation positioning
+ */
+export const TALA_VERTICAL_OFFSET = 12;  // Distance above cells for tala characters
+export const LYRICS_TOP_OFFSET = 52;     // Position below cells (32 + 16 + 4)
+export const LYRICS_VERTICAL_GAP = 4;    // Gap between cell bottom and lyrics top
 
 // ============================================================================
 // Beat Loop Visualization

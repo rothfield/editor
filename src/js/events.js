@@ -6,8 +6,9 @@
  */
 
 class EventManager {
-  constructor(editor) {
+  constructor(editor, fileOperations = null) {
     this.editor = editor;
+    this.fileOperations = fileOperations;
     this.eventListeners = new Map();
     this.focusState = {
       hasFocus: false,
@@ -96,6 +97,14 @@ class EventManager {
       Escape: () => this.handleEscapeKey(),
       F1: () => this.showHelp(),
 
+      // File operations shortcuts
+      'Alt+n': () => this.handleNewFile(),
+      'Alt+N': () => this.handleNewFile(),
+      'Alt+o': () => this.handleOpenFile(),
+      'Alt+O': () => this.handleOpenFile(),
+      'Ctrl+o': () => this.handleOpenFile(),
+      'Ctrl+O': () => this.handleOpenFile(),
+
       // Debug shortcuts
       F12: () => this.toggleDebugMode(),
       'Ctrl+Shift+I': () => this.toggleDebugMode()
@@ -107,7 +116,11 @@ class EventManager {
       'F1', 'F5', 'F7', 'F12',
       // Alt commands for musical notation
       'Alt+s', 'Alt+S', 'Alt+u', 'Alt+U', 'Alt+m', 'Alt+M',
-      'Alt+l', 'Alt+L', 'Alt+t', 'Alt+T'
+      'Alt+l', 'Alt+L', 'Alt+t', 'Alt+T',
+      // Alt commands for file operations
+      'Alt+n', 'Alt+N', 'Alt+o', 'Alt+O',
+      // Ctrl commands for file operations
+      'Ctrl+o', 'Ctrl+O'
     ];
   }
 
@@ -308,6 +321,32 @@ class EventManager {
   }
 
   /**
+     * Handle Alt+N (New File)
+     */
+  handleNewFile() {
+    console.log('Alt+N: New file shortcut triggered');
+    // Use the same path as File menu -> New
+    if (this.editor && this.editor.ui && this.editor.ui.executeMenuAction) {
+      this.editor.ui.executeMenuAction('new-document');
+    } else {
+      console.warn('UI menu action handler not available');
+    }
+  }
+
+  /**
+     * Handle Alt+O / Ctrl+O (Open File)
+     */
+  handleOpenFile() {
+    console.log('Ctrl+O: Open file shortcut triggered');
+    // Use the same path as File menu -> Open
+    if (this.editor && this.editor.ui && this.editor.ui.executeMenuAction) {
+      this.editor.ui.executeMenuAction('open-document');
+    } else {
+      console.warn('UI menu action handler not available');
+    }
+  }
+
+  /**
      * Handle menu item clicks
      */
   handleMenuItemClick(target) {
@@ -418,12 +457,18 @@ class EventManager {
     alert(`
 Music Notation Editor POC - Help
 
-Keyboard Shortcuts:
+File Operations:
+• Alt+N: New file
+• Alt+O or Ctrl+O: Open file
+
+Musical Notation:
 • Number System: 1-7 (with #/b for accidentals)
 • Western System: cdefgab/CDEFGAB (with #/b for accidentals)
 • Alt+S: Apply slur to selection
 • Alt+U/M/L: Apply octave +1/0/-1 to selection
 • Alt+T: Enter tala notation
+
+Navigation:
 • Arrow Keys: Navigate (when implemented)
 • Shift+Arrow: Select (when implemented)
 • Tab/Shift+Tab: Navigate between focusable elements

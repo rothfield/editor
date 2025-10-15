@@ -1,14 +1,16 @@
 // MusicXML builder state machine
 
 use crate::models::pitch::Pitch;
+use crate::models::PitchCode;
 use super::duration::duration_to_note_type;
-use super::pitch::pitch_to_step_alter;
+use super::pitch::{pitch_to_step_alter, pitch_code_to_step_alter};
 
 /// State machine for building MusicXML documents
 pub struct MusicXmlBuilder {
     buffer: String,
     measure_number: usize,
-    pub last_note: Option<(String, i8, i8)>, // (step, alter, octave)
+    pub last_note: Option<(PitchCode, i8)>, // (pitch_code, octave) - for ties
+    pub last_note_legacy: Option<(String, i8, i8)>, // (step, alter, xml_octave) - for backward compatibility
     measure_started: bool,
     attributes_written: bool,
     title: Option<String>,
@@ -21,6 +23,7 @@ impl MusicXmlBuilder {
             buffer: String::new(),
             measure_number: 1,
             last_note: None,
+            last_note_legacy: None,
             measure_started: false,
             attributes_written: false,
             title: None,
@@ -143,8 +146,81 @@ impl MusicXmlBuilder {
 
         self.buffer.push_str("</note>\n");
 
+        // Update last_note_legacy for backward compatibility
+        self.last_note_legacy = Some((step.to_string(), alter, xml_octave));
+        Ok(())
+    }
+
+    /// Write note using PitchCode (system-agnostic, works for all pitch systems)
+    /// This is the PREFERRED method for MusicXML export
+    pub fn write_note_with_beam_from_pitch_code(&mut self, pitch_code: &PitchCode, octave: i8, duration_divs: usize, musical_duration: f64, beam: Option<&str>, time_modification: Option<(usize, usize)>, tuplet_bracket: Option<&str>, tie: Option<&str>) -> Result<(), String> {
+        let (step, alter) = pitch_code_to_step_alter(pitch_code);
+        let xml_octave = octave + 4; // music-text octave 0 = MIDI octave 4 (middle C)
+
+        self.buffer.push_str("<note>\n");
+        self.buffer.push_str("  <pitch>\n");
+        self.buffer.push_str(&format!("    <step>{}</step>\n", step));
+        if alter != 0 {
+            self.buffer.push_str(&format!("    <alter>{}</alter>\n", alter));
+        }
+        self.buffer.push_str(&format!("    <octave>{}</octave>\n", xml_octave));
+        self.buffer.push_str("  </pitch>\n");
+        self.buffer.push_str(&format!("  <duration>{}</duration>\n", duration_divs));
+
+        // Add tie element if specified (must come before type)
+        if let Some(tie_type) = tie {
+            self.buffer.push_str(&format!("  <tie type=\"{}\"/>\n", tie_type));
+        }
+
+        // Add time-modification if specified (for ALL tuplet notes)
+        if let Some((actual_notes, normal_notes)) = time_modification {
+            self.buffer.push_str("  <time-modification>\n");
+            self.buffer.push_str(&format!("    <actual-notes>{}</actual-notes>\n", actual_notes));
+            self.buffer.push_str(&format!("    <normal-notes>{}</normal-notes>\n", normal_notes));
+            self.buffer.push_str("  </time-modification>\n");
+        }
+
+        // For tuplets, calculate note type based on actual duration within tuplet
+        let (note_type, dots) = if let Some((actual_notes, normal_notes)) = time_modification {
+            let display_duration = musical_duration * (actual_notes as f64 / normal_notes as f64);
+            duration_to_note_type(display_duration)
+        } else {
+            duration_to_note_type(musical_duration)
+        };
+        self.buffer.push_str(&format!("  <type>{}</type>\n", note_type));
+        for _ in 0..dots {
+            self.buffer.push_str("  <dot/>\n");
+        }
+
+        // Add beam if specified
+        if let Some(beam_type) = beam {
+            self.buffer.push_str(&format!("  <beam number=\"1\">{}</beam>\n", beam_type));
+        }
+
+        // Add notations if tuplet bracket or tie
+        let has_tuplet_bracket = tuplet_bracket.is_some();
+        let has_tie = tie.is_some();
+
+        if has_tuplet_bracket || has_tie {
+            self.buffer.push_str("  <notations>\n");
+
+            // Add tuplet bracket notation if specified (only start/stop)
+            if let Some(bracket_type) = tuplet_bracket {
+                self.buffer.push_str(&format!("    <tuplet type=\"{}\" bracket=\"yes\" show-number=\"actual\" number=\"1\"/>\n", bracket_type));
+            }
+
+            // Add tied element if specified (visual representation)
+            if let Some(tie_type) = tie {
+                self.buffer.push_str(&format!("    <tied type=\"{}\"/>\n", tie_type));
+            }
+
+            self.buffer.push_str("  </notations>\n");
+        }
+
+        self.buffer.push_str("</note>\n");
+
         // Update last_note for next division/tie
-        self.last_note = Some((step.to_string(), alter, xml_octave));
+        self.last_note = Some((*pitch_code, octave));
         Ok(())
     }
 

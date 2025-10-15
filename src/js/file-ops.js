@@ -84,11 +84,14 @@ class FileOperations {
      * Handle File -> New operation
      */
   async newFile() {
+    console.log('🆕 File -> New called');
     try {
       // Check for unsaved changes
       if (this.hasUnsavedChanges) {
+        console.log('⚠️ Unsaved changes detected, prompting user');
         const shouldSave = await this.promptUnsavedChanges();
         if (shouldSave === 'cancel') {
+          console.log('❌ User cancelled due to unsaved changes');
           return;
         }
         if (shouldSave === 'save') {
@@ -96,8 +99,19 @@ class FileOperations {
         }
       }
 
-      // Create new document
-      await this.createNewDocument();
+      // Prompt for pitch system
+      console.log('🎹 Prompting for pitch system');
+      const pitchSystem = await this.promptPitchSystem();
+      console.log('📝 User selected pitch system:', pitchSystem);
+
+      if (!pitchSystem) {
+        console.log('❌ User cancelled pitch system selection');
+        return; // User cancelled
+      }
+
+      // Create new document with selected pitch system
+      console.log('📄 Creating new document with pitch system:', pitchSystem);
+      await this.createNewDocument(pitchSystem);
 
       // Reset file state
       this.currentFile = null;
@@ -109,7 +123,9 @@ class FileOperations {
 
       // Focus editor
       this.requestFocus();
+      console.log('✅ New file created successfully');
     } catch (error) {
+      console.error('❌ Error creating new file:', error);
       this.showErrorMessage('Failed to create new file', error);
     }
   }
@@ -204,28 +220,57 @@ class FileOperations {
 
   /**
      * Create a new document with default settings
+     * @param {string} pitchSystem - The pitch system to use (optional, defaults to 'number')
      */
-  async createNewDocument() {
+  async createNewDocument(pitchSystem = null) {
     if (!this.editor) {
       throw new Error('Editor not available');
     }
 
-    // Clear current document
-    this.editor.clearDocument();
+    console.log('📄 Creating new document with pitch system:', pitchSystem);
 
-    // Apply default settings
-    await this.editor.updateDocumentMetadata({
-      title: this.defaultSettings.title,
-      tonic: this.defaultSettings.tonic,
-      pitchSystem: this.defaultSettings.pitchSystem,
-      tala: this.defaultSettings.tala
-    });
+    // Convert pitch system name to number FIRST
+    const pitchSystemMap = {
+      'number': 1,
+      'western': 2,
+      'sargam': 3,
+      'bhatkhande': 4,
+      'tabla': 5
+    };
+    const pitchSystemValue = pitchSystemMap[pitchSystem] || 1;
 
-    // Add initial empty line
-    await this.editor.addLine();
+    console.log('🔢 Pitch system value:', pitchSystemValue, `(${pitchSystem})`);
 
-    // Update display
-    this.editor.requestRender();
+    // Create document using WASM (same as editor.createNewDocument but without rendering)
+    if (!this.editor.isInitialized || !this.editor.wasmModule) {
+      console.error('Cannot create document: WASM not initialized');
+      return;
+    }
+
+    // Create document using WASM
+    const document = this.editor.wasmModule.createNewDocument();
+
+    // Set timestamps (WASM can't access system time)
+    const now = new Date().toISOString();
+    document.created_at = now;
+    document.modified_at = now;
+
+    // SET PITCH SYSTEM BEFORE adding to editor (this is the key fix!)
+    document.pitch_system = pitchSystemValue;
+
+    console.log('✅ Set pitch_system to', pitchSystemValue, 'on new document');
+
+    // Add runtime state (not persisted by WASM)
+    document.state = {
+      cursor: { stave: 0, lane: 1, column: 0 },
+      selection: null,
+      has_focus: false
+    };
+
+    // Load document (this will render with correct pitch system)
+    await this.editor.loadDocument(document);
+
+    console.log('🔍 After loadDocument, pitch_system is:', this.editor.theDocument?.pitch_system);
   }
 
   /**
@@ -287,7 +332,7 @@ class FileOperations {
       }
     }
 
-    this.editor.requestRender();
+    await this.editor.render();
   }
 
   /**
@@ -300,7 +345,7 @@ class FileOperations {
 
     // Parse text as notation
     await this.editor.parseText(text);
-    this.editor.requestRender();
+    await this.editor.render();
   }
 
   /**
@@ -484,6 +529,42 @@ class FileOperations {
         resolve(format.toLowerCase());
       } else {
         resolve(null);
+      }
+    });
+  }
+
+  /**
+     * Prompt user for pitch system selection
+     */
+  async promptPitchSystem() {
+    console.log('🎹 promptPitchSystem() called');
+    return new Promise((resolve) => {
+      console.log('🔔 Showing pitch system prompt dialog');
+      const pitchSystem = prompt(
+        'Select pitch system (number/western/sargam/bhatkhande/tabla):',
+        'number'
+      );
+
+      console.log('💬 User input from prompt:', pitchSystem);
+
+      if (!pitchSystem) {
+        console.log('🚫 User cancelled or entered empty string');
+        resolve(null); // User cancelled
+        return;
+      }
+
+      const validSystems = ['number', 'western', 'sargam', 'bhatkhande', 'tabla'];
+      const normalized = pitchSystem.toLowerCase().trim();
+
+      console.log('🔄 Normalized input:', normalized);
+
+      if (validSystems.includes(normalized)) {
+        console.log('✅ Valid pitch system selected:', normalized);
+        resolve(normalized);
+      } else {
+        console.warn('⚠️ Invalid pitch system entered:', pitchSystem, '- defaulting to number');
+        alert(`Invalid pitch system: "${pitchSystem}". Using default: number`);
+        resolve('number');
       }
     });
   }

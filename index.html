@@ -331,8 +331,36 @@
                     <!-- Staff Notation Tab -->
                     <div id="tab-content-staff-notation" data-tab-content="staff-notation" class="tab-content flex-1 flex flex-col p-4">
                         <h3 class="text-sm font-semibold mb-2 text-gray-700">Staff Notation (OSMD/VexFlow)</h3>
-                        <div id="staff-notation-container" class="flex-1 bg-white p-4 border-2 border-gray-300 rounded overflow-auto">
+                        <div id="staff-notation-container" class="flex-1 bg-white p-4 border-2 border-gray-300 rounded overflow-auto mb-2">
                             <div class="text-sm text-gray-500">Start typing music to see staff notation...</div>
+                        </div>
+
+                        <!-- MIDI Playback Controls -->
+                        <div class="bg-gray-50 border border-gray-300 rounded p-2">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center space-x-2">
+                                    <button id="midi-play" class="px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-xs" title="Play">
+                                        ▶
+                                    </button>
+                                    <button id="midi-pause" class="px-2 py-1 bg-gray-500 text-white rounded hover:bg-gray-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-xs" title="Pause" disabled>
+                                        ⏸
+                                    </button>
+                                    <button id="midi-stop" class="px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-xs" title="Stop" disabled>
+                                        ⏹
+                                    </button>
+                                    <span class="text-xs text-gray-600 ml-2">
+                                        <input id="midi-tempo" type="number" min="40" max="208" value="120" class="w-12 px-1 py-0.5 border border-gray-300 rounded text-xs"> BPM
+                                    </span>
+                                    <span class="text-xs text-gray-600 ml-2 flex items-center space-x-1">
+                                        <span>🔊</span>
+                                        <input id="midi-volume" type="range" min="0" max="100" value="100" class="w-16" title="Volume">
+                                        <span id="midi-volume-label" class="w-8">100%</span>
+                                    </span>
+                                </div>
+                                <div class="flex items-center space-x-2 text-xs text-gray-600">
+                                    <span id="midi-status">Ready</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
 

@@ -231,12 +231,11 @@ class DocumentManager {
   }
 
   /**
-   * Set stave label
+   * Set document composer
    *
-   * @param {number} staveIndex - Stave index
-   * @param {string} label - New label
+   * @param {string} composer - New composer name
    */
-  setStaveLabel(staveIndex, label) {
+  setComposer(composer) {
     if (!this.theDocument) {
       return;
     }
@@ -245,9 +244,41 @@ class DocumentManager {
       // Preserve the state field before WASM call (it's skipped during serialization)
       const preservedState = this.theDocument.state;
 
-      const updatedDoc = this.wasmModule.setStaveLabel(
+      const updatedDoc = this.wasmModule.setComposer(this.theDocument, composer);
+
+      // Restore the state field after WASM call
+      updatedDoc.state = preservedState;
+
+      this.theDocument = updatedDoc;
+      this.markDirty();
+
+      logger.info(LOG_CATEGORIES.EDITOR, `Document composer set to: ${composer}`);
+    } catch (error) {
+      logger.error(LOG_CATEGORIES.EDITOR, 'Failed to set composer', {
+        error: error.message
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Set line label
+   *
+   * @param {number} lineIndex - Line index
+   * @param {string} label - New label
+   */
+  setLineLabel(lineIndex, label) {
+    if (!this.theDocument) {
+      return;
+    }
+
+    try {
+      // Preserve the state field before WASM call (it's skipped during serialization)
+      const preservedState = this.theDocument.state;
+
+      const updatedDoc = this.wasmModule.setLineLabel(
         this.theDocument,
-        staveIndex,
+        lineIndex,
         label
       );
 
@@ -257,9 +288,9 @@ class DocumentManager {
       this.theDocument = updatedDoc;
       this.markDirty();
 
-      logger.info(LOG_CATEGORIES.EDITOR, `Stave ${staveIndex} label set to: ${label}`);
+      logger.info(LOG_CATEGORIES.EDITOR, `Line ${lineIndex} label set to: ${label}`);
     } catch (error) {
-      logger.error(LOG_CATEGORIES.EDITOR, 'Failed to set stave label', {
+      logger.error(LOG_CATEGORIES.EDITOR, 'Failed to set line label', {
         error: error.message
       });
       throw error;
@@ -267,12 +298,12 @@ class DocumentManager {
   }
 
   /**
-   * Set stave lyrics
+   * Set line lyrics
    *
-   * @param {number} staveIndex - Stave index
+   * @param {number} lineIndex - Line index
    * @param {string} lyrics - New lyrics
    */
-  setStaveLyrics(staveIndex, lyrics) {
+  setLineLyrics(lineIndex, lyrics) {
     if (!this.theDocument) {
       return;
     }
@@ -281,9 +312,9 @@ class DocumentManager {
       // Preserve the state field before WASM call (it's skipped during serialization)
       const preservedState = this.theDocument.state;
 
-      const updatedDoc = this.wasmModule.setStaveLyrics(
+      const updatedDoc = this.wasmModule.setLineLyrics(
         this.theDocument,
-        staveIndex,
+        lineIndex,
         lyrics
       );
 
@@ -293,9 +324,9 @@ class DocumentManager {
       this.theDocument = updatedDoc;
       this.markDirty();
 
-      logger.info(LOG_CATEGORIES.EDITOR, `Stave ${staveIndex} lyrics set`);
+      logger.info(LOG_CATEGORIES.EDITOR, `Line ${lineIndex} lyrics set`);
     } catch (error) {
-      logger.error(LOG_CATEGORIES.EDITOR, 'Failed to set stave lyrics', {
+      logger.error(LOG_CATEGORIES.EDITOR, 'Failed to set line lyrics', {
         error: error.message
       });
       throw error;
@@ -303,12 +334,12 @@ class DocumentManager {
   }
 
   /**
-   * Set stave tala
+   * Set line tala
    *
-   * @param {number} staveIndex - Stave index
+   * @param {number} lineIndex - Line index
    * @param {string} tala - New tala notation
    */
-  setStaveTala(staveIndex, tala) {
+  setLineTala(lineIndex, tala) {
     if (!this.theDocument) {
       return;
     }
@@ -317,9 +348,9 @@ class DocumentManager {
       // Preserve the state field before WASM call (it's skipped during serialization)
       const preservedState = this.theDocument.state;
 
-      const updatedDoc = this.wasmModule.setStaveTala(
+      const updatedDoc = this.wasmModule.setLineTala(
         this.theDocument,
-        staveIndex,
+        lineIndex,
         tala
       );
 
@@ -329,9 +360,9 @@ class DocumentManager {
       this.theDocument = updatedDoc;
       this.markDirty();
 
-      logger.info(LOG_CATEGORIES.EDITOR, `Stave ${staveIndex} tala set to: ${tala}`);
+      logger.info(LOG_CATEGORIES.EDITOR, `Line ${lineIndex} tala set to: ${tala}`);
     } catch (error) {
-      logger.error(LOG_CATEGORIES.EDITOR, 'Failed to set stave tala', {
+      logger.error(LOG_CATEGORIES.EDITOR, 'Failed to set line tala', {
         error: error.message
       });
       throw error;

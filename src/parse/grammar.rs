@@ -5,7 +5,7 @@
 //! 2. parse(before, char) - Look back combination (accidentals, text)
 //! 3. parse(char, after) - Look forward combination (barlines)
 
-use crate::models::{Cell, ElementKind, PitchSystem};
+use crate::models::{Cell, ElementKind, PitchCode, PitchSystem};
 use crate::parse::pitch_system::PitchSystemDispatcher;
 
 /// Get a pitch system dispatcher (cheap to create)
@@ -139,9 +139,13 @@ pub fn parse_with_after(c: char, next: &Cell, pitch_system: PitchSystem, column:
 fn parse_note(s: &str, pitch_system: PitchSystem, column: usize) -> Option<Cell> {
     let dispatcher = get_dispatcher();
     if dispatcher.lookup(s, pitch_system) {
+        // Try to parse pitch code from string
+        let pitch_code = PitchCode::from_string(s, pitch_system);
+
+        // Create cell with glyph (will be recomputed later, but set it now for display)
         let mut cell = Cell::new(s.to_string(), ElementKind::PitchedElement, column);
         cell.pitch_system = Some(pitch_system);
-        cell.pitch_code = Some(s.to_string());
+        cell.pitch_code = pitch_code;
         cell.set_head(true);
         Some(cell)
     } else {

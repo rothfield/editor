@@ -6,6 +6,20 @@
  */
 
 import CellRenderer from './cell-renderer.js';
+import { renderLyrics, distributeLyrics } from './lyrics-renderer.js';
+import {
+  BASE_FONT_SIZE,
+  BASE_LINE_HEIGHT,
+  SMALL_FONT_SIZE,
+  LEFT_MARGIN_PX,
+  CELL_Y_OFFSET,
+  CELL_HEIGHT,
+  CELL_VERTICAL_PADDING,
+  CELL_BOTTOM_PADDING,
+  LINE_CONTAINER_HEIGHT,
+  TALA_VERTICAL_OFFSET,
+  LYRICS_TOP_OFFSET
+} from './constants.js';
 
 class DOMRenderer {
   constructor(canvasElement, editor) {
@@ -18,6 +32,10 @@ class DOMRenderer {
     this.renderCache = new Map();
     this.cellRenderer = new CellRenderer();
 
+    // Syllable width cache: Map<"text|fontSignature", width>
+    this.syllableWidthCache = new Map();
+    this.fontSignature = null;
+
     // Performance metrics
     this.renderStats = {
       cellsRendered: 0,
@@ -28,6 +46,7 @@ class DOMRenderer {
     };
 
     this.setupBeatLoopStyles(); // Sets up beat loops, octave dots, and slur CSS
+    this.updateFontSignature();
   }
 
   /**
@@ -95,7 +114,7 @@ class DOMRenderer {
         left: 50%;
         top: -10px;
         transform: translateX(-50%);
-        font-size: 12px;
+        font-size: ${SMALL_FONT_SIZE}px;
         line-height: 1;
         color: #000;
         pointer-events: none;
@@ -109,7 +128,7 @@ class DOMRenderer {
         left: 50%;
         top: -10px;
         transform: translateX(-50%);
-        font-size: 12px;
+        font-size: ${SMALL_FONT_SIZE}px;
         line-height: 1;
         color: #000;
         letter-spacing: 2px;
@@ -124,7 +143,7 @@ class DOMRenderer {
         left: 50%;
         bottom: -10px;
         transform: translateX(-50%);
-        font-size: 12px;
+        font-size: ${SMALL_FONT_SIZE}px;
         line-height: 1;
         color: #000;
         pointer-events: none;
@@ -138,7 +157,7 @@ class DOMRenderer {
         left: 50%;
         bottom: -10px;
         transform: translateX(-50%);
-        font-size: 12px;
+        font-size: ${SMALL_FONT_SIZE}px;
         line-height: 1;
         color: #000;
         letter-spacing: 2px;
@@ -149,6 +168,63 @@ class DOMRenderer {
     document.head.appendChild(style);
   }
 
+  /**
+   * Update font signature for cache invalidation
+   * Called when fonts change or on initialization
+   */
+  updateFontSignature() {
+    const bodyStyle = getComputedStyle(document.body);
+    this.fontSignature = `${bodyStyle.fontFamily}|${bodyStyle.fontSize}|${bodyStyle.fontWeight}`;
+  }
+
+  /**
+   * Clear syllable width cache
+   * Call this when fonts change or window resizes
+   */
+  clearSyllableCache() {
+    this.syllableWidthCache.clear();
+    console.log('Syllable width cache cleared');
+  }
+
+  /**
+   * Measure syllable width with font-aware caching
+   * Cache key: "text|fontSignature"
+   *
+   * @param {string} syllable - The syllable text to measure
+   * @param {boolean} useCache - Whether to use cached measurements (default true)
+   * @returns {number} Width in pixels
+   */
+  measureSyllableWidth(syllable, useCache = true) {
+    if (!syllable) return 0;
+
+    const cacheKey = `${syllable}|${this.fontSignature}`;
+
+    // Check cache first
+    if (useCache && this.syllableWidthCache.has(cacheKey)) {
+      return this.syllableWidthCache.get(cacheKey);
+    }
+
+    // Create temporary invisible element to measure
+    const tempElement = document.createElement('span');
+    tempElement.className = 'lyric-syllable text-sm';
+    tempElement.textContent = syllable;
+    tempElement.style.position = 'absolute';
+    tempElement.style.left = '-9999px';
+    tempElement.style.fontStyle = 'italic';
+    tempElement.style.visibility = 'hidden';
+    tempElement.style.whiteSpace = 'nowrap';
+
+    document.body.appendChild(tempElement);
+    const width = tempElement.getBoundingClientRect().width;
+    document.body.removeChild(tempElement);
+
+    // Cache the result
+    if (useCache) {
+      this.syllableWidthCache.set(cacheKey, width);
+    }
+
+    return width;
+  }
 
   /**
      * Setup canvas overlay for octave rendering
@@ -259,27 +335,58 @@ class DOMRenderer {
      */
   renderDocumentTitle(doc) {
     const title = doc.title;
+    const composer = doc.composer;
 
-    if (!title || title === 'Untitled Document') {
-      return; // No title to render or default title
+    // Skip if neither title nor composer
+    if ((!title || title === 'Untitled Document') && !composer) {
+      return;
     }
 
-    const titleElement = document.createElement('div');
-    titleElement.className = 'document-title';
-    titleElement.textContent = title;
-
-    // Style the title: centered, larger, bold, with blank line after
-    titleElement.style.cssText = `
-      text-align: center;
-      font-size: 20px;
-      font-weight: bold;
+    // Create container for title and composer
+    const headerContainer = document.createElement('div');
+    headerContainer.className = 'document-header';
+    headerContainer.style.cssText = `
+      position: relative;
+      width: 100%;
       margin-top: 16px;
       margin-bottom: 32px;
-      width: 100%;
-      display: block;
+      min-height: 24px;
     `;
 
-    this.canvas.appendChild(titleElement);
+    // Render title (centered)
+    if (title && title !== 'Untitled Document') {
+      const titleElement = document.createElement('div');
+      titleElement.className = 'document-title';
+      titleElement.textContent = title;
+      titleElement.style.cssText = `
+        text-align: center;
+        font-size: 20px;
+        font-weight: bold;
+        width: 100%;
+        display: block;
+      `;
+      headerContainer.appendChild(titleElement);
+    }
+
+    // Render composer (flush right)
+    if (composer) {
+      const composerElement = document.createElement('div');
+      composerElement.className = 'document-composer';
+      composerElement.textContent = composer;
+      composerElement.style.cssText = `
+        text-align: right;
+        font-size: 14px;
+        font-style: italic;
+        color: #6b7280;
+        width: 100%;
+        display: block;
+        margin-top: 4px;
+        padding-right: 20px;
+      `;
+      headerContainer.appendChild(composerElement);
+    }
+
+    this.canvas.appendChild(headerContainer);
   }
 
   /**
@@ -306,7 +413,8 @@ class DOMRenderer {
     }
 
     // Render lyrics (direct field on line)
-    if (line.lyrics) {
+    const hasLyrics = line.lyrics && line.lyrics.trim() !== '';
+    if (hasLyrics) {
       this.renderLyrics(line.lyrics, lineElement);
     }
 
@@ -317,6 +425,13 @@ class DOMRenderer {
     } else {
       console.log(`  ⚠️ No tala to render (line.tala = ${JSON.stringify(line.tala)})`);
     }
+
+    // Detect if the line has beat loops (multi-cell beats)
+    const hasBeatLoops = beats && beats.length > 0 &&
+                         beats.some(beat => (beat.end - beat.start) >= 1);
+
+    // Adjust line height based on content
+    this.adjustLineHeight(lineElement, hasLyrics, hasBeatLoops);
   }
 
   /**
@@ -340,10 +455,13 @@ class DOMRenderer {
   }
 
   /**
-     * Manual layout rendering - simplified (no lanes)
+     * Manual layout rendering with lyrics-aware spacing (two-pass)
+     *
+     * Pass 1: Measure syllable widths and calculate effective cell widths
+     * Pass 2: Position and render cells using effective widths
      */
   renderCellsManually(cells, lineIndex, container, beats) {
-    console.log('🔧 Using manual layout rendering');
+    console.log('🔧 Using manual layout rendering with lyrics-aware spacing');
 
     // Build map of cell index to beat position
     const cellBeatInfo = new Map();
@@ -363,44 +481,76 @@ class DOMRenderer {
       });
     }
 
-    // Position cells sequentially from left margin
-    // Start with a left margin of 5 character widths (60px)
-    // TODO: Extract this as a shared constant (LEFT_MARGIN_PX) used across renderer.js and editor.js
-    let cumulativeX = 60;
+    // ========== PASS 1: Distribute lyrics and measure widths ==========
 
-    // Render and position cells sequentially, tracking cumulative position
+    // Get lyrics for this line
+    const line = this.theDocument?.lines[lineIndex];
+    const lyrics = line?.lyrics;
+
+    // Distribute syllables to cells using FSM
+    const syllableAssignments = lyrics ? distributeLyrics(lyrics, cells) : [];
+
+    // Create a map of cellIndex → syllable for easy lookup
+    const cellSyllableMap = new Map();
+    syllableAssignments.forEach(assignment => {
+      cellSyllableMap.set(assignment.cellIndex, assignment.syllable);
+    });
+
+    // Measure syllable widths and calculate effective cell widths
+    const effectiveWidths = [];
+    const MIN_SYLLABLE_PADDING = 4; // Minimum padding between syllables (px)
+
     cells.forEach((charCell, cellIndex) => {
+      // First, render the cell temporarily to measure its width
+      const tempElement = this.createCellElement(charCell, lineIndex, cellIndex, 0, cellBeatInfo.get(cellIndex));
+      tempElement.style.visibility = 'hidden'; // Hide but still render
+      container.appendChild(tempElement);
+
+      const cellWidth = tempElement.getBoundingClientRect().width;
+
+      // Measure syllable width if this cell has one
+      const syllable = cellSyllableMap.get(cellIndex);
+      const syllableWidth = syllable ? this.measureSyllableWidth(syllable) : 0;
+
+      // Effective width = max(cellWidth, syllableWidth + padding)
+      const effectiveWidth = Math.max(cellWidth, syllableWidth + MIN_SYLLABLE_PADDING);
+      effectiveWidths.push(effectiveWidth);
+
+      // Store cell width (actual character width, not allocated width)
+      charCell.w = cellWidth;
+
+      // Remove temporary element
+      container.removeChild(tempElement);
+
+      console.log(`📏 Cell ${cellIndex} (${charCell.glyph}): cellW=${cellWidth.toFixed(1)}px, syllable="${syllable || ''}", syllableW=${syllableWidth.toFixed(1)}px, effectiveW=${effectiveWidth.toFixed(1)}px`);
+    });
+
+    // ========== PASS 2: Position and render cells using effective widths ==========
+
+    let cumulativeX = LEFT_MARGIN_PX;
+
+    cells.forEach((charCell, cellIndex) => {
+      // Position the cell
       charCell.x = cumulativeX;
-      charCell.y = 32;
-      charCell.h = 16;
-      charCell.w = 0; // Will be measured after render
+      charCell.y = CELL_VERTICAL_PADDING;
+      charCell.h = CELL_HEIGHT;
+      // charCell.w already set in Pass 1
 
       const beatPosition = cellBeatInfo.get(cellIndex);
-      this.renderCell(charCell, lineIndex, cellIndex, container, cumulativeX, beatPosition);
+      const effectiveWidth = effectiveWidths[cellIndex];
+      this.renderCellWithWidth(charCell, lineIndex, cellIndex, container, cumulativeX, beatPosition, effectiveWidth);
 
-      // Immediately measure and store the width
-      const key = `${lineIndex}-${cellIndex}`;
-      const element = this.charCellElements.get(key);
+      // Update bounding box and hit testing area (based on ACTUAL cell width, not allocated)
+      charCell.bbox = [charCell.x, charCell.y, charCell.x + charCell.w, charCell.y + charCell.h];
+      charCell.hit = [charCell.x - 2.0, charCell.y - 2.0, charCell.x + charCell.w + 2.0, charCell.y + charCell.h + 2.0];
 
-      if (element) {
-        // Measure actual rendered width using getBoundingClientRect
-        const rect = element.getBoundingClientRect();
-        const actualWidth = rect.width;
+      // Store the right edge position for cursor positioning (character edge, not allocated edge)
+      charCell.rightEdge = charCell.x + charCell.w;
 
-        charCell.w = actualWidth;
+      // Advance cumulative position by EFFECTIVE width (includes syllable space)
+      cumulativeX += effectiveWidth;
 
-        // Update bounding box and hit testing area
-        charCell.bbox = [charCell.x, charCell.y, charCell.x + charCell.w, charCell.y + charCell.h];
-        charCell.hit = [charCell.x - 2.0, charCell.y - 2.0, charCell.x + charCell.w + 2.0, charCell.y + charCell.h + 2.0];
-
-        // Advance to next position (this is where the next cell OR cursor will be)
-        cumulativeX += actualWidth;
-
-        // Store the right edge position for cursor positioning
-        charCell.rightEdge = charCell.x + charCell.w;
-
-        console.log(`📐 Cell ${cellIndex} (${charCell.glyph}): x=${charCell.x}, w=${charCell.w}, rightEdge=${charCell.rightEdge}`);
-      }
+      console.log(`📐 Cell ${cellIndex} (${charCell.glyph}): x=${charCell.x}, w=${charCell.w}, rightEdge=${charCell.rightEdge}, nextX=${cumulativeX}`);
     });
 
     // Store the final cumulative position in the line for cursor use
@@ -428,9 +578,21 @@ class DOMRenderer {
   }
 
   /**
+     * Render a single Cell with explicit width for beat loop spanning
+     */
+  renderCellWithWidth(charCell, lineIndex, cellIndex, container, xPosition, beatPosition, effectiveWidth) {
+    const element = this.createCellElement(charCell, lineIndex, cellIndex, xPosition, beatPosition, effectiveWidth);
+    container.appendChild(element);
+
+    // Cache the element for future updates
+    const key = `${lineIndex}-${cellIndex}`;
+    this.charCellElements.set(key, element);
+  }
+
+  /**
      * Create DOM element for Cell - simplified (no lanes)
      */
-  createCellElement(charCell, lineIndex, cellIndex, xPosition, beatPosition) {
+  createCellElement(charCell, lineIndex, cellIndex, xPosition, beatPosition, effectiveWidth = null) {
     const element = document.createElement('span');
     element.className = this.cellRenderer.getCellClasses(charCell);
     // Use non-breaking space for space characters so they have actual width
@@ -444,10 +606,13 @@ class DOMRenderer {
     // Set positioning using inline styles
     element.style.position = 'absolute';
     element.style.left = `${charCell.x || xPosition || 0}px`;
-    element.style.top = `${charCell.y || 32}px`;
-    // Never set width explicitly - let cells render at natural width
-    // This ensures beat loops span exactly the text content width
-    element.style.height = `${charCell.h || 16}px`;
+    element.style.top = `${charCell.y || CELL_VERTICAL_PADDING}px`;
+    // Set width to effectiveWidth if provided (for beat loops to span correctly)
+    // Otherwise let cells render at natural width
+    if (effectiveWidth !== null) {
+      element.style.width = `${effectiveWidth}px`;
+    }
+    element.style.height = `${charCell.h || CELL_HEIGHT}px`;
 
     // Add data attributes for debugging and CSS rendering
     element.dataset.lineIndex = lineIndex;
@@ -523,13 +688,48 @@ class DOMRenderer {
       lineElement.className = 'notation-line';
       lineElement.dataset.line = lineIndex;
       lineElement.style.position = 'relative';
-      lineElement.style.height = '80px'; // 32px above + 16px cell + 32px below
+      lineElement.style.height = `${LINE_CONTAINER_HEIGHT}px`;
       lineElement.style.width = '100%';
 
       this.canvas.appendChild(lineElement);
     }
 
     return lineElement;
+  }
+
+  /**
+   * Adjust line height based on content (lyrics, beat loops)
+   *
+   * Calculations:
+   * - Base: 32px (top) + 16px (cell) + 32px (bottom) = 80px
+   * - With lyrics + beats: 65px (lyrics Y) + 14px (text) + 8px (padding) = 87px
+   * - With lyrics, no beats: 57px (lyrics Y) + 14px (text) + 8px (padding) = 79px
+   *
+   * @param {HTMLElement} lineElement - The line container element
+   * @param {boolean} hasLyrics - Whether the line has lyrics
+   * @param {boolean} hasBeatLoops - Whether the line has beat loops
+   */
+  adjustLineHeight(lineElement, hasLyrics, hasBeatLoops) {
+    const LYRICS_FONT_SIZE = 14; // text-sm
+    const LYRICS_BOTTOM_PADDING = 8; // Space below lyrics for descenders
+
+    let lineHeight;
+
+    if (hasLyrics) {
+      // Lyrics Y positions (from lyrics-renderer.js)
+      const LYRICS_Y_WITH_BEATS = 65;
+      const LYRICS_Y_WITHOUT_BEATS = 57;
+
+      const lyricsY = hasBeatLoops ? LYRICS_Y_WITH_BEATS : LYRICS_Y_WITHOUT_BEATS;
+      lineHeight = lyricsY + LYRICS_FONT_SIZE + LYRICS_BOTTOM_PADDING;
+
+      console.log(`📏 Adjusting line height for lyrics: ${lineHeight}px (hasBeats=${hasBeatLoops})`);
+    } else {
+      // No lyrics - use default height
+      lineHeight = LINE_CONTAINER_HEIGHT;
+    }
+
+    lineElement.style.height = `${lineHeight}px`;
   }
 
   /**
@@ -554,31 +754,42 @@ class DOMRenderer {
      */
   renderLineLabel(label, lineElement) {
     const labelElement = document.createElement('span');
-    labelElement.className = 'line-label text-xs text-ui-disabled-text';
+    labelElement.className = 'line-label text-ui-disabled-text';
     labelElement.textContent = label;
     labelElement.style.position = 'absolute';
     labelElement.style.left = '0';
-    labelElement.style.top = '32px'; // Same vertical position as line cells
-    labelElement.style.height = '16px'; // Same height as cells
-    labelElement.style.lineHeight = '16px'; // Match cell line height for baseline alignment
+    labelElement.style.top = `${CELL_VERTICAL_PADDING}px`; // Same vertical position as line cells
+    labelElement.style.height = `${CELL_HEIGHT}px`; // Same height as cells
+    labelElement.style.lineHeight = `${BASE_LINE_HEIGHT}px`; // Match cell line height for baseline alignment
+    labelElement.style.fontSize = `${BASE_FONT_SIZE}px`; // Match cell font size
+    labelElement.style.display = 'inline-flex'; // Use flexbox for precise alignment
+    labelElement.style.alignItems = 'baseline'; // Align baseline with cells
 
     lineElement.appendChild(labelElement);
   }
 
   /**
-     * Render lyrics
+     * Render lyrics using Lilypond-style syllable distribution
      */
   renderLyrics(lyrics, lineElement) {
-    const lyricsElement = document.createElement('div');
-    lyricsElement.className = 'line-lyrics text-sm';
-    lyricsElement.textContent = lyrics;
-    lyricsElement.style.position = 'absolute';
-    lyricsElement.style.left = '60px'; // Align with cells (LEFT_MARGIN_PX)
-    lyricsElement.style.top = '52px'; // Below cells (32px cell top + 16px cell height + 4px gap)
-    lyricsElement.style.fontStyle = 'italic';
-    lyricsElement.style.color = '#6b7280'; // gray-500
+    // Get the line index from the element
+    const lineIndex = parseInt(lineElement.dataset.line);
+    const line = this.theDocument?.lines[lineIndex];
 
-    lineElement.appendChild(lyricsElement);
+    if (!line || !line.cells) {
+      console.warn('Cannot render lyrics: line or cells not found');
+      return;
+    }
+
+    // Detect if the line has beat loops
+    // Beat loops are present if line.beats array exists and has multi-cell beats
+    const hasBeatLoops = line.beats && line.beats.length > 0 &&
+                         line.beats.some(beat => (beat.end - beat.start) >= 1);
+
+    console.log(`🎵 renderLyrics: hasBeatLoops=${hasBeatLoops}, beats count=${line.beats?.length || 0}`);
+
+    // Use the new lyrics renderer with FSM-based distribution
+    renderLyrics(lyrics, line.cells, lineElement, hasBeatLoops);
   }
 
   /**
@@ -618,7 +829,7 @@ class DOMRenderer {
       talaElement.textContent = talaChar;
       talaElement.style.position = 'absolute';
       talaElement.style.left = `${barlineCell.x}px`;
-      talaElement.style.top = '12px'; // Above the cell line (cell top is at 32px)
+      talaElement.style.top = `${TALA_VERTICAL_OFFSET}px`; // Above the cell line
       talaElement.style.transform = 'translateX(-50%)'; // Center on barline
       talaElement.style.color = '#4b5563'; // gray-600
       talaElement.style.fontWeight = '600';
@@ -767,8 +978,8 @@ class DOMRenderer {
     console.log(`Beat loop ${beatIndex}: width=${beatWidth}, shouldDisplay=${shouldDisplay}, draw_single_cell=${beat.visual.draw_single_cell}`);
 
     // Position below the cells (simplified - no lanes)
-    const cellY = 32; // Cells start at 32px (2 font heights from top)
-    const cellHeight = 16; // Cell height
+    const cellY = CELL_VERTICAL_PADDING; // Cells start at this Y offset
+    const cellHeight = CELL_HEIGHT; // Cell height
     const loopOffsetBelow = 2; // Offset below the cell bottom (2px gap)
 
     const leftPos = beat.visual.start_x || (beat.start * 12);
@@ -875,7 +1086,7 @@ class DOMRenderer {
     const width = endX - startX;
 
     // Position above the cells (10px above cell top)
-    const cellY = 32; // Cells start at 32px
+    const cellY = CELL_VERTICAL_PADDING; // Cells start at this Y offset
     const slurY = cellY - 10; // 10px above cell
 
     // Style the slur arc - same as beat loops but upside down
@@ -951,7 +1162,7 @@ class DOMRenderer {
     // Calculate position relative to cell
     const centerX = (charCell.x || (cellIndex * 12)) + (charCell.w || 12) / 2;
     const baseY = (charCell.y || 0);
-    const cellHeight = charCell.h || 16;
+    const cellHeight = charCell.h || CELL_HEIGHT;
 
     console.log(`🎨 renderOctaveDot: cell=${charCell.glyph}, centerX=${centerX}, baseY=${baseY}, octave=${charCell.octave}`);
 

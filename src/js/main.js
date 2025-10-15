@@ -45,9 +45,9 @@ class MusicNotationApp {
 
       // Initialize core components
       this.editor = new MusicNotationEditor(canvas);
-      this.eventManager = new EventManager(this.editor);
       this.fileOperations = new FileOperations(this.editor);
-      this.ui = new UI(this.editor);
+      this.eventManager = new EventManager(this.editor, this.fileOperations);
+      this.ui = new UI(this.editor, this.fileOperations);
       this.resizeHandle = new ResizeHandle();
 
       // Pass UI reference to editor so it can update UI elements
@@ -55,6 +55,9 @@ class MusicNotationApp {
 
       // Initialize the editor
       await this.editor.initialize();
+
+      // Setup MIDI controls
+      this.setupMidiControls();
 
       // Initialize other components
       this.eventManager.initialize();
@@ -154,6 +157,112 @@ class MusicNotationApp {
     if (canvas) {
       canvas.focus();
     }
+  }
+
+  /**
+     * Setup MIDI playback controls
+     */
+  setupMidiControls() {
+    const playButton = document.getElementById('midi-play');
+    const pauseButton = document.getElementById('midi-pause');
+    const stopButton = document.getElementById('midi-stop');
+    const tempoInput = document.getElementById('midi-tempo');
+    const statusSpan = document.getElementById('midi-status');
+
+    if (!playButton || !pauseButton || !stopButton || !tempoInput || !statusSpan) {
+      console.warn('MIDI controls not found in DOM');
+      return;
+    }
+
+    // Play button
+    playButton.addEventListener('click', async () => {
+      try {
+        console.log('🎵 Play button clicked');
+
+        if (!this.editor || !this.editor.osmdRenderer) {
+          statusSpan.textContent = 'Error: Editor not ready';
+          console.error('OSMD renderer not initialized');
+          return;
+        }
+
+        console.log('🎵 Initializing audio player...');
+        // Initialize audio player on first play (requires user gesture for AudioContext)
+        await this.editor.osmdRenderer.initAudioPlayer();
+
+        const audioPlayer = this.editor.osmdRenderer.audioPlayer;
+        if (!audioPlayer) {
+          statusSpan.textContent = 'Error: Audio player not ready';
+          console.error('Audio player failed to initialize');
+          return;
+        }
+
+        console.log('🎵 Audio player ready, calling play()...');
+        console.log('🎵 Audio player state before play:', audioPlayer.state);
+        console.log('🎵 Audio player ready flag:', audioPlayer.ready);
+
+        statusSpan.textContent = 'Playing...';
+        await audioPlayer.play();
+
+        console.log('🎵 Play() completed. State:', audioPlayer.state);
+
+        playButton.disabled = true;
+        pauseButton.disabled = false;
+        stopButton.disabled = false;
+      } catch (error) {
+        console.error('❌ Failed to start playback:', error);
+        console.error('Error stack:', error.stack);
+        statusSpan.textContent = 'Error: ' + error.message;
+      }
+    });
+
+    // Pause button
+    pauseButton.addEventListener('click', () => {
+      if (this.editor && this.editor.osmdRenderer && this.editor.osmdRenderer.audioPlayer) {
+        this.editor.osmdRenderer.audioPlayer.pause();
+        statusSpan.textContent = 'Paused';
+
+        playButton.disabled = false;
+        pauseButton.disabled = true;
+      }
+    });
+
+    // Stop button
+    stopButton.addEventListener('click', () => {
+      if (this.editor && this.editor.osmdRenderer && this.editor.osmdRenderer.audioPlayer) {
+        this.editor.osmdRenderer.audioPlayer.stop();
+        statusSpan.textContent = 'Ready';
+
+        playButton.disabled = false;
+        pauseButton.disabled = true;
+        stopButton.disabled = true;
+      }
+    });
+
+    // Tempo input
+    tempoInput.addEventListener('change', (e) => {
+      const tempo = parseInt(e.target.value, 10);
+      if (this.editor && this.editor.osmdRenderer && this.editor.osmdRenderer.audioPlayer && !isNaN(tempo)) {
+        this.editor.osmdRenderer.audioPlayer.setBpm(tempo);
+        statusSpan.textContent = `Tempo set to ${tempo} BPM`;
+      }
+    });
+
+    // Volume control
+    const volumeSlider = document.getElementById('midi-volume');
+    const volumeLabel = document.getElementById('midi-volume-label');
+    if (volumeSlider && volumeLabel) {
+      volumeSlider.addEventListener('input', (e) => {
+        const volume = parseInt(e.target.value, 10) / 100; // Convert to 0-1 range
+        volumeLabel.textContent = `${e.target.value}%`;
+
+        if (this.editor && this.editor.osmdRenderer && this.editor.osmdRenderer.audioPlayer) {
+          this.editor.osmdRenderer.audioPlayer.playbackSettings.masterVolume = volume;
+          console.log('🔊 Volume set to:', volume);
+        }
+      });
+    }
+
+    console.log('✅ MIDI controls initialized');
   }
 
   /**

@@ -1,23 +1,24 @@
 <!--
 Sync Impact Report:
-Version change: 1.1.0 → 1.2.0 (new principle added)
+Version change: 1.2.0 → 1.3.0 (technology stack update)
 Modified principles: None
 Added sections:
-  - Principle VII: No Fallbacks - Implementation Excellence
+  - Updated Core Technologies to include OSMD (OpenSheetMusicDisplay) 1.7.6
+  - Updated Development Environment to reflect current Rust/JavaScript versions
 Removed sections: None
 Templates requiring updates:
-✅ plan-template.md (constitution check gates already include fallback validation)
-✅ spec-template.md (requirements already emphasize correct implementation)
-✅ tasks-template.md (task quality standards already present)
-⚠ Conflict Resolution section needs update to include new principle in priority order
+✅ plan-template.md (constitution check gates already generic)
+✅ spec-template.md (requirements template agnostic to tech stack)
+✅ tasks-template.md (task structure independent of technology choices)
+✅ All templates verified for consistency
 Follow-up TODOs: None
 -->
 
 # Music Notation Editor POC Constitution
 
-**Version**: 1.2.0
+**Version**: 1.3.0
 **Ratified**: 2025-10-11
-**Last Amended**: 2025-10-12
+**Last Amended**: 2025-10-14
 **Purpose**: Define development environment, standards, principles, and governance for the Music Notation Editor POC project
 
 ## Core Principles
@@ -65,18 +66,20 @@ All implementations MUST be done correctly the first time. No JavaScript fallbac
 - **Package Manager**: Pacman (with yay for AUR packages when needed)
 
 ### Core Technologies
-- **Language**: Rust (WASM module) + JavaScript (host application)
-- **JavaScript**: ES6+ (ES2022+) with TypeScript/JSDoc for type safety
+- **Language**: Rust 1.75+ (WASM module) + JavaScript ES2022+ (host application)
+- **Runtime**: Node.js 18+
+- **WASM Bindings**: wasm-bindgen 0.2.92
+- **Music Rendering**: OSMD (OpenSheetMusicDisplay) 1.7.6
 - **Styling**: UnoCSS (utility-first CSS framework)
 - **Testing**: Playwright (Python bindings) in headless mode
-- **Build System**: Makefile
-- **WASM**: Performance-critical operations compiled to WebAssembly
-- **Type Safety**: wasm-bindgen for JavaScript-Rust interop
+- **Build System**: Makefile + wasm-pack
+- **Type Safety**: TypeScript/JSDoc for JavaScript, wasm-bindgen for Rust-JavaScript interop
 
 ### Development Tools
-- **Editor**: [User's preferred editor]
-- **Browser**: [User's preferred browser for testing]
+- **Editor**: User's preferred code editor
+- **Browser**: Modern browser with WASM support for testing
 - **Terminal**: Fish shell with Arch Linux environment
+- **Version Control**: Git
 
 ## Code Organization Standards
 
@@ -86,6 +89,7 @@ music-notation-editor/
 ├── src/
 │   ├── rust/              # WASM module source (performance-critical operations)
 │   │   ├── lib.rs         # Main WASM library entry point
+│   │   ├── api.rs         # JavaScript-facing WASM API
 │   │   ├── models/        # Domain-driven data model organization
 │   │   │   ├── core.rs    # Core Cell data structures
 │   │   │   ├── elements.rs # Musical element definitions
@@ -99,37 +103,36 @@ music-notation-editor/
 │   │   │       ├── bhatkhande.rs # Bhatkhande system
 │   │   │       └── tabla.rs     # Tabla notation
 │   │   ├── parse/         # Text processing and analysis
-│   │   │   ├── cell.rs    # Cell parsing and grapheme handling
-│   │   │   ├── beats.rs   # Beat derivation algorithms
+│   │   │   ├── grammar.rs # Musical grammar parsing (recursive descent)
 │   │   │   ├── tokens.rs  # Token recognition and validation
-│   │   │   └── grammar.rs # Musical grammar parsing
+│   │   │   └── pitch_system.rs # Pitch system parsing
 │   │   ├── renderers/     # Visual rendering and output formats
-│   │   │   ├── layout.rs  # Position calculation and layout algorithms
 │   │   │   ├── curves.rs  # Slur and arc rendering (Bézier curves)
-│   │   │   ├── annotations.rs # Upper/lower annotation positioning
 │   │   │   ├── svg/       # SVG rendering output
 │   │   │   │   ├── elements.rs # SVG element rendering
 │   │   │   │   └── document.rs # SVG document generation
-│   │   │   ├── musicxml/  # MusicXML export (stub for POC)
+│   │   │   ├── musicxml/  # MusicXML export
 │   │   │   │   ├── export.rs # MusicXML export functionality
 │   │   │   │   └── attributes.rs # MusicXML attribute handling
-│   │   │   └── lilypond/  # LilyPond export (stub for POC)
+│   │   │   └── lilypond/  # LilyPond export
 │   │   │       ├── export.rs # LilyPond export functionality
-│   │   │       └── notation.rs # LilyPond notation mapping
+│   │   │       ├── notation.rs # LilyPond notation mapping
+│   │   │       └── mod.rs # LilyPond module
+│   │   ├── musicxml_import.rs # MusicXML import functionality
 │   │   └── utils/         # Utility functions and helpers
-│   │       ├── grapheme.rs # Grapheme cluster handling
 │   │       └── performance.rs # Performance optimization utilities
 │   ├── js/                # JavaScript host application
 │   │   ├── main.js        # Application entry point and initialization
 │   │   ├── editor.js      # Core editor functionality and Cell management
 │   │   ├── ui.js          # UI components and user interactions
 │   │   ├── renderer.js    # DOM-based rendering system
+│   │   ├── osmd-renderer.js # OSMD integration for music notation rendering
 │   │   ├── events.js      # Event handling and keyboard management
 │   │   ├── file-ops.js    # File operations and document persistence
-│   │   └── utils.js       # JavaScript utilities and helper functions
-│   ├── css/               # Separate CSS files (UnoCSS)
-│   │   ├── main.css       # Main styles
-│   │   └── components.css # Component-specific styles
+│   │   ├── document-manager.js # Document state management
+│   │   ├── lyrics-renderer.js # Lyrics rendering
+│   │   ├── midi-player.js # MIDI playback functionality
+│   │   └── constants.js   # Application constants
 │   └── tests/             # Playwright Python tests
 │       ├── e2e/           # End-to-end tests
 │       ├── fixtures/      # Test data
@@ -137,12 +140,15 @@ music-notation-editor/
 ├── tests/                 # Additional test directories
 │   ├── e2e/               # End-to-end tests
 │   └── fixtures/          # Test data
+├── docs/                  # Documentation
 ├── Makefile               # Build orchestration
 ├── package.json           # Node.js dependencies and scripts
-├── tsconfig.json          # TypeScript configuration
-├── eslint.config.js       # ESLint configuration
-├── wasm-pack.toml         # Rust WASM packaging
+├── Cargo.toml             # Rust dependencies
+├── index.html             # Main HTML entry point
 └── dist/                  # Built artifacts
+    ├── pkg/               # WASM build output (CANONICAL LOCATION)
+    ├── main.js            # Bundled JavaScript
+    └── main.css           # Generated CSS
 ```
 
 ### File Separation Requirements
@@ -152,7 +158,7 @@ music-notation-editor/
 - WASM module as separate `.wasm` file
 - TypeScript definitions for WASM module integration
 - Proper module bundling with tree-shaking
-- **No mod.rs files** - Direct module imports preferred for clarity
+- **Direct module imports preferred** - avoid unnecessary mod.rs files
 
 ### JavaScript Standards
 - **Modern Syntax**: ES6+ (ES2022+) with const/let, arrow functions, template literals
@@ -233,6 +239,7 @@ music-notation-editor/
 ### Pitch Systems
 - **Default**: Number system (1-7)
 - **Alternative**: Western system (cdefgab/CDEFGAB)
+- **Additional**: Sargam, Bhatkhande, Tabla
 - **Support**: Accidentals (##, bb) and octave numbers
 
 ### Data Model
@@ -246,7 +253,10 @@ music-notation-editor/
 
 ### Build Process
 - **Makefile** orchestrates all build steps
-- **Rust compilation** to WASM for performance-critical code (make build-wasm)
+- **Rust compilation** to WASM for performance-critical code (make build-wasm or wasm-pack build)
+  - **CANONICAL WASM OUTPUT**: `dist/pkg/` (referenced by index.html)
+  - Build command: `wasm-pack build . --target web --out-dir dist/pkg`
+  - DO NOT use `static/pkg` or any other output directory
 - **JavaScript bundling** for host application (make build-js)
 - **UnoCSS processing** for styles (make build-css)
 - **Testing** automated via Makefile targets (make test)
@@ -260,15 +270,17 @@ music-notation-editor/
 ## Technical Constraints
 
 ### POC Scope Limitations
-- Single line of musical notation only
-- Fixed 16-point typeface
-- Keyboard-only interaction model (no mouse selection)
+- Single line of musical notation only (with multi-line support via OSMD for rendering)
+- Fixed 16-point typeface (Cell-based editor)
+- Keyboard-only interaction model for Cell editor (mouse support via OSMD)
 - JSON file format for document persistence
+- MusicXML export/import via OSMD
 
 ### Browser Compatibility
 - Modern browsers with WASM support
 - Intl.Segmenter API for grapheme clustering
 - ES6+ JavaScript features
+- WebAudio API for MIDI playback
 
 ## Success Metrics
 

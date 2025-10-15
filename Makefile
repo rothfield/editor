@@ -67,6 +67,7 @@ build-dev:
 
 build-prod:
 	@echo "Building production version..."
+	# Canonical WASM output location: dist/pkg (referenced in index.html)
 	wasm-pack build . --target web --out-dir dist/pkg --release
 	$(MAKE) build-js
 	$(MAKE) build-css
@@ -74,6 +75,7 @@ build-prod:
 
 build-wasm:
 	@echo "Building WASM module..."
+	# Canonical WASM output location: dist/pkg (referenced in index.html)
 	wasm-pack build . --target web --out-dir dist/pkg
 	@echo "WASM build complete!"
 

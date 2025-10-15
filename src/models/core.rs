@@ -9,7 +9,7 @@ use std::collections::VecDeque;
 // Re-export from other modules
 pub use super::elements::{ElementKind, PitchSystem, SlurIndicator};
 pub use super::notation::{BeatSpan, SlurSpan, Position, Selection, Range, CursorPosition};
-use super::serde_helpers::serialize_option_as_null;
+pub use super::pitch_code::PitchCode;
 
 /// The fundamental unit representing one visible glyph in musical notation
 #[repr(C)]
@@ -28,7 +28,7 @@ pub struct Cell {
     pub flags: u8,
 
     /// Canonical pitch representation (for pitched elements only)
-    pub pitch_code: Option<String>,
+    pub pitch_code: Option<PitchCode>,
 
     /// Pitch system used for this element (for pitched elements only)
     pub pitch_system: Option<PitchSystem>,
@@ -429,6 +429,26 @@ impl Document {
             Some(&line.tonic)
         } else {
             self.tonic.as_ref()
+        }
+    }
+
+    /// Compute glyphs for all pitched cells based on their pitch codes and effective pitch system
+    /// This should be called before serialization to ensure JavaScript receives pre-computed glyphs
+    pub fn compute_glyphs(&mut self) {
+        // Precompute effective pitch systems for all lines to avoid borrow checker issues
+        let effective_systems: Vec<PitchSystem> = self.lines.iter()
+            .map(|line| self.effective_pitch_system(line))
+            .collect();
+
+        for (line_idx, line) in self.lines.iter_mut().enumerate() {
+            let effective_system = effective_systems[line_idx];
+
+            for cell in &mut line.cells {
+                if let Some(pitch_code) = cell.pitch_code {
+                    // Compute glyph from pitch code using effective pitch system
+                    cell.glyph = pitch_code.to_string(effective_system);
+                }
+            }
         }
     }
 }

@@ -6,8 +6,9 @@
  */
 
 class UI {
-  constructor(editor) {
+  constructor(editor, fileOperations = null) {
     this.editor = editor;
+    this.fileOperations = fileOperations;
     this.activeMenu = null;
     this.activeTab = 'staff-notation';
     this.menuListeners = new Map();
@@ -71,6 +72,7 @@ class UI {
       { id: 'menu-export-lilypond', label: 'Export LilyPond...', action: 'export-lilypond' },
       { id: 'menu-separator-2', label: null, separator: true },
       { id: 'menu-set-title', label: 'Set Title...', action: 'set-title' },
+      { id: 'menu-set-composer', label: 'Set Composer...', action: 'set-composer' },
       { id: 'menu-set-tonic', label: 'Set Tonic...', action: 'set-tonic' },
       { id: 'menu-set-pitch-system', label: 'Set Pitch System...', action: 'set-pitch-system' },
       { id: 'menu-set-key-signature', label: 'Set Key Signature...', action: 'set-key-signature' }
@@ -311,6 +313,9 @@ class UI {
       case 'set-title':
         this.setTitle();
         break;
+      case 'set-composer':
+        this.setComposer();
+        break;
       case 'set-tonic':
         this.setTonic();
         break;
@@ -359,6 +364,18 @@ class UI {
      * Create new document
      */
   async newDocument() {
+    console.log('🔵 UI.newDocument() called');
+    console.log('🔍 fileOperations available?', !!this.fileOperations);
+
+    // Use FileOperations if available (includes pitch system prompt)
+    if (this.fileOperations) {
+      console.log('✅ Using FileOperations.newFile()');
+      await this.fileOperations.newFile();
+      return;
+    }
+
+    // Fallback to direct editor method (no pitch system prompt)
+    console.log('⚠️ Falling back to editor.createNewDocument()');
     if (this.editor) {
       try {
         await this.editor.createNewDocument();
@@ -546,6 +563,36 @@ class UI {
   }
 
   /**
+     * Set document composer
+     */
+  async setComposer() {
+    const currentComposer = this.getComposer();
+    const newComposer = prompt('Enter composer name:', currentComposer);
+
+    if (newComposer !== null && newComposer.trim() !== '') {
+      if (this.editor && this.editor.theDocument && this.editor.wasmModule) {
+        // Call WASM setComposer function
+        try {
+          // Preserve the state field before WASM call (it's skipped during serialization)
+          const preservedState = this.editor.theDocument.state;
+
+          const updatedDocument = await this.editor.wasmModule.setComposer(this.editor.theDocument, newComposer);
+
+          // Restore the state field after WASM call
+          updatedDocument.state = preservedState;
+
+          this.editor.theDocument = updatedDocument;
+          this.editor.addToConsoleLog(`Composer set to: ${newComposer}`);
+          await this.editor.render(); // Re-render to show composer on canvas
+        } catch (error) {
+          console.error('Failed to set composer via WASM:', error);
+          this.editor.addToConsoleLog(`Error setting composer: ${error.message}`);
+        }
+      }
+    }
+  }
+
+  /**
      * Set tonic
      */
   async setTonic() {
@@ -641,7 +688,7 @@ class UI {
           // Preserve the state field before WASM call (it's skipped during serialization)
           const preservedState = this.editor.theDocument.state;
 
-          const updatedDocument = await this.editor.wasmModule.setStaveLabel(this.editor.theDocument, 0, newLabel);
+          const updatedDocument = await this.editor.wasmModule.setLineLabel(this.editor.theDocument, 0, newLabel);
 
           // Restore the state field after WASM call
           updatedDocument.state = preservedState;
@@ -704,12 +751,12 @@ class UI {
       this.updateLyricsDisplay(newLyrics);
 
       if (this.editor && this.editor.theDocument && this.editor.theDocument.lines.length > 0 && this.editor.wasmModule) {
-        // Call WASM setStaveLyrics function
+        // Call WASM setLineLyrics function
         try {
           // Preserve the state field before WASM call (it's skipped during serialization)
           const preservedState = this.editor.theDocument.state;
 
-          const updatedDocument = await this.editor.wasmModule.setStaveLyrics(this.editor.theDocument, 0, newLyrics);
+          const updatedDocument = await this.editor.wasmModule.setLineLyrics(this.editor.theDocument, 0, newLyrics);
 
           // Restore the state field after WASM call
           updatedDocument.state = preservedState;
@@ -907,6 +954,10 @@ class UI {
      */
   getDocumentTitle() {
     return this.editor?.theDocument?.title || 'Untitled Document';
+  }
+
+  getComposer() {
+    return this.editor?.theDocument?.composer || '';
   }
 
   getTonic() {

@@ -21,6 +21,9 @@
     "setup": "npm install && cargo install wasm-pack && playwright install",
     "clean": "rm -rf dist/ pkg/ target/ node_modules/.cache"
   },
+  "dependencies": {
+    "osmd-audio-player": "^0.7.0"
+  },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
     "@rollup/plugin-commonjs": "^25.0.0",

@@ -10,8 +10,7 @@ pub use duration::*;
 pub use pitch::*;
 pub use builder::*;
 
-use crate::models::{Document, ElementKind, Cell};
-use crate::models::pitch::Pitch;
+use crate::models::{Document, ElementKind, Cell, PitchCode};
 use crate::parse::beats::BeatDeriver;
 
 // Logging for MusicXML export (mirrors api.rs logging macros)
@@ -287,7 +286,7 @@ fn process_beat(
 
         if leading_div_count > 0 {
             // Write tied note using previous note's pitch
-            let (prev_step, prev_alter, prev_octave) = builder.last_note.clone().unwrap();
+            let (prev_pitch_code, prev_octave) = builder.last_note.clone().unwrap();
 
             // Calculate normalized duration for leading divisions
             // These divisions belong to the previous beat, so we use the total cell count for subdivisions
@@ -295,29 +294,8 @@ fn process_beat(
             let duration_divs = (measure_divisions * leading_div_count) / total_cells;
             let musical_duration = leading_div_count as f64 / total_cells as f64;
 
-            // Reconstruct pitch from last_note (convert alter back to Accidental)
-            let accidental = match prev_alter {
-                -2 => crate::models::elements::Accidental::DoubleFlat,
-                -1 => crate::models::elements::Accidental::Flat,
-                0 => crate::models::elements::Accidental::Natural,
-                1 => crate::models::elements::Accidental::Sharp,
-                2 => crate::models::elements::Accidental::DoubleSharp,
-                _ => crate::models::elements::Accidental::Natural,
-            };
-
-            // Note: builder.last_note stores MusicXML octave (music-text octave + 4)
-            // So we need to convert back to music-text octave
-            let music_text_octave = prev_octave - 4;
-
-            let prev_pitch = Pitch {
-                base: prev_step.to_string(),
-                accidental,
-                octave: music_text_octave,
-                system: crate::models::PitchSystem::Western, // Assume Western for now
-            };
-
-            // Write note with tie="stop"
-            builder.write_note_with_beam(&prev_pitch, duration_divs, musical_duration, None, None, None, Some("stop"))?;
+            // Write note with tie="stop" using PitchCode
+            builder.write_note_with_beam_from_pitch_code(&prev_pitch_code, prev_octave, duration_divs, musical_duration, None, None, None, Some("stop"))?;
         }
     }
 
@@ -332,7 +310,8 @@ fn process_beat(
     #[derive(Debug)]
     enum BeatElement {
         Note {
-            pitch: Pitch,
+            pitch_code: PitchCode,
+            octave: i8,
             duration_divs: usize,
             musical_duration: f64,
             is_last_note: bool,
@@ -374,35 +353,27 @@ fn process_beat(
                 let duration_divs = (measure_divisions * normalized_slot_count) / subdivisions;
                 let musical_duration = normalized_slot_count as f64 / subdivisions as f64;
 
-                // Extract pitch
-                if let (Some(pitch_code), Some(pitch_system)) = (&cell.pitch_code, cell.pitch_system) {
-                    if let Some(pitch) = Pitch::parse_notation(pitch_code, pitch_system) {
-                        let pitch_with_octave = Pitch {
-                            base: pitch.base,
-                            accidental: pitch.accidental,
-                            octave: cell.octave,
-                            system: pitch_system,
-                        };
-
-                        // Check if this is the last note in beat and next beat starts with "-"
-                        let is_last_note = {
-                            let mut k = i + 1 + extension_count;
-                            while k < beat_cells.len() {
-                                if beat_cells[k].kind == ElementKind::PitchedElement {
-                                    break;
-                                }
-                                k += 1;
+                // Extract pitch using PitchCode (system-agnostic)
+                if let Some(pitch_code) = &cell.pitch_code {
+                    // Check if this is the last note in beat and next beat starts with "-"
+                    let is_last_note = {
+                        let mut k = i + 1 + extension_count;
+                        while k < beat_cells.len() {
+                            if beat_cells[k].kind == ElementKind::PitchedElement {
+                                break;
                             }
-                            k >= beat_cells.len()
-                        };
+                            k += 1;
+                        }
+                        k >= beat_cells.len()
+                    };
 
-                        elements.push(BeatElement::Note {
-                            pitch: pitch_with_octave,
-                            duration_divs,
-                            musical_duration,
-                            is_last_note,
-                        });
-                    }
+                    elements.push(BeatElement::Note {
+                        pitch_code: *pitch_code,
+                        octave: cell.octave,
+                        duration_divs,
+                        musical_duration,
+                        is_last_note,
+                    });
                 }
 
                 // Skip the extensions
@@ -456,14 +427,14 @@ fn process_beat(
         };
 
         match element {
-            BeatElement::Note { pitch, duration_divs, musical_duration, is_last_note } => {
+            BeatElement::Note { pitch_code, octave, duration_divs, musical_duration, is_last_note } => {
                 let tie = if *is_last_note && next_beat_starts_with_div {
                     Some("start")
                 } else {
                     None
                 };
 
-                builder.write_note_with_beam(pitch, *duration_divs, *musical_duration, None, tuplet_info, tuplet_bracket, tie)?;
+                builder.write_note_with_beam_from_pitch_code(pitch_code, *octave, *duration_divs, *musical_duration, None, tuplet_info, tuplet_bracket, tie)?;
             }
             BeatElement::Rest { duration_divs, musical_duration } => {
                 builder.write_rest_with_tuplet(*duration_divs, *musical_duration, tuplet_info, tuplet_bracket);
