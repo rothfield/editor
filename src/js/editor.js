@@ -1938,17 +1938,19 @@ class MusicNotationEditor {
     const BASE_Y = 32; // First line Y position
     const cells = this.element.querySelectorAll('[data-line-index]');
 
-    console.log(`🔧 Adjusting ${cells.length} cells for multi-line layout`);
+    console.log(`🔧 Found ${cells.length} cells with [data-line-index]`);
 
     const adjustedByLine = {};
 
     cells.forEach(cell => {
-      const lineIndex = parseInt(cell.dataset.lineIndex) || 0;
+      const lineIndexStr = cell.dataset['line-index'];
+      const lineIndex = (lineIndexStr !== undefined && lineIndexStr !== '') ? parseInt(lineIndexStr) : 0;
 
       // Calculate new Y position: base position + line offset
       const newYPos = BASE_Y + (lineIndex * LINE_HEIGHT);
 
       if (cell.style.top !== `${newYPos}px`) {
+        console.log(`🔧 Adjusting cell from line ${lineIndex}: ${cell.style.top} -> ${newYPos}px`);
         cell.style.top = `${newYPos}px`;
       }
 
@@ -1959,7 +1961,7 @@ class MusicNotationEditor {
     });
 
     // Log the result for debugging
-    console.log('Adjusted cell positions:', adjustedByLine);
+    console.log('🔧 Adjusted cell positions:', adjustedByLine);
     Object.keys(adjustedByLine).forEach(lineIdx => {
       console.log(`  Line ${lineIdx}: ${adjustedByLine[lineIdx]} cells at Y=${BASE_Y + (parseInt(lineIdx) * LINE_HEIGHT)}px`);
     });
@@ -2298,7 +2300,8 @@ class MusicNotationEditor {
     const cells = this.element.querySelectorAll('[data-line-index]');
 
     cells.forEach(cell => {
-      const lineIdx = parseInt(cell.dataset['line-index']);
+      const lineIdxStr = cell.dataset['line-index'];
+      const lineIdx = (lineIdxStr !== undefined && lineIdxStr !== '') ? parseInt(lineIdxStr) : 0;
       const cellTop = parseInt(cell.style.top);
       const cellHeight = parseInt(cell.style.height) || 16;
 
