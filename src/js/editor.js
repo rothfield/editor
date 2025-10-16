@@ -1936,7 +1936,7 @@ class MusicNotationEditor {
     console.log('🔧 adjustCellPositionsForMultiLine called');
     const LINE_HEIGHT = 48; // Height of each line in pixels
     const BASE_Y = 32; // First line Y position
-    const cells = this.element.querySelectorAll('[data-lineIndex]');
+    const cells = this.element.querySelectorAll('[data-line-index]');
 
     console.log(`🔧 Adjusting ${cells.length} cells for multi-line layout`);
 
@@ -2273,11 +2273,11 @@ class MusicNotationEditor {
         cells_count: line.cells ? line.cells.length : 0
       })));
       // Also log the actual DOM cells to see what positions they have
-      const cells = this.element.querySelectorAll('[data-lineIndex]');
+      const cells = this.element.querySelectorAll('[data-line-index]');
       console.log('DEBUG: DOM cells by line:');
       const cellsByLine = {};
       cells.forEach(cell => {
-        const lineIdx = cell.dataset.lineIndex;
+        const lineIdx = cell.dataset.lineIndex || cell.dataset['line-index'];
         if (!cellsByLine[lineIdx]) cellsByLine[lineIdx] = [];
         cellsByLine[lineIdx].push({
           char: cell.textContent,
@@ -2295,10 +2295,10 @@ class MusicNotationEditor {
     // Since all lines might have the same y_min/y_max from displayList,
     // we need to infer the actual layout from the DOM
     const lineRanges = {};
-    const cells = this.element.querySelectorAll('[data-lineIndex]');
+    const cells = this.element.querySelectorAll('[data-line-index]');
 
     cells.forEach(cell => {
-      const lineIdx = parseInt(cell.dataset.lineIndex);
+      const lineIdx = parseInt(cell.dataset['line-index']);
       const cellTop = parseInt(cell.style.top);
       const cellHeight = parseInt(cell.style.height) || 16;
 
@@ -2508,14 +2508,19 @@ class MusicNotationEditor {
     }
 
     const charPos = this.getCursorPosition(); // Character position (0, 1, 2, ...)
-
     const lineHeight = 16; // Line height in pixels
-    const LINE_HEIGHT = 48; // Height of each line (must match adjustCellPositionsForMultiLine)
 
-    // Calculate Y offset based on current line
+    // Get Y position from the first cell of the current line
+    let yOffset = 32; // Default fallback
     const currentStave = this.getCurrentStave();
-    const baseYPos = 32; // First line Y position
-    const yOffset = baseYPos + (currentStave * LINE_HEIGHT);
+
+    // Find the first cell of the current line from the DOM
+    const cells = this.element.querySelectorAll(`[data-line-index="${currentStave}"]`);
+    if (cells.length > 0) {
+      const firstCell = cells[0];
+      const cellTop = parseInt(firstCell.style.top) || 32;
+      yOffset = cellTop;
+    }
 
     // Calculate pixel position using character-level positioning
     const pixelPos = this.charPosToPixel(charPos);
