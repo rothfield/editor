@@ -11,7 +11,6 @@ import EventManager from './events.js';
 import { FileOperations } from './file-ops.js';
 import UI from './ui.js';
 import ResizeHandle from './resize-handle.js';
-import LilyPondTab from './lilypond-tab.js';
 import LilyPondPngTab from './lilypond-png-tab.js';
 import LilyPondRenderer from './lilypond-renderer.js';
 
@@ -166,22 +165,17 @@ class MusicNotationApp {
   }
 
   /**
-   * Initialize LilyPond tabs
+   * Initialize LilyPond tab
    */
   initializeLilyPondTabs() {
     try {
-      // Initialize LilyPond Source tab (displays source code)
-      const lilypondSrcTab = new LilyPondTab(this.editor);
-      lilypondSrcTab.initialize();
-      console.log('✅ LilyPond Source tab initialized');
-
       // Initialize LilyPond PNG tab (displays rendered PNG/SVG)
       const lilypondRenderer = new LilyPondRenderer();
       const lilypondPngTab = new LilyPondPngTab(this.editor, lilypondRenderer);
       lilypondPngTab.initialize();
-      console.log('✅ LilyPond PNG tab initialized');
+      console.log('✅ LilyPond tab initialized');
     } catch (error) {
-      console.error('Failed to initialize LilyPond tabs:', error);
+      console.error('Failed to initialize LilyPond tab:', error);
     }
   }
 
