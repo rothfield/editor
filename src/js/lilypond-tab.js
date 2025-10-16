@@ -35,8 +35,7 @@ class LilyPondTab {
       return;
     }
 
-    // Initially hidden
-    this.container.style.display = 'none';
+    // Container visibility is managed by UI class using 'hidden' class
   }
 
   /**
@@ -109,12 +108,11 @@ class LilyPondTab {
 
   /**
    * Show/hide tab
+   * Note: visibility is managed by UI class using 'hidden' class
    */
   setVisible(visible) {
     this.isVisible = visible;
-    if (this.container) {
-      this.container.style.display = visible ? 'flex' : 'none';
-    }
+    // Don't manipulate display style - let UI class handle it via 'hidden' class
   }
 }
 
