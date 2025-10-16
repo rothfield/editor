@@ -74,7 +74,8 @@ class LilyPondTab {
    * Called when editor document is updated
    */
   onDocumentUpdated() {
-    if (!this.isVisible) return;
+    // Always update the source, even if tab is not visible
+    // This ensures the source is current when the tab is shown
     this.updateLilyPondSource();
   }
 

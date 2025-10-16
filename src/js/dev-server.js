@@ -242,16 +242,17 @@ async function handleLilyPondRender(req, res) {
  * Generate LilyPond source with template wrapping
  */
 function generateLilyPondTemplate(source, variant = 'minimal') {
-  const baseTemplate = {
-    minimal: () => `\\version "2.24.0"
+  if (variant === 'minimal') {
+    return `\\version "2.24.0"
 \\score {
   {
     ${source}
   }
   \\layout { }
   \\midi { }
-}`,
-    full: () => `\\version "2.24.0"
+}`;
+  } else {
+    return `\\version "2.24.0"
 \\language "english"
 \\score {
   \\new Staff {
@@ -261,10 +262,8 @@ function generateLilyPondTemplate(source, variant = 'minimal') {
   }
   \\layout { indent = #0 }
   \\midi { }
-}`
-  };
-
-  return (baseTemplate[variant] || baseTemplate.minimal)();
+}`;
+  }
 }
 
 /**
@@ -315,26 +314,47 @@ function escapeHtml(text) {
  */
 async function renderLilyPond(lilypondSource, outputFormat = 'svg') {
   const { spawn } = await import('child_process');
-  const { promisify } = await import('util');
+  const { execSync } = await import('child_process');
 
   return new Promise((resolve, reject) => {
     try {
-      // Check if lilypond is available
-      const lilypondProcess = spawn('lilypond', [
+      // Find lilypond in PATH
+      let lilypondCmd = 'lilypond';
+      try {
+        lilypondCmd = execSync('which lilypond', { encoding: 'utf8' }).trim();
+        logger.debug('Found lilypond at', { path: lilypondCmd });
+      } catch (e) {
+        logger.warn('lilypond not in PATH, will try default name');
+      }
+
+      const lilypondProcess = spawn(lilypondCmd, [
         '--png',
         '-dno-gs-load-fonts',
         '-dinclude-eps-fonts',
         '-dresolution=150',
+        '-dpoint-and-click=false',
+        '-ddelete-intermediate-files',
         '-o',
         '/dev/stdout',
         '-'
-      ]);
+      ], {
+        // Use /tmp as working directory to avoid permission issues
+        cwd: '/tmp',
+        // Ensure PATH is passed through
+        env: { ...process.env }
+      });
 
       let pngBuffer = Buffer.alloc(0);
       let errorOutput = '';
+      let stdoutData = '';
 
       lilypondProcess.stdout.on('data', (chunk) => {
-        pngBuffer = Buffer.concat([pngBuffer, chunk]);
+        // Skip non-binary data (status messages)
+        if (chunk[0] === 0x89 || pngBuffer.length > 0) {
+          pngBuffer = Buffer.concat([pngBuffer, chunk]);
+        } else {
+          stdoutData += chunk.toString();
+        }
       });
 
       lilypondProcess.stderr.on('data', (chunk) => {
@@ -343,9 +363,28 @@ async function renderLilyPond(lilypondSource, outputFormat = 'svg') {
 
       lilypondProcess.on('close', (code) => {
         if (code !== 0) {
-          reject(new Error(`lilypond failed: ${errorOutput || 'unknown error'}`));
+          const err = errorOutput || `lilypond exited with code ${code}`;
+          logger.error('lilypond process failed', {
+            code,
+            error: err.substring(0, 500)
+          });
+          reject(new Error(`lilypond failed: ${err}`));
           return;
         }
+
+        if (pngBuffer.length === 0) {
+          logger.warn('lilypond produced no PNG output', {
+            stdout: stdoutData.substring(0, 200),
+            stderr: errorOutput.substring(0, 200)
+          });
+          reject(new Error('lilypond produced no output'));
+          return;
+        }
+
+        logger.debug('lilypond rendering successful', {
+          pngSize: pngBuffer.length,
+          format: outputFormat
+        });
 
         if (outputFormat === 'png') {
           // Return PNG as base64
@@ -369,7 +408,10 @@ async function renderLilyPond(lilypondSource, outputFormat = 'svg') {
                 error: null
               });
             })
-            .catch(() => {
+            .catch((err) => {
+              logger.warn('PNG to SVG conversion failed, returning PNG fallback', {
+                error: err.message
+              });
               // If conversion fails, return base64 PNG instead
               resolve({
                 success: true,
@@ -384,12 +426,20 @@ async function renderLilyPond(lilypondSource, outputFormat = 'svg') {
       });
 
       lilypondProcess.on('error', (error) => {
+        logger.error('lilypond spawn error', {
+          error: error.message,
+          command: lilypondCmd
+        });
         reject(error);
       });
 
       lilypondProcess.stdin.write(lilypondSource);
       lilypondProcess.stdin.end();
     } catch (error) {
+      logger.error('renderLilyPond error', {
+        error: error.message,
+        stack: error.stack
+      });
       reject(error);
     }
   });
@@ -399,7 +449,7 @@ async function renderLilyPond(lilypondSource, outputFormat = 'svg') {
  * Convert PNG buffer to SVG using ImageMagick
  */
 async function convertPngToSvg(pngBuffer) {
-  const { spawn } = await import('child_process');
+  const { spawn, execSync } = await import('child_process');
   const { writeFile, unlink } = await import('fs/promises');
   const { tmpdir } = await import('os');
   const { join } = await import('path');
@@ -410,7 +460,18 @@ async function convertPngToSvg(pngBuffer) {
       // Write PNG to temp file
       await writeFile(tempFile, pngBuffer);
 
-      const convertProcess = spawn('convert', [tempFile, 'svg:-']);
+      // Find convert command in PATH
+      let convertCmd = 'convert';
+      try {
+        convertCmd = execSync('which convert', { encoding: 'utf8' }).trim();
+        logger.debug('Found convert at', { path: convertCmd });
+      } catch (e) {
+        logger.warn('convert not in PATH, will try default name');
+      }
+
+      const convertProcess = spawn(convertCmd, [tempFile, 'svg:-'], {
+        env: { ...process.env }
+      });
 
       let svgOutput = '';
       let errorOutput = '';
@@ -428,18 +489,36 @@ async function convertPngToSvg(pngBuffer) {
         try {
           await unlink(tempFile);
         } catch (e) {
-          // ignore cleanup errors
+          logger.debug('Failed to cleanup temp file', { path: tempFile });
         }
 
         if (code !== 0) {
-          reject(new Error(`convert failed: ${errorOutput}`));
+          const err = errorOutput || `convert exited with code ${code}`;
+          logger.error('convert process failed', {
+            code,
+            error: err.substring(0, 300)
+          });
+          reject(new Error(`convert failed: ${err}`));
           return;
         }
 
+        if (!svgOutput || svgOutput.length === 0) {
+          logger.warn('convert produced no SVG output');
+          reject(new Error('convert produced no output'));
+          return;
+        }
+
+        logger.debug('PNG to SVG conversion successful', {
+          svgSize: svgOutput.length
+        });
         resolve(svgOutput);
       });
 
       convertProcess.on('error', async (error) => {
+        logger.error('convert spawn error', {
+          error: error.message,
+          command: convertCmd
+        });
         try {
           await unlink(tempFile);
         } catch (e) {
@@ -448,6 +527,10 @@ async function convertPngToSvg(pngBuffer) {
         reject(error);
       });
     } catch (error) {
+      logger.error('convertPngToSvg error', {
+        error: error.message,
+        stack: error.stack
+      });
       reject(error);
     }
   });
