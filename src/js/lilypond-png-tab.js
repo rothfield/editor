@@ -261,12 +261,22 @@ class LilyPondPngTab {
       this.renderArea.style.display = 'flex';
       this.renderArea.style.alignItems = 'center';
       this.renderArea.style.justifyContent = 'center';
+
+      // Make SVG expand to fill the container
+      const svg = this.renderArea.querySelector('svg');
+      if (svg) {
+        svg.style.width = '100%';
+        svg.style.height = '100%';
+        svg.style.maxWidth = '100%';
+        svg.style.maxHeight = '100%';
+        svg.style.objectFit = 'contain';
+      }
     } else if (result.png_base64) {
       const img = document.createElement('img');
       img.src = `data:image/png;base64,${result.png_base64}`;
       img.style.cssText = `
-        max-width: 100%;
-        max-height: 100%;
+        width: 100%;
+        height: 100%;
         object-fit: contain;
       `;
       this.renderArea.innerHTML = '';
@@ -278,20 +288,29 @@ class LilyPondPngTab {
    * Display error message
    */
   displayError(error) {
-    const errorMsg = error.substring(0, 500);
+    // Extract just the file path and error lines from the full error message
+    const errorLines = error.split('\n');
+    const relevantErrors = [];
+
+    for (let line of errorLines) {
+      // Include lines with .ly: (file errors) and lines starting with / (file paths)
+      if (line.includes('.ly:') || line.startsWith('/') || line.includes('error:') || line.includes('fatal error:') || line.includes('warning:')) {
+        relevantErrors.push(line);
+      }
+    }
+
+    // If we found relevant errors, use them; otherwise use the full error
+    const errorMsg = relevantErrors.length > 0 ? relevantErrors.join('\n') : error;
 
     this.renderArea.innerHTML = `
-      <div style="color: #d32f2f; padding: 20px; text-align: center; max-width: 100%;">
-        <strong>Render Error</strong>
-        <pre style="margin-top: 10px; background: #f5f5f5; padding: 10px; border-radius: 4px; text-align: left; overflow-x: auto; font-size: 11px;">
+      <div style="padding: 20px; max-width: 100%; display: flex; flex-direction: column; gap: 15px;">
+        <div style="padding: 12px; background: #e3f2fd; border: 1px solid #2196f3; border-radius: 4px; text-align: left;">
+          <strong style="color: #1976d2; display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+            <span>⚠️ LilyPond Compilation Error</span>
+          </strong>
+          <pre style="margin: 0; background: white; padding: 12px; border-radius: 3px; overflow-x: auto; font-size: 12px; color: #d32f2f; border: 1px solid #bbdefb; max-height: 400px; overflow-y: auto; font-family: 'Courier New', monospace; white-space: pre-wrap; word-wrap: break-word;">
 ${this.escapeHtml(errorMsg)}
-        </pre>
-        <div style="margin-top: 15px; padding: 12px; background: #e3f2fd; border: 1px solid #2196f3; border-radius: 4px; font-size: 12px; text-align: left;">
-          <strong>ℹ️ Development Server Required</strong>
-          <p>Start the dev server to enable LilyPond rendering:</p>
-          <code style="display: block; background: #f5f5f5; padding: 8px; margin: 8px 0; border-radius: 3px; overflow-x: auto;">npm run dev</code>
-          <p>The dev server provides the /api/lilypond/render endpoint.</p>
-          <p style="font-size: 11px; color: #666; margin: 8px 0 0 0;">Note: LilyPond and ImageMagick must be installed for full rendering support.</p>
+          </pre>
         </div>
       </div>
     `;

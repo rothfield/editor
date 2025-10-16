@@ -165,7 +165,7 @@ function handleHealthCheck(req, res) {
 
 /**
  * Handle LilyPond rendering requests
- * Invokes lilypond command with stdin piping to avoid disk writes
+ * Pipes LilyPond source directly to stdin, no temp files needed
  */
 async function handleLilyPondRender(req, res) {
   let body = '';
@@ -193,24 +193,36 @@ async function handleLilyPondRender(req, res) {
         return;
       }
 
-      // Generate LilyPond with template
-      const lilypondFull = generateLilyPondTemplate(lilypond_source, template_variant);
+      // Check if lilypond_source is already templated (from WASM converter)
+      // If it starts with \version, it's already a complete LilyPond document
+      const isAlreadyTemplated = lilypond_source.trim().startsWith('\\version');
 
-      // Try to render - if lilypond not found, return demo SVG
+      // Generate LilyPond with template only if not already templated
+      const lilypondFull = isAlreadyTemplated
+        ? lilypond_source
+        : generateLilyPondTemplate(lilypond_source, template_variant);
+
+      logger.debug('LilyPond source', {
+        length: lilypondFull.length,
+        isAlreadyTemplated,
+        firstLine: lilypondFull.split('\n')[0]
+      });
+
+      // Try to render - return error details to client
       let result;
       try {
         result = await renderLilyPond(lilypondFull, output_format);
       } catch (err) {
-        logger.warn('lilypond command not available, returning placeholder', {
+        logger.error('LilyPond rendering error', {
           error: err.message
         });
-        // Return a placeholder SVG for demo purposes
+        // Return error details to client
         result = {
-          success: true,
-          svg: generatePlaceholderSvg(lilypond_source),
+          success: false,
+          svg: null,
           png_base64: null,
-          format: 'svg',
-          error: null
+          format: output_format || 'svg',
+          error: err.message
         };
       }
 
@@ -243,26 +255,26 @@ async function handleLilyPondRender(req, res) {
  */
 function generateLilyPondTemplate(source, variant = 'minimal') {
   if (variant === 'minimal') {
-    return `\\version "2.24.0"
-\\score {
-  {
-    ${source}
-  }
-  \\layout { }
-  \\midi { }
-}`;
+    return '\\version "2.24.0"\n' +
+           '\\score {\n' +
+           '  {\n' +
+           '    ' + source + '\n' +
+           '  }\n' +
+           '  \\layout { }\n' +
+           '  \\midi { }\n' +
+           '}';
   } else {
-    return `\\version "2.24.0"
-\\language "english"
-\\score {
-  \\new Staff {
-    \\relative c' {
-      ${source}
-    }
-  }
-  \\layout { indent = #0 }
-  \\midi { }
-}`;
+    return '\\version "2.24.0"\n' +
+           '\\language "english"\n' +
+           '\\score {\n' +
+           '  \\new Staff {\n' +
+           '    \\relative c\' {\n' +
+           '      ' + source + '\n' +
+           '    }\n' +
+           '  }\n' +
+           '  \\layout { indent = #0 }\n' +
+           '  \\midi { }\n' +
+           '}';
   }
 }
 
@@ -315,8 +327,16 @@ function escapeHtml(text) {
 async function renderLilyPond(lilypondSource, outputFormat = 'svg') {
   const { spawn } = await import('child_process');
   const { execSync } = await import('child_process');
+  const { writeFile, unlink } = await import('fs/promises');
+  const { tmpdir } = await import('os');
+  const { join } = await import('path');
+  const { randomUUID } = await import('crypto');
 
-  return new Promise((resolve, reject) => {
+  const tempId = randomUUID();
+  const tempBaseFile = join(tmpdir(), `lilypond-output-${tempId}`);
+  const pngPath = tempBaseFile + '.png';
+
+  return new Promise(async (resolve, reject) => {
     try {
       // Find lilypond in PATH
       let lilypondCmd = 'lilypond';
@@ -327,6 +347,7 @@ async function renderLilyPond(lilypondSource, outputFormat = 'svg') {
         logger.warn('lilypond not in PATH, will try default name');
       }
 
+      // Spawn lilypond with stdin piping (no temp .ly files!)
       const lilypondProcess = spawn(lilypondCmd, [
         '--png',
         '-dno-gs-load-fonts',
@@ -335,93 +356,109 @@ async function renderLilyPond(lilypondSource, outputFormat = 'svg') {
         '-dpoint-and-click=false',
         '-ddelete-intermediate-files',
         '-o',
-        '/dev/stdout',
-        '-'
+        tempBaseFile,
+        '-'  // Read from stdin instead of file
       ], {
-        // Use /tmp as working directory to avoid permission issues
         cwd: '/tmp',
-        // Ensure PATH is passed through
         env: { ...process.env }
       });
 
-      let pngBuffer = Buffer.alloc(0);
       let errorOutput = '';
       let stdoutData = '';
 
       lilypondProcess.stdout.on('data', (chunk) => {
-        // Skip non-binary data (status messages)
-        if (chunk[0] === 0x89 || pngBuffer.length > 0) {
-          pngBuffer = Buffer.concat([pngBuffer, chunk]);
-        } else {
-          stdoutData += chunk.toString();
-        }
+        stdoutData += chunk.toString();
       });
 
       lilypondProcess.stderr.on('data', (chunk) => {
         errorOutput += chunk.toString();
       });
 
-      lilypondProcess.on('close', (code) => {
-        if (code !== 0) {
-          const err = errorOutput || `lilypond exited with code ${code}`;
-          logger.error('lilypond process failed', {
-            code,
-            error: err.substring(0, 500)
-          });
-          reject(new Error(`lilypond failed: ${err}`));
-          return;
-        }
+      // Write LilyPond source to stdin
+      lilypondProcess.stdin.write(lilypondSource);
+      lilypondProcess.stdin.end();
 
-        if (pngBuffer.length === 0) {
-          logger.warn('lilypond produced no PNG output', {
-            stdout: stdoutData.substring(0, 200),
-            stderr: errorOutput.substring(0, 200)
-          });
-          reject(new Error('lilypond produced no output'));
-          return;
-        }
-
-        logger.debug('lilypond rendering successful', {
-          pngSize: pngBuffer.length,
-          format: outputFormat
-        });
-
-        if (outputFormat === 'png') {
-          // Return PNG as base64
-          const pngBase64 = pngBuffer.toString('base64');
-          resolve({
-            success: true,
-            svg: null,
-            png_base64: pngBase64,
-            format: 'png',
-            error: null
-          });
-        } else {
-          // Convert PNG to SVG using ImageMagick (fallback to placeholder if not available)
-          convertPngToSvg(pngBuffer)
-            .then((svg) => {
-              resolve({
-                success: true,
-                svg: svg,
-                png_base64: null,
-                format: 'svg',
-                error: null
-              });
-            })
-            .catch((err) => {
-              logger.warn('PNG to SVG conversion failed, returning PNG fallback', {
-                error: err.message
-              });
-              // If conversion fails, return base64 PNG instead
-              resolve({
-                success: true,
-                svg: null,
-                png_base64: pngBuffer.toString('base64'),
-                png_fallback: true,
-                format: 'svg',
-                error: null
-              });
+      lilypondProcess.on('close', async (code) => {
+        try {
+          if (code !== 0) {
+            const err = errorOutput || `lilypond exited with code ${code}`;
+            logger.error('lilypond process failed', {
+              code,
+              error: err.substring(0, 500)
             });
+            reject(new Error(`lilypond failed: ${err}`));
+            return;
+          }
+
+          // Read the generated PNG file
+          const { readFile } = await import('fs/promises');
+          let pngBuffer;
+          try {
+            pngBuffer = await readFile(pngPath);
+          } catch (e) {
+            logger.warn('lilypond produced no PNG file', {
+              expected: pngPath,
+              error: e.message
+            });
+            reject(new Error(`lilypond produced no output: ${pngPath}`));
+            return;
+          }
+
+          // Clean up PNG file
+          try {
+            await unlink(pngPath);
+          } catch (e) {
+            logger.debug('Failed to cleanup PNG file', { path: pngPath });
+          }
+
+          logger.debug('lilypond rendering successful', {
+            pngSize: pngBuffer.length,
+            format: outputFormat
+          });
+
+          if (outputFormat === 'png') {
+            // Return PNG as base64
+            const pngBase64 = pngBuffer.toString('base64');
+            resolve({
+              success: true,
+              svg: null,
+              png_base64: pngBase64,
+              format: 'png',
+              error: null
+            });
+          } else {
+            // Convert PNG to SVG using ImageMagick (fallback to placeholder if not available)
+            convertPngToSvg(pngBuffer)
+              .then((svg) => {
+                resolve({
+                  success: true,
+                  svg: svg,
+                  png_base64: null,
+                  format: 'svg',
+                  error: null
+                });
+              })
+              .catch((err) => {
+                logger.warn('PNG to SVG conversion failed, returning PNG fallback', {
+                  error: err.message
+                });
+                // If conversion fails, return base64 PNG instead
+                resolve({
+                  success: true,
+                  svg: null,
+                  png_base64: pngBuffer.toString('base64'),
+                  png_fallback: true,
+                  format: 'svg',
+                  error: null
+                });
+              });
+          }
+        } catch (error) {
+          logger.error('Error handling lilypond output', {
+            error: error.message,
+            stack: error.stack
+          });
+          reject(error);
         }
       });
 
@@ -432,9 +469,6 @@ async function renderLilyPond(lilypondSource, outputFormat = 'svg') {
         });
         reject(error);
       });
-
-      lilypondProcess.stdin.write(lilypondSource);
-      lilypondProcess.stdin.end();
     } catch (error) {
       logger.error('renderLilyPond error', {
         error: error.message,
