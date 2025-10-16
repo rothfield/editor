@@ -211,7 +211,6 @@ class MusicNotationEditor {
     try {
       if (this.theDocument && this.theDocument.lines && this.theDocument.lines.length > 0) {
         const line = this.getCurrentLine();
-        if (!line) return;
         if (!line) {
           logger.error(LOG_CATEGORIES.PARSER, 'Current line not available');
           return;
