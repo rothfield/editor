@@ -18,6 +18,46 @@ const projectRoot = join(__dirname, '../..');
 
 const PORT = process.env.PORT || 8080;
 const HOST = process.env.HOST || 'localhost';
+const NODE_ENV = process.env.NODE_ENV || 'development';
+const LOG_LEVEL = process.env.LOG_LEVEL || 'info';
+
+// Structured Logger
+class Logger {
+  constructor(level = 'info') {
+    this.level = level;
+    this.levels = { error: 0, warn: 1, info: 2, debug: 3 };
+  }
+
+  log(levelName, message, meta = {}) {
+    if (this.levels[levelName] > this.levels[this.level]) return;
+
+    const timestamp = new Date().toISOString();
+    const logEntry = {
+      timestamp,
+      level: levelName,
+      message,
+      ...meta
+    };
+
+    const output = `[${timestamp}] ${levelName.toUpperCase()}: ${message}`;
+    const metaStr = Object.keys(meta).length > 0 ? ` ${JSON.stringify(meta)}` : '';
+
+    if (levelName === 'error') {
+      console.error(output + metaStr);
+    } else if (levelName === 'warn') {
+      console.warn(output + metaStr);
+    } else {
+      console.log(output + metaStr);
+    }
+  }
+
+  error(message, meta) { this.log('error', message, meta); }
+  warn(message, meta) { this.log('warn', message, meta); }
+  info(message, meta) { this.log('info', message, meta); }
+  debug(message, meta) { this.log('debug', message, meta); }
+}
+
+const logger = new Logger(LOG_LEVEL);
 
 // MIME types for different file extensions
 const MIME_TYPES = {
@@ -71,7 +111,10 @@ async function serveFile(res, filePath) {
 
     res.end(data);
   } catch (error) {
-    console.error(`Error serving file ${filePath}:`, error);
+    logger.error('Failed to serve file', {
+      path: filePath,
+      error: error.message
+    });
     res.writeHead(500);
     res.end('Internal Server Error');
   }
@@ -87,6 +130,37 @@ function handleCors(res) {
     'Access-Control-Allow-Headers': 'Content-Type, Authorization'
   });
   res.end();
+}
+
+/**
+ * Handle health check endpoint
+ */
+function handleHealthCheck(req, res) {
+  const url = new URL(req.url, `http://${req.headers.host}`);
+
+  if (url.pathname === '/health') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      environment: NODE_ENV
+    }));
+    return true;
+  }
+
+  if (url.pathname === '/ready') {
+    const ready = serverReady && webSocketClients.size >= 0;
+    res.writeHead(ready ? 200 : 503, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      ready: ready,
+      timestamp: new Date().toISOString(),
+      wsClients: webSocketClients.size
+    }));
+    return true;
+  }
+
+  return false;
 }
 
 /**
@@ -127,7 +201,9 @@ async function handleLilyPondRender(req, res) {
       try {
         result = await renderLilyPond(lilypondFull, output_format);
       } catch (err) {
-        console.warn('[LilyPond] lilypond command not available, returning placeholder:', err.message);
+        logger.warn('lilypond command not available, returning placeholder', {
+          error: err.message
+        });
         // Return a placeholder SVG for demo purposes
         result = {
           success: true,
@@ -144,7 +220,10 @@ async function handleLilyPondRender(req, res) {
       });
       res.end(JSON.stringify(result));
     } catch (error) {
-      console.error('[LilyPond] Error:', error);
+      logger.error('LilyPond rendering failed', {
+        error: error.message,
+        stack: error.stack
+      });
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(
         JSON.stringify({
@@ -440,6 +519,11 @@ async function handleRequest(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
   let filePath = join(projectRoot, url.pathname);
 
+  // Handle health check endpoints
+  if (handleHealthCheck(req, res)) {
+    return;
+  }
+
   // Handle root path
   if (url.pathname === '/') {
     filePath = join(projectRoot, 'index.html');
@@ -482,7 +566,10 @@ async function handleRequest(req, res) {
       });
       res.end(htmlWithReload);
     } catch (error) {
-      console.error(`Error processing HTML file ${filePath}:`, error);
+      logger.error('Failed to process HTML file', {
+        path: filePath,
+        error: error.message
+      });
       res.writeHead(500);
       res.end('Internal Server Error');
     }
@@ -538,22 +625,67 @@ function setupFileWatcher() {
     join(projectRoot, 'index.html')
   ];
 
-  const options = {
-    recursive: true
-  };
-
   watchPaths.forEach((watchPath) => {
     try {
       watch(watchPath, { recursive: true }, (eventType, filename) => {
         if (filename && !filename.includes('node_modules') && !filename.includes('.git')) {
-          console.log(`File changed: ${filename}`);
+          logger.debug('File changed, triggering hot reload', {
+            file: filename
+          });
           notifyReload();
         }
       });
     } catch (error) {
-      console.error(`Error watching ${watchPath}:`, error);
+      logger.error('Error watching files', {
+        path: watchPath,
+        error: error.message
+      });
     }
   });
+}
+
+/**
+ * Server ready flag for readiness checks
+ */
+let serverReady = false;
+let isShuttingDown = false;
+
+/**
+ * Graceful shutdown handler
+ */
+async function gracefulShutdown(signal) {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+
+  logger.info('Graceful shutdown initiated', { signal });
+
+  serverReady = false;
+
+  // Give existing requests 30 seconds to finish
+  const shutdownTimeout = setTimeout(() => {
+    logger.warn('Shutdown timeout reached, forcing exit');
+    process.exit(1);
+  }, 30000);
+
+  try {
+    // Close all WebSocket connections gracefully
+    logger.debug('Closing WebSocket connections', {
+      count: webSocketClients.size
+    });
+
+    webSocketClients.forEach((ws) => {
+      ws.close(1000, 'Server shutting down');
+    });
+
+    logger.info('Graceful shutdown complete');
+    clearTimeout(shutdownTimeout);
+    process.exit(0);
+  } catch (error) {
+    logger.error('Error during graceful shutdown', {
+      error: error.message
+    });
+    process.exit(1);
+  }
 }
 
 /**
@@ -583,31 +715,57 @@ async function startServer() {
       });
     });
 
-    console.log(`🎵 Music Notation Editor Development Server`);
-    console.log(`📍 Server running at: http://${HOST}:${PORT}`);
-    console.log(`🔥 Hot reload enabled`);
-    console.log(`⚠️  Press Ctrl+C to stop the server`);
+    serverReady = true;
+
+    logger.info('Server started successfully', {
+      host: HOST,
+      port: PORT,
+      environment: NODE_ENV,
+      url: `http://${HOST}:${PORT}`
+    });
+
+    logger.info('Features enabled', {
+      hotReload: true,
+      lilypondApi: true,
+      health: true,
+      ready: true
+    });
+
+    logger.info('Available endpoints', {
+      health: 'GET /health',
+      ready: 'GET /ready',
+      lilypond: 'POST /api/lilypond/render',
+      websocket: 'WS /ws'
+    });
 
     // Setup file watching for hot reload
     setupFileWatcher();
 
-    // Handle graceful shutdown
-    process.on('SIGINT', () => {
-      console.log('\n🛑 Shutting down development server...');
+    // Handle graceful shutdown signals
+    process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
-      // Close WebSocket connections
-      webSocketClients.forEach((ws) => {
-        ws.close();
+    // Handle uncaught exceptions
+    process.on('uncaughtException', (error) => {
+      logger.error('Uncaught exception', {
+        error: error.message,
+        stack: error.stack
       });
+      gracefulShutdown('uncaughtException');
+    });
 
-      // Close HTTP server
-      server.close(() => {
-        console.log('✅ Server stopped');
-        process.exit(0);
+    // Handle unhandled rejections
+    process.on('unhandledRejection', (reason, promise) => {
+      logger.error('Unhandled rejection', {
+        reason: String(reason),
+        promise: String(promise)
       });
     });
   } catch (error) {
-    console.error('❌ Failed to start server:', error);
+    logger.error('Failed to start server', {
+      error: error.message,
+      stack: error.stack
+    });
     process.exit(1);
   }
 }
@@ -616,16 +774,29 @@ async function startServer() {
 async function checkDependencies() {
   try {
     await import('ws');
+    logger.debug('All required dependencies available');
   } catch (error) {
-    console.error('❌ Missing required dependency: ws');
-    console.error('Please install it with: npm install ws');
+    logger.error('Missing required dependency', {
+      package: 'ws',
+      error: error.message,
+      suggestion: 'npm install ws'
+    });
     process.exit(1);
   }
 }
 
 // Start the server
 if (import.meta.url === `file://${process.argv[1]}`) {
-  checkDependencies().then(startServer);
+  logger.info('Development server starting', {
+    version: '1.0.0',
+    nodeVersion: process.version,
+    environment: NODE_ENV
+  });
+
+  checkDependencies().then(startServer).catch((error) => {
+    logger.error('Fatal error', { error: error.message });
+    process.exit(1);
+  });
 }
 
 export { startServer, handleRequest, notifyReload };
