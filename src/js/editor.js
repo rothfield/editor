@@ -9,6 +9,7 @@ import DOMRenderer from './renderer.js';
 import logger, { LOG_CATEGORIES } from './logger.js';
 import { OSMDRenderer } from './osmd-renderer.js';
 import { LEFT_MARGIN_PX } from './constants.js';
+import AutoSave from './autosave.js';
 
 class MusicNotationEditor {
   constructor(editorElement) {
@@ -28,6 +29,9 @@ class MusicNotationEditor {
     this.isDragging = false;
     this.dragStartPos = null;
     this.dragEndPos = null;
+
+    // AutoSave manager
+    this.autoSave = new AutoSave(this);
   }
 
   /**
@@ -87,8 +91,14 @@ class MusicNotationEditor {
       // Mark as initialized BEFORE creating document
       this.isInitialized = true;
 
-      // Create initial empty document
-      await this.createNewDocument();
+      // Try to restore autosave, otherwise create new document
+      const restored = await this.autoSave.restoreLastAutosave();
+      if (!restored) {
+        await this.createNewDocument();
+      }
+
+      // Start auto-save timer (saves every 5 seconds)
+      this.autoSave.start();
 
       console.log('Music Notation Editor initialized successfully');
     } catch (error) {
@@ -280,9 +290,7 @@ class MusicNotationEditor {
       this.ensureHitboxesAreSet();
 
       // Force hitboxes display update after render
-      console.log('🎯 Forcing hitboxes display update from insertText');
       setTimeout(() => {
-        console.log('🎯 Delayed hitboxes display update');
         this.updateHitboxesDisplay();
       }, 100);
 
@@ -595,23 +603,6 @@ class MusicNotationEditor {
     return clampedPosition;
   }
 
-  /**
-     * Convert pitch between systems with enhanced functionality
-     */
-  async convertPitchSystem(pitch, fromSystem, toSystem) {
-    if (!this.isInitialized || !this.wasmModule) {
-      return pitch;
-    }
-
-    try {
-      // Stub implementation for POC - pitch conversion not yet implemented
-      this.addToConsoleLog(`Pitch system conversion not yet implemented (${this.getPitchSystemName(fromSystem)} to ${this.getPitchSystemName(toSystem)})`);
-      return pitch;
-    } catch (error) {
-      console.error('Failed to convert pitch system:', error);
-      return pitch;
-    }
-  }
 
   /**
      * Get pitch system name from enum value
@@ -628,24 +619,6 @@ class MusicNotationEditor {
     return names[system] || 'Unknown';
   }
 
-  /**
-     * Set document pitch system
-     */
-  async setPitchSystem(system) {
-    try {
-      const state = await this.saveDocument();
-      const doc = JSON.parse(state);
-
-      if (doc.metadata) {
-        doc.pitch_system = system;
-        await this.loadDocument(JSON.stringify(doc));
-        this.addToConsoleLog(`Document pitch system set to: ${this.getPitchSystemName(system)}`);
-      }
-    } catch (error) {
-      console.error('Failed to set pitch system:', error);
-      this.showError('Failed to set pitch system');
-    }
-  }
 
   /**
      * Get current pitch system
@@ -667,33 +640,7 @@ class MusicNotationEditor {
     return 1;
   }
 
-  /**
-     * Validate pitch notation for current system
-     */
-  validatePitchNotation(notation) {
-    const system = this.getCurrentPitchSystem();
 
-    switch (system) {
-      case 1: // Number system
-        return /^[1234567#b]*$/.test(notation);
-      case 2: // Western system
-        return /^[cdefgabCDEFGAB#b]*$/.test(notation);
-      default:
-        return false;
-    }
-  }
-
-  /**
-     * Detect pitch system from notation
-     */
-  detectPitchSystem(notation) {
-    if (/^[1234567#b]+$/.test(notation)) {
-      return 1; // Number system
-    } else if (/^[cdefgabCDEFGAB#b]+$/.test(notation)) {
-      return 2; // Western system
-    }
-    return 0; // Unknown
-  }
 
   /**
      * Handle keyboard input
@@ -712,11 +659,8 @@ class MusicNotationEditor {
       const code = event.code;
       if (code && code.startsWith('Key')) {
         key = code.replace('Key', '').toLowerCase();
-        console.log('🔧 Fixed Alt key detection:', { originalKey: event.key, code, fixedKey: key });
       }
     }
-
-    console.log('🔑 handleKeyboardEvent:', { key, code: event.code, modifiers });
 
     // Ignore Ctrl key combinations (let browser handle them)
     if (modifiers.ctrl) {
@@ -725,14 +669,11 @@ class MusicNotationEditor {
 
     // Route to appropriate handler
     if (modifiers.alt && !modifiers.ctrl && !modifiers.shift) {
-      console.log('→ Routing to Alt handler');
       this.handleAltCommand(key);
     } else if (modifiers.shift && !modifiers.alt && !modifiers.ctrl && this.isSelectionKey(key)) {
       // Only route to selection handler for actual selection keys (arrows, Home, End)
-      console.log('→ Routing to Shift selection handler');
       this.handleShiftCommand(key);
     } else {
-      console.log('→ Routing to normal key handler');
       this.handleNormalKey(key);
     }
   }
@@ -781,51 +722,40 @@ class MusicNotationEditor {
      * Handle Shift+key commands (selection)
      */
   handleShiftCommand(key) {
-    console.log('🔵 handleShiftCommand called:', key);
     let handled = false;
 
     switch (key) {
       case 'ArrowLeft':
-        console.log('  → Calling extendSelectionLeft');
         this.extendSelectionLeft();
         handled = true;
         break;
       case 'ArrowRight':
-        console.log('  → Calling extendSelectionRight');
         this.extendSelectionRight();
         handled = true;
         break;
       case 'ArrowUp':
-        console.log('  → Calling extendSelectionUp');
         this.extendSelectionUp();
         handled = true;
         break;
       case 'ArrowDown':
-        console.log('  → Calling extendSelectionDown');
         this.extendSelectionDown();
         handled = true;
         break;
       case 'Home':
-        console.log('  → Calling extendSelectionToStart');
         this.extendSelectionToStart();
         handled = true;
         break;
       case 'End':
-        console.log('  → Calling extendSelectionToEnd');
         this.extendSelectionToEnd();
         handled = true;
         break;
       default:
-        console.log('  → Unknown key, ignoring');
         // Ignore non-selection Shift commands (like Shift+#, Shift alone, etc.)
         return;
     }
 
     if (handled) {
-      // Update display
-      console.log('  → Updating selection display');
       this.updateSelectionDisplay();
-      console.log('  → Selection state:', this.getSelection());
     }
   }
 
@@ -1196,40 +1126,27 @@ class MusicNotationEditor {
      * Extend selection to the right (cell-based)
      */
   extendSelectionRight() {
-    console.log('🟢 extendSelectionRight called');
     const currentCellIndex = this.getCursorPosition();
     const maxCellIndex = this.getMaxCellIndex();
     let selection = this.getSelection();
 
-    console.log('  Current position:', currentCellIndex);
-    console.log('  Max position:', maxCellIndex);
-    console.log('  Current selection:', selection);
-
     if (!selection) {
       // Start new selection
-      console.log('  → No selection, creating new one');
       this.initializeSelection(currentCellIndex, currentCellIndex);
       selection = this.getSelection();
-      console.log('  → New selection:', selection);
     }
 
     if (currentCellIndex < maxCellIndex) {
       const newIndex = currentCellIndex + 1;
-      console.log('  → Extending to index:', newIndex);
       // Extend selection to include next cell
       if (currentCellIndex === selection.start) {
         // Extending right from start
-        console.log('  → Extending from start');
         this.initializeSelection(selection.start, newIndex);
       } else {
         // Extending right from end
-        console.log('  → Extending from end');
         this.initializeSelection(selection.start, newIndex);
       }
       this.setCursorPosition(newIndex);
-      console.log('  → Final selection:', this.getSelection());
-    } else {
-      console.log('  → At max position, cannot extend');
     }
   }
 
@@ -1740,17 +1657,13 @@ class MusicNotationEditor {
 
       if (octave === 0) {
         // Alt+M: always clear octave markings
-        console.log('🎯 Alt+M pressed: clearing octave markings');
         targetOctave = 0;
         action = 'cleared';
       } else {
         // Alt+U or Alt+L: toggle behavior
-        console.log(`🎯 Alt+${octave === 1 ? 'U' : 'L'} pressed: checking toggle state`);
         const shouldToggleOff = this.shouldToggleOctaveOff(selection, octave);
-        console.log(`🎯 shouldToggleOff returned: ${shouldToggleOff}`);
         targetOctave = shouldToggleOff ? 0 : octave;
         action = shouldToggleOff ? 'removed' : 'applied';
-        console.log(`🎯 targetOctave=${targetOctave}, action=${action}`);
       }
 
       const actionVerb = action === 'applied' ? 'Applying' : (action === 'removed' ? 'Removing' : 'Clearing');
@@ -1827,7 +1740,6 @@ class MusicNotationEditor {
    */
   shouldToggleOctaveOff(selection, octave) {
     if (!this.theDocument || !this.theDocument.lines || this.theDocument.lines.length === 0) {
-      console.log('🔍 shouldToggleOctaveOff: no document/lines');
       return false;
     }
 
@@ -1835,22 +1747,18 @@ class MusicNotationEditor {
     const cells = line.cells;
 
     if (!cells || cells.length === 0) {
-      console.log('🔍 shouldToggleOctaveOff: no cells');
       return false;
     }
 
     // Check if ANY pitched element has the requested octave
     for (let i = selection.start; i < selection.end && i < cells.length; i++) {
       const cell = cells[i];
-      console.log(`🔍 Cell ${i}: glyph='${cell.char}' kind=${cell.kind} octave=${cell.octave} (checking for octave=${octave})`);
       // Only consider pitched elements (kind === 1)
       if (cell.kind === 1 && cell.octave === octave) {
-        console.log(`🔍 Found pitched element with octave=${octave}, will toggle OFF`);
         return true;
       }
     }
 
-    console.log(`🔍 No pitched elements with octave=${octave} found, will toggle ON`);
     return false;
   }
 
@@ -1951,6 +1859,13 @@ class MusicNotationEditor {
     // NOTE: Keyboard events are handled by EventManager globally
     // to avoid duplicate event handling
 
+    // AutoSave cleanup on page unload
+    window.addEventListener('beforeunload', () => {
+      if (this.autoSave) {
+        this.autoSave.stop();
+      }
+    });
+
     // Focus events
     this.element.addEventListener('focus', () => {
       this.element.classList.add('focused');
@@ -1986,6 +1901,11 @@ class MusicNotationEditor {
       if (this.isDragging) {
         this.handleMouseUp(event);
       }
+    });
+
+    // Double click to select beat or character group
+    this.element.addEventListener('dblclick', (event) => {
+      this.handleDoubleClick(event);
     });
 
     // Click events - just focus the editor
@@ -2063,6 +1983,127 @@ class MusicNotationEditor {
         this.dragStartPos = null;
         this.dragEndPos = null;
       }, 10);
+    }
+  }
+
+  /**
+     * Handle double click - select beat or character group
+     */
+  handleDoubleClick(event) {
+    const rect = this.element.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+
+    const cellPosition = this.calculateCellPosition(x, y);
+
+    if (cellPosition !== null) {
+      this.selectBeatOrCharGroup(cellPosition);
+    }
+
+    event.preventDefault();
+  }
+
+  /**
+     * Select beat or character group at cell index
+     * If cell is part of a beat, select entire beat
+     * Otherwise, select cell and its continuations
+     */
+  selectBeatOrCharGroup(cellIndex) {
+    if (!this.theDocument || !this.theDocument.lines || this.theDocument.lines.length === 0) {
+      return;
+    }
+
+    const line = this.theDocument.lines[0];
+    const cells = line.cells || [];
+
+    if (cellIndex < 0 || cellIndex >= cells.length) {
+      return;
+    }
+
+    // Get DOM elements for the line to check CSS classes
+    const lineElements = this.element.querySelectorAll('.notation-line');
+    if (lineElements.length === 0) {
+      return;
+    }
+
+    const lineElement = lineElements[0]; // First line (main line)
+    const cellElements = lineElement.querySelectorAll('.char-cell');
+
+    if (cellIndex >= cellElements.length) {
+      return;
+    }
+
+    const clickedElement = cellElements[cellIndex];
+
+    // Check if cell has beat classes
+    const hasBeatClass = clickedElement.classList.contains('beat-first') ||
+                        clickedElement.classList.contains('beat-middle') ||
+                        clickedElement.classList.contains('beat-last');
+
+    if (hasBeatClass) {
+      // Select entire beat by scanning for beat-first and beat-last
+      let startIndex = cellIndex;
+      let endIndex = cellIndex;
+
+      // Scan backward to beat-first
+      for (let i = cellIndex; i >= 0; i--) {
+        const el = cellElements[i];
+        if (el.classList.contains('beat-first')) {
+          startIndex = i;
+          break;
+        }
+        if (!el.classList.contains('beat-first') &&
+            !el.classList.contains('beat-middle') &&
+            !el.classList.contains('beat-last')) {
+          break;
+        }
+      }
+
+      // Scan forward to beat-last
+      for (let i = cellIndex; i < cellElements.length; i++) {
+        const el = cellElements[i];
+        if (el.classList.contains('beat-last')) {
+          endIndex = i;
+          break;
+        }
+        if (!el.classList.contains('beat-first') &&
+            !el.classList.contains('beat-middle') &&
+            !el.classList.contains('beat-last')) {
+          break;
+        }
+      }
+
+      // selection.end is exclusive, so add 1
+      this.initializeSelection(startIndex, endIndex + 1);
+      this.setCursorPosition(endIndex);
+      this.updateSelectionDisplay();
+    } else {
+      // Select character group (cell + continuations)
+      let startIndex = cellIndex;
+      let endIndex = cellIndex;
+
+      // Scan backward to find first cell with continuation=false
+      for (let i = cellIndex; i >= 0; i--) {
+        const continuation = cells[i].continuation;
+        if (!continuation) {
+          startIndex = i;
+          break;
+        }
+      }
+
+      // Scan forward while continuation=true
+      for (let i = startIndex + 1; i < cells.length; i++) {
+        if (cells[i].continuation) {
+          endIndex = i;
+        } else {
+          break;
+        }
+      }
+
+      // selection.end is exclusive, so add 1
+      this.initializeSelection(startIndex, endIndex + 1);
+      this.setCursorPosition(endIndex);
+      this.updateSelectionDisplay();
     }
   }
 
@@ -2169,11 +2210,9 @@ class MusicNotationEditor {
     // Ensure cursor is in the correct parent (line element, not canvas)
     // This fixes the positioning context mismatch between cursor and cells
     if (lineElement && cursor.parentElement !== lineElement) {
-      console.log('🔧 Moving cursor to line element for proper positioning context');
       lineElement.appendChild(cursor);
     } else if (!lineElement && cursor.parentElement !== this.element) {
       // Fallback: append to canvas if line element not found
-      console.warn('⚠️ Line element not found, appending cursor to canvas');
       this.element.appendChild(cursor);
     }
 
@@ -2259,7 +2298,6 @@ class MusicNotationEditor {
   updateCursorVisualPosition() {
     const cursor = this.getCursorElement();
     if (!cursor) {
-      console.warn('🔴 Cursor element not found in updateCursorVisualPosition');
       return;
     }
 
@@ -2268,16 +2306,8 @@ class MusicNotationEditor {
     const lineHeight = 16; // Line height in pixels
     const yOffset = 32; // Y position in line element (matches cells)
 
-    console.log('🎯 updateCursorVisualPosition called:', {
-      charPos,
-      yOffset,
-      documentExists: !!this.theDocument
-    });
-
     // Calculate pixel position using character-level positioning
     const pixelPos = this.charPosToPixel(charPos);
-
-    console.log('📐 Cursor at character position', charPos, '-> pixel:', pixelPos);
 
     // Set cursor position
     cursor.style.position = 'absolute';
@@ -2304,28 +2334,6 @@ class MusicNotationEditor {
     }
   }
 
-  /**
-     * Animate cursor to new position
-     */
-  async animateCursorTo(position) {
-    const cursor = this.getCursorElement();
-    if (!cursor) return;
-
-    const targetLeft = position.column * 12; // Approximate character width
-    const lineHeight = 16;
-    const targetTop = lineHeight; // Always on main line (lane 1)
-
-    // Smooth animation to new position
-    cursor.style.transition = 'left 0.15s ease-out, top 0.15s ease-out';
-    cursor.style.left = `${targetLeft}px`;
-    cursor.style.top = `${targetTop}px`;
-
-    // Update internal position after animation
-    setTimeout(() => {
-      this.setCursorPosition(position.column);
-      cursor.style.transition = '';
-    }, 150);
-  }
 
   /**
      * Update cursor position display in UI
@@ -2642,13 +2650,9 @@ class MusicNotationEditor {
      * Update hitboxes display in debug panel
      */
   updateHitboxesDisplay() {
-    console.log('🎯 updateHitboxesDisplay called');
     const hitboxesContainer = document.getElementById('hitboxes-container');
-    console.log('🔍 Hitboxes container found:', !!hitboxesContainer);
-    console.log('🔍 Document found:', !!this.theDocument);
 
     if (!hitboxesContainer || !this.theDocument) {
-      console.log('❌ Early return - missing container or document');
       return;
     }
 
@@ -2676,15 +2680,6 @@ class MusicNotationEditor {
         hitboxHTML += `</tr></thead><tbody>`;
 
         cells.forEach((cell, cellIndex) => {
-          console.log(`🔍 Cell ${cellIndex} (${cell.char}):`, {
-            x: cell.x,
-            y: cell.y,
-            w: cell.w,
-            h: cell.h,
-            hasValidHitbox: cell.x !== undefined && cell.y !== undefined &&
-                                        cell.w !== undefined && cell.h !== undefined
-          });
-
           const hasValidHitbox = cell.x !== undefined && cell.y !== undefined &&
                                            cell.w !== undefined && cell.h !== undefined;
 
@@ -2704,13 +2699,6 @@ class MusicNotationEditor {
             hitboxHTML += `(${centerX.toFixed(1)}, ${centerY.toFixed(1)})`;
             hitboxHTML += `</td>`;
             hitboxHTML += `</tr>`;
-          } else {
-            console.log(`❌ Cell ${cellIndex} missing hitbox data:`, {
-              x: cell.x,
-              y: cell.y,
-              w: cell.w,
-              h: cell.h
-            });
           }
         });
 
@@ -2722,10 +2710,7 @@ class MusicNotationEditor {
     });
 
     hitboxHTML += '</div>';
-    console.log('📝 Generated hitbox HTML length:', hitboxHTML.length);
-    console.log('📝 Setting innerHTML...');
     hitboxesContainer.innerHTML = hitboxHTML;
-    console.log('✅ Hitboxes display updated successfully');
   }
 
 
@@ -2758,31 +2743,19 @@ class MusicNotationEditor {
         const glyphLength = (charCell.char || '').length;
         const cellWidth = glyphLength * 12;
 
-        // Debug: log current cell state
-        console.log(`🔧 Processing cell ${cellIndex} ('${charCell.char}'):`, {
-          before: { x: charCell.x, y: charCell.y, w: charCell.w, h: charCell.h },
-          calculated: { x: cellPositions[cellIndex], w: cellWidth, h: 16 }
-        });
-
         // Only set if values are missing or zero
         if (charCell.x === undefined || charCell.x === 0) {
           charCell.x = cellPositions[cellIndex];
-          console.log(`  ✅ Set x to ${cellPositions[cellIndex]}`);
         }
         if (charCell.y === undefined || charCell.y === 0) {
           charCell.y = 0; // Y position relative to line container
-          console.log(`  ✅ Set y to 0`);
         }
         if (charCell.w === undefined || charCell.w === 0) {
           charCell.w = cellWidth;
-          console.log(`  ✅ Set w to ${cellWidth}`);
         }
         if (charCell.h === undefined || charCell.h === 0) {
           charCell.h = 16;
-          console.log(`  ✅ Set h to 16`);
         }
-
-        console.log(`  📋 After updates:`, { x: charCell.x, y: charCell.y, w: charCell.w, h: charCell.h });
 
         // Update bounding box and hit testing area
         if (!charCell.bbox || charCell.bbox.length === 0 ||
@@ -2795,8 +2768,6 @@ class MusicNotationEditor {
         }
       });
     });
-
-    console.log('✅ Hitbox values ensured on all document cells');
   }
 
   /**
@@ -3000,47 +2971,7 @@ class MusicNotationEditor {
     }
   }
 
-  /**
-     * Get error statistics
-     */
-  getErrorStats() {
-    if (!this.errorHistory) {
-      return { total: 0, recent: [], patterns: {} };
-    }
 
-    const recent = this.errorHistory.slice(-10);
-    const errorsBySource = {};
-
-    this.errorHistory.forEach(error => {
-      errorsBySource[error.source] = (errorsBySource[error.source] || 0) + 1;
-    });
-
-    return {
-      total: this.errorHistory.length,
-      recent: recent.map(e => ({
-        message: e.message,
-        timestamp: e.timestamp,
-        source: e.source
-      })),
-      errorsBySource,
-      errorRate: this.errorHistory.length / (performance.now() / 1000) // errors per second
-    };
-  }
-
-  /**
-     * Clear error history
-     */
-  clearErrorHistory() {
-    this.errorHistory = [];
-    const errorsTab = document.getElementById('console-errors-list');
-    if (errorsTab) {
-      errorsTab.innerHTML = '';
-    }
-    const warningsTab = document.getElementById('console-warnings-list');
-    if (warningsTab) {
-      warningsTab.innerHTML = '';
-    }
-  }
 
   /**
      * Capitalize first letter

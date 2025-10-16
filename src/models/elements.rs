@@ -10,7 +10,6 @@ use wasm_bindgen::prelude::*;
 #[wasm_bindgen]
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(serde_repr::Serialize_repr, serde_repr::Deserialize_repr)]
 pub enum ElementKind {
     /// Unknown or uninitialized element type
     Unknown = 0,
@@ -38,6 +37,90 @@ pub enum ElementKind {
 
     /// Whitespace elements for layout
     Whitespace = 8,
+
+    /// Symbol elements (single non-alphanumeric characters: @, #, !, ?, etc.)
+    Symbol = 9,
+}
+
+// Custom serialization to show both name and value
+impl Serialize for ElementKind {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut state = serializer.serialize_struct("ElementKind", 2)?;
+        state.serialize_field("name", &self.snake_case_name())?;
+        state.serialize_field("value", &(*self as u8))?;
+        state.end()
+    }
+}
+
+// Custom deserialization - accepts either number or object format
+impl<'de> Deserialize<'de> for ElementKind {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct ElementKindVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for ElementKindVisitor {
+            type Value = ElementKind;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("an ElementKind number or object")
+            }
+
+            fn visit_u64<E>(self, value: u64) -> Result<ElementKind, E>
+            where
+                E: serde::de::Error,
+            {
+                match value {
+                    0 => Ok(ElementKind::Unknown),
+                    1 => Ok(ElementKind::PitchedElement),
+                    2 => Ok(ElementKind::UnpitchedElement),
+                    3 => Ok(ElementKind::UpperAnnotation),
+                    4 => Ok(ElementKind::LowerAnnotation),
+                    5 => Ok(ElementKind::Text),
+                    6 => Ok(ElementKind::Barline),
+                    7 => Ok(ElementKind::BreathMark),
+                    8 => Ok(ElementKind::Whitespace),
+                    9 => Ok(ElementKind::Symbol),
+                    _ => Err(E::custom(format!("invalid ElementKind value: {}", value))),
+                }
+            }
+
+            fn visit_map<A>(self, mut map: A) -> Result<ElementKind, A::Error>
+            where
+                A: serde::de::MapAccess<'de>,
+            {
+                let mut value: Option<u8> = None;
+                while let Some(key) = map.next_key::<String>()? {
+                    if key == "value" {
+                        value = Some(map.next_value()?);
+                    } else {
+                        map.next_value::<serde::de::IgnoredAny>()?;
+                    }
+                }
+                match value {
+                    Some(0) => Ok(ElementKind::Unknown),
+                    Some(1) => Ok(ElementKind::PitchedElement),
+                    Some(2) => Ok(ElementKind::UnpitchedElement),
+                    Some(3) => Ok(ElementKind::UpperAnnotation),
+                    Some(4) => Ok(ElementKind::LowerAnnotation),
+                    Some(5) => Ok(ElementKind::Text),
+                    Some(6) => Ok(ElementKind::Barline),
+                    Some(7) => Ok(ElementKind::BreathMark),
+                    Some(8) => Ok(ElementKind::Whitespace),
+                    Some(9) => Ok(ElementKind::Symbol),
+                    Some(v) => Err(serde::de::Error::custom(format!("invalid ElementKind value: {}", v))),
+                    None => Err(serde::de::Error::missing_field("value")),
+                }
+            }
+        }
+
+        deserializer.deserialize_any(ElementKindVisitor)
+    }
 }
 
 impl ElementKind {
@@ -73,6 +156,23 @@ impl ElementKind {
             ElementKind::Barline => "Barline",
             ElementKind::BreathMark => "Breath Mark",
             ElementKind::Whitespace => "Whitespace",
+            ElementKind::Symbol => "Symbol",
+        }
+    }
+
+    /// Get snake_case name for JSON serialization
+    pub fn snake_case_name(&self) -> &'static str {
+        match self {
+            ElementKind::Unknown => "unknown",
+            ElementKind::PitchedElement => "pitched_element",
+            ElementKind::UnpitchedElement => "unpitched_element",
+            ElementKind::UpperAnnotation => "upper_annotation",
+            ElementKind::LowerAnnotation => "lower_annotation",
+            ElementKind::Text => "text",
+            ElementKind::Barline => "barline",
+            ElementKind::BreathMark => "breath_mark",
+            ElementKind::Whitespace => "whitespace",
+            ElementKind::Symbol => "symbol",
         }
     }
 }
@@ -88,7 +188,6 @@ impl Default for ElementKind {
 #[wasm_bindgen]
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[derive(serde_repr::Serialize_repr, serde_repr::Deserialize_repr)]
 pub enum PitchSystem {
     /// Unknown pitch system
     Unknown = 0,
@@ -107,6 +206,86 @@ pub enum PitchSystem {
 
     /// Tabla notation system
     Tabla = 5,
+}
+
+// Custom serialization to show both name and value
+impl Serialize for PitchSystem {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut state = serializer.serialize_struct("PitchSystem", 2)?;
+        state.serialize_field("name", &self.snake_case_name())?;
+        state.serialize_field("value", &(*self as u8))?;
+        state.end()
+    }
+}
+
+// Custom deserialization - accepts either number or object format
+impl<'de> Deserialize<'de> for PitchSystem {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct PitchSystemVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for PitchSystemVisitor {
+            type Value = PitchSystem;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a PitchSystem number or object")
+            }
+
+            fn visit_u64<E>(self, value: u64) -> Result<PitchSystem, E>
+            where
+                E: serde::de::Error,
+            {
+                match value {
+                    0 => Ok(PitchSystem::Unknown),
+                    1 => Ok(PitchSystem::Number),
+                    2 => Ok(PitchSystem::Western),
+                    3 => Ok(PitchSystem::Sargam),
+                    4 => Ok(PitchSystem::Bhatkhande),
+                    5 => Ok(PitchSystem::Tabla),
+                    _ => Err(E::custom(format!("invalid PitchSystem value: {}", value))),
+                }
+            }
+
+            fn visit_i64<E>(self, value: i64) -> Result<PitchSystem, E>
+            where
+                E: serde::de::Error,
+            {
+                self.visit_u64(value as u64)
+            }
+
+            fn visit_map<A>(self, mut map: A) -> Result<PitchSystem, A::Error>
+            where
+                A: serde::de::MapAccess<'de>,
+            {
+                let mut value: Option<u8> = None;
+                while let Some(key) = map.next_key::<String>()? {
+                    if key == "value" {
+                        value = Some(map.next_value()?);
+                    } else {
+                        map.next_value::<serde::de::IgnoredAny>()?;
+                    }
+                }
+                match value {
+                    Some(0) => Ok(PitchSystem::Unknown),
+                    Some(1) => Ok(PitchSystem::Number),
+                    Some(2) => Ok(PitchSystem::Western),
+                    Some(3) => Ok(PitchSystem::Sargam),
+                    Some(4) => Ok(PitchSystem::Bhatkhande),
+                    Some(5) => Ok(PitchSystem::Tabla),
+                    Some(v) => Err(serde::de::Error::custom(format!("invalid PitchSystem value: {}", v))),
+                    None => Err(serde::de::Error::missing_field("value")),
+                }
+            }
+        }
+
+        deserializer.deserialize_any(PitchSystemVisitor)
+    }
 }
 
 impl PitchSystem {
@@ -146,6 +325,18 @@ impl PitchSystem {
             PitchSystem::Sargam => "Sargam",
             PitchSystem::Bhatkhande => "Bhatkhande",
             PitchSystem::Tabla => "Tabla",
+        }
+    }
+
+    /// Get snake_case name for JSON serialization
+    pub fn snake_case_name(&self) -> &'static str {
+        match self {
+            PitchSystem::Unknown => "unknown",
+            PitchSystem::Number => "number",
+            PitchSystem::Western => "western",
+            PitchSystem::Sargam => "sargam",
+            PitchSystem::Bhatkhande => "bhatkhande",
+            PitchSystem::Tabla => "tabla",
         }
     }
 
@@ -314,7 +505,6 @@ impl Default for OctaveDisplay {
 #[wasm_bindgen]
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(serde_repr::Serialize_repr, serde_repr::Deserialize_repr)]
 pub enum SlurIndicator {
     /// No slur indicator
     None = 0,
@@ -326,6 +516,80 @@ pub enum SlurIndicator {
     SlurEnd = 2,
 }
 
+// Custom serialization to show both name and value
+impl Serialize for SlurIndicator {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut state = serializer.serialize_struct("SlurIndicator", 2)?;
+        state.serialize_field("name", &self.snake_case_name())?;
+        state.serialize_field("value", &(*self as u8))?;
+        state.end()
+    }
+}
+
+// Custom deserialization - accepts either number or object format
+impl<'de> Deserialize<'de> for SlurIndicator {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct SlurIndicatorVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for SlurIndicatorVisitor {
+            type Value = SlurIndicator;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a SlurIndicator number or object")
+            }
+
+            fn visit_u64<E>(self, value: u64) -> Result<SlurIndicator, E>
+            where
+                E: serde::de::Error,
+            {
+                match value {
+                    0 => Ok(SlurIndicator::None),
+                    1 => Ok(SlurIndicator::SlurStart),
+                    2 => Ok(SlurIndicator::SlurEnd),
+                    _ => Err(E::custom(format!("invalid SlurIndicator value: {}", value))),
+                }
+            }
+
+            fn visit_i64<E>(self, value: i64) -> Result<SlurIndicator, E>
+            where
+                E: serde::de::Error,
+            {
+                self.visit_u64(value as u64)
+            }
+
+            fn visit_map<A>(self, mut map: A) -> Result<SlurIndicator, A::Error>
+            where
+                A: serde::de::MapAccess<'de>,
+            {
+                let mut value: Option<u8> = None;
+                while let Some(key) = map.next_key::<String>()? {
+                    if key == "value" {
+                        value = Some(map.next_value()?);
+                    } else {
+                        map.next_value::<serde::de::IgnoredAny>()?;
+                    }
+                }
+                match value {
+                    Some(0) => Ok(SlurIndicator::None),
+                    Some(1) => Ok(SlurIndicator::SlurStart),
+                    Some(2) => Ok(SlurIndicator::SlurEnd),
+                    Some(v) => Err(serde::de::Error::custom(format!("invalid SlurIndicator value: {}", v))),
+                    None => Err(serde::de::Error::missing_field("value")),
+                }
+            }
+        }
+
+        deserializer.deserialize_any(SlurIndicatorVisitor)
+    }
+}
+
 impl SlurIndicator {
     /// Get the human-readable name for this slur indicator
     pub fn name(&self) -> &'static str {
@@ -333,6 +597,15 @@ impl SlurIndicator {
             SlurIndicator::None => "None",
             SlurIndicator::SlurStart => "Slur Start",
             SlurIndicator::SlurEnd => "Slur End",
+        }
+    }
+
+    /// Get snake_case name for JSON serialization
+    pub fn snake_case_name(&self) -> &'static str {
+        match self {
+            SlurIndicator::None => "none",
+            SlurIndicator::SlurStart => "slur_start",
+            SlurIndicator::SlurEnd => "slur_end",
         }
     }
 

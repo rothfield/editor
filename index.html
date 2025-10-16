@@ -11,6 +11,24 @@
 
     <!-- Custom UI styles -->
     <style>
+        /* Music Fonts */
+        @font-face {
+            font-family: 'Bravura';
+            src: url('/static/fonts/Bravura.woff2') format('woff2'),
+                 url('/static/fonts/Bravura.woff') format('woff');
+            font-weight: normal;
+            font-style: normal;
+            font-display: swap;
+        }
+
+        @font-face {
+            font-family: 'Inter';
+            src: url('/static/fonts/Inter.ttc') format('truetype-collection');
+            font-weight: 100 900;
+            font-style: normal;
+            font-display: swap;
+        }
+
         /* Viewport constraints - prevent scrollbars */
         html, body {
             height: 100vh;
@@ -35,9 +53,37 @@
             list-style: none;
         }
 
+        /* Tab buttons container */
+        .tab-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            width: 100%;
+            gap: 0;
+        }
+
+        /* Tab styling */
+        .tab {
+            padding: 0.375rem 0.5rem;
+            border: 1px solid #e5e7eb;
+            border-bottom: 2px solid transparent;
+            background: #f9fafb;
+            text-align: center;
+            cursor: pointer;
+            font-size: 0.65rem;
+            white-space: nowrap;
+            transition: all 0.2s;
+            flex: 0 1 auto;
+            min-width: min-content;
+        }
+
+        .tab:hover {
+            background: #f3f4f6;
+        }
+
         /* Tab active state */
         .tab.active {
             border-bottom-color: #0066cc;
+            background: white;
             color: #0066cc;
             font-weight: 500;
         }
@@ -169,6 +215,18 @@
         }
 
         /* Element kind styling */
+        /* Default text font */
+        .char-cell {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+
+        /* Music font for barlines and musical symbols */
+        .char-cell.kind-barline {
+            font-family: 'Bravura', serif;
+            font-size: 20px;
+            line-height: 1;
+        }
+
         /* Text cells - italics and red */
         .char-cell.kind-text {
             font-style: italic;
@@ -316,17 +374,20 @@
 
             <!-- Debug Information Panel -->
             <aside id="tabs-panel" class="bg-ui-background border-l border-ui-border flex flex-col overflow-hidden" style="width: 384px; min-width: 200px; max-width: 800px;">
-                <!-- Tab Navigation -->
+                <!-- Tab Navigation (Multi-row wrap) -->
                 <div class="bg-white border-b border-ui-border">
-                    <nav class="flex">
+                    <div class="tab-buttons flex flex-wrap gap-0">
                         <button id="tab-staff-notation" class="tab active" data-tab="staff-notation">
                             Staff Notation
                         </button>
                         <button id="tab-musicxml" class="tab" data-tab="musicxml">
                             MusicXML
                         </button>
-                        <button id="tab-lilypond" class="tab" data-tab="lilypond">
-                            LilyPond
+                        <button id="tab-lilypond-src" class="tab" data-tab="lilypond-src">
+                            LilyPond Src
+                        </button>
+                        <button id="tab-lilypond-png" class="tab" data-tab="lilypond-png">
+                            LilyPond PNG
                         </button>
                         <button id="tab-ephemeral" class="tab" data-tab="ephemeral">
                             Ephemeral Model
@@ -343,14 +404,13 @@
                         <button id="tab-html" class="tab" data-tab="html">
                             HTML
                         </button>
-                    </nav>
+                    </div>
                 </div>
 
                 <!-- Tab Content -->
                 <div class="flex-1 flex flex-col overflow-hidden">
                     <!-- Staff Notation Tab -->
                     <div id="tab-content-staff-notation" data-tab-content="staff-notation" class="tab-content flex-1 flex flex-col p-4">
-                        <h3 class="text-sm font-semibold mb-2 text-gray-700">Staff Notation (OSMD/VexFlow)</h3>
                         <div id="staff-notation-container" class="flex-1 bg-white p-4 border-2 border-gray-300 rounded overflow-auto mb-2">
                             <div class="text-sm text-gray-500">Start typing music to see staff notation...</div>
                         </div>
@@ -390,10 +450,18 @@
                         <pre id="musicxml-source" class="flex-1 text-xs font-mono bg-white p-3 border-2 border-gray-300 rounded overflow-auto"></pre>
                     </div>
 
-                    <!-- LilyPond Tab -->
-                    <div id="tab-content-lilypond" data-tab-content="lilypond" class="tab-content hidden flex-1 flex flex-col p-4">
+                    <!-- LilyPond Source Code Tab -->
+                    <div id="tab-content-lilypond-src" data-tab-content="lilypond-src" class="tab-content hidden flex-1 flex flex-col p-4">
                         <h3 class="text-sm font-semibold mb-2 text-gray-700">LilyPond Source Code</h3>
                         <pre id="lilypond-source" class="flex-1 text-xs font-mono bg-white p-3 border-2 border-gray-300 rounded overflow-auto"></pre>
+                    </div>
+
+                    <!-- LilyPond PNG/SVG Rendering Tab -->
+                    <div id="tab-content-lilypond-png" data-tab-content="lilypond-png" class="tab-content hidden flex-1 flex flex-col p-4">
+                        <h3 class="text-sm font-semibold mb-2 text-gray-700">LilyPond Rendering</h3>
+                        <div id="lilypond-render-container" class="flex-1 bg-white p-3 border-2 border-gray-300 rounded overflow-auto flex items-center justify-center">
+                            <p class="text-gray-500 text-sm">LilyPond rendering</p>
+                        </div>
                     </div>
 
                     <!-- Ephemeral Model Tab (full document with state) -->

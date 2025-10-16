@@ -44,7 +44,7 @@ pub fn parse(s: &str, pitch_system: PitchSystem, column: usize) -> Cell {
         return cell;
     }
 
-    // Try single-char barline: "|", ":"
+    // Try single-char barline: "|"
     if let Some(cell) = parse_barline(s, column) {
         log::info!("  ✅ Parsed as barline");
         return cell;
@@ -65,6 +65,12 @@ pub fn parse(s: &str, pitch_system: PitchSystem, column: usize) -> Cell {
     // Try breath mark
     if let Some(cell) = parse_breath_mark(s, column) {
         log::info!("  ✅ Parsed as breath mark");
+        return cell;
+    }
+
+    // Try symbol (single non-alphanumeric character)
+    if let Some(cell) = parse_symbol(s, column) {
+        log::info!("  ✅ Parsed as symbol");
         return cell;
     }
 
@@ -103,6 +109,7 @@ fn parse_note(s: &str, pitch_system: PitchSystem, column: usize) -> Option<Cell>
 
 /// Parse barline (includes "|", "|:", ":|", "||", etc.)
 /// Note: ":" alone is NOT a barline - it's text
+/// Stores barlines as ASCII - JavaScript layer converts to SMuFL glyphs for display
 fn parse_barline(s: &str, column: usize) -> Option<Cell> {
     if matches!(s, "|" | "|:" | ":|" | "||") {
         let cell = Cell::new(s.to_string(), ElementKind::Barline, column);
@@ -140,6 +147,40 @@ fn parse_breath_mark(s: &str, column: usize) -> Option<Cell> {
     } else {
         None
     }
+}
+
+/// Parse symbol (single non-alphanumeric character)
+/// Matches characters like: :, @, #, !, ?, ~, `, ^, etc.
+/// Note: This is parsed BEFORE text fallback to capture symbolic notation
+///
+/// Characters handled elsewhere are excluded:
+/// - | (barline)
+/// - - (unpitched element)
+/// - _ (unpitched element)
+/// - ' (breath mark)
+/// - , (breath mark)
+/// - (space) (whitespace)
+fn parse_symbol(s: &str, column: usize) -> Option<Cell> {
+    // Must be single character
+    if s.len() != 1 {
+        return None;
+    }
+
+    let ch = s.chars().next().unwrap();
+
+    // Must be non-alphanumeric
+    if ch.is_alphanumeric() {
+        return None;
+    }
+
+    // Must not already be matched by other rules
+    // (pipe, dash, underscore, apostrophe, comma, space are handled elsewhere)
+    if matches!(ch, '|' | '-' | '_' | '\'' | ',' | ' ') {
+        return None;
+    }
+
+    let cell = Cell::new(s.to_string(), ElementKind::Symbol, column);
+    Some(cell)
 }
 
 /// Parse text (fallback)
@@ -377,10 +418,43 @@ mod tests {
     }
 
     #[test]
-    fn test_colon_alone_is_text() {
-        // Test ":" alone should be Text, not Barline
+    fn test_colon_alone_is_symbol() {
+        // Test ":" alone should be Symbol
         let cell = parse_single(':', PitchSystem::Number, 0);
         assert_eq!(cell.char, ":");
-        assert_eq!(cell.kind, ElementKind::Text); // Should be Text, not Barline
+        assert_eq!(cell.kind, ElementKind::Symbol);
+    }
+
+    #[test]
+    fn test_at_symbol() {
+        // Test "@" should be Symbol
+        let cell = parse_single('@', PitchSystem::Number, 0);
+        assert_eq!(cell.char, "@");
+        assert_eq!(cell.kind, ElementKind::Symbol);
+    }
+
+    #[test]
+    fn test_hash_symbol_vs_accidental() {
+        // Test "#" alone should be Symbol (not part of note)
+        let cell = parse_single('#', PitchSystem::Number, 0);
+        assert_eq!(cell.char, "#");
+        assert_eq!(cell.kind, ElementKind::Symbol);
+    }
+
+    #[test]
+    fn test_mixed_symbols_and_text() {
+        // Test that symbols parse correctly before falling back to text
+        let cell1 = parse_single('!', PitchSystem::Number, 0);
+        assert_eq!(cell1.kind, ElementKind::Symbol);
+
+        let cell2 = parse_single('?', PitchSystem::Number, 0);
+        assert_eq!(cell2.kind, ElementKind::Symbol);
+
+        let cell3 = parse_single('~', PitchSystem::Number, 0);
+        assert_eq!(cell3.kind, ElementKind::Symbol);
+
+        // Alphanumeric should still be text (or note if valid)
+        let cell4 = parse_single('x', PitchSystem::Number, 0);
+        assert_eq!(cell4.kind, ElementKind::Text);
     }
 }

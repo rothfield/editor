@@ -203,6 +203,7 @@ impl LayoutEngine {
             dataset.insert("column".to_string(), cell.col.to_string());
             dataset.insert("octave".to_string(), cell.octave.to_string());
             dataset.insert("glyphLength".to_string(), cell.char.chars().count().to_string());
+            dataset.insert("continuation".to_string(), cell.continuation.to_string());
 
             // Get effective width for this cell
             let effective_width = effective_widths.get(cell_idx).copied().unwrap_or(12.0);
@@ -462,6 +463,7 @@ impl LayoutEngine {
             ElementKind::Barline => "barline",
             ElementKind::Whitespace => "whitespace",
             ElementKind::Text => "text",
+            ElementKind::Symbol => "symbol",
             ElementKind::Unknown => "unknown",
         }
     }

@@ -9,10 +9,13 @@ import {
   BASE_FONT_SIZE,
   BASE_LINE_HEIGHT,
   SMALL_FONT_SIZE,
+  BRAVURA_FONT_SIZE,
+  BRAVURA_VERTICAL_OFFSET,
   LEFT_MARGIN_PX,
   CELL_Y_OFFSET,
   CELL_HEIGHT
 } from './constants.js';
+import SlurRenderer from './slur-renderer.js';
 
 class DOMRenderer {
   constructor(editorElement, editor) {
@@ -27,14 +30,19 @@ class DOMRenderer {
     this.renderStats = {
       cellsRendered: 0,
       beatsRendered: 0,
+      slursRendered: 0,
       lastRenderTime: 0
     };
 
     this.setupBeatLoopStyles(); // Sets up beat loops, octave dots, and slur CSS
+
+    // Initialize slur renderer
+    this.slurRenderer = new SlurRenderer(this.element);
   }
 
   /**
-     * Setup CSS for beat loop arcs, octave dots, and slurs
+     * Setup CSS for beat loop arcs and octave dots
+     * Note: Slurs are now rendered using SVG overlay (see SlurRenderer)
      */
   setupBeatLoopStyles() {
     const style = document.createElement('style');
@@ -91,7 +99,6 @@ class DOMRenderer {
       }
 
       /* Octave dots using ::before pseudo-element */
-      /* Note: Slur arcs also use ::before, so cells with slurs won't show octave dots */
       .char-cell[data-octave="1"]::before {
         content: '•';
         position: absolute;
@@ -146,46 +153,74 @@ class DOMRenderer {
         z-index: 2;
       }
 
-      /* UPPER slur arcs (using ::before, pure CSS) */
-      /* These will override octave dots on the same cell */
-      .char-cell.slur-first::before {
-        content: '';
-        position: absolute;
-        left: 0;
-        right: 0;
-        top: calc(-1 * var(--arc-offset));
-        height: var(--arc-height);
-        border-left: var(--arc-stroke) solid #4a5568;
-        border-top: var(--arc-stroke) solid #4a5568;
-        border-radius: 12px 0 0 0;
-        pointer-events: none;
-        z-index: 3;
+      /* Symbol elements styled in green */
+      .char-cell.kind-symbol {
+        color: #22c55e; /* green-500 */
+        font-weight: 500;
       }
 
-      .char-cell.slur-middle::before {
-        content: '';
-        position: absolute;
-        left: 0;
-        right: 0;
-        top: calc(-1 * var(--arc-offset));
-        height: var(--arc-height);
-        border-top: var(--arc-stroke) solid #4a5568;
-        pointer-events: none;
-        z-index: 3;
+      /* Multi-character barline overlays using SMuFL music font */
+      /* Hide underlying ASCII text and show fancy glyph overlay */
+      .char-cell.repeat-left-start,
+      .char-cell.repeat-right-start,
+      .char-cell.double-bar-start {
+        color: transparent;
       }
 
-      .char-cell.slur-last::before {
-        content: '';
+      /* Hide continuation cells that are part of multi-char barlines */
+      .char-cell.kind-barline[data-continuation="true"] {
+        color: transparent;
+      }
+
+      /* Left repeat (|:) - SMuFL U+E040 spanning 2 cells */
+      .char-cell.repeat-left-start::after {
+        content: '\uE040';
+        font-family: 'Bravura', serif;
         position: absolute;
         left: 0;
-        right: 0;
-        top: calc(-1 * var(--arc-offset));
-        height: var(--arc-height);
-        border-right: var(--arc-stroke) solid #4a5568;
-        border-top: var(--arc-stroke) solid #4a5568;
-        border-radius: 0 12px 0 0;
+        top: calc(50% + ${BRAVURA_VERTICAL_OFFSET}px);
+        transform: translateY(-50%);
+        width: 200%; /* Span 2 cells */
+        text-align: left;
+        color: #000;
+        font-size: ${BRAVURA_FONT_SIZE}px;
+        line-height: 1;
         pointer-events: none;
-        z-index: 3;
+        z-index: 4;
+      }
+
+      /* Right repeat (:|) - SMuFL U+E041 spanning 2 cells */
+      .char-cell.repeat-right-start::after {
+        content: '\uE041';
+        font-family: 'Bravura', serif;
+        position: absolute;
+        left: 0;
+        top: calc(50% + ${BRAVURA_VERTICAL_OFFSET}px);
+        transform: translateY(-50%);
+        width: 200%; /* Span 2 cells */
+        text-align: left;
+        color: #000;
+        font-size: ${BRAVURA_FONT_SIZE}px;
+        line-height: 1;
+        pointer-events: none;
+        z-index: 4;
+      }
+
+      /* Double barline (||) - SMuFL U+E031 spanning 2 cells */
+      .char-cell.double-bar-start::after {
+        content: '\uE031';
+        font-family: 'Bravura', serif;
+        position: absolute;
+        left: 0;
+        top: calc(50% + ${BRAVURA_VERTICAL_OFFSET}px);
+        transform: translateY(-50%);
+        width: 200%; /* Span 2 cells */
+        text-align: left;
+        color: #000;
+        font-size: ${BRAVURA_FONT_SIZE}px;
+        line-height: 1;
+        pointer-events: none;
+        z-index: 4;
       }
     `;
     document.head.appendChild(style);
@@ -404,6 +439,12 @@ class DOMRenderer {
       const lineElement = this.renderLineFromDisplayList(renderLine);
       this.element.appendChild(lineElement);
     });
+
+    // Render slurs using SVG overlay (after all cells are positioned)
+    this.slurRenderer.renderSlurs(displayList);
+
+    // Update slur count in stats
+    this.renderStats.slursRendered = this.slurRenderer.slurPaths.size;
   }
 
   /**
@@ -503,6 +544,38 @@ class DOMRenderer {
       const span = document.createElement('span');
       span.className = cellData.classes.join(' ');
       span.textContent = cellData.char === ' ' ? '\u00A0' : cellData.char;
+
+      // Detect multi-character barlines for CSS overlay
+      // Check if this is a barline head (not a continuation) that's followed by a continuation
+      const isBarline = cellData.classes.includes('kind-barline');
+      const isContinuation = cellData.dataset && (
+        cellData.dataset instanceof Map ?
+          cellData.dataset.get('continuation') === 'true' :
+          cellData.dataset.continuation === 'true'
+      );
+
+      if (isBarline && !isContinuation && idx < renderLine.cells.length - 1) {
+        const nextCell = renderLine.cells[idx + 1];
+        const nextIsBarline = nextCell.classes.includes('kind-barline');
+        const nextIsContinuation = nextCell.dataset && (
+          nextCell.dataset instanceof Map ?
+            nextCell.dataset.get('continuation') === 'true' :
+            nextCell.dataset.continuation === 'true'
+        );
+
+        // If next cell is a barline continuation, determine the pattern
+        if (nextIsBarline && nextIsContinuation) {
+          const pattern = cellData.char + nextCell.char;
+          if (pattern === '|:') {
+            span.classList.add('repeat-left-start');
+          } else if (pattern === ':|') {
+            span.classList.add('repeat-right-start');
+          } else if (pattern === '||') {
+            span.classList.add('double-bar-start');
+          }
+        }
+      }
+
       span.style.cssText = `
         position: absolute;
         left: ${cellData.x}px;
@@ -658,8 +731,15 @@ class DOMRenderer {
     this.charCellElements.clear();
     this.beatLoopElements.clear();
 
-    // Remove all child elements
-    const childrenToRemove = Array.from(this.element.children);
+    // Clear slurs
+    if (this.slurRenderer) {
+      this.slurRenderer.clearSlurs();
+    }
+
+    // Remove all child elements (except SVG overlay)
+    const childrenToRemove = Array.from(this.element.children).filter(
+      child => !child.classList.contains('slur-overlay')
+    );
     childrenToRemove.forEach(child => this.element.removeChild(child));
   }
 
