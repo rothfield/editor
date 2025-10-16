@@ -13,6 +13,10 @@ class UI {
     this.activeTab = 'staff-notation';
     this.menuListeners = new Map();
 
+    // localStorage settings
+    this.tabSaveDebounceMs = 2000;
+    this.tabSaveTimeout = null;
+
     // Bind methods
     this.handleMenuToggle = this.handleMenuToggle.bind(this);
     this.handleMenuItemClick = this.handleMenuItemClick.bind(this);
@@ -28,6 +32,7 @@ class UI {
     this.setupTabs();
     this.setupEventListeners();
     this.updateCurrentPitchSystemDisplay();
+    this.restoreTabPreference();
 
     console.log('UI components initialized');
   }
@@ -281,6 +286,9 @@ class UI {
 
     this.activeTab = tabName;
 
+    // Save tab preference to localStorage with debounce
+    this.scheduleTabSave();
+
     // Render staff notation if switching to staff notation tab
     if (tabName === 'staff-notation' && this.editor) {
       await this.editor.renderStaffNotation();
@@ -288,6 +296,57 @@ class UI {
 
     // Request focus return to editor
     this.returnFocusToEditor();
+  }
+
+  /**
+   * Schedule tab preference save with debounce
+   */
+  scheduleTabSave() {
+    // Clear existing timeout
+    if (this.tabSaveTimeout) {
+      clearTimeout(this.tabSaveTimeout);
+    }
+
+    // Set new timeout to save after 2 seconds of inactivity
+    this.tabSaveTimeout = setTimeout(() => {
+      this.saveTabPreference();
+      this.tabSaveTimeout = null;
+    }, this.tabSaveDebounceMs);
+  }
+
+  /**
+   * Save active tab preference to localStorage
+   */
+  saveTabPreference() {
+    try {
+      localStorage.setItem('editor_active_tab', this.activeTab);
+      console.log(`[Tab Preference] Saved active tab: ${this.activeTab}`);
+    } catch (error) {
+      console.error('Failed to save tab preference to localStorage:', error);
+    }
+  }
+
+  /**
+   * Restore tab preference from localStorage on initialization
+   */
+  restoreTabPreference() {
+    try {
+      const savedTab = localStorage.getItem('editor_active_tab');
+      if (savedTab) {
+        // Verify the saved tab exists in the DOM
+        const tabElement = document.querySelector(`[data-tab="${savedTab}"]`);
+        if (tabElement) {
+          this.switchTab(savedTab);
+          console.log(`[Tab Preference] Restored active tab: ${savedTab}`);
+          return;
+        }
+      }
+    } catch (error) {
+      console.error('Failed to restore tab preference from localStorage:', error);
+    }
+
+    // Fallback to default tab if nothing was saved or restoration failed
+    this.switchTab('staff-notation');
   }
 
   /**
