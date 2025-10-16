@@ -852,16 +852,32 @@ class MusicNotationEditor {
      * Navigate up (cursor stays on main line)
      */
   navigateUp() {
-    // Cursor is always on main line - no lane switching
-    console.log('navigateUp: cursor always stays on main line');
+    if (!this.theDocument || !this.theDocument.state) {
+      return;
+    }
+
+    const currentStave = this.theDocument.state.cursor.stave;
+    if (currentStave > 0) {
+      this.theDocument.state.cursor.stave = currentStave - 1;
+      this.setCursorPosition(0); // Move to start of previous line
+      logger.debug(LOG_CATEGORIES.CURSOR, `Navigate up to stave ${currentStave - 1}`);
+    }
   }
 
   /**
-     * Navigate down (cursor stays on main line)
+     * Navigate down (switch to next line)
      */
   navigateDown() {
-    // Cursor is always on main line - no lane switching
-    console.log('navigateDown: cursor always stays on main line');
+    if (!this.theDocument || !this.theDocument.state || !this.theDocument.lines) {
+      return;
+    }
+
+    const currentStave = this.theDocument.state.cursor.stave;
+    if (currentStave < this.theDocument.lines.length - 1) {
+      this.theDocument.state.cursor.stave = currentStave + 1;
+      this.setCursorPosition(0); // Move to start of next line
+      logger.debug(LOG_CATEGORIES.CURSOR, `Navigate down to stave ${currentStave + 1}`);
+    }
   }
 
   /**
@@ -899,11 +915,16 @@ class MusicNotationEditor {
      * Get the maximum character position in the line
      */
   getMaxCharPosition() {
-    if (!this.theDocument || !this.theDocument.lines || this.theDocument.lines.length === 0) {
+    if (!this.theDocument || !this.theDocument.state || !this.theDocument.lines || this.theDocument.lines.length === 0) {
       return 0;
     }
 
-    const line = this.theDocument.lines[0];
+    const currentStave = this.theDocument.state.cursor.stave;
+    const line = this.theDocument.lines[currentStave];
+    if (!line) {
+      return 0;
+    }
+
     const cells = line.cells || [];
 
     // Sum up lengths of all cell glyphs
@@ -921,11 +942,16 @@ class MusicNotationEditor {
      * @returns {Object} {cellIndex, charOffsetInCell}
      */
   charPosToCellIndex(charPos) {
-    if (!this.theDocument || !this.theDocument.lines || this.theDocument.lines.length === 0) {
+    if (!this.theDocument || !this.theDocument.state || !this.theDocument.lines || this.theDocument.lines.length === 0) {
       return { cellIndex: 0, charOffsetInCell: 0 };
     }
 
-    const line = this.theDocument.lines[0];
+    const currentStave = this.theDocument.state.cursor.stave;
+    const line = this.theDocument.lines[currentStave];
+    if (!line) {
+      return { cellIndex: 0, charOffsetInCell: 0 };
+    }
+
     const cells = line.cells || [];
 
     let accumulatedChars = 0;
@@ -955,11 +981,16 @@ class MusicNotationEditor {
      * @returns {number} Character position at the start of this cell
      */
   cellIndexToCharPos(cellIndex) {
-    if (!this.theDocument || !this.theDocument.lines || this.theDocument.lines.length === 0) {
+    if (!this.theDocument || !this.theDocument.state || !this.theDocument.lines || this.theDocument.lines.length === 0) {
       return 0;
     }
 
-    const line = this.theDocument.lines[0];
+    const currentStave = this.theDocument.state.cursor.stave;
+    const line = this.theDocument.lines[currentStave];
+    if (!line) {
+      return 0;
+    }
+
     const cells = line.cells || [];
 
     let charPos = 0;
@@ -2115,8 +2146,14 @@ class MusicNotationEditor {
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
 
+    // Determine which line was clicked based on Y coordinate
+    const lineIndex = this.calculateLineFromY(y);
+    if (lineIndex !== null && this.theDocument && this.theDocument.state) {
+      // Switch to the clicked line
+      this.theDocument.state.cursor.stave = lineIndex;
+    }
+
     // Calculate Cell position from click coordinates
-    // Returns null if clicked on non-main line
     const charCellPosition = this.calculateCellPosition(x, y);
 
     if (charCellPosition !== null) {
@@ -2128,6 +2165,27 @@ class MusicNotationEditor {
   /**
      * Calculate Cell position from coordinates using DisplayList data
      */
+  calculateLineFromY(y) {
+    // Determine which line was clicked based on Y coordinate
+    if (!this.renderer || !this.renderer.displayList || !this.renderer.displayList.lines) {
+      return null;
+    }
+
+    const displayList = this.renderer.displayList;
+    for (let lineIndex = 0; lineIndex < displayList.lines.length; lineIndex++) {
+      const line = displayList.lines[lineIndex];
+      if (line.y_min !== undefined && line.y_max !== undefined) {
+        if (y >= line.y_min && y <= line.y_max) {
+          return lineIndex;
+        }
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Calculate Cell position from coordinates using DisplayList data
+   */
   calculateCellPosition(x, y) {
     // Use DisplayList for accurate cursor positioning
     if (!this.renderer || !this.renderer.displayList) {
@@ -2136,11 +2194,17 @@ class MusicNotationEditor {
     }
 
     const displayList = this.renderer.displayList;
-    const firstLine = displayList.lines && displayList.lines[0];
 
-    if (!firstLine || !firstLine.cells || firstLine.cells.length === 0) {
+    // Get the correct line based on Y coordinate
+    const lineIndex = this.calculateLineFromY(y);
+    const line = lineIndex !== null && displayList.lines[lineIndex] ? displayList.lines[lineIndex] : (displayList.lines && displayList.lines[0]);
+
+    if (!line || !line.cells || line.cells.length === 0) {
       return 0;
     }
+
+    // Use the line's cells for position calculation (not firstLine)
+    const currentLine = line;
 
     // Build array of cursor positions:
     // [0] = cursor_left of first cell
@@ -2150,10 +2214,10 @@ class MusicNotationEditor {
     const cursorPositions = [];
 
     // Position 0: before first cell
-    cursorPositions.push(firstLine.cells[0].cursor_left);
+    cursorPositions.push(currentLine.cells[0].cursor_left);
 
     // Positions 1..N: after each cell
-    for (const cell of firstLine.cells) {
+    for (const cell of currentLine.cells) {
       cursorPositions.push(cell.cursor_right);
     }
 
