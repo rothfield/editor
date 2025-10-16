@@ -23,6 +23,11 @@ class MusicNotationEditor {
 
     // Staff notation real-time update
     this.staffNotationTimer = null;
+
+    // Mouse selection state
+    this.isDragging = false;
+    this.dragStartPos = null;
+    this.dragEndPos = null;
   }
 
   /**
@@ -1963,6 +1968,26 @@ class MusicNotationEditor {
       this.hideCursor();
     });
 
+    // Mouse selection events
+    this.element.addEventListener('mousedown', (event) => {
+      this.handleMouseDown(event);
+    });
+
+    this.element.addEventListener('mousemove', (event) => {
+      this.handleMouseMove(event);
+    });
+
+    this.element.addEventListener('mouseup', (event) => {
+      this.handleMouseUp(event);
+    });
+
+    // Handle mouseup outside editor to finish selection
+    document.addEventListener('mouseup', (event) => {
+      if (this.isDragging) {
+        this.handleMouseUp(event);
+      }
+    });
+
     // Click events - just focus the editor
     this.element.addEventListener('click', (event) => {
       this.element.focus();
@@ -1973,8 +1998,26 @@ class MusicNotationEditor {
      * Handle mouse down - start selection or positioning
      */
   handleMouseDown(event) {
-    // Just focus the editor for now
     this.element.focus();
+
+    // Calculate cell position from click
+    const rect = this.element.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+
+    const cellPosition = this.calculateCellPosition(x, y);
+
+    if (cellPosition !== null) {
+      // Start drag selection
+      this.isDragging = true;
+      this.dragStartPos = cellPosition;
+      this.dragEndPos = cellPosition;
+
+      // Initialize selection at click point
+      this.initializeSelection(cellPosition, cellPosition);
+      this.setCursorPosition(cellPosition);
+    }
+
     event.preventDefault();
   }
 
