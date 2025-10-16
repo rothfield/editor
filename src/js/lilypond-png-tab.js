@@ -131,14 +131,22 @@ class LilyPondPngTab {
       this.renderArea.style.cssText = `
         flex: 1;
         overflow: auto;
-        padding: 20px;
+        padding: 0;
         background: white;
         display: flex;
         align-items: center;
         justify-content: center;
-        min-height: 400px;
+        min-height: 0;
       `;
       this.container.appendChild(this.renderArea);
+    } else {
+      // Ensure the existing renderArea has proper flex properties
+      this.renderArea.style.flex = '1';
+      this.renderArea.style.minHeight = '0';
+      this.renderArea.style.padding = '0';
+      this.renderArea.style.display = 'flex';
+      this.renderArea.style.alignItems = 'center';
+      this.renderArea.style.justifyContent = 'center';
     }
 
     // Insert toolbar at top
@@ -261,14 +269,15 @@ class LilyPondPngTab {
       this.renderArea.style.display = 'flex';
       this.renderArea.style.alignItems = 'center';
       this.renderArea.style.justifyContent = 'center';
+      this.renderArea.style.padding = '0';
 
       // Make SVG expand to fill the container
       const svg = this.renderArea.querySelector('svg');
       if (svg) {
         svg.style.width = '100%';
         svg.style.height = '100%';
-        svg.style.maxWidth = '100%';
-        svg.style.maxHeight = '100%';
+        svg.style.maxWidth = 'none';
+        svg.style.maxHeight = 'none';
         svg.style.objectFit = 'contain';
       }
     } else if (result.png_base64) {
@@ -278,6 +287,7 @@ class LilyPondPngTab {
         width: 100%;
         height: 100%;
         object-fit: contain;
+        padding: 0;
       `;
       this.renderArea.innerHTML = '';
       this.renderArea.appendChild(img);

@@ -210,7 +210,12 @@ class MusicNotationEditor {
 
     try {
       if (this.theDocument && this.theDocument.lines && this.theDocument.lines.length > 0) {
-        const line = this.theDocument.lines[0];
+        const line = this.getCurrentLine();
+        if (!line) return;
+        if (!line) {
+          logger.error(LOG_CATEGORIES.PARSER, 'Current line not available');
+          return;
+        }
         let cells = line.cells;
 
         logger.debug(LOG_CATEGORIES.PARSER, 'Processing characters', {
@@ -373,7 +378,7 @@ class MusicNotationEditor {
       // Parse text using WASM recursive descent parser
       if (this.theDocument && this.theDocument.lines && this.theDocument.lines.length > 0) {
         const cells = this.wasmModule.parseText(text, pitchSystem);
-        const line =this.theDocument.lines[0];
+        const line =this.getCurrentLine();
         line.cells = cells; // Replace main line with parsed cells
       }
 
@@ -536,7 +541,8 @@ class MusicNotationEditor {
     try {
       // Simple deletion for POC - manual array manipulation
       if (this.theDocument && this.theDocument.lines && this.theDocument.lines.length > 0) {
-        const line = this.theDocument.lines[0];
+        const line = this.getCurrentLine();
+        if (!line) return;
         const cells = line.cells;
 
         // Delete cells in range
@@ -558,6 +564,27 @@ class MusicNotationEditor {
   /**
      * Get current cursor position (character offset)
      */
+  /**
+   * Get the current stave/line index from cursor state
+   */
+  getCurrentStave() {
+    if (this.theDocument && this.theDocument.state && this.theDocument.state.cursor) {
+      return this.theDocument.state.cursor.stave;
+    }
+    return 0;
+  }
+
+  /**
+   * Get the current line from document based on cursor stave
+   */
+  getCurrentLine() {
+    if (!this.theDocument || !this.theDocument.lines) {
+      return null;
+    }
+    const stave = this.getCurrentStave();
+    return this.theDocument.lines[stave] || null;
+  }
+
   getCursorPosition() {
     if (this.theDocument && this.theDocument.state) {
       return this.theDocument.state.cursor.column;
@@ -628,7 +655,8 @@ class MusicNotationEditor {
     if (this.theDocument) {
       // Check if we have lines and if the first line has pitch_system set
       if (this.theDocument.lines && this.theDocument.lines.length > 0) {
-        const line = this.theDocument.lines[0];
+        const line = this.getCurrentLine();
+        if (!line) return;
         // If line has pitch_system set (non-zero), use it
         if (line.pitch_system && line.pitch_system !== 0) {
           return line.pitch_system;
@@ -905,7 +933,8 @@ class MusicNotationEditor {
       return 0;
     }
 
-    const line = this.theDocument.lines[0];
+    const line = this.getCurrentLine();
+        if (!line) return;
     const cells = line.cells || [];
 
     return cells.length; // Position after last cell
@@ -1111,7 +1140,8 @@ class MusicNotationEditor {
       return '';
     }
 
-    const line = this.theDocument.lines[0];
+    const line = this.getCurrentLine();
+        if (!line) return;
     const cells = line.cells || [];
 
     if (cells.length === 0) {
@@ -1360,7 +1390,8 @@ class MusicNotationEditor {
 
       // Use WASM API to delete character (cell-based operation)
       if (this.theDocument && this.theDocument.lines && this.theDocument.lines.length > 0) {
-        const line = this.theDocument.lines[0];
+        const line = this.getCurrentLine();
+        if (!line) return;
         const cells = line.cells;
 
         // Determine which cell to delete: if at cell boundary, delete previous cell
@@ -1422,7 +1453,8 @@ class MusicNotationEditor {
 
         // Use WASM API to delete character (cell-based operation)
         if (this.theDocument && this.theDocument.lines && this.theDocument.lines.length > 0) {
-          const line = this.theDocument.lines[0];
+          const line = this.getCurrentLine();
+        if (!line) return;
           const cells = line.cells;
 
           if (cellIndex >= 0 && cellIndex < cells.length) {
@@ -1449,7 +1481,8 @@ class MusicNotationEditor {
   async recalculateBeats() {
     try {
       if (this.theDocument && this.theDocument.lines && this.theDocument.lines.length > 0) {
-        const line = this.theDocument.lines[0];
+        const line = this.getCurrentLine();
+        if (!line) return;
 
         // Re-derive beats using WASM BeatDeriver
         this.deriveBeats(line);
@@ -1469,7 +1502,8 @@ class MusicNotationEditor {
       return '';
     }
 
-    const line = this.theDocument.lines[0];
+    const line = this.getCurrentLine();
+        if (!line) return;
     const cells = line.cells;
 
     return cells.map(cell => cell.char || '').join('');
@@ -1553,7 +1587,8 @@ class MusicNotationEditor {
         this.addToConsoleLog(`Applying slur to selection: "${selectedText}"`);
         // Apply slur using WASM API
         if (this.theDocument && this.theDocument.lines && this.theDocument.lines.length > 0) {
-          const line = this.theDocument.lines[0];
+          const line = this.getCurrentLine();
+        if (!line) return;
           const cells = line.cells;
 
           console.log('🔧 Calling WASM applySlur:', {
@@ -1599,7 +1634,8 @@ class MusicNotationEditor {
       return false;
     }
 
-    const line = this.theDocument.lines[0];
+    const line = this.getCurrentLine();
+        if (!line) return;
     const cells = line.cells;
 
     // Call WASM API to check for slur indicators
@@ -1619,7 +1655,8 @@ class MusicNotationEditor {
       return;
     }
 
-    const line = this.theDocument.lines[0];
+    const line = this.getCurrentLine();
+        if (!line) return;
     const cells = line.cells;
 
     // Call WASM API to remove slur
@@ -1702,7 +1739,8 @@ class MusicNotationEditor {
 
       // Call WASM function to apply octave to selected cells
       if (this.theDocument && this.theDocument.lines && this.theDocument.lines.length > 0) {
-        const line = this.theDocument.lines[0];
+        const line = this.getCurrentLine();
+        if (!line) return;
         const cells = line.cells;
 
         logger.debug(LOG_CATEGORIES.COMMAND, 'Calling WASM applyOctave', {
@@ -1774,7 +1812,8 @@ class MusicNotationEditor {
       return false;
     }
 
-    const line = this.theDocument.lines[0];
+    const line = this.getCurrentLine();
+        if (!line) return;
     const cells = line.cells;
 
     if (!cells || cells.length === 0) {
@@ -2044,7 +2083,8 @@ class MusicNotationEditor {
       return;
     }
 
-    const line = this.theDocument.lines[0];
+    const line = this.getCurrentLine();
+        if (!line) return;
     const cells = line.cells || [];
 
     if (cellIndex < 0 || cellIndex >= cells.length) {
@@ -2416,9 +2456,9 @@ class MusicNotationEditor {
     }
 
     const charCount = document.getElementById('char-count');
-    if (charCount && this.theDocument && this.theDocument.lines && this.theDocument.lines[0]) {
+    if (charCount && this.theDocument && this.theDocument.lines && this.getCurrentLine()) {
       // Count all cells (lanes removed)
-      const cells = this.theDocument.lines[0].cells || [];
+      const cells = this.getCurrentLine().cells || [];
       charCount.textContent = cells.length;
     }
 
