@@ -48,11 +48,11 @@ Location: `src/models/core.rs` (lines 16-61)
 ```rust
 pub struct Cell {
     // MUSICAL DATA FIELDS - ALL PERSISTED ✅
-    pub glyph: String,                // ✅ PERSISTED
+    pub char: String,                    // ✅ PERSISTED (renamed from glyph)
+    pub continuation: bool,              // ✅ PERSISTED (new field)
     pub kind: ElementKind,               // ✅ PERSISTED
     pub lane: LaneKind,                  // ✅ PERSISTED
     pub col: usize,                      // ✅ PERSISTED
-    pub flags: u8,                       // ✅ PERSISTED
     pub pitch_code: Option<String>,      // ✅ PERSISTED
     pub pitch_system: Option<PitchSystem>, // ✅ PERSISTED
 
@@ -108,7 +108,7 @@ Persistent Model Display (shows octave, slur_indicator)
 ```yaml
 staves:
   - line:
-    - grapheme: "1"
+    - char: "1"
       kind: 1                  # PitchedElement
       lane: 1                  # Letter
       col: 0
@@ -119,7 +119,7 @@ staves:
       slur_indicator: 1        # ✅ PRESENT - SlurStart
       # x, y, w, h, bbox, hit NOT included ✅
 
-    - grapheme: "2"
+    - char: "2"
       kind: 1
       lane: 1
       col: 1
@@ -133,7 +133,7 @@ staves:
 ```yaml
 staves:
   - line:
-    - grapheme: "1"
+    - char: "1"
       # ... all fields including x, y, w, h ...
 ```
 
@@ -160,7 +160,7 @@ To verify octave appears in persistent model:
 Example output:
 ```yaml
 line:
-  - grapheme: "1"
+  - char: "1"
     octave: 1        # ← This field WILL appear
     slur_indicator: 0
     # x, y, w, h will NOT appear

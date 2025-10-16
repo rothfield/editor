@@ -482,7 +482,7 @@ class DocumentManager {
     return this.theDocument.lines
       .map(line => {
         if (!line.cells) return '';
-        return line.cells.map(cell => cell.glyph || '').join('');
+        return line.cells.map(cell => cell.char || '').join('');
       })
       .join('\n');
   }

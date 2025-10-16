@@ -83,6 +83,11 @@ pub fn convert_musicxml_to_lilypond(
         settings.title = doc.extract_title();
     }
 
+    // Extract composer from MusicXML
+    if settings.composer.is_none() {
+        settings.composer = doc.extract_composer();
+    }
+
     // Extract parts
     let parts = doc.extract_parts()?;
 

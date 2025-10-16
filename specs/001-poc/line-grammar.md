@@ -25,7 +25,8 @@ Every visual column is represented by a `Cell`:
 
 ```rust
 pub struct Cell {
-    pub glyph: String,        // e.g., "S", "C#", "3b", "-", "'", "|"
+    pub char: String,            // Single character: "S", "C", "#", "2", "b", "-", "'", "|"
+    pub continuation: bool,      // True if this cell continues the previous cell
     pub lane: Lane,              // Upper | Letter | Lower | Lyrics
     pub kind: ElementKind,       // PitchedElement, UnpitchedElement, etc.
     pub col: usize,              // physical column index (0-based)

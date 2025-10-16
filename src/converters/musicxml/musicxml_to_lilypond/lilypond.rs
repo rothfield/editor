@@ -2,7 +2,7 @@
 //!
 //! Converts the internal Music representation to LilyPond source code.
 
-use crate::musicxml_import::types::*;
+use crate::converters::musicxml::musicxml_to_lilypond::types::*;
 
 /// Generate LilyPond document from music and settings
 pub fn generate_lilypond_document(
@@ -26,10 +26,18 @@ pub fn generate_lilypond_document(
     };
     output.push_str(&format!("\\language \"{}\"\n\n", lang));
 
-    // Header block with title if present
-    if let Some(ref title) = settings.title {
+    // Header block with title and/or composer if present
+    if settings.title.is_some() || settings.composer.is_some() {
         output.push_str("\\header {\n");
-        output.push_str(&format!("  title = \"{}\"\n", escape_lilypond_string(title)));
+
+        if let Some(ref title) = settings.title {
+            output.push_str(&format!("  title = \"{}\"\n", escape_lilypond_string(title)));
+        }
+
+        if let Some(ref composer) = settings.composer {
+            output.push_str(&format!("  composer = \"{}\"\n", escape_lilypond_string(composer)));
+        }
+
         output.push_str("}\n\n");
     }
 
@@ -137,11 +145,28 @@ fn note_to_lilypond(note: &NoteEvent, settings: &ConversionSettings) -> String {
 
     // Add tie if present
     if let Some(tie) = note.tie {
-        use crate::musicxml_import::types::Tie;
+        use crate::converters::musicxml::musicxml_to_lilypond::types::Tie;
         match tie {
             Tie::Start => result.push_str(" ~"),
             Tie::Stop => {}, // Stop is implicit from previous start
             Tie::Continue => result.push_str(" ~"),
+        }
+    }
+
+    // Add slur if present
+    if let Some(slur) = note.slur {
+        use crate::converters::musicxml::musicxml_to_lilypond::types::SlurDirection;
+
+        let slur_mark = match slur.direction {
+            SlurDirection::Start => "(",
+            SlurDirection::Stop => ")",
+        };
+
+        // For overlapping slurs (number > 1), use \=N( or \=N) notation
+        if slur.number > 1 {
+            result.push_str(&format!("\\={}{}", slur.number, slur_mark));
+        } else {
+            result.push_str(slur_mark);
         }
     }
 
@@ -261,7 +286,7 @@ fn voice_to_lilypond(voice: &VoiceMusic, settings: &ConversionSettings) -> Strin
 
 /// Convert dynamic marking to LilyPond
 fn dynamic_to_lilypond(dynamic: &DynamicMark) -> String {
-    use crate::musicxml_import::types::DynamicType;
+    use crate::converters::musicxml::musicxml_to_lilypond::types::DynamicType;
 
     let mark = match dynamic.dynamic_type {
         DynamicType::PPP => "\\ppp",
@@ -281,7 +306,7 @@ fn dynamic_to_lilypond(dynamic: &DynamicMark) -> String {
 
 /// Convert articulation marking to LilyPond
 fn articulation_to_lilypond(articulation: &ArticulationMark) -> String {
-    use crate::musicxml_import::types::ArticulationType;
+    use crate::converters::musicxml::musicxml_to_lilypond::types::ArticulationType;
 
     let mark = match articulation.articulation_type {
         ArticulationType::Staccato => "-.",
@@ -327,7 +352,7 @@ fn tempo_to_lilypond(tempo: &TempoMark) -> String {
 
 /// Convert text marking to LilyPond
 fn text_to_lilypond(text: &TextMark) -> String {
-    use crate::musicxml_import::types::Placement;
+    use crate::converters::musicxml::musicxml_to_lilypond::types::Placement;
 
     match text.placement {
         Placement::Above => format!("^\\markup {{ {} }}", text.text),

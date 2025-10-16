@@ -52,8 +52,8 @@ pub struct RenderLine {
 /// A single cell with all rendering information
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct RenderCell {
-    /// The glyph text to display
-    pub glyph: String,
+    /// The character text to display
+    pub char: String,
 
     /// X position (left edge)
     pub x: f32,

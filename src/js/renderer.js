@@ -42,24 +42,24 @@ class DOMRenderer {
       /* Shared custom properties for arc configuration */
       .char-cell {
         --arc-offset: 10px;
-        --arc-height: 5px;
-        --arc-stroke: 2px;
+        --arc-height: 12px;
+        --arc-stroke: 1.5px;
         padding: 0;
         margin: 0;
         box-sizing: content-box;
       }
 
-      /* LOWER beat arcs (using ::after) */
+      /* LOWER beat arcs (using ::after) - styled like slurs */
       .char-cell.beat-first::after {
         content: '';
         position: absolute;
-        left: 0;
+        left: -2px;
         right: 0;
         bottom: calc(-1 * var(--arc-offset));
         height: var(--arc-height);
         border-left: var(--arc-stroke) solid #666;
         border-bottom: var(--arc-stroke) solid #666;
-        border-radius: 0 0 0 12px;
+        border-radius: 0 0 0 24px;
         pointer-events: none;
         z-index: 1;
       }
@@ -80,12 +80,12 @@ class DOMRenderer {
         content: '';
         position: absolute;
         left: 0;
-        right: 0;
+        right: -2px;
         bottom: calc(-1 * var(--arc-offset));
         height: var(--arc-height);
         border-right: var(--arc-stroke) solid #666;
         border-bottom: var(--arc-stroke) solid #666;
-        border-radius: 0 0 12px 0;
+        border-radius: 0 0 24px 0;
         pointer-events: none;
         z-index: 1;
       }
@@ -278,7 +278,7 @@ class DOMRenderer {
       for (const cell of line.cells) {
         const span = document.createElement('span');
         span.className = 'char-cell';
-        span.textContent = cell.glyph === ' ' ? '\u00A0' : cell.glyph;
+        span.textContent = cell.char === ' ' ? '\u00A0' : cell.char;
         temp.appendChild(span);
         cellWidths.push(span.getBoundingClientRect().width);
         temp.removeChild(span);
@@ -361,7 +361,7 @@ class DOMRenderer {
         const charWidths = [];
 
         // Measure each character in the cell's glyph
-        for (const char of cell.glyph) {
+        for (const char of cell.char) {
           const span = document.createElement('span');
           span.className = 'char-cell';
           span.textContent = char === ' ' ? '\u00A0' : char;
@@ -373,7 +373,7 @@ class DOMRenderer {
         characterData.push({
           cellIndex,
           cellCol: cell.col,
-          glyph: cell.glyph,
+          glyph: cell.char,
           charWidths
         });
 
@@ -502,7 +502,7 @@ class DOMRenderer {
     renderLine.cells.forEach((cellData, idx) => {
       const span = document.createElement('span');
       span.className = cellData.classes.join(' ');
-      span.textContent = cellData.glyph === ' ' ? '\u00A0' : cellData.glyph;
+      span.textContent = cellData.char === ' ' ? '\u00A0' : cellData.char;
       span.style.cssText = `
         position: absolute;
         left: ${cellData.x}px;

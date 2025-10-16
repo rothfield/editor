@@ -5,7 +5,7 @@
 
 use wasm_bindgen::prelude::*;
 use crate::models::{Cell, PitchSystem, Document, Line};
-use crate::parse::grammar::{parse, parse_single, try_combine_tokens};
+use crate::parse::grammar::{parse, parse_single, mark_continuations};
 
 // Logging macros for WASM
 #[wasm_bindgen]
@@ -109,13 +109,13 @@ pub fn insert_character(
         cells[i].col += 1;
     }
 
-    // Try to combine tokens using recursive descent
-    wasm_log!("  Attempting token combination at position {}", insert_pos);
-    try_combine_tokens(&mut cells, insert_pos, pitch_system);
+    // Mark continuations (replaces old token combination)
+    wasm_log!("  Marking continuations");
+    mark_continuations(&mut cells);
 
     let cells_after = cells.len();
     let cells_delta = cells_after as i32 - cells_before as i32;
-    wasm_info!("  After combination: {} cells (delta: {:+})", cells_after, cells_delta);
+    wasm_info!("  After marking continuations: {} cells (delta: {:+})", cells_after, cells_delta);
 
     // Calculate new cursor position (CHARACTER position, not cell index)
     // Cursor should be positioned after the cell where insertion happened
@@ -124,14 +124,14 @@ pub fn insert_character(
     for (i, cell) in cells.iter().enumerate() {
         if i == insert_pos {
             // Add this cell's length and stop
-            new_cursor_pos += cell.glyph.chars().count();
+            new_cursor_pos += cell.char.chars().count();
             wasm_log!("    Cell[{}] = '{}' (len={}), cumulative={} [INSERTED HERE, STOPPING]",
-                     i, cell.glyph, cell.glyph.chars().count(), new_cursor_pos);
+                     i, cell.char, cell.char.chars().count(), new_cursor_pos);
             break;
         } else {
-            new_cursor_pos += cell.glyph.chars().count();
+            new_cursor_pos += cell.char.chars().count();
             wasm_log!("    Cell[{}] = '{}' (len={}), cumulative={}",
-                     i, cell.glyph, cell.glyph.chars().count(), new_cursor_pos);
+                     i, cell.char, cell.char.chars().count(), new_cursor_pos);
         }
     }
 
@@ -204,31 +204,12 @@ pub fn parse_text(text: &str, pitch_system: u8) -> Result<js_sys::Array, JsValue
         column += 1;
     }
 
-    let cells_before_combination = cells.len();
-    wasm_log!("  Parsed into {} initial cells, starting token combination...", cells_before_combination);
+    wasm_log!("  Parsed {} cells, marking continuations...", cells.len());
 
-    // Process all cells to combine multi-character tokens
-    let mut i = 1;
-    let mut combinations = 0;
-    while i < cells.len() {
-        let prev_len = cells.len();
-        try_combine_tokens(&mut cells, i, pitch_system);
+    // Mark continuations (replaces old token combination)
+    mark_continuations(&mut cells);
 
-        // If a combination happened, cells.len() decreased
-        // Don't increment i, so we can try combining at the same position again
-        if cells.len() < prev_len {
-            combinations += 1;
-            // A combination happened, stay at same position
-            continue;
-        } else {
-            // No combination, move to next position
-            i += 1;
-        }
-    }
-
-    let cells_after = cells.len();
-    wasm_info!("  Token combination complete: {} cells (from {} initial), {} combinations",
-              cells_after, cells_before_combination, combinations);
+    wasm_info!("  Marking continuations complete: {} cells", cells.len());
 
     // Convert to JavaScript array
     let result = js_sys::Array::new();
@@ -282,72 +263,82 @@ pub fn delete_character(
         return Err(JsValue::from_str("Cursor position out of bounds"));
     }
 
-    // Get the cell being modified
-    let cell = &cells[cursor_pos];
-    let glyph = &cell.glyph;
-    let glyph_len = glyph.chars().count();
+    // IMPORTANT: When deleting from a multi-cell glyph, we need to reparse!
+    // Find the root cell (trace back to non-continuation)
+    let mut root_idx = cursor_pos;
+    while root_idx > 0 && cells[root_idx].continuation {
+        root_idx -= 1;
+    }
 
-    wasm_log!("  Cell at position {}: glyph='{}' (len={}), kind={:?}",
-             cursor_pos, glyph, glyph_len, cell.kind);
+    // Find the end of this glyph (all continuation cells)
+    let mut glyph_end = root_idx + 1;
+    while glyph_end < cells.len() && cells[glyph_end].continuation {
+        glyph_end += 1;
+    }
 
-    if glyph_len > 1 {
-        // Multi-character cell: remove last character, re-parse, PRESERVE ALL DATA
-        let mut chars: Vec<char> = glyph.chars().collect();
-        let removed_char = chars.pop().unwrap();
-        let truncated_glyph: String = chars.into_iter().collect();
+    let is_multi_cell_glyph = glyph_end - root_idx > 1;
 
-        wasm_info!("  Truncating multi-char cell: '{}' -> '{}' (removed '{}')",
-                  glyph, truncated_glyph, removed_char);
+    wasm_log!("  Cell at position {}: char='{}', continuation={}",
+             cursor_pos, cells[cursor_pos].char, cells[cursor_pos].continuation);
+    wasm_log!("  Glyph spans cells {}..{} (multi_cell={})", root_idx, glyph_end, is_multi_cell_glyph);
 
-        // Preserve data from old cell before re-parsing
-        let old_cell = &cells[cursor_pos];
-        let preserved_col = old_cell.col;
-        let preserved_flags = old_cell.flags;
-        let preserved_pitch_code = old_cell.pitch_code.clone();
-        let preserved_pitch_system = old_cell.pitch_system;
-        let preserved_octave = old_cell.octave;
-        let preserved_slur_indicator = old_cell.slur_indicator;
+    // Preserve data from root cell BEFORE deletion (for reparsing)
+    let preserved_pitch_system = cells[root_idx].pitch_system;
+    let preserved_col = cells[root_idx].col;
+    let preserved_flags = cells[root_idx].flags;
+    let preserved_octave = cells[root_idx].octave;
+    let preserved_slur_indicator = cells[root_idx].slur_indicator;
 
-        // Re-parse truncated glyph to get correct kind
-        let pitch_system = preserved_pitch_system.unwrap_or(PitchSystem::Unknown);
-        let reparsed = parse(&truncated_glyph, pitch_system, preserved_col);
+    // Delete the cell at cursor_pos
+    cells.remove(cursor_pos);
 
-        wasm_info!("  Re-parsed: kind={:?} (old kind was {:?})", reparsed.kind, old_cell.kind);
+    // Adjust root index after deletion
+    let new_root_idx = if cursor_pos <= root_idx { root_idx.saturating_sub(1) } else { root_idx };
 
-        // Create new cell with reparsed kind but preserved data
-        cells[cursor_pos] = Cell {
-            glyph: truncated_glyph,
-            kind: reparsed.kind,  // Updated from re-parse
-            col: preserved_col,
-            flags: preserved_flags,
-            pitch_code: preserved_pitch_code,
-            pitch_system: preserved_pitch_system,
-            octave: preserved_octave,  // CRITICAL: preserve octave
-            slur_indicator: preserved_slur_indicator,  // CRITICAL: preserve slur indicator
-            // Reset ephemeral fields
-            x: 0.0,
-            y: 0.0,
-            w: 0.0,
-            h: 0.0,
-            bbox: (0.0, 0.0, 0.0, 0.0),
-            hit: (0.0, 0.0, 0.0, 0.0),
-        };
-
-        wasm_info!("  Cell updated: kind={:?}, preserved octave={:?}, flags={}",
-                  cells[cursor_pos].kind, cells[cursor_pos].octave, cells[cursor_pos].flags);
-
-    } else {
-        // Single-character cell: delete entire cell
-        wasm_log!("  Single-char cell: deleting entire cell at position {}", cursor_pos);
-        cells.remove(cursor_pos);
-
-        // Update column indices for cells after deletion
-        for i in cursor_pos..cells.len() {
-            if cells[i].col > 0 {
-                cells[i].col -= 1;
-            }
+    // Update column indices for cells after deletion
+    for i in cursor_pos..cells.len() {
+        if cells[i].col > 0 {
+            cells[i].col -= 1;
         }
     }
+
+    // IMPORTANT: After deletion, reparse the affected glyph to update pitch_code
+    if is_multi_cell_glyph && new_root_idx < cells.len() {
+        // Build combined string from remaining cells starting at root
+        let mut combined = String::new();
+        let mut end_idx = new_root_idx;
+
+        // Add root cell char
+        combined.push_str(&cells[new_root_idx].char);
+        end_idx += 1;
+
+        // Add any continuation cells
+        while end_idx < cells.len() && cells[end_idx].continuation {
+            combined.push_str(&cells[end_idx].char);
+            end_idx += 1;
+        }
+
+        wasm_log!("  Reparsing remaining glyph: combined='{}'", combined);
+
+        // Reparse the combined string to get correct pitch_code
+        let pitch_system = preserved_pitch_system.unwrap_or(PitchSystem::Unknown);
+        let reparsed = parse(&combined, pitch_system, cells[new_root_idx].col);
+
+        // Update root cell with reparsed data, preserving musical attributes
+        cells[new_root_idx].kind = reparsed.kind;
+        cells[new_root_idx].pitch_code = reparsed.pitch_code;
+        cells[new_root_idx].pitch_system = reparsed.pitch_system;
+        cells[new_root_idx].flags = preserved_flags;
+        cells[new_root_idx].octave = preserved_octave;
+        cells[new_root_idx].slur_indicator = preserved_slur_indicator;
+
+        wasm_info!("  Updated root cell[{}]: pitch_code={:?}, octave={}, flags={}",
+                  new_root_idx, cells[new_root_idx].pitch_code, cells[new_root_idx].octave, cells[new_root_idx].flags);
+    }
+
+    // Re-mark continuations for entire array to fix continuation flags
+    wasm_log!("  Re-marking continuations for entire array");
+    mark_continuations(&mut cells);
 
     let cells_after = cells.len();
     let delta = cells_after as i32 - cells_before as i32;
@@ -409,7 +400,7 @@ pub fn apply_octave(
         if cells[i].kind == crate::models::ElementKind::PitchedElement {
             cells[i].octave = octave;
             modified_count += 1;
-            wasm_log!("  Applied octave {} to cell {}: '{}'", octave, i, cells[i].glyph);
+            wasm_log!("  Applied octave {} to cell {}: '{}'", octave, i, cells[i].char);
         }
     }
 
@@ -546,7 +537,7 @@ pub fn remove_slur(
         if cells[i].has_slur() {
             cells[i].clear_slur();
             removed_count += 1;
-            wasm_log!("  Removed slur indicator from cell {}: '{}'", i, cells[i].glyph);
+            wasm_log!("  Removed slur indicator from cell {}: '{}'", i, cells[i].char);
         }
     }
 
@@ -952,7 +943,7 @@ pub fn convert_musicxml_to_lilypond(musicxml: String, settings_json: Option<Stri
     };
 
     // Convert MusicXML to LilyPond
-    let result = crate::musicxml_import::convert_musicxml_to_lilypond(&musicxml, settings)
+    let result = crate::converters::musicxml::convert_musicxml_to_lilypond(&musicxml, settings)
         .map_err(|e| {
             wasm_error!("Conversion error: {}", e);
             JsValue::from_str(&format!("Conversion error: {}", e))
@@ -1036,20 +1027,21 @@ mod tests {
         let mut new_cursor_pos = 0;
         for (i, cell) in cells.iter().enumerate() {
             if i == insert_pos {
-                new_cursor_pos += cell.glyph.chars().count();
+                new_cursor_pos += cell.char.chars().count();
                 break;
             } else {
-                new_cursor_pos += cell.glyph.chars().count();
+                new_cursor_pos += cell.char.chars().count();
             }
         }
         new_cursor_pos
     }
 
     /// Helper to create a simple Cell for testing
-    fn make_cell(glyph: &str, col: usize) -> Cell {
+    fn make_cell(char: &str, col: usize) -> Cell {
         Cell {
-            glyph: glyph.to_string(),
+            char: char.to_string(),
             kind: crate::models::ElementKind::Unknown,
+            continuation: false,
             col,
             flags: 0,
             pitch_code: None,
@@ -1132,5 +1124,99 @@ mod tests {
 
         let cursor = calculate_cursor_pos_after_insert(&cells, 0);
         assert_eq!(cursor, 1, "After inserting 'r' at position 0, cursor should be at char pos 1");
+    }
+
+    #[test]
+    fn test_delete_accidental_updates_pitch_code() {
+        // Test: Type "1#" then backspace should result in "1" with correct pitch_code
+
+        // Step 1: Parse "1"
+        let mut cells = vec![parse_single('1', PitchSystem::Number, 0)];
+        assert_eq!(cells.len(), 1);
+        assert_eq!(cells[0].char, "1");
+        assert_eq!(cells[0].pitch_code, Some(crate::models::PitchCode::N1));  // N1 = 1 natural
+        assert_eq!(cells[0].continuation, false);
+
+        // Step 2: Parse "#" and add it
+        cells.push(parse_single('#', PitchSystem::Number, 1));
+        assert_eq!(cells.len(), 2);
+
+        // Step 3: Mark continuations - this should combine "1" + "#" = "1#" with pitch_code N1s
+        mark_continuations(&mut cells);
+        assert_eq!(cells.len(), 2);
+        assert_eq!(cells[0].char, "1");
+        assert_eq!(cells[1].char, "#");
+        assert_eq!(cells[1].continuation, true);
+        assert_eq!(cells[0].pitch_code, Some(crate::models::PitchCode::N1s));  // N1s = 1 sharp
+
+        // Step 4: Delete the "#" at position 1
+        cells.remove(1);
+
+        // Step 5: IMPORTANT: After deleting from a multi-cell glyph, reparse the root!
+        // This is what delete_character() should do
+        let reparsed = parse(&cells[0].char, PitchSystem::Number, cells[0].col);
+        cells[0].pitch_code = reparsed.pitch_code;
+        cells[0].kind = reparsed.kind;
+
+        // Step 6: Re-mark continuations (to handle any lookright scenarios)
+        mark_continuations(&mut cells);
+
+        // Step 7: After deletion and reparse, we should have just "1" with pitch_code N1
+        assert_eq!(cells.len(), 1);
+        assert_eq!(cells[0].char, "1");
+        assert_eq!(cells[0].continuation, false);
+
+        // After the fix, pitch_code should be N1 (1 natural)
+        assert_eq!(cells[0].pitch_code, Some(crate::models::PitchCode::N1),
+                   "After deleting '#' and reparsing, pitch_code should be N1 (1 natural)");
+    }
+
+    #[test]
+    fn test_parse_triple_sharp_limits_to_double() {
+        // Test: Parse "1###" should result in "1##" (double sharp) + "#" (text)
+        // A note can only have up to 2 accidentals (double sharp or double flat)
+
+        let mut cells = Vec::new();
+
+        // Parse each character
+        cells.push(parse_single('1', PitchSystem::Number, 0));
+        cells.push(parse_single('#', PitchSystem::Number, 1));
+        cells.push(parse_single('#', PitchSystem::Number, 2));
+        cells.push(parse_single('#', PitchSystem::Number, 3));
+
+        // Mark continuations
+        mark_continuations(&mut cells);
+
+        // Expected result: "1##" + "#"
+        // Cell 0: "1" (root, PitchedElement)
+        // Cell 1: "#" (continuation, PitchedElement)
+        // Cell 2: "#" (continuation, PitchedElement)
+        // Cell 3: "#" (Text, not a continuation)
+
+        assert_eq!(cells.len(), 4, "Should have 4 cells");
+
+        // Cell 0: "1" - root of the note
+        assert_eq!(cells[0].char, "1");
+        assert_eq!(cells[0].kind, crate::models::ElementKind::PitchedElement);
+        assert_eq!(cells[0].continuation, false);
+        assert_eq!(cells[0].pitch_code, Some(crate::models::PitchCode::N1ss),
+                   "First cell should have N1ss (double sharp)");
+
+        // Cell 1: "#" - first accidental (continuation)
+        assert_eq!(cells[1].char, "#");
+        assert_eq!(cells[1].continuation, true,
+                   "Second cell should be continuation of note");
+
+        // Cell 2: "#" - second accidental (continuation)
+        assert_eq!(cells[2].char, "#");
+        assert_eq!(cells[2].continuation, true,
+                   "Third cell should be continuation of note");
+
+        // Cell 3: "#" - third accidental should be Text, not part of the note
+        assert_eq!(cells[3].char, "#");
+        assert_eq!(cells[3].kind, crate::models::ElementKind::Text,
+                   "Fourth cell should be Text (not part of the note)");
+        assert_eq!(cells[3].continuation, false,
+                   "Fourth cell should NOT be a continuation");
     }
 }

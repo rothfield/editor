@@ -31,7 +31,8 @@ pub struct Line {
 }
 
 pub struct Cell {
-    pub glyph: String,        // "S", "C#", "3b", "-", "'", "|"
+    pub char: String,            // Single character: "S", "C", "#", "3", "b", "-", "'", "|"
+    pub continuation: bool,      // True if this cell continues the previous cell
     pub lane: LaneKind,          // Upper, Letter, Lower
     pub kind: ElementKind,       // PitchedElement, UnpitchedElement, etc.
     pub col: usize,              // Physical column index (0-based)
@@ -349,17 +350,17 @@ pub struct Line {
       "label": "Alap",
       "lanes": [
         [
-          {"glyph": ".", "lane": "Upper", "kind": "UpperAnnotation", "col": 0, "upper_dots": 1, "lower_dots": 0},
-          {"glyph": ":", "lane": "Upper", "kind": "Accent", "col": 1, "upper_dots": 2, "lower_dots": 0}
+          {"char": ".", "continuation": false, "lane": "Upper", "kind": "UpperAnnotation", "col": 0, "upper_dots": 1, "lower_dots": 0},
+          {"char": ":", "continuation": false, "lane": "Upper", "kind": "Accent", "col": 1, "upper_dots": 2, "lower_dots": 0}
         ],
         [
-          {"glyph": "S", "lane": "Letter", "kind": "PitchedElement", "col": 0, "pitch_code": "C", "notation": "Sargam"},
-          {"glyph": "-", "lane": "Letter", "kind": "UnpitchedElement", "col": 1},
-          {"glyph": "-", "lane": "Letter", "kind": "UnpitchedElement", "col": 2},
-          {"glyph": "r", "lane": "Letter", "kind": "PitchedElement", "col": 3, "pitch_code": "Db", "notation": "Sargam"}
+          {"char": "S", "continuation": false, "lane": "Letter", "kind": "PitchedElement", "col": 0, "pitch_code": "C", "notation": "Sargam"},
+          {"char": "-", "continuation": false, "lane": "Letter", "kind": "UnpitchedElement", "col": 1},
+          {"char": "-", "continuation": false, "lane": "Letter", "kind": "UnpitchedElement", "col": 2},
+          {"char": "r", "continuation": false, "lane": "Letter", "kind": "PitchedElement", "col": 3, "pitch_code": "Db", "notation": "Sargam"}
         ],
         [
-          {"glyph": ".", "lane": "Lower", "kind": "LowerAnnotation", "col": 3, "upper_dots": 0, "lower_dots": 1}
+          {"char": ".", "continuation": false, "lane": "Lower", "kind": "LowerAnnotation", "col": 3, "upper_dots": 0, "lower_dots": 1}
         ]
       ]
     }

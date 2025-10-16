@@ -62,6 +62,10 @@ pub struct ConversionSettings {
     /// Document title (extracted from MusicXML)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+
+    /// Document composer (extracted from MusicXML)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub composer: Option<String>,
 }
 
 impl Default for ConversionSettings {
@@ -73,6 +77,7 @@ impl Default for ConversionSettings {
             convert_lyrics: true,
             convert_chord_symbols: true,
             title: None,
+            composer: None,
         }
     }
 }
@@ -345,6 +350,7 @@ pub struct NoteEvent {
     pub pitch: Pitch,
     pub duration: Duration,
     pub tie: Option<Tie>,
+    pub slur: Option<Slur>,
     pub articulations: Vec<ArticulationMark>,
     pub dynamics: Option<DynamicMark>,
     pub is_grace: bool,
@@ -357,6 +363,7 @@ impl NoteEvent {
             pitch,
             duration,
             tie: None,
+            slur: None,
             articulations: Vec::new(),
             dynamics: None,
             is_grace: false,
@@ -371,6 +378,35 @@ pub enum Tie {
     Start,
     Stop,
     Continue,
+}
+
+/// Slur information (similar to ties but for phrasing)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Slur {
+    /// Slur direction: Start means '(', Stop means ')'
+    pub direction: SlurDirection,
+    /// Number for overlapping slurs (1 is default, 2+ for nested slurs)
+    pub number: u8,
+}
+
+impl Slur {
+    pub fn new(direction: SlurDirection) -> Self {
+        Self {
+            direction,
+            number: 1,
+        }
+    }
+
+    pub fn with_number(direction: SlurDirection, number: u8) -> Self {
+        Self { direction, number }
+    }
+}
+
+/// Slur direction
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SlurDirection {
+    Start,
+    Stop,
 }
 
 /// Rest event (T015)
@@ -394,6 +430,7 @@ impl RestEvent {
 pub struct ChordEvent {
     pub notes: Vec<Pitch>,
     pub duration: Duration,
+    pub slur: Option<Slur>,
     pub articulations: Vec<ArticulationMark>,
 }
 
@@ -405,6 +442,7 @@ impl ChordEvent {
         Ok(Self {
             notes,
             duration,
+            slur: None,
             articulations: Vec::new(),
         })
     }

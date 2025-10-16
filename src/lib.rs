@@ -8,7 +8,7 @@ pub mod parse;
 pub mod renderers;
 pub mod utils;
 pub mod api;
-pub mod musicxml_import;
+pub mod converters;
 
 // Re-export commonly used types
 pub use models::core::*;

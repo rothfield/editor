@@ -7,7 +7,7 @@ license = "MIT"
 authors = ["Editor Project"]
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 wasm-bindgen = { version = "0.2.92", features = ["serde-serialize"] }

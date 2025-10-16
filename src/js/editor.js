@@ -644,9 +644,19 @@ class MusicNotationEditor {
 
   /**
      * Get current pitch system
+     * Line-level pitch_system overrides document-level
      */
   getCurrentPitchSystem() {
     if (this.theDocument) {
+      // Check if we have lines and if the first line has pitch_system set
+      if (this.theDocument.lines && this.theDocument.lines.length > 0) {
+        const line = this.theDocument.lines[0];
+        // If line has pitch_system set (non-zero), use it
+        if (line.pitch_system && line.pitch_system !== 0) {
+          return line.pitch_system;
+        }
+      }
+      // Fall back to document-level pitch system
       return this.theDocument.pitch_system || 1; // Default to Number system
     }
     return 1;
@@ -964,7 +974,7 @@ class MusicNotationEditor {
     // Sum up lengths of all cell glyphs
     let totalChars = 0;
     for (const cell of cells) {
-      totalChars += cell.glyph.length;
+      totalChars += cell.char.length;
     }
 
     return totalChars;
@@ -985,7 +995,7 @@ class MusicNotationEditor {
 
     let accumulatedChars = 0;
     for (let cellIndex = 0; cellIndex < cells.length; cellIndex++) {
-      const cellLength = cells[cellIndex].glyph.length;
+      const cellLength = cells[cellIndex].char.length;
 
       if (charPos <= accumulatedChars + cellLength) {
         return {
@@ -1019,7 +1029,7 @@ class MusicNotationEditor {
 
     let charPos = 0;
     for (let i = 0; i < cellIndex && i < cells.length; i++) {
-      charPos += cells[i].glyph.length;
+      charPos += cells[i].char.length;
     }
 
     return charPos;
@@ -1070,7 +1080,7 @@ class MusicNotationEditor {
     }
 
     // Fallback: proportional split (if char_positions not available)
-    const cellLength = cell.glyph.length;
+    const cellLength = cell.char.length;
     const cellWidth = cell.cursor_right - cell.cursor_left;
     const charWidth = cellWidth / cellLength;
     return cell.x + (charWidth * charOffsetInCell);
@@ -1147,7 +1157,7 @@ class MusicNotationEditor {
       index >= selection.start && index < selection.end
     );
 
-    return selectedCells.map(cell => cell.glyph || '').join('');
+    return selectedCells.map(cell => cell.char || '').join('');
   }
 
   /**
@@ -1509,7 +1519,7 @@ class MusicNotationEditor {
     const line = this.theDocument.lines[0];
     const cells = line.cells;
 
-    return cells.map(cell => cell.glyph || '').join('');
+    return cells.map(cell => cell.char || '').join('');
   }
 
   /**
@@ -1765,7 +1775,7 @@ class MusicNotationEditor {
           targetOctave,
           cellsInRange: updatedCells.slice(selection.start, selection.end).map((c, i) => ({
             index: selection.start + i,
-            glyph: c.glyph,
+            glyph: c.char,
             octave: c.octave
           }))
         });
@@ -1827,7 +1837,7 @@ class MusicNotationEditor {
     // Check if ANY pitched element has the requested octave
     for (let i = selection.start; i < selection.end && i < cells.length; i++) {
       const cell = cells[i];
-      console.log(`🔍 Cell ${i}: glyph='${cell.glyph}' kind=${cell.kind} octave=${cell.octave} (checking for octave=${octave})`);
+      console.log(`🔍 Cell ${i}: glyph='${cell.char}' kind=${cell.kind} octave=${cell.octave} (checking for octave=${octave})`);
       // Only consider pitched elements (kind === 1)
       if (cell.kind === 1 && cell.octave === octave) {
         console.log(`🔍 Found pitched element with octave=${octave}, will toggle OFF`);
@@ -2623,7 +2633,7 @@ class MusicNotationEditor {
         hitboxHTML += `</tr></thead><tbody>`;
 
         cells.forEach((cell, cellIndex) => {
-          console.log(`🔍 Cell ${cellIndex} (${cell.glyph}):`, {
+          console.log(`🔍 Cell ${cellIndex} (${cell.char}):`, {
             x: cell.x,
             y: cell.y,
             w: cell.w,
@@ -2641,7 +2651,7 @@ class MusicNotationEditor {
 
             hitboxHTML += `<tr class="hover:bg-blue-50">`;
             hitboxHTML += `<td class="border border-gray-300 px-2 py-1">${cellIndex}</td>`;
-            hitboxHTML += `<td class="border border-gray-300 px-2 py-1 font-mono">${cell.glyph || ''}</td>`;
+            hitboxHTML += `<td class="border border-gray-300 px-2 py-1 font-mono">${cell.char || ''}</td>`;
             hitboxHTML += `<td class="border border-gray-300 px-2 py-1">${cell.col || 0}</td>`;
             hitboxHTML += `<td class="border border-gray-300 px-2 py-1">`;
             hitboxHTML += `${cell.x.toFixed(1)},${cell.y.toFixed(1)} `;
@@ -2696,17 +2706,17 @@ class MusicNotationEditor {
       const cellPositions = [];
       cells.forEach((charCell) => {
         cellPositions.push(cumulativeX);
-        const glyphLength = (charCell.glyph || '').length;
+        const glyphLength = (charCell.char || '').length;
         cumulativeX += glyphLength * 12; // 12px per character
       });
 
       // Set hitbox values on each cell if they're missing or zero
       cells.forEach((charCell, cellIndex) => {
-        const glyphLength = (charCell.glyph || '').length;
+        const glyphLength = (charCell.char || '').length;
         const cellWidth = glyphLength * 12;
 
         // Debug: log current cell state
-        console.log(`🔧 Processing cell ${cellIndex} ('${charCell.glyph}'):`, {
+        console.log(`🔧 Processing cell ${cellIndex} ('${charCell.char}'):`, {
           before: { x: charCell.x, y: charCell.y, w: charCell.w, h: charCell.h },
           calculated: { x: cellPositions[cellIndex], w: cellWidth, h: 16 }
         });

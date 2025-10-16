@@ -4,8 +4,8 @@
 //! It extracts the document structure (parts, measures) and parses musical elements
 //! (pitches, durations, attributes).
 
-use crate::musicxml_import::errors::ParseError;
-use crate::musicxml_import::types::{Duration, Pitch, Rational};
+use crate::converters::musicxml::musicxml_to_lilypond::errors::ParseError;
+use crate::converters::musicxml::musicxml_to_lilypond::types::{Duration, Pitch, Rational};
 use roxmltree::{Document, Node};
 
 // ============================================================================
@@ -82,6 +82,44 @@ impl<'a> XmlDocument<'a> {
                     let trimmed = title.trim();
                     if !trimmed.is_empty() {
                         return Some(trimmed.to_string());
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Extract composer from MusicXML document
+    pub fn extract_composer(&'a self) -> Option<String> {
+        let score = self.get_score_partwise().ok()?;
+
+        // Look in identification/creator elements
+        if let Some(identification) = get_child(score, "identification") {
+            // First try creator with type="composer"
+            for creator_node in identification.children() {
+                if creator_node.is_element() && creator_node.tag_name().name() == "creator" {
+                    if let Some(creator_type) = creator_node.attribute("type") {
+                        if creator_type == "composer" {
+                            if let Some(composer) = get_text(creator_node) {
+                                let trimmed = composer.trim();
+                                if !trimmed.is_empty() {
+                                    return Some(trimmed.to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Fallback: any creator element without type or with type="composer"
+            for creator_node in identification.children() {
+                if creator_node.is_element() && creator_node.tag_name().name() == "creator" {
+                    if let Some(composer) = get_text(creator_node) {
+                        let trimmed = composer.trim();
+                        if !trimmed.is_empty() {
+                            return Some(trimmed.to_string());
+                        }
                     }
                 }
             }

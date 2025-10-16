@@ -14,6 +14,7 @@ pub struct MusicXmlBuilder {
     measure_started: bool,
     attributes_written: bool,
     title: Option<String>,
+    key_signature: Option<i8>, // Circle of fifths position (-7 to +7)
 }
 
 impl MusicXmlBuilder {
@@ -27,12 +28,18 @@ impl MusicXmlBuilder {
             measure_started: false,
             attributes_written: false,
             title: None,
+            key_signature: None,
         }
     }
 
     /// Set the document title
     pub fn set_title(&mut self, title: Option<String>) {
         self.title = title;
+    }
+
+    /// Set the key signature from a key string (e.g., "C", "G", "D major", "F minor")
+    pub fn set_key_signature(&mut self, key_str: Option<&str>) {
+        self.key_signature = key_str.and_then(parse_key_to_fifths);
     }
 
     /// Start a new measure with optional divisions value
@@ -330,11 +337,58 @@ impl MusicXmlBuilder {
         if let Some(div) = divisions {
             self.buffer.push_str(&format!("    <divisions>{}</divisions>\n", div));
         }
-        self.buffer.push_str("    <key><fifths>0</fifths></key>\n");
+
+        // Write key signature (use fifths from parsed key, default to C major = 0)
+        let fifths = self.key_signature.unwrap_or(0);
+        self.buffer.push_str(&format!("    <key><fifths>{}</fifths></key>\n", fifths));
+
         self.buffer.push_str("    <clef><sign>G</sign><line>2</line></clef>\n");
         // NO time signature per spec (FR-023)
         self.buffer.push_str("  </attributes>\n");
     }
+}
+
+/// Parse a key signature string to circle of fifths position (-7 to +7)
+///
+/// Examples:
+/// - "C" or "C major" -> 0
+/// - "G" or "G major" -> 1
+/// - "D" or "D major" -> 2
+/// - "F" or "F major" -> -1
+/// - "A minor" -> 0 (relative minor of C)
+/// - "E minor" -> 1 (relative minor of G)
+fn parse_key_to_fifths(key_str: &str) -> Option<i8> {
+    let key_lower = key_str.trim().to_lowercase();
+
+    // Check if it's explicitly a minor key (for future use)
+    let _is_minor = key_lower.contains("minor") || key_lower.contains("min");
+
+    // Extract the base note (first word or character)
+    let base_note = key_lower.split_whitespace().next().unwrap_or(&key_lower);
+
+    // Map note names to fifths position for major keys
+    let major_fifths = match base_note {
+        "c" | "c♮" => 0,
+        "g" | "g♮" => 1,
+        "d" | "d♮" => 2,
+        "a" | "a♮" => 3,
+        "e" | "e♮" => 4,
+        "b" | "b♮" => 5,
+        "f#" | "f♯" | "fs" | "f#♮" | "f♯♮" => 6,
+        "c#" | "c♯" | "cs" | "c#♮" | "c♯♮" => 7,
+        "f" | "f♮" => -1,
+        "bb" | "b♭" | "bf" | "bb♮" | "b♭♮" => -2,
+        "eb" | "e♭" | "ef" | "eb♮" | "e♭♮" => -3,
+        "ab" | "a♭" | "af" | "ab♮" | "a♭♮" => -4,
+        "db" | "d♭" | "df" | "db♮" | "d♭♮" => -5,
+        "gb" | "g♭" | "gf" | "gb♮" | "g♭♮" => -6,
+        "cb" | "c♭" | "cf" | "cb♮" | "c♭♮" => -7,
+        _ => return None,
+    };
+
+    // For minor keys, the fifths value is same as relative major
+    // (e.g., A minor = C major = 0, E minor = G major = 1)
+    Some(major_fifths)
 }
 
 /// Escape special XML characters
@@ -373,7 +427,7 @@ mod tests {
         let pitch = Pitch::new("1".to_string(), Accidental::Natural, 0, PitchSystem::Number);
         builder.write_note(&pitch, 4, 1.0).unwrap();
 
-        assert!(builder.last_note.is_some());
+        assert!(builder.last_note_legacy.is_some());
         assert!(builder.buffer.contains("<step>C</step>"));
         assert!(builder.buffer.contains("<octave>4</octave>"));
     }
@@ -396,7 +450,7 @@ mod tests {
         builder.start_measure();
         let pitch = Pitch::new("2".to_string(), Accidental::Natural, 1, PitchSystem::Number);
         builder.write_note(&pitch, 2, 0.5).unwrap();
-        assert!(builder.last_note.is_some());
+        assert!(builder.last_note_legacy.is_some());
 
         builder.reset_context();
         assert_eq!(builder.last_note, None);

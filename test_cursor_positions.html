@@ -89,7 +89,7 @@
                     const charPosInfo = cell.char_positions ?
                         `char_positions=[${cell.char_positions.join(', ')}]` :
                         'NO char_positions';
-                    const info = `Cell ${idx}: glyph="${cell.glyph}" (${cell.glyph.length} chars), x=${cell.x}, cursor_left=${cell.cursor_left}, cursor_right=${cell.cursor_right}, ${charPosInfo}`;
+                    const info = `Cell ${idx}: glyph="${cell.char}" (${cell.char.length} chars), x=${cell.x}, cursor_left=${cell.cursor_left}, cursor_right=${cell.cursor_right}, ${charPosInfo}`;
                     console.log(info);
                     output.textContent += info + '\n';
                 });

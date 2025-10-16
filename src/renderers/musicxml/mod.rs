@@ -53,6 +53,13 @@ pub fn to_musicxml(document: &Document) -> Result<String, String> {
         }
     }
 
+    // Set document key signature if present
+    if let Some(ref key_sig) = document.key_signature {
+        if !key_sig.is_empty() {
+            builder.set_key_signature(Some(key_sig.as_str()));
+        }
+    }
+
     // Handle empty document
     if document.lines.is_empty() || document.lines.iter().all(|line| line.cells.is_empty()) {
         musicxml_log!("Empty document detected, generating single measure with whole rest");
@@ -107,7 +114,9 @@ fn calculate_measure_divisions(cells: &[Cell], beat_deriver: &BeatDeriver) -> us
     let mut divisions = 1;
     for beat in beats.iter() {
         let beat_cells = &cells[beat.start..=beat.end];
-        let subdivision_count = beat_cells.len();
+        // IMPORTANT: Don't count continuation cells in rhythmic calculations!
+        // Continuation cells are part of the same logical element (e.g., "#" in "C#")
+        let subdivision_count = beat_cells.iter().filter(|c| !c.continuation).count();
         if subdivision_count > 0 {
             divisions = lcm(divisions, subdivision_count);
         }
@@ -188,7 +197,7 @@ fn process_segment(
 /// Check if a beat starts with "-" (division/extension)
 fn beat_starts_with_division(beat_cells: &[Cell]) -> bool {
     beat_cells.first()
-        .map(|cell| cell.kind == ElementKind::UnpitchedElement && cell.glyph == "-")
+        .map(|cell| cell.kind == ElementKind::UnpitchedElement && cell.char == "-")
         .unwrap_or(false)
 }
 
@@ -211,12 +220,18 @@ fn normalize_beat(beat_cells: &[Cell]) -> (Vec<usize>, usize) {
     while i < beat_cells.len() {
         let cell = &beat_cells[i];
 
+        // IMPORTANT: Skip continuation cells - they're part of the previous cell
+        if cell.continuation {
+            i += 1;
+            continue;
+        }
+
         if cell.kind == ElementKind::PitchedElement {
             // Count this note + following extensions
             let mut slot_count = 1;
             let mut j = i + 1;
             while j < beat_cells.len() {
-                if beat_cells[j].kind == ElementKind::UnpitchedElement && beat_cells[j].glyph == "-" {
+                if beat_cells[j].kind == ElementKind::UnpitchedElement && beat_cells[j].char == "-" {
                     slot_count += 1;
                     j += 1;
                 } else {
@@ -225,7 +240,7 @@ fn normalize_beat(beat_cells: &[Cell]) -> (Vec<usize>, usize) {
             }
             slot_counts.push(slot_count);
             i = j;
-        } else if cell.kind == ElementKind::UnpitchedElement && cell.glyph != "-" {
+        } else if cell.kind == ElementKind::UnpitchedElement && cell.char != "-" {
             // Standalone rest
             slot_counts.push(1);
             i += 1;
@@ -279,7 +294,7 @@ fn process_beat(
         let mut leading_div_count = 0;
         while i < beat_cells.len() &&
               beat_cells[i].kind == ElementKind::UnpitchedElement &&
-              beat_cells[i].glyph == "-" {
+              beat_cells[i].char == "-" {
             leading_div_count += 1;
             i += 1;
         }
@@ -289,8 +304,8 @@ fn process_beat(
             let (prev_pitch_code, prev_octave) = builder.last_note.clone().unwrap();
 
             // Calculate normalized duration for leading divisions
-            // These divisions belong to the previous beat, so we use the total cell count for subdivisions
-            let total_cells = beat_cells.len();
+            // IMPORTANT: Don't count continuation cells in rhythmic calculations!
+            let total_cells = beat_cells.iter().filter(|c| !c.continuation).count();
             let duration_divs = (measure_divisions * leading_div_count) / total_cells;
             let musical_duration = leading_div_count as f64 / total_cells as f64;
 
@@ -328,13 +343,19 @@ fn process_beat(
     while i < beat_cells.len() {
         let cell = &beat_cells[i];
 
+        // IMPORTANT: Skip continuation cells - they're part of the previous cell
+        if cell.continuation {
+            i += 1;
+            continue;
+        }
+
         match cell.kind {
             ElementKind::PitchedElement => {
                 // Count following "-" extenders
                 let mut extension_count = 0;
                 let mut j = i + 1;
                 while j < beat_cells.len() {
-                    if beat_cells[j].kind == ElementKind::UnpitchedElement && beat_cells[j].glyph == "-" {
+                    if beat_cells[j].kind == ElementKind::UnpitchedElement && beat_cells[j].char == "-" {
                         extension_count += 1;
                         j += 1;
                     } else {
@@ -381,7 +402,7 @@ fn process_beat(
                 // Skip the extensions
                 i += 1 + extension_count;
             }
-            ElementKind::UnpitchedElement if cell.glyph != "-" => {
+            ElementKind::UnpitchedElement if cell.char != "-" => {
                 // Standalone unpitched element (rest, not extension)
                 if slot_index >= normalized_slots.len() {
                     i += 1;

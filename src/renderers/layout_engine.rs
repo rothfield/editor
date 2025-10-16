@@ -96,7 +96,7 @@ impl LayoutEngine {
             };
 
             // Count total characters in this line
-            let char_count: usize = line.cells.iter().map(|cell| cell.glyph.chars().count()).sum();
+            let char_count: usize = line.cells.iter().map(|cell| cell.char.chars().count()).sum();
 
             // Get character widths for this line
             let char_widths = if char_width_offset < config.char_widths.len() {
@@ -144,7 +144,7 @@ impl LayoutEngine {
         let beats = self.beat_deriver.extract_implicit_beats(&line.cells);
 
         // Build role maps for CSS classes
-        let beat_roles = self.build_beat_role_map(&beats);
+        let beat_roles = self.build_beat_role_map(&beats, &line.cells);
         let slur_roles = self.build_slur_role_map(&line.cells);
 
         // Distribute lyrics to cells
@@ -202,7 +202,7 @@ impl LayoutEngine {
             dataset.insert("cellIndex".to_string(), cell_idx.to_string());
             dataset.insert("column".to_string(), cell.col.to_string());
             dataset.insert("octave".to_string(), cell.octave.to_string());
-            dataset.insert("glyphLength".to_string(), cell.glyph.chars().count().to_string());
+            dataset.insert("glyphLength".to_string(), cell.char.chars().count().to_string());
 
             // Get effective width for this cell
             let effective_width = effective_widths.get(cell_idx).copied().unwrap_or(12.0);
@@ -211,7 +211,7 @@ impl LayoutEngine {
             let actual_cell_width = cell_widths.get(cell_idx).copied().unwrap_or(12.0);
 
             // Calculate character positions for this cell
-            let char_count = cell.glyph.chars().count();
+            let char_count = cell.char.chars().count();
             let mut char_positions = Vec::with_capacity(char_count + 1);
             char_positions.push(cumulative_x); // Position before first character
 
@@ -233,7 +233,7 @@ impl LayoutEngine {
             let cursor_right = *char_positions.last().unwrap_or(&(cumulative_x + actual_cell_width));
 
             cells.push(RenderCell {
-                glyph: cell.glyph.clone(),
+                char: cell.char.clone(),
                 x: cumulative_x,
                 y: config.cell_y_offset,
                 w: effective_width,
@@ -306,16 +306,28 @@ impl LayoutEngine {
     }
 
     /// Build map of cell index to beat role class
-    fn build_beat_role_map(&self, beats: &[BeatSpan]) -> HashMap<usize, String> {
+    /// IMPORTANT: Only assigns beat classes to NON-CONTINUATION cells
+    fn build_beat_role_map(&self, beats: &[BeatSpan], cells: &[Cell]) -> HashMap<usize, String> {
         let mut map = HashMap::new();
 
         for beat in beats {
-            if beat.end >= beat.start + 1 {
-                // Multi-cell beat
-                for i in beat.start..=beat.end {
-                    let role = if i == beat.start {
+            // Collect non-continuation cell indices in this beat
+            let non_continuation_indices: Vec<usize> = (beat.start..=beat.end)
+                .filter(|&i| {
+                    cells.get(i).map(|c| !c.continuation).unwrap_or(false)
+                })
+                .collect();
+
+            // Only draw loops for beats with 2+ non-continuation cells
+            if non_continuation_indices.len() >= 2 {
+                // Multi-element beat
+                let first_idx = non_continuation_indices[0];
+                let last_idx = *non_continuation_indices.last().unwrap();
+
+                for &i in &non_continuation_indices {
+                    let role = if i == first_idx {
                         "beat-first"
-                    } else if i == beat.end {
+                    } else if i == last_idx {
                         "beat-last"
                     } else {
                         "beat-middle"

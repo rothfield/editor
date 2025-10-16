@@ -38,6 +38,25 @@ class TextInputHandler {
   }
 
   /**
+   * Get effective pitch system for current line
+   * Line-level pitch_system overrides document-level
+   *
+   * @returns {number} Effective pitch system to use
+   */
+  getEffectivePitchSystem() {
+    // Check if we have a document with lines
+    if (this.document && this.document.lines && this.document.lines.length > 0) {
+      const line = this.document.lines[0];
+      // If line has pitch_system set (non-zero), use it
+      if (line.pitch_system && line.pitch_system !== 0) {
+        return line.pitch_system;
+      }
+    }
+    // Fall back to document-level pitch system
+    return this.pitchSystem;
+  }
+
+  /**
    * Insert text at cursor position
    *
    * @param {string} text - Text to insert
@@ -63,7 +82,7 @@ class TextInputHandler {
         // Calculate total character count before insertion
         let charCountBefore = 0;
         for (let i = 0; i < lengthBefore; i++) {
-          charCountBefore += cells[i].glyph.length;
+          charCountBefore += cells[i].char.length;
         }
 
         logger.debug(LOG_CATEGORIES.PARSER, `Inserting char '${char}'`, {
@@ -77,7 +96,7 @@ class TextInputHandler {
           cells,
           char,
           currentPos,
-          this.pitchSystem
+          this.getEffectivePitchSystem()
         );
 
         const lengthAfter = cells.length;
@@ -85,7 +104,7 @@ class TextInputHandler {
         // Calculate total character count after insertion
         let charCountAfter = 0;
         for (let i = 0; i < lengthAfter; i++) {
-          charCountAfter += cells[i].glyph.length;
+          charCountAfter += cells[i].char.length;
         }
 
         const cellDelta = lengthAfter - lengthBefore;
@@ -174,13 +193,15 @@ class TextInputHandler {
         throw new Error('Invalid notation syntax');
       }
 
+      const effectivePitchSystem = this.getEffectivePitchSystem();
+
       logger.info(LOG_CATEGORIES.PARSER, 'Parsing text', {
         length: text.length,
-        pitchSystem: this.pitchSystem
+        pitchSystem: effectivePitchSystem
       });
 
       // Call WASM parser
-      const cells = this.wasmModule.parseText(text, this.pitchSystem);
+      const cells = this.wasmModule.parseText(text, effectivePitchSystem);
 
       logger.info(LOG_CATEGORIES.PARSER, `Parsed ${cells.length} cells from text`);
 

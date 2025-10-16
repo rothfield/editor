@@ -31,7 +31,7 @@ pub fn note_type_from_tuplet_normal(normal_notes: usize) -> &'static str {
 ///
 /// # Examples
 /// ```
-/// use editor::tree::renderers::musicxml::duration::duration_to_note_type;
+/// use editor_wasm::renderers::musicxml::duration::duration_to_note_type;
 ///
 /// assert_eq!(duration_to_note_type(1.0), ("quarter", 0));
 /// assert_eq!(duration_to_note_type(0.75), ("eighth", 1));

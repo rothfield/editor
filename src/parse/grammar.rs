@@ -79,57 +79,6 @@ pub fn parse_single(c: char, pitch_system: PitchSystem, column: usize) -> Cell {
     parse(&c.to_string(), pitch_system, column)
 }
 
-/// Try to combine previous cell with new character (Case 2: look back)
-/// Returns Some(new_cell) if combination is valid, None otherwise
-pub fn parse_with_before(prev: &Cell, c: char, pitch_system: PitchSystem) -> Option<Cell> {
-    // Build combined string
-    let combined_str = format!("{}{}", prev.glyph, c);
-    log::info!("  ⬅️ parse_with_before: trying '{}'", combined_str);
-
-    // Try to parse the combined string
-    let cell = parse(&combined_str, pitch_system, prev.col);
-
-    // Only combine if it's NOT just text (text is fallback, means parse failed)
-    if cell.kind != ElementKind::Text {
-        log::info!("  ✅ Combined into {:?}", cell.kind);
-        Some(cell)
-    } else if prev.kind == ElementKind::Text {
-        // Check if the new character by itself would be a valid musical element
-        // If so, DON'T combine it with text - let it stand alone
-        let char_alone = parse_single(c, pitch_system, prev.col + 1);
-        if char_alone.kind != ElementKind::Text {
-            log::info!("  ❌ Cannot combine: '{}' is a valid {:?}, not text", c, char_alone.kind);
-            return None;
-        }
-
-        // Both prev and new are text, so combine them as text
-        log::info!("  ✅ Combined as text");
-        Some(cell)
-    } else {
-        log::info!("  ❌ Cannot combine");
-        None
-    }
-}
-
-/// Try to combine current character with next character (Case 3: look forward)
-/// Returns Some(new_cell) if combination is valid, None otherwise
-pub fn parse_with_after(c: char, next: &Cell, pitch_system: PitchSystem, column: usize) -> Option<Cell> {
-    // Build combined string
-    let combined_str = format!("{}{}", c, next.glyph);
-    log::info!("  ➡️ parse_with_after: trying '{}'", combined_str);
-
-    // Try to parse the combined string
-    let cell = parse(&combined_str, pitch_system, column);
-
-    // Only combine if it's NOT just text (text is fallback, means parse failed)
-    if cell.kind != ElementKind::Text {
-        log::info!("  ✅ Combined into {:?}", cell.kind);
-        Some(cell)
-    } else {
-        log::info!("  ❌ Cannot combine");
-        None
-    }
-}
 
 // ============================================================================
 // Production Rules
@@ -142,11 +91,10 @@ fn parse_note(s: &str, pitch_system: PitchSystem, column: usize) -> Option<Cell>
         // Try to parse pitch code from string
         let pitch_code = PitchCode::from_string(s, pitch_system);
 
-        // Create cell with glyph (will be recomputed later, but set it now for display)
+        // Create cell with char (will be recomputed later, but set it now for display)
         let mut cell = Cell::new(s.to_string(), ElementKind::PitchedElement, column);
         cell.pitch_system = Some(pitch_system);
         cell.pitch_code = pitch_code;
-        cell.set_head(true);
         Some(cell)
     } else {
         None
@@ -154,6 +102,7 @@ fn parse_note(s: &str, pitch_system: PitchSystem, column: usize) -> Option<Cell>
 }
 
 /// Parse barline (includes "|", "|:", ":|", "||", etc.)
+/// Note: ":" alone is NOT a barline - it's text
 fn parse_barline(s: &str, column: usize) -> Option<Cell> {
     if matches!(s, "|" | "|:" | ":|" | "||") {
         let cell = Cell::new(s.to_string(), ElementKind::Barline, column);
@@ -199,87 +148,118 @@ fn parse_text(s: &str, column: usize) -> Cell {
 }
 
 // ============================================================================
-// Token Combiner
+// Continuation Marker
 // ============================================================================
 
-/// Try to combine tokens using recursive descent
-/// After inserting a character at position, try combinations:
-/// 1. Look back: Can we combine prev + current?
-/// 2. Look forward: Can we combine current + next?
-pub fn try_combine_tokens(cells: &mut Vec<Cell>, insert_pos: usize, pitch_system: PitchSystem) {
-    log::info!("🔄 try_combine_tokens called: insert_pos={}, cells.len()={}, pitch_system={:?}",
-        insert_pos, cells.len(), pitch_system);
+/// Mark cells as continuations of previous cells
+/// This replaces the old token combination approach
+pub fn mark_continuations(cells: &mut Vec<Cell>) {
+    log::info!("🔗 mark_continuations called for {} cells", cells.len());
 
-    if cells.is_empty() {
-        log::info!("  ⚠️ cells is empty, returning");
-        return;
+    for i in 1..cells.len() {
+        // Get current and previous characters
+        let curr_char = cells[i].char.chars().next().unwrap_or('\0');
+        let prev_char = cells[i - 1].char.chars().next().unwrap_or('\0');
+        let prev_kind = cells[i - 1].kind;
+
+        // Check for specific barline combinations
+        if (prev_char == '|' && curr_char == ':') ||   // |:
+           (prev_char == ':' && curr_char == '|') ||   // :|
+           (prev_char == '|' && curr_char == '|') {    // ||
+            cells[i].continuation = true;
+            cells[i].kind = ElementKind::Barline;
+            // Also force the previous cell to be a Barline (for ":" in ":|")
+            cells[i - 1].kind = ElementKind::Barline;
+            log::info!("  ✅ Cell[{}] '{}' marked as barline continuation of Cell[{}] '{}' → combined barline",
+                     i, cells[i].char, i - 1, cells[i - 1].char);
+        }
+        // Check if current cell should continue previous cell (accidentals, text)
+        else if should_continue_with_limit(cells, i, prev_kind, curr_char) {
+            cells[i].continuation = true;
+            cells[i].kind = prev_kind;  // Inherit parent's kind
+
+            // IMPORTANT: If this is an accidental continuation, update parent's pitch_code
+            if prev_kind == ElementKind::PitchedElement && matches!(curr_char, '#' | 'b') {
+                // Find the root (first non-continuation cell) to get pitch_system
+                let mut root_idx = i - 1;
+                while root_idx > 0 && cells[root_idx].continuation {
+                    root_idx -= 1;
+                }
+
+                // Get pitch system from root cell
+                if let Some(pitch_system) = cells[root_idx].pitch_system {
+                    // Combine all chars from root through current cell
+                    let mut combined = String::new();
+                    for j in root_idx..=i {
+                        combined.push_str(&cells[j].char);
+                    }
+
+                    // Reparse pitch_code with combined string
+                    let new_pitch_code = PitchCode::from_string(&combined, pitch_system);
+                    cells[root_idx].pitch_code = new_pitch_code;
+                    log::info!("  ✅ Cell[{}] '{}' marked as continuation, updated Cell[{}] pitch_code to {:?} (combined: '{}')",
+                             i, cells[i].char, root_idx, cells[root_idx].pitch_code, combined);
+                }
+            } else {
+                log::info!("  ✅ Cell[{}] '{}' marked as continuation of Cell[{}] (kind={:?})",
+                         i, cells[i].char, i - 1, prev_kind);
+            }
+        }
     }
 
-    // Log current state
-    let cells_str: Vec<String> = cells.iter().map(|c| format!("'{}'[{}]", c.glyph, c.kind as u8)).collect();
-    log::info!("  📋 Current cells: [{}]", cells_str.join(", "));
+    let continuation_count = cells.iter().filter(|c| c.continuation).count();
+    log::info!("  🏁 Marked {} cells as continuations", continuation_count);
+}
 
-    // Case 2: Look back - try to combine with previous cell
-    if insert_pos > 0 && insert_pos < cells.len() {
-        let current_char = cells[insert_pos].glyph.chars().next().unwrap_or('\0');
-        log::info!("  ⬅️ Case 2 (Look back): prev='{}', current_char='{}'",
-            cells[insert_pos - 1].glyph, current_char);
+/// Check if current character should continue previous cell
+fn should_continue(prev_kind: ElementKind, curr_char: char) -> bool {
+    match prev_kind {
+        ElementKind::PitchedElement => {
+            // If previous is a note and current is accidental
+            matches!(curr_char, '#' | 'b')
+        }
+        ElementKind::Text => {
+            // If previous is text and current is letter
+            curr_char.is_alphabetic()
+        }
+        _ => false
+    }
+}
 
-        if let Some(combined) = parse_with_before(&cells[insert_pos - 1], current_char, pitch_system) {
-            log::info!("  ✅ Combination succeeded: '{}'", combined.glyph);
-            // Replace previous cell with combined cell
-            cells[insert_pos - 1] = combined;
-            // Remove current cell
-            cells.remove(insert_pos);
+/// Check if current character should continue previous cell (with accidental limit)
+/// For PitchedElement: limits accidentals to maximum of 2 (double sharp/flat)
+fn should_continue_with_limit(cells: &[Cell], i: usize, prev_kind: ElementKind, curr_char: char) -> bool {
+    match prev_kind {
+        ElementKind::PitchedElement => {
+            // If current is not an accidental, can't continue
+            if !matches!(curr_char, '#' | 'b') {
+                return false;
+            }
 
-            // Update column indices
-            for i in insert_pos..cells.len() {
-                if cells[i].col > 0 {
-                    cells[i].col -= 1;
+            // Find the root cell (trace back to non-continuation)
+            let mut root_idx = i - 1;
+            while root_idx > 0 && cells[root_idx].continuation {
+                root_idx -= 1;
+            }
+
+            // Count existing accidentals in the glyph
+            let mut accidental_count = 0;
+            for j in root_idx..i {
+                let c = cells[j].char.chars().next().unwrap_or('\0');
+                if matches!(c, '#' | 'b') {
+                    accidental_count += 1;
                 }
             }
 
-            let cells_str: Vec<String> = cells.iter().map(|c| format!("'{}'", c.glyph)).collect();
-            log::info!("  📋 After combination: [{}]", cells_str.join(", "));
-            return;
-        } else {
-            log::info!("  ❌ Look back combination failed");
+            // Limit to 2 accidentals (double sharp or double flat)
+            accidental_count < 2
         }
-    } else {
-        log::info!("  ⏭️ Skipping Case 2 (Look back): insert_pos={}, cells.len()={}", insert_pos, cells.len());
-    }
-
-    // Case 3: Look forward - try to combine with next cell
-    if insert_pos < cells.len() - 1 {
-        let current_char = cells[insert_pos].glyph.chars().next().unwrap_or('\0');
-        log::info!("  ➡️ Case 3 (Look forward): current_char='{}', next='{}'",
-            current_char, cells[insert_pos + 1].glyph);
-
-        if let Some(combined) = parse_with_after(current_char, &cells[insert_pos + 1], pitch_system, cells[insert_pos].col) {
-            log::info!("  ✅ Combination succeeded: '{}'", combined.glyph);
-            // Replace current cell with combined cell
-            cells[insert_pos] = combined;
-            // Remove next cell
-            cells.remove(insert_pos + 1);
-
-            // Update column indices
-            for i in (insert_pos + 1)..cells.len() {
-                if cells[i].col > 0 {
-                    cells[i].col -= 1;
-                }
-            }
-
-            let cells_str: Vec<String> = cells.iter().map(|c| format!("'{}'", c.glyph)).collect();
-            log::info!("  📋 After combination: [{}]", cells_str.join(", "));
-            return;
-        } else {
-            log::info!("  ❌ Look forward combination failed");
+        ElementKind::Text => {
+            // If previous is text and current is letter
+            curr_char.is_alphabetic()
         }
-    } else {
-        log::info!("  ⏭️ Skipping Case 3 (Look forward): insert_pos={}, cells.len()={}", insert_pos, cells.len());
+        _ => false
     }
-
-    log::info!("  🏁 No combination performed");
 }
 
 #[cfg(test)]
@@ -290,59 +270,117 @@ mod tests {
     fn test_parse_single_note() {
         let cell = parse_single('1', PitchSystem::Number, 0);
         assert_eq!(cell.kind, ElementKind::PitchedElement);
-        assert_eq!(cell.glyph, "1");
+        assert_eq!(cell.char, "1");
     }
 
     #[test]
     fn test_parse_single_text() {
         let cell = parse_single('x', PitchSystem::Number, 0);
         assert_eq!(cell.kind, ElementKind::Text);
-        assert_eq!(cell.glyph, "x");
+        assert_eq!(cell.char, "x");
     }
 
-    #[test]
-    fn test_parse_with_before_accidental() {
-        let note = parse_single('1', PitchSystem::Number, 0);
-        let combined = parse_with_before(&note, '#', PitchSystem::Number);
-
-        assert!(combined.is_some());
-        let combined = combined.unwrap();
-        assert_eq!(combined.glyph, "1#");
-        assert_eq!(combined.kind, ElementKind::PitchedElement);
-    }
 
     #[test]
-    fn test_parse_with_before_double_accidental() {
-        let note = parse_single('1', PitchSystem::Number, 0);
-        let sharp = parse_with_before(&note, '#', PitchSystem::Number).unwrap();
-        let double_sharp = parse_with_before(&sharp, '#', PitchSystem::Number);
-
-        assert!(double_sharp.is_some());
-        let double_sharp = double_sharp.unwrap();
-        assert_eq!(double_sharp.glyph, "1##");
-    }
-
-    #[test]
-    fn test_parse_western_note_with_accidental() {
-        let note = parse_single('c', PitchSystem::Western, 0);
-        let combined = parse_with_before(&note, '#', PitchSystem::Western);
-
-        assert!(combined.is_some());
-        let combined = combined.unwrap();
-        assert_eq!(combined.glyph, "c#");
-    }
-
-    #[test]
-    fn test_try_combine_tokens() {
+    fn test_mark_continuations() {
         let mut cells = vec![
             parse_single('1', PitchSystem::Number, 0),
             parse_single('#', PitchSystem::Number, 1),
         ];
 
-        try_combine_tokens(&mut cells, 1, PitchSystem::Number);
+        mark_continuations(&mut cells);
 
-        assert_eq!(cells.len(), 1);
-        assert_eq!(cells[0].glyph, "1#");
+        // Should still have 2 cells (not combined)
+        assert_eq!(cells.len(), 2);
+
+        // First cell unchanged
+        assert_eq!(cells[0].char, "1");
         assert_eq!(cells[0].kind, ElementKind::PitchedElement);
+        assert_eq!(cells[0].continuation, false);
+
+        // Second cell marked as continuation
+        assert_eq!(cells[1].char, "#");
+        assert_eq!(cells[1].continuation, true);
+        assert_eq!(cells[1].kind, ElementKind::PitchedElement); // Inherits parent's kind
+    }
+
+    #[test]
+    fn test_barline_left_repeat() {
+        // Test "|:" should be left repeat barline
+        let mut cells = vec![
+            parse_single('|', PitchSystem::Number, 0),
+            parse_single(':', PitchSystem::Number, 1),
+        ];
+
+        mark_continuations(&mut cells);
+
+        // Should have 2 cells
+        assert_eq!(cells.len(), 2);
+
+        // First cell: "|" as Barline
+        assert_eq!(cells[0].char, "|");
+        assert_eq!(cells[0].kind, ElementKind::Barline);
+        assert_eq!(cells[0].continuation, false);
+
+        // Second cell: ":" as continuation, forced to Barline
+        assert_eq!(cells[1].char, ":");
+        assert_eq!(cells[1].continuation, true);
+        assert_eq!(cells[1].kind, ElementKind::Barline);
+    }
+
+    #[test]
+    fn test_barline_right_repeat() {
+        // Test ":|" should be right repeat barline
+        let mut cells = vec![
+            parse_single(':', PitchSystem::Number, 0),
+            parse_single('|', PitchSystem::Number, 1),
+        ];
+
+        mark_continuations(&mut cells);
+
+        // Should have 2 cells
+        assert_eq!(cells.len(), 2);
+
+        // First cell: ":" was Text, but should be forced to Barline
+        assert_eq!(cells[0].char, ":");
+        assert_eq!(cells[0].kind, ElementKind::Barline); // Forced to Barline
+        assert_eq!(cells[0].continuation, false);
+
+        // Second cell: "|" as continuation of barline
+        assert_eq!(cells[1].char, "|");
+        assert_eq!(cells[1].continuation, true);
+        assert_eq!(cells[1].kind, ElementKind::Barline);
+    }
+
+    #[test]
+    fn test_barline_double() {
+        // Test "||" should be double barline
+        let mut cells = vec![
+            parse_single('|', PitchSystem::Number, 0),
+            parse_single('|', PitchSystem::Number, 1),
+        ];
+
+        mark_continuations(&mut cells);
+
+        // Should have 2 cells
+        assert_eq!(cells.len(), 2);
+
+        // First cell: "|" as Barline
+        assert_eq!(cells[0].char, "|");
+        assert_eq!(cells[0].kind, ElementKind::Barline);
+        assert_eq!(cells[0].continuation, false);
+
+        // Second cell: "|" as continuation
+        assert_eq!(cells[1].char, "|");
+        assert_eq!(cells[1].continuation, true);
+        assert_eq!(cells[1].kind, ElementKind::Barline);
+    }
+
+    #[test]
+    fn test_colon_alone_is_text() {
+        // Test ":" alone should be Text, not Barline
+        let cell = parse_single(':', PitchSystem::Number, 0);
+        assert_eq!(cell.char, ":");
+        assert_eq!(cell.kind, ElementKind::Text); // Should be Text, not Barline
     }
 }

@@ -626,7 +626,7 @@ class UI {
     const currentSystem = this.getCurrentPitchSystem();
     const newSystem = this.showPitchSystemDialog(currentSystem);
 
-    if (newSystem !== null) {
+    if (newSystem !== null && newSystem !== currentSystem) {
       this.updatePitchSystemDisplay(newSystem);
 
       if (this.editor && this.editor.theDocument) {
@@ -654,14 +654,14 @@ class UI {
 
     const choice = prompt(`Select pitch system (1-3):\n\n${message}\n\nCurrent: ${options[currentSystem] || '1'}`, currentSystem?.toString());
 
-    if (choice !== null) {
+    if (choice !== null && choice.trim() !== '') {
       const system = parseInt(choice);
       if (system >= 1 && system <= 3) {
         return system;
       }
     }
 
-    return currentSystem;
+    return null;
   }
 
   /**
@@ -742,18 +742,22 @@ class UI {
      * Set line pitch system
      */
   async setLinePitchSystem() {
+    // Check if document has lines
+    if (!this.editor || !this.editor.theDocument || this.editor.theDocument.lines.length === 0) {
+      alert('No lines in document. Please add content first.');
+      return;
+    }
+
     const currentSystem = this.getLinePitchSystem();
     const newSystem = this.showPitchSystemDialog(currentSystem);
 
-    if (newSystem !== null) {
+    if (newSystem !== null && newSystem !== currentSystem) {
       this.updateLinePitchSystemDisplay(newSystem);
 
-      if (this.editor && this.editor.theDocument && this.editor.theDocument.lines.length > 0) {
-        this.editor.theDocument.lines[0].pitch_system = newSystem;
-        this.editor.addToConsoleLog(`Line pitch system set to: ${this.getPitchSystemName(newSystem)}`);
-        await this.editor.render(); // Re-render to update WebUI
-        this.editor.updateDocumentDisplay(); // Update tabs
-      }
+      this.editor.theDocument.lines[0].pitch_system = newSystem;
+      this.editor.addToConsoleLog(`Line pitch system set to: ${this.getPitchSystemName(newSystem)}`);
+      await this.editor.render(); // Re-render to update WebUI
+      this.editor.updateDocumentDisplay(); // Update tabs
     }
   }
 

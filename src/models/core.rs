@@ -11,15 +11,18 @@ pub use super::elements::{ElementKind, PitchSystem, SlurIndicator};
 pub use super::notation::{BeatSpan, SlurSpan, Position, Selection, Range, CursorPosition};
 pub use super::pitch_code::PitchCode;
 
-/// The fundamental unit representing one visible glyph in musical notation
+/// The fundamental unit representing one character in musical notation
 #[repr(C)]
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Cell {
-    /// The visible glyph (e.g., "S", "C#", "2b", "-")
-    pub glyph: String,
+    /// The visible character (always single character)
+    pub char: String,
 
     /// Type of musical element this cell represents
     pub kind: ElementKind,
+
+    /// True if this cell is a continuation of the previous cell (e.g., "#" after "C")
+    pub continuation: bool,
 
     /// Physical column index (0-based) for layout calculations
     pub col: usize,
@@ -61,10 +64,11 @@ pub struct Cell {
 
 impl Cell {
     /// Create a new Cell
-    pub fn new(glyph: String, kind: ElementKind, col: usize) -> Self {
+    pub fn new(char: String, kind: ElementKind, col: usize) -> Self {
         Self {
-            glyph,
+            char,
             kind,
+            continuation: false,
             col,
             flags: 0,
             pitch_code: None,
@@ -80,19 +84,6 @@ impl Cell {
         }
     }
 
-    /// Check if this cell is the head of a multi-character token
-    pub fn is_head(&self) -> bool {
-        self.flags & 0x01 != 0
-    }
-
-    /// Set head marker flag
-    pub fn set_head(&mut self, is_head: bool) {
-        if is_head {
-            self.flags |= 0x01;
-        } else {
-            self.flags &= !0x01;
-        }
-    }
 
     /// Check if this cell is currently selected
     pub fn is_selected(&self) -> bool {
@@ -127,9 +118,9 @@ impl Cell {
         self.kind.is_temporal()
     }
 
-    /// Get the length of this token in characters
+    /// Get the length of this token in characters (always 1)
     pub fn token_length(&self) -> usize {
-        self.glyph.chars().count()
+        1
     }
 
     /// Check if this cell can be selected
@@ -445,8 +436,8 @@ impl Document {
 
             for cell in &mut line.cells {
                 if let Some(pitch_code) = cell.pitch_code {
-                    // Compute glyph from pitch code using effective pitch system
-                    cell.glyph = pitch_code.to_string(effective_system);
+                    // Compute char from pitch code using effective pitch system
+                    cell.char = pitch_code.to_string(effective_system);
                 }
             }
         }
@@ -802,7 +793,7 @@ impl SelectionManager {
                         cell.col >= selection.start.column &&
                         cell.col < selection.end.column
                     })
-                    .map(|cell| cell.glyph.clone())
+                    .map(|cell| cell.char.clone())
                     .collect::<Vec<String>>()
                     .join("");
             }
@@ -904,7 +895,7 @@ pub enum ValidationError {
     InvalidEncoding {
         line: usize,
         column: usize,
-        glyph: String,
+        char: String,
     },
 
     /// Document structure inconsistency
@@ -924,8 +915,8 @@ impl ValidationError {
             ValidationError::InvalidPitch { line, column, pitch } => {
                 format!("Invalid pitch notation '{}' at line {}, column {}", pitch, line, column)
             },
-            ValidationError::InvalidEncoding { line, column, glyph } => {
-                format!("Invalid character encoding '{}' at line {}, column {}", glyph, line, column)
+            ValidationError::InvalidEncoding { line, column, char } => {
+                format!("Invalid character encoding '{}' at line {}, column {}", char, line, column)
             },
             ValidationError::StructureError { description } => {
                 format!("Document structure error: {}", description)

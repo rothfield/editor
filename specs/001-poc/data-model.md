@@ -29,8 +29,11 @@ The fundamental unit representing one visible grapheme cluster in the musical no
 #[repr(C)]
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct Cell {
-    /// The visible grapheme cluster (e.g., "S", "C#", "2b", "-")
-    pub glyph: String,
+    /// Single character representing this cell (e.g., "S", "C", "#", "2", "b", "-")
+    pub char: String,
+
+    /// True if this cell continues the previous cell (e.g., "#" in "C#")
+    pub continuation: bool,
 
     /// Type of musical element this cell represents
     pub kind: ElementKind,
@@ -40,9 +43,6 @@ pub struct Cell {
 
     /// Physical column index (0-based) for layout calculations
     pub col: usize,
-
-    /// Bit flags for various properties (head marker, selection, etc.)
-    pub flags: u8,
 
     /// Canonical pitch representation (for pitched elements only)
     pub pitch_code: Option<String>,
@@ -64,29 +64,14 @@ pub struct Cell {
 }
 
 impl Cell {
-    /// Check if this cell is the head of a multi-character token
-    pub fn is_head(&self) -> bool {
-        self.flags & 0x01 != 0
-    }
-
-    /// Check if this cell is currently selected
-    pub fn is_selected(&self) -> bool {
-        self.flags & 0x02 != 0
-    }
-
-    /// Check if this cell has focus
-    pub fn has_focus(&self) -> bool {
-        self.flags & 0x04 != 0
-    }
-
     /// Check if this cell is part of a temporal sequence
     pub fn is_temporal(&self) -> bool {
         matches!(self.kind, ElementKind::PitchedElement | ElementKind::UnpitchedElement)
     }
 
-    /// Get the length of this token in characters
+    /// Get the length of this token (always 1 in single-character model)
     pub fn token_length(&self) -> usize {
-        self.grapheme.chars().count()
+        1
     }
 }
 ```
@@ -708,7 +693,7 @@ pub enum ValidationError {
         stave: usize,
         lane: usize,
         column: usize,
-        glyph: String,
+        char: String,
     },
 
     /// Document structure inconsistency
@@ -728,8 +713,8 @@ impl ValidationError {
             ValidationError::InvalidPitch { stave, lane, column, pitch } => {
                 format!("Invalid pitch notation '{}' at stave {}, lane {}, column {}", pitch, stave, lane, column)
             },
-            ValidationError::InvalidEncoding { stave, lane, column, glyph } => {
-                format!("Invalid character encoding '{}' at stave {}, lane {}, column {}", grapheme, stave, lane, column)
+            ValidationError::InvalidEncoding { stave, lane, column, char } => {
+                format!("Invalid character encoding '{}' at stave {}, lane {}, column {}", char, stave, lane, column)
             },
             ValidationError::StructureError { description } => {
                 format!("Document structure error: {}", description)

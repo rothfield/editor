@@ -2,9 +2,9 @@
 //!
 //! Converts parsed MusicXML elements into the internal Music representation.
 
-use crate::musicxml_import::errors::{ConversionError, ParseError};
-use crate::musicxml_import::parser::{get_child, get_child_text, parse_divisions, parse_duration, parse_pitch, MeasureNode};
-use crate::musicxml_import::types::{
+use crate::converters::musicxml::musicxml_to_lilypond::errors::{ConversionError, ParseError};
+use crate::converters::musicxml::musicxml_to_lilypond::parser::{get_child, get_child_text, parse_divisions, parse_duration, parse_pitch, MeasureNode};
+use crate::converters::musicxml::musicxml_to_lilypond::types::{
     ChordEvent, Clef, ClefType, Duration, KeySignature, Mode, Music, NoteEvent, Pitch, Rational,
     RestEvent, SequentialMusic, SkippedElement, TimeSignature, TupletMusic,
 };
@@ -198,21 +198,22 @@ pub fn convert_note(
         if child.tag_name().name() == "tie" {
             if let Some(tie_type) = child.attribute("type") {
                 note_event.tie = match tie_type {
-                    "start" => Some(crate::musicxml_import::types::Tie::Start),
-                    "stop" => Some(crate::musicxml_import::types::Tie::Stop),
-                    "continue" => Some(crate::musicxml_import::types::Tie::Continue),
+                    "start" => Some(crate::converters::musicxml::musicxml_to_lilypond::types::Tie::Start),
+                    "stop" => Some(crate::converters::musicxml::musicxml_to_lilypond::types::Tie::Stop),
+                    "continue" => Some(crate::converters::musicxml::musicxml_to_lilypond::types::Tie::Continue),
                     _ => None,
                 };
             }
         }
     }
 
-    // Check for articulations
+    // Check for articulations and slurs
     if let Some(notations) = get_child(note_node, "notations") {
+        // Parse articulations
         if let Some(articulations) = get_child(notations, "articulations") {
             for artic_node in articulations.children() {
                 if artic_node.is_element() {
-                    use crate::musicxml_import::types::{ArticulationMark, ArticulationType};
+                    use crate::converters::musicxml::musicxml_to_lilypond::types::{ArticulationMark, ArticulationType};
 
                     let artic_type = match artic_node.tag_name().name() {
                         "staccato" => Some(ArticulationType::Staccato),
@@ -232,6 +233,31 @@ pub fn convert_note(
                 }
             }
         }
+
+        // Parse slurs
+        for child in notations.children() {
+            if child.tag_name().name() == "slur" {
+                if let Some(slur_type) = child.attribute("type") {
+                    use crate::converters::musicxml::musicxml_to_lilypond::types::{Slur, SlurDirection};
+
+                    let direction = match slur_type {
+                        "start" => Some(SlurDirection::Start),
+                        "stop" => Some(SlurDirection::Stop),
+                        _ => None,
+                    };
+
+                    if let Some(dir) = direction {
+                        // Get slur number (for overlapping slurs), default to 1
+                        let number = child
+                            .attribute("number")
+                            .and_then(|n| n.parse::<u8>().ok())
+                            .unwrap_or(1);
+
+                        note_event.slur = Some(Slur::with_number(dir, number));
+                    }
+                }
+            }
+        }
     }
 
     Ok(Music::Note(note_event))
@@ -246,7 +272,7 @@ pub fn convert_attributes(
 
     // Key signature
     if let Some(key_node) = get_child(attributes_node, "key") {
-        if let Some((fifths, mode_str)) = crate::musicxml_import::parser::parse_key(key_node) {
+        if let Some((fifths, mode_str)) = crate::converters::musicxml::musicxml_to_lilypond::parser::parse_key(key_node) {
             let mode = match mode_str.to_lowercase().as_str() {
                 "major" => Mode::Major,
                 "minor" => Mode::Minor,
@@ -260,7 +286,7 @@ pub fn convert_attributes(
 
     // Time signature
     if let Some(time_node) = get_child(attributes_node, "time") {
-        if let Some((beats, beat_type)) = crate::musicxml_import::parser::parse_time(time_node) {
+        if let Some((beats, beat_type)) = crate::converters::musicxml::musicxml_to_lilypond::parser::parse_time(time_node) {
             if let Ok(time_sig) = TimeSignature::new(beats, beat_type) {
                 music.push(Music::TimeChange(time_sig));
             }
@@ -269,7 +295,7 @@ pub fn convert_attributes(
 
     // Clef
     if let Some(clef_node) = get_child(attributes_node, "clef") {
-        if let Some((sign, _line)) = crate::musicxml_import::parser::parse_clef(clef_node) {
+        if let Some((sign, _line)) = crate::converters::musicxml::musicxml_to_lilypond::parser::parse_clef(clef_node) {
             let clef_type = match sign.as_str() {
                 "G" => ClefType::Treble,
                 "F" => ClefType::Bass,
@@ -288,7 +314,7 @@ fn convert_direction(
     direction_node: Node,
     context: &mut ConversionContext,
 ) -> Option<Music> {
-    use crate::musicxml_import::types::{DynamicMark, DynamicType, Placement, TempoMark, TextMark};
+    use crate::converters::musicxml::musicxml_to_lilypond::types::{DynamicMark, DynamicType, Placement, TempoMark, TextMark};
 
     // Get direction-type child
     let direction_type = get_child(direction_node, "direction-type")?;
@@ -368,7 +394,7 @@ fn convert_direction(
 
 /// Convert a part to sequential music
 pub fn convert_part(
-    part_node: crate::musicxml_import::parser::PartNode,
+    part_node: crate::converters::musicxml::musicxml_to_lilypond::parser::PartNode,
     context: &mut ConversionContext,
 ) -> Result<SequentialMusic, ConversionError> {
     let mut all_music = Vec::new();

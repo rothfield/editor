@@ -68,7 +68,7 @@ class TestVisualRendering:
                             cells.push({
                                 laneIndex,
                                 cellIndex,
-                                glyph: cell.glyph || '',
+                                glyph: cell.char || '',
                                 x: cell.x || 0,
                                 y: cell.y || 0,
                                 w: cell.w || 0,

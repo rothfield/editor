@@ -76,7 +76,7 @@ impl BeatDeriver {
         for (index, cell) in cells.iter().enumerate() {
             let is_beat = self.is_beat_element(cell);
             log::info!("  Cell {}: '{}' kind={:?} is_beat_element={}",
-                index, cell.glyph, cell.kind, is_beat);
+                index, cell.char, cell.kind, is_beat);
 
             if is_beat {
                 // This cell is part of a beat
