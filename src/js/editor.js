@@ -1911,15 +1911,16 @@ class MusicNotationEditor {
     }
 
     try {
+      console.log('📝 render() called');
       const state = await this.saveDocument();
       const doc = JSON.parse(state);
+      console.log('📝 calling renderer.renderDocument()');
       this.renderer.renderDocument(doc);
+      console.log('📝 renderer.renderDocument() completed');
 
-      // Adjust Y positions for multi-line layout
-      // Use setTimeout to ensure DOM is updated first
-      setTimeout(() => {
-        this.adjustCellPositionsForMultiLine();
-      }, 0);
+      // Adjust Y positions for multi-line layout immediately after rendering
+      console.log('📝 calling adjustCellPositionsForMultiLine()');
+      this.adjustCellPositionsForMultiLine();
 
       // Schedule staff notation update (debounced)
       this.scheduleStaffNotationUpdate();
@@ -2409,19 +2410,15 @@ class MusicNotationEditor {
      */
   getCursorElement() {
     let cursor = document.querySelector('.cursor-indicator');
-    const lineElement = this.element.querySelector('[data-line="0"]');
 
     if (!cursor) {
       // Create new cursor element
       cursor = this.createCursorElement();
     }
 
-    // Ensure cursor is in the correct parent (line element, not canvas)
-    // This fixes the positioning context mismatch between cursor and cells
-    if (lineElement && cursor.parentElement !== lineElement) {
-      lineElement.appendChild(cursor);
-    } else if (!lineElement && cursor.parentElement !== this.element) {
-      // Fallback: append to canvas if line element not found
+    // Always append cursor to the editor element (not to line elements)
+    // We'll position it absolutely using style.top and style.left
+    if (cursor.parentElement !== this.element) {
       this.element.appendChild(cursor);
     }
 
