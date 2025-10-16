@@ -1040,9 +1040,10 @@ class MusicNotationEditor {
     }
 
     const displayList = this.renderer.displayList;
-    const firstLine = displayList.lines && displayList.lines[0];
+    const currentStave = this.getCurrentStave();
+    const currentLine = displayList.lines && displayList.lines[currentStave];
 
-    if (!firstLine || !firstLine.cells || firstLine.cells.length === 0) {
+    if (!currentLine || !currentLine.cells || currentLine.cells.length === 0) {
       return LEFT_MARGIN_PX;
     }
 
@@ -1051,17 +1052,17 @@ class MusicNotationEditor {
 
     // If before first cell
     if (cellIndex === 0 && charOffsetInCell === 0) {
-      return firstLine.cells[0].cursor_left;
+      return currentLine.cells[0].cursor_left;
     }
 
     // If after all cells
-    if (cellIndex >= firstLine.cells.length) {
-      const lastCell = firstLine.cells[firstLine.cells.length - 1];
+    if (cellIndex >= currentLine.cells.length) {
+      const lastCell = currentLine.cells[currentLine.cells.length - 1];
       return lastCell.cursor_right;
     }
 
     // Get cell from DisplayList
-    const cell = firstLine.cells[cellIndex];
+    const cell = currentLine.cells[cellIndex];
 
     // If at start of cell
     if (charOffsetInCell === 0) {
@@ -2407,7 +2408,17 @@ class MusicNotationEditor {
     const charPos = this.getCursorPosition(); // Character position (0, 1, 2, ...)
 
     const lineHeight = 16; // Line height in pixels
-    const yOffset = 32; // Y position in line element (matches cells)
+
+    // Calculate Y offset based on current line from displayList
+    let yOffset = 32; // Default fallback
+    const currentStave = this.getCurrentStave();
+    if (this.renderer && this.renderer.displayList && this.renderer.displayList.lines) {
+      const displayLine = this.renderer.displayList.lines[currentStave];
+      if (displayLine && displayLine.y_min !== undefined) {
+        // Use the line's Y position from the display list
+        yOffset = displayLine.y_min;
+      }
+    }
 
     // Calculate pixel position using character-level positioning
     const pixelPos = this.charPosToPixel(charPos);
