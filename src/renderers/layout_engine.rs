@@ -233,10 +233,16 @@ impl LayoutEngine {
             // cursor_right should be at the position after the last character
             let cursor_right = *char_positions.last().unwrap_or(&(cumulative_x + actual_cell_width));
 
+            // Calculate Y position for cells
+            // IMPORTANT: Cells are rendered as children of their .notation-line containers
+            // So Y should be relative to the line, NOT global to the editor
+            // All cells in all lines use the same Y offset relative to their container
+            let y = config.cell_y_offset;
+
             cells.push(RenderCell {
                 char: cell.char.clone(),
                 x: cumulative_x,
-                y: config.cell_y_offset,
+                y,
                 w: effective_width,
                 h: config.cell_height,
                 classes,

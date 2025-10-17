@@ -16,6 +16,7 @@ class TextInputHandler {
     this.wasmModule = wasmModule;
     this.document = document;
     this.pitchSystem = 1; // Default to number system
+    this.currentLineIndex = 0; // Current active line for multi-line support
   }
 
   /**
@@ -38,6 +39,26 @@ class TextInputHandler {
   }
 
   /**
+   * Set current active line index for multi-line support
+   *
+   * @param {number} lineIndex - Index of the current active line
+   */
+  setCurrentLineIndex(lineIndex) {
+    if (this.document && this.document.lines && lineIndex >= 0 && lineIndex < this.document.lines.length) {
+      this.currentLineIndex = lineIndex;
+    }
+  }
+
+  /**
+   * Get current active line index
+   *
+   * @returns {number} Current active line index
+   */
+  getCurrentLineIndex() {
+    return this.currentLineIndex;
+  }
+
+  /**
    * Get effective pitch system for current line
    * Line-level pitch_system overrides document-level
    *
@@ -45,8 +66,8 @@ class TextInputHandler {
    */
   getEffectivePitchSystem() {
     // Check if we have a document with lines
-    if (this.document && this.document.lines && this.document.lines.length > 0) {
-      const line = this.document.lines[0];
+    if (this.document && this.document.lines && this.document.lines.length > this.currentLineIndex) {
+      const line = this.document.lines[this.currentLineIndex];
       // If line has pitch_system set (non-zero), use it
       if (line.pitch_system && line.pitch_system !== 0) {
         return line.pitch_system;
@@ -70,7 +91,7 @@ class TextInputHandler {
 
     logger.time('insertText', LOG_CATEGORIES.PARSER);
 
-    const line = this.document.lines[0];
+    const line = this.document.lines[this.currentLineIndex];
     let cells = line.cells || [];
     let currentPos = cursorPos;
 
@@ -146,7 +167,7 @@ class TextInputHandler {
       throw new Error('No document available for deletion');
     }
 
-    const line = this.document.lines[0];
+    const line = this.document.lines[this.currentLineIndex];
     let cells = line.cells || [];
 
     try {
@@ -333,7 +354,7 @@ class TextInputHandler {
       throw new Error('No document available');
     }
 
-    const line = this.document.lines[0];
+    const line = this.document.lines[this.currentLineIndex];
     let cells = line.cells || [];
 
     try {
@@ -366,7 +387,7 @@ class TextInputHandler {
       throw new Error('No document available');
     }
 
-    const line = this.document.lines[0];
+    const line = this.document.lines[this.currentLineIndex];
     let cells = line.cells || [];
 
     try {
@@ -399,7 +420,7 @@ class TextInputHandler {
       throw new Error('No document available');
     }
 
-    const line = this.document.lines[0];
+    const line = this.document.lines[this.currentLineIndex];
     let cells = line.cells || [];
 
     try {

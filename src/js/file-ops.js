@@ -260,26 +260,8 @@ class FileOperations {
 
     console.log('✅ Set pitch_system to', pitchSystemValue, 'on new document');
 
-    // Add 2 more empty lines (total of 3 lines)
-    if (document.lines && document.lines.length >= 1) {
-      // Create template line based on existing first line
-      const templateLine = document.lines[0];
-
-      // Add 2 more lines
-      for (let i = 0; i < 2; i++) {
-        const newLine = {
-          label: `Line ${i + 2}`,
-          cells: [],
-          tonic: templateLine.tonic || 'C',
-          pitch_system: templateLine.pitch_system || pitchSystemValue,
-          lyrics: '',
-          tala: '',
-          key_signature: templateLine.key_signature || ''
-        };
-        document.lines.push(newLine);
-      }
-      console.log('✅ Added 2 additional lines, total lines:', document.lines.length);
-    }
+    // NOTE: Document lines are managed by WASM only - JavaScript must NEVER create or mutate lines!
+    // The Rust WASM creates the initial document with lines already set up
 
     // Add runtime state (not persisted by WASM)
     document.state = {

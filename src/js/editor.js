@@ -1918,9 +1918,8 @@ class MusicNotationEditor {
       this.renderer.renderDocument(doc);
       console.log('📝 renderer.renderDocument() completed');
 
-      // Adjust Y positions for multi-line layout immediately after rendering
-      console.log('📝 calling adjustCellPositionsForMultiLine()');
-      this.adjustCellPositionsForMultiLine();
+      // Y positions are now correctly set by Rust layout engine based on line index
+      // No need to adjust in JavaScript anymore
 
       // Schedule staff notation update (debounced)
       this.scheduleStaffNotationUpdate();
@@ -1929,44 +1928,6 @@ class MusicNotationEditor {
     }
   }
 
-  /**
-   * Adjust Y positions of cells to account for multi-line layout
-   * Since renderer renders all lines at the same Y, we need to offset them
-   */
-  adjustCellPositionsForMultiLine() {
-    console.log('🔧 adjustCellPositionsForMultiLine called');
-    const LINE_HEIGHT = 48; // Height of each line in pixels
-    const BASE_Y = 32; // First line Y position
-    const cells = this.element.querySelectorAll('[data-line-index]');
-
-    console.log(`🔧 Found ${cells.length} cells with [data-line-index]`);
-
-    const adjustedByLine = {};
-
-    cells.forEach(cell => {
-      const lineIndexStr = cell.dataset['line-index'];
-      const lineIndex = (lineIndexStr !== undefined && lineIndexStr !== '') ? parseInt(lineIndexStr) : 0;
-
-      // Calculate new Y position: base position + line offset
-      const newYPos = BASE_Y + (lineIndex * LINE_HEIGHT);
-
-      if (cell.style.top !== `${newYPos}px`) {
-        console.log(`🔧 Adjusting cell from line ${lineIndex}: ${cell.style.top} -> ${newYPos}px`);
-        cell.style.top = `${newYPos}px`;
-      }
-
-      if (!adjustedByLine[lineIndex]) {
-        adjustedByLine[lineIndex] = 0;
-      }
-      adjustedByLine[lineIndex]++;
-    });
-
-    // Log the result for debugging
-    console.log('🔧 Adjusted cell positions:', adjustedByLine);
-    Object.keys(adjustedByLine).forEach(lineIdx => {
-      console.log(`  Line ${lineIdx}: ${adjustedByLine[lineIdx]} cells at Y=${BASE_Y + (parseInt(lineIdx) * LINE_HEIGHT)}px`);
-    });
-  }
 
   /**
      * Setup event handlers
@@ -2257,76 +2218,36 @@ class MusicNotationEditor {
   }
 
   /**
-     * Calculate Cell position from coordinates using DisplayList data
+     * Calculate which line was clicked based on Y coordinate
+     * SIMPLIFIED: Use .notation-line containers directly for Y ranges
      */
   calculateLineFromY(y) {
-    // Determine which line was clicked based on Y coordinate
-    if (!this.renderer || !this.renderer.displayList || !this.renderer.displayList.lines) {
-      return null;
-    }
+    // Get all line containers
+    const lineContainers = this.element.querySelectorAll('.notation-line');
+    const editorRect = this.element.getBoundingClientRect();
 
-    const displayList = this.renderer.displayList;
+    console.log(`📍 calculateLineFromY: clicked at Y=${y} (editor-relative)`);
 
-    // Debug: log the displayList structure once
-    if (!this._displayListDebugLogged) {
-      console.log('DEBUG: DisplayList lines:', displayList.lines.map((line, i) => ({
-        index: i,
-        y_min: line.y_min,
-        y_max: line.y_max,
-        cells_count: line.cells ? line.cells.length : 0
-      })));
-      // Also log the actual DOM cells to see what positions they have
-      const cells = this.element.querySelectorAll('[data-line-index]');
-      console.log('DEBUG: DOM cells by line:');
-      const cellsByLine = {};
-      cells.forEach(cell => {
-        const lineIdx = cell.dataset.lineIndex || cell.dataset['line-index'];
-        if (!cellsByLine[lineIdx]) cellsByLine[lineIdx] = [];
-        cellsByLine[lineIdx].push({
-          char: cell.textContent,
-          top: cell.style.top,
-          left: cell.style.left
-        });
-      });
-      Object.keys(cellsByLine).forEach(lineIdx => {
-        console.log(`Line ${lineIdx}: ${cellsByLine[lineIdx].length} cells, first cell top=${cellsByLine[lineIdx][0].top}`);
-      });
-      this._displayListDebugLogged = true;
-    }
+    // Check each line container to see which one contains the click
+    for (let lineIdx = 0; lineIdx < lineContainers.length; lineIdx++) {
+      const lineContainer = lineContainers[lineIdx];
+      const lineRect = lineContainer.getBoundingClientRect();
 
-    // Calculate Y ranges for each line based on DOM elements
-    // Since all lines might have the same y_min/y_max from displayList,
-    // we need to infer the actual layout from the DOM
-    const lineRanges = {};
-    const cells = this.element.querySelectorAll('[data-line-index]');
+      // Convert line container Y to editor-relative coordinates
+      const lineTop = lineRect.top - editorRect.top;
+      const lineBottom = lineRect.bottom - editorRect.top;
 
-    cells.forEach(cell => {
-      const lineIdxStr = cell.dataset['line-index'];
-      const lineIdx = (lineIdxStr !== undefined && lineIdxStr !== '') ? parseInt(lineIdxStr) : 0;
-      const cellTop = parseInt(cell.style.top);
-      const cellHeight = parseInt(cell.style.height) || 16;
+      console.log(`  Line ${lineIdx}: Y=${lineTop} to ${lineBottom}`);
 
-      if (!lineRanges[lineIdx]) {
-        lineRanges[lineIdx] = {
-          y_min: cellTop,
-          y_max: cellTop + cellHeight
-        };
-      } else {
-        lineRanges[lineIdx].y_min = Math.min(lineRanges[lineIdx].y_min, cellTop);
-        lineRanges[lineIdx].y_max = Math.max(lineRanges[lineIdx].y_max, cellTop + cellHeight);
-      }
-    });
-
-    // Use calculated ranges or fall back to displayList
-    for (let lineIndex = 0; lineIndex < displayList.lines.length; lineIndex++) {
-      const range = lineRanges[lineIndex] || { y_min: displayList.lines[lineIndex].y_min, y_max: displayList.lines[lineIndex].y_max };
-      if (range.y_min !== undefined && range.y_max !== undefined) {
-        if (y >= range.y_min && y <= range.y_max) {
-          return lineIndex;
-        }
+      // Check if click Y falls within this line
+      if (y >= lineTop && y <= lineBottom) {
+        console.log(`  ✓ Click is in line ${lineIdx}`);
+        return lineIdx;
       }
     }
-    return null;
+
+    console.log(`  ✗ Click not in any line, defaulting to 0`);
+    return 0; // Default to first line if no match
   }
 
   /**
@@ -2416,10 +2337,16 @@ class MusicNotationEditor {
       cursor = this.createCursorElement();
     }
 
-    // Always append cursor to the editor element (not to line elements)
-    // We'll position it absolutely using style.top and style.left
-    if (cursor.parentElement !== this.element) {
-      this.element.appendChild(cursor);
+    // Append cursor to the current line container (not to editor)
+    // This way cursor is positioned absolutely relative to its line
+    // So Y coordinates work without any offset calculations
+    const currentStave = this.getCurrentStave();
+    const lineContainers = this.element.querySelectorAll('.notation-line');
+    if (lineContainers.length > currentStave) {
+      const lineContainer = lineContainers[currentStave];
+      if (cursor.parentElement !== lineContainer) {
+        lineContainer.appendChild(cursor);
+      }
     }
 
     return cursor;
@@ -2510,22 +2437,35 @@ class MusicNotationEditor {
     const charPos = this.getCursorPosition(); // Character position (0, 1, 2, ...)
     const lineHeight = 16; // Line height in pixels
 
-    // Get Y position from the first cell of the current line
-    let yOffset = 32; // Default fallback
     const currentStave = this.getCurrentStave();
 
-    // Find the first cell of the current line from the DOM
-    const cells = this.element.querySelectorAll(`[data-line-index="${currentStave}"]`);
+    console.log(`📍 updateCursorVisualPosition: currentStave=${currentStave}, charPos=${charPos}`);
+
+    // SIMPLIFIED: Cursor is now a child of the current .notation-line
+    // So it's positioned absolutely relative to its line container
+    // We just need the Y from the first cell of the current line
+
+    let yOffset = 32; // Default fallback
+
+    // Find first cell to get its Y position (relative to the line)
+    const cells = this.element.querySelectorAll(`[data-lineindex="${currentStave}"]`);
+    console.log(`📍 Found ${cells.length} cells for line ${currentStave}`);
+
     if (cells.length > 0) {
       const firstCell = cells[0];
       const cellTop = parseInt(firstCell.style.top) || 32;
-      yOffset = cellTop;
+      console.log(`📍 First cell top: ${firstCell.style.top}, parsed as: ${cellTop}px`);
+      yOffset = cellTop; // This is already relative to the line, no offset needed
+    } else {
+      console.log(`📍 No cells found for line ${currentStave}, using default yOffset=${yOffset}px`);
     }
 
     // Calculate pixel position using character-level positioning
     const pixelPos = this.charPosToPixel(charPos);
 
-    // Set cursor position
+    console.log(`📍 Setting cursor: left=${pixelPos}px, top=${yOffset}px`);
+
+    // Set cursor position (position: absolute relative to .notation-line)
     cursor.style.position = 'absolute';
     cursor.style.left = `${pixelPos}px`;
     cursor.style.top = `${yOffset}px`;

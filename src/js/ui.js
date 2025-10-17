@@ -759,7 +759,8 @@ class UI {
           const preservedState = this.editor.theDocument.state;
           const preservedBeats = this.editor.theDocument.lines.map(line => line.beats);
 
-          const updatedDocument = await this.editor.wasmModule.setLineLabel(this.editor.theDocument, 0, newLabel);
+          const lineIdx = this.getCurrentLineIndex();
+          const updatedDocument = await this.editor.wasmModule.setLineLabel(this.editor.theDocument, lineIdx, newLabel);
 
           // Restore the state field and beats array after WASM call
           updatedDocument.state = preservedState;
@@ -789,7 +790,8 @@ class UI {
       this.updateLineTonicDisplay(newTonic);
 
       if (this.editor && this.editor.theDocument && this.editor.theDocument.lines.length > 0) {
-        this.editor.theDocument.lines[0].tonic = newTonic;
+        const lineIdx = this.getCurrentLineIndex();
+        this.editor.theDocument.lines[lineIdx].tonic = newTonic;
         this.editor.addToConsoleLog(`Line tonic set to: ${newTonic}`);
         await this.editor.render(); // Re-render to update WebUI
         this.editor.updateDocumentDisplay(); // Update tabs
@@ -813,7 +815,8 @@ class UI {
     if (newSystem !== null && newSystem !== currentSystem) {
       this.updateLinePitchSystemDisplay(newSystem);
 
-      this.editor.theDocument.lines[0].pitch_system = newSystem;
+      const lineIdx = this.getCurrentLineIndex();
+      this.editor.theDocument.lines[lineIdx].pitch_system = newSystem;
       this.editor.addToConsoleLog(`Line pitch system set to: ${this.getPitchSystemName(newSystem)}`);
       await this.editor.render(); // Re-render to update WebUI
       this.editor.updateDocumentDisplay(); // Update tabs
@@ -837,7 +840,8 @@ class UI {
           const preservedState = this.editor.theDocument.state;
           const preservedBeats = this.editor.theDocument.lines.map(line => line.beats);
 
-          const updatedDocument = await this.editor.wasmModule.setLineLyrics(this.editor.theDocument, 0, newLyrics);
+          const lineIdx = this.getCurrentLineIndex();
+          const updatedDocument = await this.editor.wasmModule.setLineLyrics(this.editor.theDocument, lineIdx, newLyrics);
 
           // Restore the state field and beats array after WASM call
           updatedDocument.state = preservedState;
@@ -895,7 +899,8 @@ class UI {
       this.updateLineKeySignatureDisplay(newSignature);
 
       if (this.editor && this.editor.theDocument && this.editor.theDocument.lines.length > 0) {
-        this.editor.theDocument.lines[0].key_signature = newSignature;
+        const lineIdx = this.getCurrentLineIndex();
+        this.editor.theDocument.lines[lineIdx].key_signature = newSignature;
         this.editor.addToConsoleLog(`Line key signature set to: ${newSignature}`);
         await this.editor.render(); // Re-render to update WebUI
         this.editor.updateDocumentDisplay(); // Update tabs
@@ -1035,6 +1040,17 @@ class UI {
   }
 
   /**
+   * Get current active line index from editor cursor
+   */
+  getCurrentLineIndex() {
+    if (this.editor && typeof this.editor.getCurrentStave === 'function') {
+      return this.editor.getCurrentStave();
+    }
+    // Fallback to line 0 if editor or method not available
+    return 0;
+  }
+
+  /**
      * Getters
      */
   getDocumentTitle() {
@@ -1058,41 +1074,47 @@ class UI {
   }
 
   getLineLabel() {
-    if (this.editor?.theDocument?.lines?.length > 0) {
-      return this.editor.theDocument.lines[0].label || '';
+    const lineIdx = this.getCurrentLineIndex();
+    if (this.editor?.theDocument?.lines?.length > lineIdx) {
+      return this.editor.theDocument.lines[lineIdx].label || '';
     }
     return '';
   }
 
   getLineTonic() {
-    if (this.editor?.theDocument?.lines?.length > 0) {
-      return this.editor.theDocument.lines[0].tonic || '';
+    const lineIdx = this.getCurrentLineIndex();
+    if (this.editor?.theDocument?.lines?.length > lineIdx) {
+      return this.editor.theDocument.lines[lineIdx].tonic || '';
     }
     return '';
   }
 
   getLinePitchSystem() {
-    if (this.editor?.theDocument?.lines?.length > 0) {
-      return this.editor.theDocument.lines[0].pitch_system || 1;
+    const lineIdx = this.getCurrentLineIndex();
+    if (this.editor?.theDocument?.lines?.length > lineIdx) {
+      return this.editor.theDocument.lines[lineIdx].pitch_system || 1;
     }
     return 1;
   }
 
   getLyrics() {
-    if (this.editor?.theDocument?.lines?.length > 0) {
-      return this.editor.theDocument.lines[0].lyrics || '';
+    const lineIdx = this.getCurrentLineIndex();
+    if (this.editor?.theDocument?.lines?.length > lineIdx) {
+      return this.editor.theDocument.lines[lineIdx].lyrics || '';
     }
     return '';
   }
 
   getTala() {
-    return this.editor?.theDocument?.lines?.length > 0
-      ? this.editor.theDocument.lines[0].tala || '' : '';
+    const lineIdx = this.getCurrentLineIndex();
+    return this.editor?.theDocument?.lines?.length > lineIdx
+      ? this.editor.theDocument.lines[lineIdx].tala || '' : '';
   }
 
   getLineKeySignature() {
-    if (this.editor?.theDocument?.lines?.length > 0) {
-      return this.editor.theDocument.lines[0].key_signature || '';
+    const lineIdx = this.getCurrentLineIndex();
+    if (this.editor?.theDocument?.lines?.length > lineIdx) {
+      return this.editor.theDocument.lines[lineIdx].key_signature || '';
     }
     return '';
   }

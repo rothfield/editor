@@ -276,6 +276,18 @@ class DOMRenderer {
     const layoutTime = performance.now() - layoutStart;
     console.log(`⏱️ Rust layout computed in ${layoutTime.toFixed(2)}ms`);
 
+    // DEBUG: Log the full displayList from WASM
+    console.log('🔍 === WASM DisplayList ===');
+    console.log('📄 DisplayList:', JSON.stringify(displayList, null, 2));
+    console.log('📊 Total lines:', displayList.lines.length);
+    displayList.lines.forEach((line, idx) => {
+      console.log(`📍 Line ${idx}: ${line.cells.length} cells, ${line.lyrics.length} lyrics, ${line.tala.length} tala`);
+      if (line.cells.length > 0) {
+        console.log(`   First cell: char="${line.cells[0].char}", x=${line.cells[0].x}, y=${line.cells[0].y}`);
+      }
+    });
+    console.log('🔍 === End DisplayList ===');
+
     // Cache DisplayList for cursor positioning
     this.displayList = displayList;
 
@@ -429,13 +441,19 @@ class DOMRenderer {
    * @param {Object} displayList - DisplayList from Rust computeLayout
    */
   renderFromDisplayList(displayList) {
+    console.log('🎨 renderFromDisplayList called');
+    console.log('📊 DisplayList:', displayList);
+    console.log('📊 DisplayList.lines:', displayList.lines);
+
     // Render header if present
     if (displayList.header) {
       this.renderHeaderFromDisplayList(displayList.header);
     }
 
     // Render each line from DisplayList
-    displayList.lines.forEach(renderLine => {
+    displayList.lines.forEach((renderLine, lineIdx) => {
+      console.log(`📍 Rendering line ${lineIdx}:`, renderLine);
+      console.log(`   - cells count: ${renderLine.cells ? renderLine.cells.length : 0}`);
       const lineElement = this.renderLineFromDisplayList(renderLine);
       this.element.appendChild(lineElement);
     });
