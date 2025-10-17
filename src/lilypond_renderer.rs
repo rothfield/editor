@@ -103,7 +103,7 @@ fn lilypond_to_png(lilypond_src: &str) -> Result<Vec<u8>, String> {
         .arg("-dno-gs-load-fonts")
         .arg("-dinclude-eps-fonts")
         .arg("-dbackend=eps")
-        .arg("-dresolution=150")
+        .arg("-dresolution=300")
         .arg("-o")
         .arg("/dev/stdout") // Output to stdout
         .arg("-") // Read from stdin

@@ -1,0 +1,41 @@
+\version "{{version}}"
+\language "english"
+
+#(set-global-staff-size 40)
+
+\paper {
+  indent = 0\mm
+  tagline = ##f
+  ragged-right = ##t
+  page-breaking = #ly:one-page-breaking
+}
+
+{{#lyrics}}
+melody = {
+  \fixed c' {
+    {{{staves}}}
+  }
+}
+
+text = \lyricmode {
+  {{{lyrics}}}
+}
+
+\score {
+  <<
+    \new Voice = "one" {
+      \melody
+    }
+    \new Lyrics \lyricsto "one" \text
+  >>
+  
+  \layout { }
+}
+{{/lyrics}}
+{{^lyrics}}
+\score {
+  {{{staves}}}
+  
+  \layout { }
+}
+{{/lyrics}}

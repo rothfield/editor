@@ -352,7 +352,7 @@ async function renderLilyPond(lilypondSource, outputFormat = 'svg') {
         '--png',
         '-dno-gs-load-fonts',
         '-dinclude-eps-fonts',
-        '-dresolution=150',
+        '-dresolution=300',
         '-dpoint-and-click=false',
         '-ddelete-intermediate-files',
         '-o',

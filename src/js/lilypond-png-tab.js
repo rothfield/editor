@@ -21,6 +21,7 @@ class LilyPondPngTab {
     this.formatToggle = null;
     this.currentFormat = 'svg';
     this.isVisible = false;
+    this.currentZoom = 1.0; // Zoom level
   }
 
   /**
@@ -102,6 +103,60 @@ class LilyPondPngTab {
     `;
     this.statusElement.textContent = 'Ready';
 
+    // Zoom controls
+    const zoomContainer = document.createElement('div');
+    zoomContainer.style.cssText = `
+      display: flex;
+      gap: 4px;
+      align-items: center;
+    `;
+
+    const zoomOutBtn = document.createElement('button');
+    zoomOutBtn.textContent = '−';
+    zoomOutBtn.title = 'Zoom out';
+    zoomOutBtn.style.cssText = `
+      padding: 4px 8px;
+      background: #e9ecef;
+      color: #333;
+      border: 1px solid #dee2e6;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 16px;
+      font-weight: bold;
+      min-width: 32px;
+    `;
+    zoomOutBtn.onclick = () => this.setZoom(Math.max(0.5, this.currentZoom - 0.25));
+
+    const zoomLabel = document.createElement('span');
+    zoomLabel.textContent = '100%';
+    zoomLabel.style.cssText = `
+      font-size: 12px;
+      min-width: 40px;
+      text-align: center;
+      color: #666;
+    `;
+
+    const zoomInBtn = document.createElement('button');
+    zoomInBtn.textContent = '+';
+    zoomInBtn.title = 'Zoom in';
+    zoomInBtn.style.cssText = `
+      padding: 4px 8px;
+      background: #e9ecef;
+      color: #333;
+      border: 1px solid #dee2e6;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 16px;
+      font-weight: bold;
+      min-width: 32px;
+    `;
+    zoomInBtn.onclick = () => this.setZoom(Math.min(2.0, this.currentZoom + 0.25));
+
+    zoomContainer.appendChild(zoomOutBtn);
+    zoomContainer.appendChild(zoomLabel);
+    zoomContainer.appendChild(zoomInBtn);
+    this.zoomLabel = zoomLabel;
+
     // Copy button
     const copyButton = document.createElement('button');
     copyButton.textContent = '📋 Copy';
@@ -120,6 +175,7 @@ class LilyPondPngTab {
     toolbar.appendChild(this.refreshButton);
     toolbar.appendChild(this.formatToggle);
     toolbar.appendChild(this.statusElement);
+    toolbar.appendChild(zoomContainer);
     toolbar.appendChild(copyButton);
 
     // Find existing render container and clear it
@@ -260,9 +316,47 @@ class LilyPondPngTab {
   }
 
   /**
+   * Set zoom level
+   */
+  setZoom(zoomLevel) {
+    this.currentZoom = Math.max(0.5, Math.min(2.0, zoomLevel));
+    if (this.zoomLabel) {
+      this.zoomLabel.textContent = Math.round(this.currentZoom * 100) + '%';
+    }
+    this.applyZoom();
+  }
+
+  /**
+   * Apply zoom to SVG or image elements
+   */
+  applyZoom() {
+    const svg = this.renderArea.querySelector('svg');
+    const img = this.renderArea.querySelector('img');
+
+    if (svg) {
+      svg.style.width = (this.currentZoom * 100) + '%';
+      svg.style.height = (this.currentZoom * 100) + '%';
+      svg.style.maxWidth = 'none';
+      svg.style.maxHeight = 'none';
+      svg.style.objectFit = 'contain';
+    } else if (img) {
+      img.style.width = (this.currentZoom * 100) + '%';
+      img.style.height = (this.currentZoom * 100) + '%';
+      img.style.objectFit = 'contain';
+      img.style.padding = '0';
+    }
+  }
+
+  /**
    * Display rendered result
    */
   displayResult(result) {
+    // Reset zoom when displaying new result
+    this.currentZoom = 1.0;
+    if (this.zoomLabel) {
+      this.zoomLabel.textContent = '100%';
+    }
+
     if (result.svg) {
       this.renderArea.innerHTML = result.svg;
       this.renderArea.style.background = 'white';
@@ -270,6 +364,7 @@ class LilyPondPngTab {
       this.renderArea.style.alignItems = 'center';
       this.renderArea.style.justifyContent = 'center';
       this.renderArea.style.padding = '0';
+      this.renderArea.style.overflow = 'auto';
 
       // Make SVG expand to fill the container
       const svg = this.renderArea.querySelector('svg');
