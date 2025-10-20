@@ -14,6 +14,7 @@ import ResizeHandle from './resize-handle.js';
 import LilyPondTab from './lilypond-tab.js';
 import LilyPondPngTab from './lilypond-png-tab.js';
 import LilyPondRenderer from './lilypond-renderer.js';
+import ExportUI from './export-ui.js';
 
 /**
  * Main application class
@@ -24,6 +25,7 @@ class MusicNotationApp {
     this.eventManager = null;
     this.fileOperations = null;
     this.ui = null;
+    this.exportUI = null;
     this.resizeHandle = null;
     this.isInitialized = false;
 
@@ -51,10 +53,13 @@ class MusicNotationApp {
       this.fileOperations = new FileOperations(this.editor);
       this.eventManager = new EventManager(this.editor, this.fileOperations);
       this.ui = new UI(this.editor, this.fileOperations);
+      this.exportUI = new ExportUI(this.editor, this.fileOperations);
       this.resizeHandle = new ResizeHandle();
 
-      // Pass UI reference to editor so it can update UI elements
+      // Pass references to editor so it can access other components
       this.editor.ui = this.ui;
+      this.editor.exportUI = this.exportUI;
+      this.editor.eventManager = this.eventManager;
 
       // Initialize the editor
       await this.editor.initialize();

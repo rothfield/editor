@@ -284,7 +284,7 @@ pub fn delete_character(
 
     // Preserve data from root cell BEFORE deletion (for reparsing)
     let preserved_pitch_system = cells[root_idx].pitch_system;
-    let preserved_col = cells[root_idx].col;
+    let _preserved_col = cells[root_idx].col;
     let preserved_flags = cells[root_idx].flags;
     let preserved_octave = cells[root_idx].octave;
     let preserved_slur_indicator = cells[root_idx].slur_indicator;
@@ -684,6 +684,59 @@ pub fn set_composer(
     Ok(result)
 }
 
+/// Set the document pitch system
+///
+/// # Parameters
+/// - `document_js`: JavaScript Document object
+/// - `pitch_system`: The new pitch system (0-5, where 1=Number, 2=Western, 3=Sargam, 4=Bhatkhande, 5=Tabla)
+///
+/// # Returns
+/// Updated JavaScript Document object with the pitch system set
+#[wasm_bindgen(js_name = setDocumentPitchSystem)]
+pub fn set_document_pitch_system(
+    document_js: JsValue,
+    pitch_system: u8,
+) -> Result<JsValue, JsValue> {
+    wasm_info!("setDocumentPitchSystem called: pitch_system={}", pitch_system);
+
+    // Deserialize document from JavaScript
+    let mut document: Document = serde_wasm_bindgen::from_value(document_js)
+        .map_err(|e| {
+            wasm_error!("Deserialization error: {}", e);
+            JsValue::from_str(&format!("Deserialization error: {}", e))
+        })?;
+
+    // Validate and set the pitch system
+    let system = match pitch_system {
+        0 => PitchSystem::Unknown,
+        1 => PitchSystem::Number,
+        2 => PitchSystem::Western,
+        3 => PitchSystem::Sargam,
+        4 => PitchSystem::Bhatkhande,
+        5 => PitchSystem::Tabla,
+        _ => {
+            wasm_error!("Invalid pitch system value: {}", pitch_system);
+            return Err(JsValue::from_str(&format!("Invalid pitch system: {}", pitch_system)));
+        }
+    };
+
+    document.pitch_system = Some(system);
+    wasm_info!("  Document pitch system set to: {:?}", system);
+
+    // Compute glyphs before serialization
+    document.compute_glyphs();
+
+    // Serialize back to JavaScript
+    let result = serde_wasm_bindgen::to_value(&document)
+        .map_err(|e| {
+            wasm_error!("Serialization error: {}", e);
+            JsValue::from_str(&format!("Serialization error: {}", e))
+        })?;
+
+    wasm_info!("setDocumentPitchSystem completed successfully");
+    Ok(result)
+}
+
 /// Set lyrics for a specific line
 ///
 /// # Parameters
@@ -783,6 +836,67 @@ pub fn set_line_tala(
         })?;
 
     wasm_info!("setLineTala completed successfully");
+    Ok(result)
+}
+
+/// Set pitch system for a specific line
+///
+/// # Parameters
+/// - `document_js`: JavaScript Document object
+/// - `line_index`: Index of the line to set pitch system for (0-based)
+/// - `pitch_system`: The new pitch system (0-5, where 1=Number, 2=Western, 3=Sargam, 4=Bhatkhande, 5=Tabla)
+///
+/// # Returns
+/// Updated JavaScript Document object with the line pitch system set
+#[wasm_bindgen(js_name = setLinePitchSystem)]
+pub fn set_line_pitch_system(
+    document_js: JsValue,
+    line_index: usize,
+    pitch_system: u8,
+) -> Result<JsValue, JsValue> {
+    wasm_info!("setLinePitchSystem called: line_index={}, pitch_system={}", line_index, pitch_system);
+
+    // Deserialize document from JavaScript
+    let mut document: Document = serde_wasm_bindgen::from_value(document_js)
+        .map_err(|e| {
+            wasm_error!("Deserialization error: {}", e);
+            JsValue::from_str(&format!("Deserialization error: {}", e))
+        })?;
+
+    // Validate line index
+    if line_index >= document.lines.len() {
+        wasm_error!("Line index {} out of bounds (max: {})", line_index, document.lines.len() - 1);
+        return Err(JsValue::from_str(&format!("Line index {} out of bounds", line_index)));
+    }
+
+    // Validate and set the pitch system
+    let system = match pitch_system {
+        0 => PitchSystem::Unknown,
+        1 => PitchSystem::Number,
+        2 => PitchSystem::Western,
+        3 => PitchSystem::Sargam,
+        4 => PitchSystem::Bhatkhande,
+        5 => PitchSystem::Tabla,
+        _ => {
+            wasm_error!("Invalid pitch system value: {}", pitch_system);
+            return Err(JsValue::from_str(&format!("Invalid pitch system: {}", pitch_system)));
+        }
+    };
+
+    document.lines[line_index].pitch_system = Some(system);
+    wasm_info!("  Line pitch system set to: {:?}", system);
+
+    // Compute glyphs before serialization
+    document.compute_glyphs();
+
+    // Serialize back to JavaScript
+    let result = serde_wasm_bindgen::to_value(&document)
+        .map_err(|e| {
+            wasm_error!("Serialization error: {}", e);
+            JsValue::from_str(&format!("Serialization error: {}", e))
+        })?;
+
+    wasm_info!("setLinePitchSystem completed successfully");
     Ok(result)
 }
 
@@ -904,9 +1018,67 @@ pub fn export_musicxml(document_js: JsValue) -> Result<String, JsValue> {
     Ok(musicxml)
 }
 
-/// Convert MusicXML to LilyPond notation
+/// Export document to MIDI format
 ///
-/// Takes a MusicXML string and converts it to LilyPond format.
+/// Converts the internal document to MusicXML, then to MIDI using the musicxml_to_midi converter.
+///
+/// # Parameters
+/// - `document_js`: JavaScript Document object
+/// - `tpq`: Ticks per quarter note (typically 480 or 960), use 0 for default (480)
+///
+/// # Returns
+/// MIDI file as Uint8Array (Standard MIDI File Format 1)
+#[wasm_bindgen(js_name = exportMIDI)]
+pub fn export_midi(document_js: JsValue, tpq: u16) -> Result<js_sys::Uint8Array, JsValue> {
+    wasm_info!("exportMIDI called with tpq={}", tpq);
+
+    // Deserialize document from JavaScript
+    let document: Document = serde_wasm_bindgen::from_value(document_js)
+        .map_err(|e| {
+            wasm_error!("Deserialization error: {}", e);
+            JsValue::from_str(&format!("Deserialization error: {}", e))
+        })?;
+
+    wasm_log!("  Document has {} lines", document.lines.len());
+
+    // Step 1: Export to MusicXML
+    let musicxml = crate::renderers::musicxml::to_musicxml(&document)
+        .map_err(|e| {
+            wasm_error!("MusicXML export error: {}", e);
+            JsValue::from_str(&format!("MusicXML export error: {}", e))
+        })?;
+
+    wasm_log!("  MusicXML generated: {} bytes", musicxml.len());
+
+    // Step 2: Convert MusicXML to MIDI
+    let midi_bytes = crate::converters::musicxml::musicxml_to_midi::musicxml_to_midi(
+        musicxml.as_bytes(),
+        tpq,
+    )
+    .map_err(|e| {
+        wasm_error!("MIDI conversion error: {}", e);
+        JsValue::from_str(&format!("MIDI conversion error: {}", e))
+    })?;
+
+    wasm_info!("  MIDI generated: {} bytes", midi_bytes.len());
+
+    // Convert to Uint8Array for JavaScript
+    let uint8_array = js_sys::Uint8Array::new_with_length(midi_bytes.len() as u32);
+    uint8_array.copy_from(&midi_bytes);
+
+    wasm_info!("exportMIDI completed successfully");
+    Ok(uint8_array)
+}
+
+/// Convert MusicXML to LilyPond notation using template-based rendering
+///
+/// Converts a MusicXML 3.1 document to LilyPond source code with automatic template selection.
+/// The template system (Minimal, Standard, or MultiStave) is selected internally based on:
+/// - Number of parts (single vs. multiple)
+/// - Presence of title/composer metadata
+///
+/// All templating and document structure decisions are made entirely within WASM - the web app
+/// receives ready-to-render LilyPond source with proper formatting, spacing, and headers.
 ///
 /// # Parameters
 /// * `musicxml` - MusicXML 3.1 document as a string
@@ -914,8 +1086,13 @@ pub fn export_musicxml(document_js: JsValue) -> Result<String, JsValue> {
 ///
 /// # Returns
 /// JSON string containing:
-/// - `lilypond_source`: The generated LilyPond code
+/// - `lilypond_source`: The complete LilyPond document (includes headers, paper settings, etc.)
 /// - `skipped_elements`: Array of elements that couldn't be converted
+///
+/// # Template Selection Logic
+/// - **MultiStave**: Selected for scores with 2+ parts
+/// - **Standard**: Selected for single-part scores with title or composer
+/// - **Minimal**: Selected for simple single-part scores without metadata
 ///
 /// # Example Settings JSON
 /// ```json
@@ -924,12 +1101,28 @@ pub fn export_musicxml(document_js: JsValue) -> Result<String, JsValue> {
 ///   "language": "English",
 ///   "convert_directions": true,
 ///   "convert_lyrics": true,
-///   "convert_chord_symbols": true
+///   "convert_chord_symbols": true,
+///   "title": "My Composition",
+///   "composer": "John Doe"
 /// }
 /// ```
+///
+/// # Template Characteristics
+/// - **Minimal**: Bare-bones, no headers, default layout
+/// - **Standard**: Single-staff with compact layout (50mm height), metadata header, optimized for web
+/// - **MultiStave**: Multiple staves with spacious layout (100mm height), optimized for scores
+///
+/// # Internal Processing
+/// 1. Parse MusicXML document using roxmltree
+/// 2. Convert to internal Music representation
+/// 3. Extract musical content (notes, rests, durations)
+/// 4. Build TemplateContext with metadata (title, composer, version)
+/// 5. Select template based on content
+/// 6. Render via Mustache template engine
+/// 7. Return complete LilyPond document with fallback to hardcoded generation if needed
 #[wasm_bindgen(js_name = convertMusicXMLToLilyPond)]
 pub fn convert_musicxml_to_lilypond(musicxml: String, settings_json: Option<String>) -> Result<String, JsValue> {
-    wasm_info!("convertMusicXMLToLilyPond called");
+    wasm_info!("convertMusicXMLToLilyPond called (template-based rendering)");
 
     // Parse settings if provided
     let settings = if let Some(json) = settings_json {
@@ -942,7 +1135,7 @@ pub fn convert_musicxml_to_lilypond(musicxml: String, settings_json: Option<Stri
         None
     };
 
-    // Convert MusicXML to LilyPond
+    // Convert MusicXML to LilyPond (template-based rendering happens internally)
     let result = crate::converters::musicxml::convert_musicxml_to_lilypond(&musicxml, settings)
         .map_err(|e| {
             wasm_error!("Conversion error: {}", e);
@@ -958,7 +1151,7 @@ pub fn convert_musicxml_to_lilypond(musicxml: String, settings_json: Option<Stri
 
     wasm_info!("  LilyPond generated: {} bytes", result.lilypond_source.len());
     if !result.skipped_elements.is_empty() {
-        wasm_log!("  Skipped {} elements", result.skipped_elements.len());
+        wasm_log!("  Skipped {} elements during conversion", result.skipped_elements.len());
     }
     wasm_info!("convertMusicXMLToLilyPond completed successfully");
 
@@ -1015,6 +1208,99 @@ pub fn compute_layout(
         })?;
 
     wasm_info!("computeLayout completed successfully");
+    Ok(result)
+}
+
+/// Split a line at the given character position
+///
+/// # Parameters
+/// - `doc_js`: JavaScript object representing the Document
+/// - `stave_index`: The index of the line/stave to split (0-based)
+/// - `char_pos`: The character position where to split (0-based)
+///
+/// # Returns
+/// JavaScript object representing the updated Document with the line split
+///
+/// # Behavior
+/// - Cells before char_pos stay in the current line
+/// - Cells after char_pos move to the new line
+/// - New line inherits: pitch_system, tonic, key_signature, time_signature
+/// - New line gets empty: label, lyrics, tala
+#[wasm_bindgen(js_name = splitLineAtPosition)]
+pub fn split_line_at_position(
+    doc_js: JsValue,
+    stave_index: usize,
+    char_pos: usize,
+) -> Result<JsValue, JsValue> {
+    wasm_info!("splitLineAtPosition called: stave_index={}, char_pos={}", stave_index, char_pos);
+
+    // Deserialize document from JavaScript
+    let mut doc: Document = serde_wasm_bindgen::from_value(doc_js)
+        .map_err(|e| {
+            wasm_error!("Document deserialization error: {}", e);
+            JsValue::from_str(&format!("Document deserialization error: {}", e))
+        })?;
+
+    // Validate stave index
+    if stave_index >= doc.lines.len() {
+        wasm_warn!("Stave index {} out of bounds (document has {} lines)", stave_index, doc.lines.len());
+        return Err(JsValue::from_str("Stave index out of bounds"));
+    }
+
+    let current_line = &doc.lines[stave_index];
+    wasm_log!("Current line has {} cells", current_line.cells.len());
+
+    // Convert character position to cell index
+    let mut char_count = 0;
+    let mut split_cell_index = current_line.cells.len();
+
+    for (i, cell) in current_line.cells.iter().enumerate() {
+        let cell_char_count = cell.char.chars().count();
+        if char_count + cell_char_count > char_pos {
+            // Found the cell that contains the split point
+            split_cell_index = i;
+            break;
+        }
+        char_count += cell_char_count;
+    }
+
+    wasm_log!("Split point: char_pos={}, split_cell_index={}", char_pos, split_cell_index);
+
+    // Split the cells array
+    let mut line = doc.lines.remove(stave_index);
+    let cells_after = line.cells.split_off(split_cell_index);
+
+    // Create new line with cells after split, inheriting musical properties
+    let new_line = Line {
+        cells: cells_after,
+        label: String::new(), // New line starts with no label
+        tala: String::new(),  // New line starts with no tala
+        lyrics: String::new(), // New line starts with no lyrics
+        tonic: line.tonic.clone(), // Inherit tonic
+        pitch_system: line.pitch_system.clone(), // Inherit pitch system
+        key_signature: line.key_signature.clone(), // Inherit key signature
+        tempo: line.tempo.clone(), // Inherit tempo
+        time_signature: line.time_signature.clone(), // Inherit time signature
+        beats: Vec::new(),
+        slurs: Vec::new(),
+    };
+
+    wasm_log!("Old line now has {} cells, new line has {} cells",
+              line.cells.len(), new_line.cells.len());
+
+    // Insert both lines back into document
+    doc.lines.insert(stave_index, line);
+    doc.lines.insert(stave_index + 1, new_line);
+
+    wasm_info!("Line split successfully, document now has {} lines", doc.lines.len());
+
+    // Serialize and return updated document
+    let result = serde_wasm_bindgen::to_value(&doc)
+        .map_err(|e| {
+            wasm_error!("Document serialization error: {}", e);
+            JsValue::from_str(&format!("Document serialization error: {}", e))
+        })?;
+
     Ok(result)
 }
 
@@ -1212,10 +1498,10 @@ mod tests {
         assert_eq!(cells[2].continuation, true,
                    "Third cell should be continuation of note");
 
-        // Cell 3: "#" - third accidental should be Text, not part of the note
+        // Cell 3: "#" - third accidental should be Symbol, not part of the note
         assert_eq!(cells[3].char, "#");
-        assert_eq!(cells[3].kind, crate::models::ElementKind::Text,
-                   "Fourth cell should be Text (not part of the note)");
+        assert_eq!(cells[3].kind, crate::models::ElementKind::Symbol,
+                   "Fourth cell should be Symbol (not part of the note)");
         assert_eq!(cells[3].continuation, false,
                    "Fourth cell should NOT be a continuation");
     }

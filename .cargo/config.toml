@@ -1,0 +1,19 @@
+# Cargo configuration for optimized WASM builds
+# Performance optimizations for faster compilation
+
+[build]
+# Let Cargo automatically use available cores (default behavior)
+
+[profile.release]
+# Already good settings in Cargo.toml, but we can add strip for smaller binaries
+strip = true
+
+[profile.release-with-debug]
+inherits = "release"
+debug = true
+strip = false
+
+# Fast development builds - prioritize speed over optimization
+[profile.dev]
+# Already configured in Cargo.toml, but ensure it's lean
+opt-level = 0

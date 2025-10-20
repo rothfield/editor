@@ -73,8 +73,7 @@ class UI {
       { id: 'menu-open', label: 'Open...', action: 'open-document' },
       { id: 'menu-save', label: 'Save', action: 'save-document' },
       { id: 'menu-separator-1', label: null, separator: true },
-      { id: 'menu-export-musicxml', label: 'Export MusicXML...', action: 'export-musicxml' },
-      { id: 'menu-export-lilypond', label: 'Export LilyPond...', action: 'export-lilypond' },
+      { id: 'menu-export', label: 'Export...', action: 'export-dialog' },
       { id: 'menu-separator-2', label: null, separator: true },
       { id: 'menu-set-title', label: 'Set Title...', action: 'set-title' },
       { id: 'menu-set-composer', label: 'Set Composer...', action: 'set-composer' },
@@ -363,11 +362,8 @@ class UI {
       case 'save-document':
         this.saveDocument();
         break;
-      case 'export-musicxml':
-        this.exportMusicXML();
-        break;
-      case 'export-lilypond':
-        this.exportLilyPond();
+      case 'export-dialog':
+        this.openExportDialog();
         break;
       case 'set-title':
         this.setTitle();
@@ -494,91 +490,13 @@ class UI {
   }
 
   /**
-     * Export to MusicXML
+     * Open the export dialog
      */
-  async exportMusicXML() {
-    if (this.editor) {
-      try {
-        const musicxml = await this.editor.exportMusicXML();
-
-        if (!musicxml) {
-          console.error('Failed to export MusicXML');
-          this.editor.addToConsoleLog('Error: MusicXML export failed');
-          return;
-        }
-
-        // Convert title to snake_case for filename
-        const title = this.getDocumentTitle();
-        const filename = this.toSnakeCase(title);
-
-        // Create blob and download file
-        const blob = new Blob([musicxml], { type: 'application/xml' });
-        const url = URL.createObjectURL(blob);
-
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${filename}.musicxml`;
-        a.click();
-
-        URL.revokeObjectURL(url);
-        this.editor.addToConsoleLog(`MusicXML exported: ${filename}.musicxml`);
-      } catch (error) {
-        console.error('Failed to export MusicXML:', error);
-        this.editor.addToConsoleLog(`Error exporting MusicXML: ${error.message}`);
-      }
-    }
-  }
-
-  /**
-     * Export to LilyPond
-     */
-  async exportLilyPond() {
-    if (this.editor) {
-      try {
-        // Step 1: Export document to MusicXML
-        const musicxml = await this.editor.exportMusicXML();
-
-        if (!musicxml) {
-          console.error('Failed to export MusicXML');
-          this.editor.addToConsoleLog('Error: MusicXML export failed');
-          return;
-        }
-
-        // Step 2: Convert MusicXML to LilyPond using WASM
-        const resultJson = await this.editor.wasmModule.convertMusicXMLToLilyPond(musicxml, null);
-        const result = JSON.parse(resultJson);
-
-        if (!result || !result.lilypond_source) {
-          console.error('Failed to convert MusicXML to LilyPond');
-          this.editor.addToConsoleLog('Error: LilyPond conversion failed');
-          return;
-        }
-
-        // Log any skipped elements
-        if (result.skipped_elements && result.skipped_elements.length > 0) {
-          console.warn('Skipped elements during conversion:', result.skipped_elements);
-          this.editor.addToConsoleLog(`Warning: ${result.skipped_elements.length} elements could not be converted`);
-        }
-
-        // Convert title to snake_case for filename
-        const title = this.getDocumentTitle();
-        const filename = this.toSnakeCase(title);
-
-        // Create blob and download file
-        const blob = new Blob([result.lilypond_source], { type: 'text/plain' });
-        const url = URL.createObjectURL(blob);
-
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${filename}.ly`;
-        a.click();
-
-        URL.revokeObjectURL(url);
-        this.editor.addToConsoleLog(`LilyPond exported: ${filename}.ly`);
-      } catch (error) {
-        console.error('Failed to export LilyPond:', error);
-        this.editor.addToConsoleLog(`Error exporting LilyPond: ${error.message}`);
-      }
+  openExportDialog() {
+    if (this.editor && this.editor.exportUI) {
+      this.editor.exportUI.open();
+    } else {
+      console.error('Export UI not available');
     }
   }
 
@@ -682,17 +600,47 @@ class UI {
      * Set pitch system
      */
   async setPitchSystem() {
+    console.log('🎵 setPitchSystem called');
     const currentSystem = this.getCurrentPitchSystem();
+    console.log('🎵 Current system:', currentSystem);
     const newSystem = this.showPitchSystemDialog(currentSystem);
+    console.log('🎵 New system selected:', newSystem);
 
     if (newSystem !== null && newSystem !== currentSystem) {
-      this.updatePitchSystemDisplay(newSystem);
+      console.log('🎵 Updating pitch system...');
+      if (this.editor && this.editor.theDocument && this.editor.wasmModule) {
+        try {
+          // Preserve the state field and beats array before WASM call
+          const preservedState = this.editor.theDocument.state;
+          const preservedBeats = this.editor.theDocument.lines.map(line => line.beats);
 
-      if (this.editor && this.editor.theDocument) {
-        this.editor.theDocument.pitch_system = newSystem;
-        this.editor.addToConsoleLog(`Document pitch system set to: ${this.getPitchSystemName(newSystem)}`);
-        await this.editor.render(); // Re-render to update WebUI
-        this.editor.updateDocumentDisplay(); // Update tabs
+          // Call WASM function to set pitch system
+          console.log('🎵 Calling WASM setDocumentPitchSystem with system:', newSystem);
+          const updatedDocument = await this.editor.wasmModule.setDocumentPitchSystem(
+            this.editor.theDocument,
+            newSystem
+          );
+          console.log('🎵 WASM returned updated document:', updatedDocument?.pitch_system);
+
+          // Restore the state field and beats array after WASM call
+          updatedDocument.state = preservedState;
+          updatedDocument.lines.forEach((line, index) => {
+            line.beats = preservedBeats[index];
+          });
+
+          // Update the editor's document reference
+          this.editor.theDocument = updatedDocument;
+
+          this.editor.addToConsoleLog(`Document pitch system set to: ${this.getPitchSystemName(newSystem)}`);
+          console.log('🎨 Rendering after document pitch system change...');
+          await this.editor.render(); // Re-render to update WebUI
+          console.log('🎨 Render complete');
+          this.editor.updateCurrentPitchSystemDisplay(); // Update UI
+          this.editor.updateDocumentDisplay(); // Update tabs
+        } catch (error) {
+          console.error('Failed to set pitch system:', error);
+          this.editor.showError('Failed to set pitch system');
+        }
       }
     }
   }
@@ -813,13 +761,40 @@ class UI {
     const newSystem = this.showPitchSystemDialog(currentSystem);
 
     if (newSystem !== null && newSystem !== currentSystem) {
-      this.updateLinePitchSystemDisplay(newSystem);
+      if (this.editor && this.editor.theDocument && this.editor.wasmModule) {
+        try {
+          // Preserve the state field and beats array before WASM call
+          const preservedState = this.editor.theDocument.state;
+          const preservedBeats = this.editor.theDocument.lines.map(line => line.beats);
 
-      const lineIdx = this.getCurrentLineIndex();
-      this.editor.theDocument.lines[lineIdx].pitch_system = newSystem;
-      this.editor.addToConsoleLog(`Line pitch system set to: ${this.getPitchSystemName(newSystem)}`);
-      await this.editor.render(); // Re-render to update WebUI
-      this.editor.updateDocumentDisplay(); // Update tabs
+          // Call WASM function to set line pitch system
+          const lineIdx = this.getCurrentLineIndex();
+          const updatedDocument = await this.editor.wasmModule.setLinePitchSystem(
+            this.editor.theDocument,
+            lineIdx,
+            newSystem
+          );
+
+          // Restore the state field and beats array after WASM call
+          updatedDocument.state = preservedState;
+          updatedDocument.lines.forEach((line, index) => {
+            line.beats = preservedBeats[index];
+          });
+
+          // Update the editor's document reference
+          this.editor.theDocument = updatedDocument;
+
+          this.editor.addToConsoleLog(`Line pitch system set to: ${this.getPitchSystemName(newSystem)}`);
+          console.log('🎨 Rendering after line pitch system change...');
+          await this.editor.render(); // Re-render to update WebUI
+          console.log('🎨 Render complete');
+          this.editor.updateCurrentPitchSystemDisplay(); // Update UI
+          this.editor.updateDocumentDisplay(); // Update tabs
+        } catch (error) {
+          console.error('Failed to set line pitch system:', error);
+          this.editor.showError('Failed to set line pitch system');
+        }
+      }
     }
   }
 

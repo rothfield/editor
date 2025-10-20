@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Return Key Debug Test</title>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+            background: #f0f0f0;
+        }
+        .section {
+            background: white;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border-left: 4px solid #0066cc;
+        }
+        .status {
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 3px;
+            font-weight: bold;
+        }
+        .status.ok { background: #d4edda; color: #155724; }
+        .status.error { background: #f8d7da; color: #721c24; }
+        .status.waiting { background: #fff3cd; color: #856404; }
+        .test-result {
+            margin: 10px 0;
+            padding: 10px;
+            background: #f9f9f9;
+            border-left: 2px solid #ccc;
+        }
+        button {
+            padding: 10px 20px;
+            background: #0066cc;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background: #0052a3; }
+        .console {
+            background: #000;
+            color: #0f0;
+            padding: 10px;
+            border-radius: 3px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-size: 12px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Return Key Feature Debug Test</h1>
+
+    <div class="section">
+        <h2>Status Checks</h2>
+        <div id="dev-server" class="status waiting">⏳ Dev server...</div>
+        <div id="wasm" class="status waiting">⏳ WASM module...</div>
+        <div id="editor" class="status waiting">⏳ Editor script...</div>
+        <div id="keyboard" class="status waiting">⏳ Keyboard handler...</div>
+        <div id="handle-enter" class="status waiting">⏳ handleEnter method...</div>
+    </div>
+
+    <div class="section">
+        <h2>Test Controls</h2>
+        <button onclick="testDevServer()">Test Dev Server</button>
+        <button onclick="testWASM()">Test WASM Export</button>
+        <button onclick="testScripts()">Test Scripts Loaded</button>
+        <button onclick="testReturnKey()">Simulate Return Key</button>
+        <button onclick="clearConsole()">Clear Console</button>
+    </div>
+
+    <div class="section">
+        <h2>Console Output</h2>
+        <div class="console" id="console"></div>
+    </div>
+
+    <div class="section">
+        <h2>Test Results</h2>
+        <div id="results"></div>
+    </div>
+
+    <script>
+        const results = {};
+
+        function log(msg) {
+            const consoleDiv = document.getElementById('console');
+            const line = document.createElement('div');
+            line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            consoleDiv.appendChild(line);
+            consoleDiv.scrollTop = consoleDiv.scrollHeight;
+            console.log(msg);
+        }
+
+        function clearConsole() {
+            document.getElementById('console').innerHTML = '';
+        }
+
+        function updateStatus(id, status, message) {
+            const el = document.getElementById(id);
+            if (status === 'ok') {
+                el.className = 'status ok';
+                el.textContent = '✅ ' + message;
+            } else if (status === 'error') {
+                el.className = 'status error';
+                el.textContent = '❌ ' + message;
+            } else {
+                el.className = 'status waiting';
+                el.textContent = '⏳ ' + message;
+            }
+        }
+
+        function addResult(title, passed, details) {
+            const resultsDiv = document.getElementById('results');
+            const result = document.createElement('div');
+            result.className = 'test-result';
+            result.innerHTML = `
+                <strong>${passed ? '✅' : '❌'} ${title}</strong>
+                <br/>
+                <small>${details}</small>
+            `;
+            resultsDiv.appendChild(result);
+        }
+
+        // Test 1: Dev Server
+        async function testDevServer() {
+            log('Testing dev server...');
+            try {
+                const response = await fetch('http://localhost:8080/');
+                updateStatus('dev-server', response.ok ? 'ok' : 'error',
+                    response.ok ? 'Dev server responding' : 'Dev server error: ' + response.status);
+                addResult('Dev Server', response.ok, 'Status: ' + response.status);
+                log('✓ Dev server is running');
+            } catch (e) {
+                updateStatus('dev-server', 'error', 'Dev server not accessible: ' + e.message);
+                addResult('Dev Server', false, 'Error: ' + e.message);
+                log('✗ Dev server error: ' + e.message);
+            }
+        }
+
+        // Test 2: WASM Export
+        async function testWASM() {
+            log('Testing WASM exports...');
+            try {
+                // Load WASM module dynamically with cache busting
+                const timestamp = Date.now();
+                const wasmJs = await import(`./dist/pkg/editor_wasm.js?t=${timestamp}`);
+
+                log('WASM module exports:', Object.keys(wasmJs).filter(k => !k.startsWith('_')));
+
+                if (wasmJs.splitLineAtPosition) {
+                    updateStatus('wasm', 'ok', 'splitLineAtPosition exported');
+                    addResult('WASM Export', true, 'splitLineAtPosition is available');
+                    log('✓ splitLineAtPosition is exported');
+                } else {
+                    updateStatus('wasm', 'error', 'splitLineAtPosition not found');
+                    addResult('WASM Export', false, 'splitLineAtPosition not exported');
+                    log('✗ splitLineAtPosition not exported');
+                }
+            } catch (e) {
+                updateStatus('wasm', 'error', 'WASM load error: ' + e.message);
+                addResult('WASM Export', false, 'Error: ' + e.message);
+                log('✗ WASM error: ' + e.message);
+            }
+        }
+
+        // Test 3: Scripts Loaded
+        async function testScripts() {
+            log('Testing script loads...');
+            try {
+                const timestamp = Date.now();
+
+                // Test keyboard handler
+                try {
+                    const kbResponse = await fetch(`./src/js/keyboard-handler.js?t=${timestamp}`);
+                    if (kbResponse.ok) {
+                        const kbText = await kbResponse.text();
+                        if (kbText.includes('handleEnter')) {
+                            updateStatus('keyboard', 'ok', 'Keyboard handler loaded');
+                            addResult('Keyboard Handler', true, 'handleEnter routing found');
+                            log('✓ Keyboard handler script loaded with handleEnter');
+                        } else {
+                            updateStatus('keyboard', 'error', 'handleEnter not found in keyboard handler');
+                            addResult('Keyboard Handler', false, 'handleEnter routing missing');
+                            log('✗ handleEnter not in keyboard handler');
+                        }
+                    }
+                } catch (e) {
+                    log('✗ Keyboard handler error: ' + e.message);
+                }
+
+                // Test editor script
+                try {
+                    const edResponse = await fetch(`./src/js/editor.js?t=${timestamp}`);
+                    if (edResponse.ok) {
+                        const edText = await edResponse.text();
+                        if (edText.includes('async handleEnter()') || edText.includes('handleEnter()')) {
+                            updateStatus('handle-enter', 'ok', 'handleEnter method found');
+                            addResult('Editor Script', true, 'handleEnter method implemented');
+                            log('✓ Editor script has handleEnter method');
+                        } else {
+                            updateStatus('handle-enter', 'error', 'handleEnter method not found');
+                            addResult('Editor Script', false, 'handleEnter method missing');
+                            log('✗ handleEnter method not in editor.js');
+                        }
+                    }
+                } catch (e) {
+                    log('✗ Editor script error: ' + e.message);
+                }
+
+                // Test constants
+                try {
+                    const constResponse = await fetch(`./src/js/constants.js?t=${timestamp}`);
+                    if (constResponse.ok) {
+                        const constText = await constResponse.text();
+                        if (constText.includes("'Enter'") || constText.includes('"Enter"')) {
+                            log('✓ Enter key in PREVENT_DEFAULT_KEYS');
+                        } else {
+                            log('⚠ Enter key might not be in PREVENT_DEFAULT_KEYS');
+                        }
+                    }
+                } catch (e) {
+                    log('✗ Constants script error: ' + e.message);
+                }
+            } catch (e) {
+                log('✗ Script test error: ' + e.message);
+            }
+        }
+
+        // Test 4: Simulate Return Key
+        async function testReturnKey() {
+            log('Simulating Return key press...');
+            try {
+                // Create a synthetic Enter event
+                const event = new KeyboardEvent('keydown', {
+                    key: 'Enter',
+                    code: 'Enter',
+                    keyCode: 13,
+                    which: 13,
+                    bubbles: true,
+                    cancelable: true
+                });
+
+                log('🔄 Creating Return key event');
+                document.dispatchEvent(event);
+
+                // Check if window has musicEditor
+                setTimeout(() => {
+                    if (window.musicEditor) {
+                        log('✓ musicEditor is available on window');
+                        if (window.musicEditor.handleEnter) {
+                            log('✓ handleEnter method exists on editor');
+                            addResult('Return Key', true, 'handleEnter is callable');
+                        } else {
+                            log('✗ handleEnter method not found on editor');
+                        }
+                    } else {
+                        log('⚠ musicEditor not available on window');
+                    }
+                }, 100);
+            } catch (e) {
+                log('✗ Return key test error: ' + e.message);
+                addResult('Return Key', false, 'Error: ' + e.message);
+            }
+        }
+
+        // Run tests on load
+        window.addEventListener('load', () => {
+            log('=== Return Key Feature Debug Test Started ===');
+            log('Testing cache-busted resource loading...');
+
+            setTimeout(() => testDevServer(), 100);
+            setTimeout(() => testWASM(), 200);
+            setTimeout(() => testScripts(), 300);
+        });
+
+        // Monitor for 🔄 logs from actual editor
+        const originalLog = console.log;
+        console.log = function(...args) {
+            originalLog.apply(console, args);
+            if (args.some(arg => typeof arg === 'string' && arg.includes('🔄'))) {
+                log('🔄 EDITOR LOG: ' + args.join(' '));
+            }
+        };
+    </script>
+</body>
+</html>

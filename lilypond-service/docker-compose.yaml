@@ -1,0 +1,67 @@
+version: '3.9'
+
+services:
+  lilypond:
+    # Build from local Dockerfile
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    # Service name for internal DNS
+    container_name: lilypond-service
+
+    # Port binding: host:container
+    ports:
+      - "8787:8787"
+
+    # Environment variables
+    environment:
+      NODE_ENV: production
+      PORT: 8787
+      MAX_REQUEST_SIZE: 512        # KB (512 KB = 524,288 bytes)
+      RENDER_TIMEOUT: 15           # seconds
+      TZ: UTC
+      # Fontconfig cache location for read-only root filesystem
+      XDG_CACHE_HOME: /tmp/.fontconfig
+      FONTCONFIG_PATH: /etc/fonts
+
+    # Security: read-only root filesystem (tmpfs for /tmp and fontconfig)
+    read_only: true
+    tmpfs:
+      # /tmp tmpfs with 64MB size limit, full permissions for tini/node
+      - /tmp:size=64m,mode=1777
+      # /root/.cache for fontconfig cache
+      - /root/.cache:size=32m,mode=1777
+
+    # Resource limits (prevent runaway processes)
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'              # 1 CPU max
+          memory: 512M             # 512 MB RAM max
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    # Network
+    networks:
+      - lilypond-net
+
+    # Labels for monitoring/identification
+    labels:
+      - "app=lilypond-service"
+      - "version=1.0"
+
+networks:
+  lilypond-net:
+    driver: bridge

@@ -164,165 +164,8 @@ function handleHealthCheck(req, res) {
 }
 
 /**
- * Handle LilyPond rendering requests
- * Pipes LilyPond source directly to stdin, no temp files needed
- */
-async function handleLilyPondRender(req, res) {
-  let body = '';
-
-  req.on('data', (chunk) => {
-    body += chunk.toString();
-  });
-
-  req.on('end', async () => {
-    try {
-      const payload = JSON.parse(body);
-      const { lilypond_source, template_variant, output_format } = payload;
-
-      if (!lilypond_source || lilypond_source.trim().length === 0) {
-        res.writeHead(400, { 'Content-Type': 'application/json' });
-        res.end(
-          JSON.stringify({
-            success: false,
-            error: 'LilyPond source is empty',
-            svg: null,
-            png_base64: null,
-            format: output_format || 'svg'
-          })
-        );
-        return;
-      }
-
-      // Check if lilypond_source is already templated (from WASM converter)
-      // If it starts with \version, it's already a complete LilyPond document
-      const isAlreadyTemplated = lilypond_source.trim().startsWith('\\version');
-
-      // Generate LilyPond with template only if not already templated
-      const lilypondFull = isAlreadyTemplated
-        ? lilypond_source
-        : generateLilyPondTemplate(lilypond_source, template_variant);
-
-      logger.debug('LilyPond source', {
-        length: lilypondFull.length,
-        isAlreadyTemplated,
-        firstLine: lilypondFull.split('\n')[0]
-      });
-
-      // Try to render - return error details to client
-      let result;
-      try {
-        result = await renderLilyPond(lilypondFull, output_format);
-      } catch (err) {
-        logger.error('LilyPond rendering error', {
-          error: err.message
-        });
-        // Return error details to client
-        result = {
-          success: false,
-          svg: null,
-          png_base64: null,
-          format: output_format || 'svg',
-          error: err.message
-        };
-      }
-
-      res.writeHead(200, {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*'
-      });
-      res.end(JSON.stringify(result));
-    } catch (error) {
-      logger.error('LilyPond rendering failed', {
-        error: error.message,
-        stack: error.stack
-      });
-      res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(
-        JSON.stringify({
-          success: false,
-          error: error.message,
-          svg: null,
-          png_base64: null,
-          format: 'svg'
-        })
-      );
-    }
-  });
-}
-
-/**
- * Generate LilyPond source with template wrapping
- */
-function generateLilyPondTemplate(source, variant = 'minimal') {
-  if (variant === 'minimal') {
-    return '\\version "2.24.0"\n' +
-           '\\score {\n' +
-           '  {\n' +
-           '    ' + source + '\n' +
-           '  }\n' +
-           '  \\layout { }\n' +
-           '  \\midi { }\n' +
-           '}';
-  } else {
-    return '\\version "2.24.0"\n' +
-           '\\language "english"\n' +
-           '\\score {\n' +
-           '  \\new Staff {\n' +
-           '    \\relative c\' {\n' +
-           '      ' + source + '\n' +
-           '    }\n' +
-           '  }\n' +
-           '  \\layout { indent = #0 }\n' +
-           '  \\midi { }\n' +
-           '}';
-  }
-}
-
-/**
- * Generate placeholder SVG when lilypond is not available
- */
-function generatePlaceholderSvg(source) {
-  const lines = source.split('\\n').slice(0, 3).join(', ');
-  const preview = lines.length > 50 ? lines.substring(0, 50) + '...' : lines;
-
-  return `
-<svg viewBox="0 0 800 200" xmlns="http://www.w3.org/2000/svg">
-  <style>
-    text { font-family: monospace; font-size: 14px; }
-    .title { font-size: 18px; font-weight: bold; fill: #0066cc; }
-    .subtitle { font-size: 12px; fill: #666; }
-    .note { fill: #333; }
-  </style>
-
-  <rect width="800" height="200" fill="#f9fafb" stroke="#ddd" stroke-width="1"/>
-
-  <text x="20" y="40" class="title">LilyPond Preview</text>
-  <text x="20" y="65" class="subtitle">Source:</text>
-  <text x="20" y="85" class="note">${escapeHtml(preview)}</text>
-
-  <text x="20" y="130" class="subtitle">Note: LilyPond is not installed on this system.</text>
-  <text x="20" y="150" class="subtitle">To enable rendering, install lilypond:</text>
-  <text x="20" y="170" class="note">  brew install lilypond  (macOS)</text>
-</svg>
-  `.trim();
-}
-
-/**
- * Escape HTML entities
- */
-function escapeHtml(text) {
-  const map = {
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#039;'
-  };
-  return text.replace(/[&<>"']/g, (m) => map[m]);
-}
-
-/**
- * Render LilyPond to SVG or PNG
+ * Render LilyPond to SVG or PNG (local rendering - only used if lilypond is installed)
+ * NOTE: WebUI now calls docker service directly at http://localhost:8787/engrave
  */
 async function renderLilyPond(lilypondSource, outputFormat = 'svg') {
   const { spawn } = await import('child_process');
@@ -652,12 +495,6 @@ async function handleRequest(req, res) {
     return;
   }
 
-  // Handle LilyPond API endpoint
-  if (req.method === 'POST' && url.pathname === '/api/lilypond/render') {
-    await handleLilyPondRender(req, res);
-    return;
-  }
-
   // Handle 404
   if (!(await fileExists(filePath))) {
     // Try to serve index.html for SPA routing
@@ -843,16 +680,16 @@ async function startServer() {
 
     logger.info('Features enabled', {
       hotReload: true,
-      lilypondApi: true,
       health: true,
-      ready: true
+      ready: true,
+      note: 'LilyPond rendering now uses Docker service at http://localhost:8787/engrave'
     });
 
     logger.info('Available endpoints', {
       health: 'GET /health',
       ready: 'GET /ready',
-      lilypond: 'POST /api/lilypond/render',
-      websocket: 'WS /ws'
+      websocket: 'WS /ws',
+      note: 'LilyPond rendering: Call http://localhost:8787/engrave directly'
     });
 
     // Setup file watching for hot reload

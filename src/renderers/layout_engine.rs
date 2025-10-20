@@ -196,6 +196,14 @@ impl LayoutEngine {
                 classes.push(format!("pitch-system-{}", self.pitch_system_to_css(pitch_system)));
             }
 
+            // Accidental (sharp/flat) class - for music font rendering
+            if cell.char.contains('#') {
+                classes.push("accidental-sharp".to_string());
+            }
+            if cell.char.contains('b') {
+                classes.push("accidental-flat".to_string());
+            }
+
             // Build data attributes
             let mut dataset = HashMap::new();
             dataset.insert("lineIndex".to_string(), line_idx.to_string());
@@ -312,8 +320,7 @@ impl LayoutEngine {
         effective
     }
 
-    /// Build map of cell index to beat role class
-    /// IMPORTANT: Only assigns beat classes to NON-CONTINUATION cells
+    /// Build map of cell index to beat role class (includes both pitched and continuation cells)
     fn build_beat_role_map(&self, beats: &[BeatSpan], cells: &[Cell]) -> HashMap<usize, String> {
         let mut map = HashMap::new();
 
@@ -327,17 +334,18 @@ impl LayoutEngine {
 
             // Only draw loops for beats with 2+ non-continuation cells
             if non_continuation_indices.len() >= 2 {
-                // Multi-element beat
-                let first_idx = non_continuation_indices[0];
-                let last_idx = *non_continuation_indices.last().unwrap();
+                // Multi-element beat - include ALL cells (continuation and non-continuation)
+                let first_idx = beat.start;
+                let last_idx = beat.end;
 
-                for &i in &non_continuation_indices {
+                // Mark ALL cells in the beat span (including continuations)
+                for i in first_idx..=last_idx {
                     let role = if i == first_idx {
-                        "beat-first"
+                        "beat-loop-first"
                     } else if i == last_idx {
-                        "beat-last"
+                        "beat-loop-last"
                     } else {
-                        "beat-middle"
+                        "beat-loop-middle"
                     };
                     map.insert(i, role.to_string());
                 }

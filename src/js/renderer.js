@@ -15,7 +15,7 @@ import {
   CELL_Y_OFFSET,
   CELL_HEIGHT
 } from './constants.js';
-import SlurRenderer from './slur-renderer.js';
+import ArcRenderer from './arc-renderer.js';
 
 class DOMRenderer {
   constructor(editorElement, editor) {
@@ -34,68 +34,24 @@ class DOMRenderer {
       lastRenderTime: 0
     };
 
-    this.setupBeatLoopStyles(); // Sets up beat loops, octave dots, and slur CSS
+    this.setupBeatLoopStyles(); // Sets up octave dots CSS
 
-    // Initialize slur renderer
-    this.slurRenderer = new SlurRenderer(this.element);
+    // Initialize arc renderer (for slurs and beat loops)
+    this.arcRenderer = new ArcRenderer(this.element);
   }
 
   /**
-     * Setup CSS for beat loop arcs and octave dots
-     * Note: Slurs are now rendered using SVG overlay (see SlurRenderer)
+     * Setup CSS for octave dots and cell styling
+     * Note: Slurs and beat loops are now rendered using SVG overlay (see ArcRenderer)
      */
   setupBeatLoopStyles() {
     const style = document.createElement('style');
     style.textContent = `
-      /* Shared custom properties for arc configuration */
+      /* Base cell styles */
       .char-cell {
-        --arc-offset: 10px;
-        --arc-height: 12px;
-        --arc-stroke: 1.5px;
         padding: 0;
         margin: 0;
         box-sizing: content-box;
-      }
-
-      /* LOWER beat arcs (using ::after) - styled like slurs */
-      .char-cell.beat-first::after {
-        content: '';
-        position: absolute;
-        left: -2px;
-        right: 0;
-        bottom: calc(-1 * var(--arc-offset));
-        height: var(--arc-height);
-        border-left: var(--arc-stroke) solid #666;
-        border-bottom: var(--arc-stroke) solid #666;
-        border-radius: 0 0 0 24px;
-        pointer-events: none;
-        z-index: 1;
-      }
-
-      .char-cell.beat-middle::after {
-        content: '';
-        position: absolute;
-        left: 0;
-        right: 0;
-        bottom: calc(-1 * var(--arc-offset));
-        height: var(--arc-height);
-        border-bottom: var(--arc-stroke) solid #666;
-        pointer-events: none;
-        z-index: 1;
-      }
-
-      .char-cell.beat-last::after {
-        content: '';
-        position: absolute;
-        left: 0;
-        right: -2px;
-        bottom: calc(-1 * var(--arc-offset));
-        height: var(--arc-height);
-        border-right: var(--arc-stroke) solid #666;
-        border-bottom: var(--arc-stroke) solid #666;
-        border-radius: 0 0 24px 0;
-        pointer-events: none;
-        z-index: 1;
       }
 
       /* Octave dots using ::before pseudo-element */
@@ -103,6 +59,7 @@ class DOMRenderer {
         content: '•';
         position: absolute;
         left: 50%;
+        right: auto;
         top: -10px;
         transform: translateX(-50%);
         font-size: ${SMALL_FONT_SIZE}px;
@@ -116,6 +73,7 @@ class DOMRenderer {
         content: '••';
         position: absolute;
         left: 50%;
+        right: auto;
         top: -10px;
         transform: translateX(-50%);
         font-size: ${SMALL_FONT_SIZE}px;
@@ -130,7 +88,8 @@ class DOMRenderer {
         content: '•';
         position: absolute;
         left: 50%;
-        bottom: -10px;
+        right: auto;
+        bottom: -6px;
         transform: translateX(-50%);
         font-size: ${SMALL_FONT_SIZE}px;
         line-height: 1;
@@ -143,7 +102,8 @@ class DOMRenderer {
         content: '••';
         position: absolute;
         left: 50%;
-        bottom: -10px;
+        right: auto;
+        bottom: -6px;
         transform: translateX(-50%);
         font-size: ${SMALL_FONT_SIZE}px;
         line-height: 1;
@@ -157,6 +117,45 @@ class DOMRenderer {
       .char-cell.kind-symbol {
         color: #22c55e; /* green-500 */
         font-weight: 500;
+      }
+
+      /* Accidental symbols using SMuFL music font */
+      /* Sharp sign (♯) - SMuFL U+E262 */
+      .char-cell.accidental-sharp {
+        color: transparent;
+      }
+
+      .char-cell.accidental-sharp::after {
+        content: '\uE262'; /* SMuFL sharp glyph */
+        font-family: 'Bravura', serif;
+        position: absolute;
+        left: 50%;
+        top: calc(50% + ${BRAVURA_VERTICAL_OFFSET}px - ${BRAVURA_FONT_SIZE * 0.75}px);
+        transform: translate(-50%, -50%);
+        color: #000;
+        font-size: ${BRAVURA_FONT_SIZE * 1.5}px;
+        line-height: 1;
+        pointer-events: none;
+        z-index: 3;
+      }
+
+      /* Flat sign (♭) - SMuFL U+E260 */
+      .char-cell.accidental-flat {
+        color: transparent;
+      }
+
+      .char-cell.accidental-flat::after {
+        content: '\uE260'; /* SMuFL flat glyph */
+        font-family: 'Bravura', serif;
+        position: absolute;
+        left: 50%;
+        top: calc(50% + ${BRAVURA_VERTICAL_OFFSET}px - ${BRAVURA_FONT_SIZE * 0.75}px);
+        transform: translate(-50%, -50%);
+        color: #000;
+        font-size: ${BRAVURA_FONT_SIZE * 1.5}px;
+        line-height: 1;
+        pointer-events: none;
+        z-index: 3;
       }
 
       /* Multi-character barline overlays using SMuFL music font */
@@ -458,11 +457,11 @@ class DOMRenderer {
       this.element.appendChild(lineElement);
     });
 
-    // Render slurs using SVG overlay (after all cells are positioned)
-    this.slurRenderer.renderSlurs(displayList);
+    // Render arcs (slurs and beat loops) using SVG overlay (after all cells are positioned)
+    this.arcRenderer.render(displayList);
 
-    // Update slur count in stats
-    this.renderStats.slursRendered = this.slurRenderer.slurPaths.size;
+    // Update arc counts in stats
+    this.renderStats.slursRendered = this.arcRenderer.slurPaths.size;
   }
 
   /**
@@ -490,20 +489,7 @@ class DOMRenderer {
       min-height: 24px;
     `;
 
-    // Render title (centered)
-    if (title && title !== 'Untitled Document') {
-      const titleElement = document.createElement('div');
-      titleElement.className = 'document-title';
-      titleElement.textContent = title;
-      titleElement.style.cssText = `
-        text-align: center;
-        font-size: 20px;
-        font-weight: bold;
-        width: 100%;
-        display: block;
-      `;
-      headerContainer.appendChild(titleElement);
-    }
+    // Title display disabled - only show composer if present
 
     // Render composer (flush right)
     if (composer) {
@@ -600,6 +586,7 @@ class DOMRenderer {
         top: ${cellData.y}px;
         width: ${cellData.w}px;
         height: ${cellData.h}px;
+        overflow: visible;
       `;
 
       // Set data attributes (handle both Map and plain objects)
@@ -749,14 +736,14 @@ class DOMRenderer {
     this.charCellElements.clear();
     this.beatLoopElements.clear();
 
-    // Clear slurs
-    if (this.slurRenderer) {
-      this.slurRenderer.clearSlurs();
+    // Clear arcs (slurs and beat loops)
+    if (this.arcRenderer) {
+      this.arcRenderer.clearAllArcs();
     }
 
     // Remove all child elements (except SVG overlay)
     const childrenToRemove = Array.from(this.element.children).filter(
-      child => !child.classList.contains('slur-overlay')
+      child => !child.classList.contains('arc-overlay')
     );
     childrenToRemove.forEach(child => this.element.removeChild(child));
   }

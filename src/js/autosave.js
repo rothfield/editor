@@ -5,12 +5,14 @@
  * and restores on page reload. Uses title + timestamp for versioning.
  */
 
+import { ENABLE_AUTOSAVE } from './constants.js';
+
 class AutoSave {
   constructor(editor) {
     this.editor = editor;
     this.saveInterval = null;
     this.saveIntervalMs = 5000; // 5 seconds
-    this.isEnabled = true;
+    this.isEnabled = ENABLE_AUTOSAVE; // Respect global flag
     this.lastSaveTime = null;
     this.lastSaveKey = null;
 
@@ -27,6 +29,11 @@ class AutoSave {
    * Start the auto-save timer
    */
   start() {
+    if (!this.isEnabled) {
+      console.log('AutoSave is disabled (ENABLE_AUTOSAVE flag is false)');
+      return;
+    }
+
     if (this.saveInterval) {
       console.warn('AutoSave already running');
       return;
@@ -121,6 +128,11 @@ class AutoSave {
    * @returns {boolean} True if restored, false otherwise
    */
   async restoreLastAutosave() {
+    if (!this.isEnabled) {
+      console.log('AutoSave restore is disabled (ENABLE_AUTOSAVE flag is false)');
+      return false;
+    }
+
     try {
       // Check for last autosave key
       const lastSaveKey = localStorage.getItem(this.AUTOSAVE_LAST_KEY);

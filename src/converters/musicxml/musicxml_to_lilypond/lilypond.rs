@@ -3,9 +3,79 @@
 //! Converts the internal Music representation to LilyPond source code.
 
 use crate::converters::musicxml::musicxml_to_lilypond::types::*;
+use crate::converters::musicxml::musicxml_to_lilypond::templates::{
+    render_lilypond, LilyPondTemplate, TemplateContext,
+};
 
-/// Generate LilyPond document from music and settings
+/// Generate LilyPond document from music and settings using templates
 pub fn generate_lilypond_document(
+    parts: Vec<SequentialMusic>,
+    settings: &ConversionSettings,
+) -> String {
+    // Generate just the musical content
+    let staves_content = generate_staves_content(&parts, settings);
+
+    // Escape title and composer for LilyPond
+    let escaped_title = settings.title.as_ref().map(|s| escape_lilypond_string(s));
+    let escaped_composer = settings.composer.as_ref().map(|s| escape_lilypond_string(s));
+
+    // Build template context from settings and content
+    let context = TemplateContext::builder(
+        settings.target_lilypond_version.clone(),
+        staves_content,
+    )
+    .title(escaped_title)
+    .composer(escaped_composer)
+    .build();
+
+    // Select appropriate template based on part count and metadata
+    let template = if parts.len() > 1 {
+        LilyPondTemplate::MultiStave
+    } else if settings.title.is_some() {
+        LilyPondTemplate::Standard
+    } else {
+        // Use Compact for minimal layouts (no title, single staff)
+        // Compact has proper paper sizing and no branding
+        LilyPondTemplate::Compact
+    };
+
+    // Render using template
+    match render_lilypond(template, &context) {
+        Ok(output) => output,
+        Err(e) => {
+            eprintln!("Template rendering failed: {}", e);
+            // Fallback to hardcoded generation if template rendering fails
+            generate_lilypond_document_fallback(parts, settings)
+        }
+    }
+}
+
+/// Generate just the musical content (staves)
+fn generate_staves_content(parts: &[SequentialMusic], settings: &ConversionSettings) -> String {
+    if parts.is_empty() {
+        return String::new();
+    }
+
+    if parts.len() == 1 {
+        // Single part - generate music without staff wrapper
+        generate_music(&parts[0], settings, 0)
+    } else {
+        // Multiple parts - wrap each in \new Staff
+        parts
+            .iter()
+            .map(|part| {
+                let music_content = generate_music(part, settings, 2);
+                format!("  \\new Staff {{\n{}\n  }}", music_content)
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+}
+
+/// Fallback: Generate LilyPond document with hardcoded structure
+/// Used if template rendering fails
+#[allow(dead_code)]
+fn generate_lilypond_document_fallback(
     parts: Vec<SequentialMusic>,
     settings: &ConversionSettings,
 ) -> String {
@@ -35,7 +105,10 @@ pub fn generate_lilypond_document(
         }
 
         if let Some(ref composer) = settings.composer {
-            output.push_str(&format!("  composer = \"{}\"\n", escape_lilypond_string(composer)));
+            output.push_str(&format!(
+                "  composer = \"{}\"\n",
+                escape_lilypond_string(composer)
+            ));
         }
 
         output.push_str("}\n\n");

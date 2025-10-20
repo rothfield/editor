@@ -1,0 +1,8 @@
+# Sudo rules for Rust ramdisk auto-setup
+# To install: sudo cp sudoers_ramdisk /etc/sudoers.d/rust_ramdisk
+
+# Allow john to mount/unmount ramdisk without password
+john ALL=(root) NOPASSWD: /bin/mkdir -p /mnt/rust_ramdisk
+john ALL=(root) NOPASSWD: /bin/mount -t tmpfs -o size=2G tmpfs /mnt/rust_ramdisk
+john ALL=(root) NOPASSWD: /bin/umount /mnt/rust_ramdisk
+john ALL=(root) NOPASSWD: /bin/chown john:john /mnt/rust_ramdisk/target

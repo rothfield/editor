@@ -93,7 +93,7 @@ export class OSMDRenderer {
                 backend: 'svg',
                 drawingParameters: 'default',
                 autoBeam: true,
-                drawTitle: true,
+                drawTitle: false,
                 drawSubtitle: false,
                 drawComposer: false,
                 drawLyricist: false,

@@ -42,6 +42,7 @@ class KeyboardHandler {
     // Editing shortcuts
     this.registerShortcut('Backspace', () => this.editor.deleteCharacter());
     this.registerShortcut('Delete', () => this.editor.deleteCharacterForward());
+    this.registerShortcut('Enter', () => this.editor.handleEnter());
 
     // Musical commands
     this.registerShortcut('Alt+s', () => this.editor.toggleSlur());

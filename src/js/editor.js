@@ -8,7 +8,7 @@
 import DOMRenderer from './renderer.js';
 import logger, { LOG_CATEGORIES } from './logger.js';
 import { OSMDRenderer } from './osmd-renderer.js';
-import { LEFT_MARGIN_PX } from './constants.js';
+import { LEFT_MARGIN_PX, ENABLE_AUTOSAVE } from './constants.js';
 import AutoSave from './autosave.js';
 
 class MusicNotationEditor {
@@ -32,6 +32,13 @@ class MusicNotationEditor {
 
     // AutoSave manager
     this.autoSave = new AutoSave(this);
+  }
+
+  /**
+     * Get the document (alias for theDocument)
+     */
+  get document() {
+    return this.theDocument;
   }
 
   /**
@@ -65,14 +72,20 @@ class MusicNotationEditor {
         createNewDocument: wasmModule.createNewDocument,
         setTitle: wasmModule.setTitle,
         setComposer: wasmModule.setComposer,
+        setDocumentPitchSystem: wasmModule.setDocumentPitchSystem,
         setLineLabel: wasmModule.setLineLabel,
         setLineLyrics: wasmModule.setLineLyrics,
         setLineTala: wasmModule.setLineTala,
+        setLinePitchSystem: wasmModule.setLinePitchSystem,
+        // Line manipulation API
+        splitLineAtPosition: wasmModule.splitLineAtPosition,
         // Layout API
         computeLayout: wasmModule.computeLayout,
         // MusicXML export API
         exportMusicXML: wasmModule.exportMusicXML,
-        convertMusicXMLToLilyPond: wasmModule.convertMusicXMLToLilyPond
+        convertMusicXMLToLilyPond: wasmModule.convertMusicXMLToLilyPond,
+        // MIDI export API
+        exportMIDI: wasmModule.exportMIDI
       };
 
       // Initialize OSMD renderer for staff notation
@@ -92,12 +105,14 @@ class MusicNotationEditor {
       this.isInitialized = true;
 
       // Try to restore autosave, otherwise create new document
+      // Note: autosave behavior is controlled by ENABLE_AUTOSAVE flag in constants.js
       const restored = await this.autoSave.restoreLastAutosave();
       if (!restored) {
         await this.createNewDocument();
       }
 
-      // Start auto-save timer (saves every 5 seconds)
+      // Start auto-save timer (saves every 5 seconds if ENABLE_AUTOSAVE is true)
+      // If ENABLE_AUTOSAVE is false, this will be skipped
       this.autoSave.start();
 
       console.log('Music Notation Editor initialized successfully');
@@ -120,6 +135,14 @@ class MusicNotationEditor {
     // Create document using WASM
     const document = this.wasmModule.createNewDocument();
 
+    // Ensure pitch_system is set from WASM (should be 1 = Number system)
+    if (!document.pitch_system && document.pitch_system !== 0) {
+      console.warn('WASM did not set pitch_system, defaulting to Number (1)');
+      document.pitch_system = 1;
+    }
+
+    console.log('✅ New document created with pitch_system:', document.pitch_system);
+
     // Set timestamps (WASM can't access system time)
     const now = new Date().toISOString();
     document.created_at = now;
@@ -128,8 +151,8 @@ class MusicNotationEditor {
     // Add runtime state (not persisted by WASM)
     document.state = {
       cursor: { stave: 0, column: 0 },
-      selection: null,
-      has_focus: false
+      selection: null
+      // Note: has_focus removed - now queried from EventManager (single source of truth)
     };
 
     await this.loadDocument(document);
@@ -142,6 +165,11 @@ class MusicNotationEditor {
     try {
       if (this.wasmModule) {
         this.theDocument = typeof jsonString === 'string' ? JSON.parse(jsonString) : jsonString;
+
+        // Ensure pitch_system is set to default if missing (backward compatibility)
+        if (!this.theDocument.pitch_system && this.theDocument.pitch_system !== 0) {
+          this.theDocument.pitch_system = 1; // Default to Number system
+        }
 
         // Validate and fix cursor position after loading document
         if (this.theDocument && this.theDocument.state && this.theDocument.state.cursor) {
@@ -809,6 +837,9 @@ class MusicNotationEditor {
       case 'Delete':
         this.handleDelete();
         break;
+      case 'Enter':
+        this.handleEnter();
+        break;
       default:
         // Insert text character - do NOT replace selection
         if (key.length === 1 && !key.match(/[Ff][0-9]/)) { // Exclude F-keys
@@ -854,9 +885,27 @@ class MusicNotationEditor {
     const currentCharPos = this.getCursorPosition();
 
     if (currentCharPos > 0) {
-      // Move to previous character
+      // Move to previous character within current line
       this.setCursorPosition(currentCharPos - 1);
       logger.debug(LOG_CATEGORIES.CURSOR, 'Moved to char position', { pos: currentCharPos - 1 });
+    } else if (currentCharPos === 0 && this.theDocument && this.theDocument.state) {
+      // At beginning of current line - move to end of previous line
+      const currentStave = this.theDocument.state.cursor.stave;
+      if (currentStave > 0) {
+        const prevStave = currentStave - 1;
+        this.theDocument.state.cursor.stave = prevStave;
+
+        // Move to end of previous line
+        const prevLine = this.theDocument.lines[prevStave];
+        if (prevLine) {
+          const prevMaxCharPos = this.calculateMaxCharPosition(prevLine);
+          this.setCursorPosition(prevMaxCharPos);
+          logger.debug(LOG_CATEGORIES.CURSOR, `Navigate left to end of previous line`, {
+            stave: prevStave,
+            charPos: prevMaxCharPos
+          });
+        }
+      }
     }
   }
 
@@ -869,14 +918,24 @@ class MusicNotationEditor {
     const maxCharPos = this.getMaxCharPosition();
 
     if (currentCharPos < maxCharPos) {
-      // Move to next character
+      // Move to next character within current line
       this.setCursorPosition(currentCharPos + 1);
       logger.debug(LOG_CATEGORIES.CURSOR, 'Moved to char position', { pos: currentCharPos + 1 });
+    } else if (currentCharPos === maxCharPos && this.theDocument && this.theDocument.state && this.theDocument.lines) {
+      // At end of current line - move to beginning of next line
+      const currentStave = this.theDocument.state.cursor.stave;
+      if (currentStave < this.theDocument.lines.length - 1) {
+        this.theDocument.state.cursor.stave = currentStave + 1;
+        this.setCursorPosition(0);
+        logger.debug(LOG_CATEGORIES.CURSOR, `Navigate right to beginning of next line`, {
+          stave: currentStave + 1
+        });
+      }
     }
   }
 
   /**
-     * Navigate up (cursor stays on main line)
+     * Navigate up to previous line, preserving column position
      */
   navigateUp() {
     if (!this.theDocument || !this.theDocument.state) {
@@ -885,14 +944,24 @@ class MusicNotationEditor {
 
     const currentStave = this.theDocument.state.cursor.stave;
     if (currentStave > 0) {
+      const currentCharPos = this.getCursorPosition();
       this.theDocument.state.cursor.stave = currentStave - 1;
-      this.setCursorPosition(0); // Move to start of previous line
-      logger.debug(LOG_CATEGORIES.CURSOR, `Navigate up to stave ${currentStave - 1}`);
+
+      // Preserve column position: clamp to max char pos of previous line
+      const prevLine = this.theDocument.lines[currentStave - 1];
+      if (prevLine) {
+        const prevMaxCharPos = this.calculateMaxCharPosition(prevLine);
+        const targetCharPos = Math.min(currentCharPos, prevMaxCharPos);
+        this.setCursorPosition(targetCharPos);
+        logger.debug(LOG_CATEGORIES.CURSOR, `Navigate up to stave ${currentStave - 1}`, {
+          charPos: targetCharPos
+        });
+      }
     }
   }
 
   /**
-     * Navigate down (switch to next line)
+     * Navigate down to next line, preserving column position
      */
   navigateDown() {
     if (!this.theDocument || !this.theDocument.state || !this.theDocument.lines) {
@@ -901,10 +970,37 @@ class MusicNotationEditor {
 
     const currentStave = this.theDocument.state.cursor.stave;
     if (currentStave < this.theDocument.lines.length - 1) {
+      const currentCharPos = this.getCursorPosition();
       this.theDocument.state.cursor.stave = currentStave + 1;
-      this.setCursorPosition(0); // Move to start of next line
-      logger.debug(LOG_CATEGORIES.CURSOR, `Navigate down to stave ${currentStave + 1}`);
+
+      // Preserve column position: clamp to max char pos of next line
+      const nextLine = this.theDocument.lines[currentStave + 1];
+      if (nextLine) {
+        const nextMaxCharPos = this.calculateMaxCharPosition(nextLine);
+        const targetCharPos = Math.min(currentCharPos, nextMaxCharPos);
+        this.setCursorPosition(targetCharPos);
+        logger.debug(LOG_CATEGORIES.CURSOR, `Navigate down to stave ${currentStave + 1}`, {
+          charPos: targetCharPos
+        });
+      }
     }
+  }
+
+  /**
+     * Calculate max character position for a specific line
+     * @param {Object} line - The line object
+     * @returns {number} Maximum character position in the line
+     */
+  calculateMaxCharPosition(line) {
+    if (!line || !line.cells) {
+      return 0;
+    }
+
+    let maxPos = 0;
+    for (const cell of line.cells) {
+      maxPos += cell.char.length;
+    }
+    return maxPos;
   }
 
   /**
@@ -1428,6 +1524,62 @@ class MusicNotationEditor {
 
       // Restore visual selection after backspace
       this.updateSelectionDisplay();
+    } else if (charPos === 0) {
+      // Backspace at beginning of line - merge with previous line
+      const currentStave = this.getCurrentStave();
+
+      if (currentStave > 0) {
+        // There is a previous line to merge with
+        logger.info(LOG_CATEGORIES.EDITOR, 'Merging line with previous line', {
+          currentStave,
+          currentLineLength: this.getCurrentLine().cells.length,
+          previousLineLength: this.theDocument.lines[currentStave - 1].cells.length
+        });
+
+        try {
+          const prevLine = this.theDocument.lines[currentStave - 1];
+          const currLine = this.getCurrentLine();
+
+          // Calculate cursor position: end of previous line
+          const mergeCharPos = this.cellIndexToCharPos(prevLine.cells.length);
+
+          // Merge: append current line's cells to previous line
+          prevLine.cells = prevLine.cells.concat(currLine.cells);
+
+          // Remove current line from document
+          this.theDocument.lines.splice(currentStave, 1);
+
+          // Update cursor: move to previous line at merge point
+          this.theDocument.state.cursor.stave = currentStave - 1;
+          this.theDocument.state.cursor.column = mergeCharPos;
+
+          logger.debug(LOG_CATEGORIES.EDITOR, 'Lines merged successfully', {
+            newLineLength: prevLine.cells.length,
+            newCursorStave: currentStave - 1,
+            newCursorColumn: mergeCharPos
+          });
+
+          // Recalculate beats for the merged line
+          this.deriveBeats(prevLine);
+
+          await this.render();
+          this.updateDocumentDisplay();
+          this.showCursor();
+
+          logger.info(LOG_CATEGORIES.EDITOR, 'Backspace merge complete', {
+            totalLines: this.theDocument.lines.length
+          });
+        } catch (error) {
+          logger.error(LOG_CATEGORIES.EDITOR, 'Failed to merge lines', {
+            error: error.message,
+            stack: error.stack
+          });
+          console.error('Failed to merge lines:', error);
+          this.showError('Failed to merge lines: ' + error.message);
+        }
+      } else {
+        logger.debug(LOG_CATEGORIES.EDITOR, 'Backspace at start of first line, no action');
+      }
     } else {
       logger.debug(LOG_CATEGORIES.EDITOR, 'Backspace at start of document, no action');
     }
@@ -1473,6 +1625,96 @@ class MusicNotationEditor {
         this.updateSelectionDisplay();
       }
     }
+  }
+
+  /**
+     * Handle Return/Enter key - split line at cursor position
+     */
+  async handleEnter() {
+    console.log('🔄 handleEnter called');
+    logger.time('handleEnter', LOG_CATEGORIES.EDITOR);
+
+    // If there's an actual selection (start != end), do nothing (wait for undo implementation)
+    const selection = this.getSelection();
+    console.log('🔄 Selection check:', selection);
+    if (selection && selection.start !== selection.end) {
+      console.log('🔄 Selection active, blocking');
+      logger.warn(LOG_CATEGORIES.EDITOR, 'Cannot split line with active selection (undo not yet implemented)');
+      this.showWarning('Cannot split line with active selection', {
+        important: false,
+        details: 'Undo functionality not yet implemented'
+      });
+      return;
+    }
+
+    try {
+      console.log('🔄 Proceeding with split');
+      if (!this.theDocument || !this.theDocument.lines || this.theDocument.lines.length === 0) {
+        console.error('🔄 No document');
+        logger.error(LOG_CATEGORIES.EDITOR, 'No document or lines available');
+        return;
+      }
+
+      const currentStave = this.getCurrentStave();
+      const charPos = this.getCursorPosition();
+
+      console.log('🔄 Calling WASM splitLineAtPosition:', {stave: currentStave, charPos});
+      logger.info(LOG_CATEGORIES.EDITOR, 'Splitting line', {
+        stave: currentStave,
+        charPos
+      });
+
+      // Call WASM function to split line
+      const updatedDoc = this.wasmModule.splitLineAtPosition(
+        this.theDocument,
+        currentStave,
+        charPos
+      );
+      console.log('🔄 WASM returned:', updatedDoc);
+
+      // Preserve state from the old document before updating
+      const preservedState = this.theDocument.state;
+
+      // Update document with new line structure
+      this.theDocument = updatedDoc;
+
+      // Restore the state object (WASM doesn't know about JavaScript-only state)
+      this.theDocument.state = preservedState;
+
+      // Move cursor to beginning of new line
+      this.theDocument.state.cursor.stave = currentStave + 1;
+      this.theDocument.state.cursor.column = 0;
+
+      logger.debug(LOG_CATEGORIES.CURSOR, 'Cursor moved to new line', {
+        newStave: currentStave + 1,
+        newColumn: 0
+      });
+
+      // Re-derive beats for both old and new lines
+      if (this.theDocument.lines[currentStave]) {
+        this.deriveBeats(this.theDocument.lines[currentStave]);
+      }
+      if (this.theDocument.lines[currentStave + 1]) {
+        this.deriveBeats(this.theDocument.lines[currentStave + 1]);
+      }
+
+      await this.render();
+      this.updateDocumentDisplay();
+      this.showCursor();
+
+      logger.info(LOG_CATEGORIES.EDITOR, 'Line split successfully', {
+        totalLines: this.theDocument.lines.length
+      });
+    } catch (error) {
+      logger.error(LOG_CATEGORIES.EDITOR, 'Failed to split line', {
+        error: error.message,
+        stack: error.stack
+      });
+      console.error('Failed to split line:', error);
+      this.showError('Failed to split line: ' + error.message);
+    }
+
+    logger.timeEnd('handleEnter', LOG_CATEGORIES.EDITOR);
   }
 
   /**
@@ -1921,6 +2163,11 @@ class MusicNotationEditor {
       // Y positions are now correctly set by Rust layout engine based on line index
       // No need to adjust in JavaScript anymore
 
+      // Update pitch system display in header
+      if (this.ui) {
+        this.ui.updateCurrentPitchSystemDisplay();
+      }
+
       // Schedule staff notation update (debounced)
       this.scheduleStaffNotationUpdate();
     } catch (error) {
@@ -1943,20 +2190,15 @@ class MusicNotationEditor {
       }
     });
 
-    // Focus events
+    // Focus events - just handle visual changes
+    // Note: Focus state now queried from EventManager, not stored
     this.element.addEventListener('focus', () => {
       this.element.classList.add('focused');
-      if (this.theDocument && this.theDocument.state) {
-        this.theDocument.state.has_focus = true;
-      }
       this.showCursor();
     });
 
     this.element.addEventListener('blur', () => {
       this.element.classList.remove('focused');
-      if (this.theDocument && this.theDocument.state) {
-        this.theDocument.state.has_focus = false;
-      }
       this.hideCursor();
     });
 
@@ -2122,39 +2364,39 @@ class MusicNotationEditor {
     const clickedElement = cellElements[cellIndex];
 
     // Check if cell has beat classes
-    const hasBeatClass = clickedElement.classList.contains('beat-first') ||
-                        clickedElement.classList.contains('beat-middle') ||
-                        clickedElement.classList.contains('beat-last');
+    const hasBeatClass = clickedElement.classList.contains('beat-loop-first') ||
+                        clickedElement.classList.contains('beat-loop-middle') ||
+                        clickedElement.classList.contains('beat-loop-last');
 
     if (hasBeatClass) {
-      // Select entire beat by scanning for beat-first and beat-last
+      // Select entire beat by scanning for beat-loop-first and beat-loop-last
       let startIndex = cellIndex;
       let endIndex = cellIndex;
 
-      // Scan backward to beat-first
+      // Scan backward to beat-loop-first
       for (let i = cellIndex; i >= 0; i--) {
         const el = cellElements[i];
-        if (el.classList.contains('beat-first')) {
+        if (el.classList.contains('beat-loop-first')) {
           startIndex = i;
           break;
         }
-        if (!el.classList.contains('beat-first') &&
-            !el.classList.contains('beat-middle') &&
-            !el.classList.contains('beat-last')) {
+        if (!el.classList.contains('beat-loop-first') &&
+            !el.classList.contains('beat-loop-middle') &&
+            !el.classList.contains('beat-loop-last')) {
           break;
         }
       }
 
-      // Scan forward to beat-last
+      // Scan forward to beat-loop-last
       for (let i = cellIndex; i < cellElements.length; i++) {
         const el = cellElements[i];
-        if (el.classList.contains('beat-last')) {
+        if (el.classList.contains('beat-loop-last')) {
           endIndex = i;
           break;
         }
-        if (!el.classList.contains('beat-first') &&
-            !el.classList.contains('beat-middle') &&
-            !el.classList.contains('beat-last')) {
+        if (!el.classList.contains('beat-loop-first') &&
+            !el.classList.contains('beat-loop-middle') &&
+            !el.classList.contains('beat-loop-last')) {
           break;
         }
       }
@@ -2310,6 +2552,8 @@ class MusicNotationEditor {
     const cursor = this.getCursorElement();
     if (cursor) {
       cursor.style.display = 'block';
+      cursor.style.opacity = '1';
+      // Always start blinking - the interval itself will check focus
       this.startCursorBlinking();
       this.updateCursorVisualPosition();
     }
@@ -2397,13 +2641,19 @@ class MusicNotationEditor {
      * Start cursor blinking animation
      */
   startCursorBlinking() {
+    // Clear any existing interval to prevent multiple intervals from running
+    if (this._blinkInterval) {
+      clearInterval(this._blinkInterval);
+      this._blinkInterval = null;
+    }
+
     const cursor = this.getCursorElement();
     if (cursor) {
       cursor.classList.add('blinking');
 
       // Stop blinking on focus loss
       this._blinkInterval = setInterval(() => {
-        if (this.theDocument && !this.theDocument.state.has_focus) {
+        if (this.eventManager && !this.eventManager.editorFocus()) {
           this.stopCursorBlinking();
         }
       }, 100);
@@ -2478,14 +2728,14 @@ class MusicNotationEditor {
       cursor.classList.remove('selecting');
     }
 
-    if (this.theDocument && this.theDocument.state && this.theDocument.state.has_focus) {
+    if (this.eventManager && this.eventManager.editorFocus()) {
       cursor.classList.add('focused');
     } else {
       cursor.classList.remove('focused');
     }
 
     // Ensure cursor is visible when focused
-    if (this.theDocument && this.theDocument.state && this.theDocument.state.has_focus) {
+    if (this.eventManager && this.eventManager.editorFocus()) {
       cursor.style.opacity = '1';
     }
   }

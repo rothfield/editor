@@ -252,21 +252,6 @@ pub fn mark_continuations(cells: &mut Vec<Cell>) {
     log::info!("  🏁 Marked {} cells as continuations", continuation_count);
 }
 
-/// Check if current character should continue previous cell
-fn should_continue(prev_kind: ElementKind, curr_char: char) -> bool {
-    match prev_kind {
-        ElementKind::PitchedElement => {
-            // If previous is a note and current is accidental
-            matches!(curr_char, '#' | 'b')
-        }
-        ElementKind::Text => {
-            // If previous is text and current is letter
-            curr_char.is_alphabetic()
-        }
-        _ => false
-    }
-}
-
 /// Check if current character should continue previous cell (with accidental limit)
 /// For PitchedElement: limits accidentals to maximum of 2 (double sharp/flat)
 fn should_continue_with_limit(cells: &[Cell], i: usize, prev_kind: ElementKind, curr_char: char) -> bool {

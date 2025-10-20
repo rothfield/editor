@@ -5,6 +5,7 @@ edition = "2021"
 description = "Music Notation Editor WASM module with Cell architecture"
 license = "MIT"
 authors = ["Editor Project"]
+repository = "https://github.com/rothfield/editor"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -33,20 +34,46 @@ getrandom = { version = "0.2.14", features = ["js"] }
 uuid = { version = "1.8.0", features = ["v4", "js"], optional = true }
 wasm-bindgen-test = "0.3.42"
 roxmltree = "0.19"
+quick-xml = { version = "0.31", features = ["serialize"] }
+midly = "0.5"
 num-rational = "0.4"
 thiserror = "1.0"
+mustache = "0.9"
 
 [profile.release]
+# Size optimization with some speed (WASM size matters for web)
 opt-level = "s"
-lto = true
+# Link-time optimization for smaller, faster WASM
+lto = "thin"  # Changed from true to "thin" for faster compile times
 debug = false
 panic = "abort"
-codegen-units = 1
+# Use 16 codegen units for faster compilation (slower runtime, but faster compile)
+# Can reduce to 1 for final release if needed
+codegen-units = 16
+strip = true
 
 [profile.dev]
 opt-level = 0
 debug = true
 panic = "abort"
+# Maximum parallelism for dev builds
+codegen-units = 256
+
+# Optimization for incremental builds
+[profile.dev.package."*"]
+opt-level = 0
+codegen-units = 256
+
+# Fast build profile - use this with: cargo build --profile=fast-build
+[profile.fast-build]
+inherits = "release"
+opt-level = 1
+lto = false
+codegen-units = 256
+strip = false
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
 
 [features]
 default = ["console_error_panic_hook", "console_log"]

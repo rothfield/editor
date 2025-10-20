@@ -187,7 +187,7 @@ impl Default for ElementKind {
 /// Enumeration of supported pitch systems for musical notation
 #[wasm_bindgen]
 #[repr(u8)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde_repr::Serialize_repr, serde_repr::Deserialize_repr)]
 pub enum PitchSystem {
     /// Unknown pitch system
     Unknown = 0,
@@ -206,86 +206,6 @@ pub enum PitchSystem {
 
     /// Tabla notation system
     Tabla = 5,
-}
-
-// Custom serialization to show both name and value
-impl Serialize for PitchSystem {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        use serde::ser::SerializeStruct;
-        let mut state = serializer.serialize_struct("PitchSystem", 2)?;
-        state.serialize_field("name", &self.snake_case_name())?;
-        state.serialize_field("value", &(*self as u8))?;
-        state.end()
-    }
-}
-
-// Custom deserialization - accepts either number or object format
-impl<'de> Deserialize<'de> for PitchSystem {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        struct PitchSystemVisitor;
-
-        impl<'de> serde::de::Visitor<'de> for PitchSystemVisitor {
-            type Value = PitchSystem;
-
-            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                formatter.write_str("a PitchSystem number or object")
-            }
-
-            fn visit_u64<E>(self, value: u64) -> Result<PitchSystem, E>
-            where
-                E: serde::de::Error,
-            {
-                match value {
-                    0 => Ok(PitchSystem::Unknown),
-                    1 => Ok(PitchSystem::Number),
-                    2 => Ok(PitchSystem::Western),
-                    3 => Ok(PitchSystem::Sargam),
-                    4 => Ok(PitchSystem::Bhatkhande),
-                    5 => Ok(PitchSystem::Tabla),
-                    _ => Err(E::custom(format!("invalid PitchSystem value: {}", value))),
-                }
-            }
-
-            fn visit_i64<E>(self, value: i64) -> Result<PitchSystem, E>
-            where
-                E: serde::de::Error,
-            {
-                self.visit_u64(value as u64)
-            }
-
-            fn visit_map<A>(self, mut map: A) -> Result<PitchSystem, A::Error>
-            where
-                A: serde::de::MapAccess<'de>,
-            {
-                let mut value: Option<u8> = None;
-                while let Some(key) = map.next_key::<String>()? {
-                    if key == "value" {
-                        value = Some(map.next_value()?);
-                    } else {
-                        map.next_value::<serde::de::IgnoredAny>()?;
-                    }
-                }
-                match value {
-                    Some(0) => Ok(PitchSystem::Unknown),
-                    Some(1) => Ok(PitchSystem::Number),
-                    Some(2) => Ok(PitchSystem::Western),
-                    Some(3) => Ok(PitchSystem::Sargam),
-                    Some(4) => Ok(PitchSystem::Bhatkhande),
-                    Some(5) => Ok(PitchSystem::Tabla),
-                    Some(v) => Err(serde::de::Error::custom(format!("invalid PitchSystem value: {}", v))),
-                    None => Err(serde::de::Error::missing_field("value")),
-                }
-            }
-        }
-
-        deserializer.deserialize_any(PitchSystemVisitor)
-    }
 }
 
 impl PitchSystem {

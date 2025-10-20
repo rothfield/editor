@@ -21,7 +21,7 @@
 //! # Basic Usage
 //!
 //! ```ignore
-//! use editor_wasm::musicxml_import::{convert_musicxml_to_lilypond, ConversionSettings};
+//! use editor_wasm::converters::musicxml::{convert_musicxml_to_lilypond, ConversionSettings};
 //!
 //! let musicxml = r#"<?xml version="1.0"?>
 //! <score-partwise>
@@ -48,10 +48,12 @@ pub mod types;
 pub mod parser;
 pub mod converter;
 pub mod lilypond;
+pub mod templates;
 
 // Re-export main API
 pub use errors::{ConversionError, ParseError};
 pub use types::{ConversionResult, ConversionSettings, PitchLanguage, SkippedElement};
+pub use templates::{LilyPondTemplate, TemplateContext};
 
 /// Convert MusicXML document to LilyPond source code.
 ///

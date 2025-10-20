@@ -9,6 +9,7 @@ import asyncio
 from playwright.async_api import async_playwright, Page, Browser, BrowserContext
 import os
 import sys
+import pytest_asyncio
 
 
 # Add the project root to Python path for imports
@@ -24,7 +25,7 @@ def event_loop():
     loop.close()
 
 
-@pytest.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session")
 async def browser():
     """Browser fixture for E2E tests."""
     async with async_playwright() as p:
@@ -41,7 +42,7 @@ async def browser():
         await browser.close()
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def page(browser: Browser):
     """Page fixture for E2E tests."""
     context = await browser.new_context(
@@ -59,17 +60,17 @@ async def page(browser: Browser):
     await context.close()
 
 
-@pytest.fixture
-async def editor_page(page: Page):
+@pytest_asyncio.fixture
+async def editor_page(page: Page, development_server):
     """Page fixture with editor initialized."""
     # Navigate to the editor
-    await page.goto("http://localhost:8080", wait_until="domcontentloaded")
+    await page.goto(development_server, wait_until="domcontentloaded")
 
     # Wait for the editor to initialize
     try:
-        await page.wait_for_selector("#notation-canvas", timeout=10000)
+        await page.wait_for_selector("#notation-editor", timeout=10000)
         await page.wait_for_function(
-            "window.musicEditor && window.musicEditor.isReady",
+            "window.musicEditor && window.musicEditor.isInitialized",
             timeout=10000
         )
     except Exception as e:
@@ -78,8 +79,8 @@ async def editor_page(page: Page):
         raise Exception(f"Editor failed to initialize: {e}")
 
     # Focus the editor
-    await page.click("#notation-canvas")
-    await page.wait_for_function("document.activeElement.id === 'notation-canvas'", timeout=5000)
+    await page.click("#notation-editor")
+    await page.wait_for_function("document.activeElement.id === 'notation-editor'", timeout=5000)
 
     # Clear any existing content
     await page.keyboard.press("Control+a")
@@ -89,21 +90,21 @@ async def editor_page(page: Page):
     yield page
 
 
-@pytest.fixture
-async def development_server():
+@pytest.fixture(scope="session")
+def development_server():
     """Fixture to ensure development server is running."""
     import requests
     import subprocess
     import time
 
     server_url = "http://localhost:8080"
-    max_retries = 30
-    retry_interval = 2
+    max_retries = 5
+    retry_interval = 1
 
     # Check if server is already running
     for _ in range(max_retries):
         try:
-            response = requests.get(f"{server_url}/", timeout=5)
+            response = requests.get(f"{server_url}/", timeout=2)
             if response.status_code == 200:
                 print(f"✓ Development server is running at {server_url}")
                 yield server_url
@@ -125,9 +126,9 @@ async def development_server():
         )
 
         # Wait for server to start
-        for i in range(max_retries):
+        for i in range(30):  # Give more time for server to start
             try:
-                response = requests.get(f"{server_url}/", timeout=5)
+                response = requests.get(f"{server_url}/", timeout=2)
                 if response.status_code == 200:
                     print(f"✓ Development server started at {server_url}")
                     yield server_url
@@ -139,12 +140,12 @@ async def development_server():
             except requests.exceptions.RequestException:
                 pass
 
-            time.sleep(retry_interval)
+            time.sleep(1)
 
         # If we get here, server failed to start
         dev_process.terminate()
         dev_process.wait(timeout=10)
-        raise Exception(f"Failed to start development server within {max_retries * retry_interval} seconds")
+        raise Exception(f"Failed to start development server within 30 seconds")
 
     except Exception as e:
         raise Exception(f"Could not start development server: {e}")
@@ -241,8 +242,8 @@ async def get_document_state(page: Page) -> dict:
                     laneCount + lane.length, 0
                 ), 0
             ) : 0,
-            isReady: window.musicEditor.isReady,
-            hasFocus: document.activeElement && document.activeElement.id === 'notation-canvas'
+            isReady: window.musicEditor.isInitialized,
+            hasFocus: document.activeElement && document.activeElement.id === 'notation-editor'
         };
     }
     """)
@@ -273,8 +274,8 @@ async def clear_editor(page: Page):
 
 async def focus_editor(page: Page):
     """Focus the editor canvas."""
-    await page.click("#notation-canvas")
-    await page.wait_for_function("document.activeElement.id === 'notation-canvas'", timeout=5000)
+    await page.click("#notation-editor")
+    await page.wait_for_function("document.activeElement.id === 'notation-editor'", timeout=5000)
 
 
 async def take_screenshot_on_failure(page: Page, test_name: str):
@@ -302,19 +303,5 @@ def pytest_runtest_makereport(item, call):
             pass  # Ignore screenshot errors
 
 
-# Skip tests if development server is not available
-def pytest_collection_modifyitems(config, items):
-    """Skip tests that require the development server if it's not available."""
-    import requests
-
-    try:
-        response = requests.get("http://localhost:8080/", timeout=2)
-        server_available = response.status_code == 200
-    except requests.exceptions.RequestException:
-        server_available = False
-
-    if not server_available:
-        skip_mark = pytest.mark.skip(reason="Development server not available at http://localhost:8080")
-        for item in items:
-            if "page" in item.fixturenames or "editor_page" in item.fixturenames:
-                item.add_marker(skip_mark)
+# Note: Server availability is now handled by the development_server fixture
+# which automatically starts the server if needed. No need to skip tests here.

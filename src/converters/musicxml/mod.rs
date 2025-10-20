@@ -3,6 +3,7 @@
 //! This module contains converters for MusicXML format.
 
 pub mod musicxml_to_lilypond;
+pub mod musicxml_to_midi;
 
 // Re-export for convenience
 pub use musicxml_to_lilypond::{

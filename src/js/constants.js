@@ -199,6 +199,7 @@ export const PREVENT_DEFAULT_KEYS = [
   'Shift+Tab',
   'ArrowUp',
   'ArrowDown',
+  'Enter',
   'F1',
   'F5',
   'F7',
@@ -415,3 +416,14 @@ export const APP_VERSION = {
  * Document format version
  */
 export const DOCUMENT_FORMAT_VERSION = '1.0';
+
+// ============================================================================
+// Autosave Configuration
+// ============================================================================
+
+/**
+ * Global flag to enable/disable autosave and restore functionality
+ * Set to false to disable all localStorage autosave operations
+ * Set to true to enable automatic saving and document restoration on load
+ */
+export const ENABLE_AUTOSAVE = false;

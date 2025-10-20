@@ -200,9 +200,9 @@ pub struct Line {
     #[serde(default)]
     pub tonic: String,
 
-    /// Pitch system for this line (overrides composition pitch system, 0=Unknown if not set)
+    /// Pitch system for this line (overrides composition pitch system)
     #[serde(default)]
-    pub pitch_system: u8,
+    pub pitch_system: Option<PitchSystem>,
 
     /// Key signature for this line (sharps/flats affecting pitch interpretation, empty if not set)
     #[serde(default)]
@@ -234,7 +234,7 @@ impl Line {
             tala: String::new(),
             lyrics: String::new(),
             tonic: String::new(),
-            pitch_system: 0,
+            pitch_system: None,
             key_signature: String::new(),
             tempo: String::new(),
             time_signature: String::new(),
@@ -399,19 +399,10 @@ impl Document {
 
     /// Get the effective pitch system for a line
     pub fn effective_pitch_system(&self, line: &Line) -> PitchSystem {
-        if line.pitch_system != 0 {
-            // Convert u8 to PitchSystem
-            match line.pitch_system {
-                1 => PitchSystem::Number,
-                2 => PitchSystem::Western,
-                3 => PitchSystem::Sargam,
-                4 => PitchSystem::Bhatkhande,
-                5 => PitchSystem::Tabla,
-                _ => self.pitch_system.unwrap_or(PitchSystem::Number),
-            }
-        } else {
-            self.pitch_system.unwrap_or(PitchSystem::Number)
-        }
+        // Line-level pitch system takes precedence over document-level
+        line.pitch_system
+            .or(self.pitch_system)
+            .unwrap_or(PitchSystem::Number)
     }
 
     /// Get the effective tonic for a line
@@ -930,24 +921,8 @@ impl ValidationError {
 use chrono;
 
 #[cfg(not(feature = "chrono"))]
-mod chrono {
-    pub struct Utc;
-    impl Utc {
-        pub fn now() -> DateTime {
-            DateTime(SystemTime::now())
-        }
-    }
+mod chrono {}
 
-    pub struct DateTime(std::time::SystemTime);
-    impl DateTime {
-        pub fn to_rfc3339(&self) -> String {
-            // Simple timestamp implementation
-            format!("{:?}", self.0)
-        }
-    }
-
-    use std::time::SystemTime;
-}
 #[cfg(test)]
 mod tests {
     use super::*;

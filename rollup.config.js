@@ -27,4 +27,10 @@ export default {
     }),
   ],
   external: [/^\/dist\/pkg\//],
+  onwarn(warning, warn) {
+    // Suppress "this has been rewritten to undefined" warnings from dependencies
+    if (warning.code === 'THIS_IS_UNDEFINED') return;
+    // Use default for everything else
+    warn(warning);
+  }
 };

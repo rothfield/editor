@@ -1,13 +1,8 @@
 /**
- * LilyPond PNG/SVG Rendering Tab UI Component
+ * LilyPond Compact SVG Display
  *
- * Displays LilyPond notation rendered as PNG or SVG with real-time updates.
- * Features:
- * - Refresh button for manual render trigger
- * - Real-time debounced updates
- * - Error display
- * - SVG/PNG format toggle
- * - Copy-to-clipboard functionality
+ * Displays the current document as compact LilyPond SVG.
+ * Click the tab button to refresh the preview.
  */
 
 class LilyPondPngTab {
@@ -16,475 +11,239 @@ class LilyPondPngTab {
     this.lilypondRenderer = lilypondRenderer;
     this.container = null;
     this.renderArea = null;
-    this.statusElement = null;
-    this.refreshButton = null;
-    this.formatToggle = null;
-    this.currentFormat = 'svg';
-    this.isVisible = false;
-    this.currentZoom = 1.0; // Zoom level
+    this.isRendering = false;
   }
 
   /**
-   * Initialize the LilyPond PNG tab UI
+   * Initialize the LilyPond display
    */
   initialize() {
-    this.createTabUI();
+    this.createUI();
     this.attachEventListeners();
-    console.log('[LilyPondPngTab] Initialized');
+    console.log('[LilyPondDisplay] Initialized - click tab to refresh');
   }
 
   /**
-   * Create tab HTML structure
+   * Create minimal UI - just a container for SVG
    */
-  createTabUI() {
-    // Find or create tab container
+  createUI() {
     const tabContainer = document.getElementById('tab-content-lilypond-png');
     if (!tabContainer) {
-      console.warn('[LilyPondPngTab] Tab container not found in DOM');
+      console.warn('[LilyPondDisplay] Tab container not found');
       return;
     }
 
     this.container = tabContainer;
-
-    // Create toolbar
-    const toolbar = document.createElement('div');
-    toolbar.className = 'lilypond-png-toolbar';
-    toolbar.style.cssText = `
+    this.container.style.cssText = `
       display: flex;
-      gap: 8px;
-      padding: 10px;
-      border-bottom: 1px solid #ddd;
-      background: #f5f5f5;
-      align-items: center;
-      flex-shrink: 0;
+      flex-direction: column;
+      height: 100%;
+      background: white;
+      overflow: hidden;
     `;
 
-    // Refresh button
-    this.refreshButton = document.createElement('button');
-    this.refreshButton.textContent = '🔄 Refresh';
-    this.refreshButton.className = 'lilypond-png-refresh-btn';
-    this.refreshButton.style.cssText = `
-      padding: 6px 12px;
-      background: #007bff;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 13px;
-    `;
-    this.refreshButton.onclick = () => this.refreshRender();
-
-    // Format toggle
-    this.formatToggle = document.createElement('select');
-    this.formatToggle.className = 'lilypond-png-format-toggle';
-    this.formatToggle.innerHTML = `
-      <option value="svg">SVG</option>
-      <option value="png">PNG</option>
-    `;
-    this.formatToggle.style.cssText = `
-      padding: 6px;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      font-size: 13px;
-    `;
-    this.formatToggle.onchange = (e) => {
-      this.currentFormat = e.target.value;
-      this.refreshRender();
-    };
-
-    // Status display
-    this.statusElement = document.createElement('div');
-    this.statusElement.className = 'lilypond-png-status';
-    this.statusElement.style.cssText = `
+    // Create render area for SVG
+    this.renderArea = document.createElement('div');
+    this.renderArea.className = 'lilypond-svg-display';
+    this.renderArea.style.cssText = `
       flex: 1;
-      padding: 0 8px;
-      font-size: 12px;
-      color: #666;
-    `;
-    this.statusElement.textContent = 'Ready';
-
-    // Zoom controls
-    const zoomContainer = document.createElement('div');
-    zoomContainer.style.cssText = `
+      overflow: auto;
       display: flex;
-      gap: 4px;
       align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background: #f9f9f9;
     `;
 
-    const zoomOutBtn = document.createElement('button');
-    zoomOutBtn.textContent = '−';
-    zoomOutBtn.title = 'Zoom out';
-    zoomOutBtn.style.cssText = `
-      padding: 4px 8px;
-      background: #e9ecef;
-      color: #333;
-      border: 1px solid #dee2e6;
-      border-radius: 3px;
-      cursor: pointer;
-      font-size: 16px;
-      font-weight: bold;
-      min-width: 32px;
-    `;
-    zoomOutBtn.onclick = () => this.setZoom(Math.max(0.5, this.currentZoom - 0.25));
+    // Initial state message
+    this.renderArea.innerHTML = '<div style="color: #999; font-size: 14px;">Loading notation...</div>';
 
-    const zoomLabel = document.createElement('span');
-    zoomLabel.textContent = '100%';
-    zoomLabel.style.cssText = `
-      font-size: 12px;
-      min-width: 40px;
-      text-align: center;
-      color: #666;
-    `;
-
-    const zoomInBtn = document.createElement('button');
-    zoomInBtn.textContent = '+';
-    zoomInBtn.title = 'Zoom in';
-    zoomInBtn.style.cssText = `
-      padding: 4px 8px;
-      background: #e9ecef;
-      color: #333;
-      border: 1px solid #dee2e6;
-      border-radius: 3px;
-      cursor: pointer;
-      font-size: 16px;
-      font-weight: bold;
-      min-width: 32px;
-    `;
-    zoomInBtn.onclick = () => this.setZoom(Math.min(2.0, this.currentZoom + 0.25));
-
-    zoomContainer.appendChild(zoomOutBtn);
-    zoomContainer.appendChild(zoomLabel);
-    zoomContainer.appendChild(zoomInBtn);
-    this.zoomLabel = zoomLabel;
-
-    // Copy button
-    const copyButton = document.createElement('button');
-    copyButton.textContent = '📋 Copy';
-    copyButton.className = 'lilypond-png-copy-btn';
-    copyButton.style.cssText = `
-      padding: 6px 12px;
-      background: #6c757d;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 13px;
-    `;
-    copyButton.onclick = () => this.copyToClipboard();
-
-    toolbar.appendChild(this.refreshButton);
-    toolbar.appendChild(this.formatToggle);
-    toolbar.appendChild(this.statusElement);
-    toolbar.appendChild(zoomContainer);
-    toolbar.appendChild(copyButton);
-
-    // Find existing render container and clear it
-    this.renderArea = this.container.querySelector('#lilypond-render-container');
-    if (!this.renderArea) {
-      this.renderArea = document.createElement('div');
-      this.renderArea.id = 'lilypond-render-container';
-      this.renderArea.className = 'flex-1 bg-white p-3 border-2 border-gray-300 rounded overflow-auto flex items-center justify-center';
-      this.renderArea.style.cssText = `
-        flex: 1;
-        overflow: auto;
-        padding: 0;
-        background: white;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        min-height: 0;
-      `;
-      this.container.appendChild(this.renderArea);
-    } else {
-      // Ensure the existing renderArea has proper flex properties
-      this.renderArea.style.flex = '1';
-      this.renderArea.style.minHeight = '0';
-      this.renderArea.style.padding = '0';
-      this.renderArea.style.display = 'flex';
-      this.renderArea.style.alignItems = 'center';
-      this.renderArea.style.justifyContent = 'center';
-    }
-
-    // Insert toolbar at top
-    this.container.insertBefore(toolbar, this.container.firstChild);
+    this.container.appendChild(this.renderArea);
   }
 
   /**
-   * Attach event listeners
+   * Attach event listeners - only tab click for manual refresh
    */
   attachEventListeners() {
-    // Listen for tab visibility changes
-    const tabButton = document.querySelector('[data-tab="lilypond-png"]');
+    // Find the LilyPond PNG tab button by ID
+    const tabButton = document.getElementById('tab-lilypond-png');
+    console.log('[LilyPondDisplay] attachEventListeners - tabButton:', !!tabButton);
+
     if (tabButton) {
-      tabButton.addEventListener('click', () => {
-        this.isVisible = true;
-        this.onTabShown();
-      });
-    }
+      // Add tooltip
+      tabButton.title = 'Click to refresh notation preview';
+      tabButton.style.cursor = 'pointer';
 
-    // Listen for editor updates
-    if (this.editor) {
-      // Hook into document update events
-      const originalRender = this.editor.render;
-      this.editor.render = async (...args) => {
-        await originalRender.apply(this.editor, args);
-        this.onDocumentUpdated();
+      // When tab button is clicked, render immediately
+      const originalOnClick = tabButton.onclick;
+      console.log('[LilyPondDisplay] Original onclick:', !!originalOnClick);
+
+      tabButton.onclick = (e) => {
+        console.log('[LilyPondDisplay] ===== TAB CLICKED =====');
+        console.log('[LilyPondDisplay] this:', this);
+        console.log('[LilyPondDisplay] this.render:', !!this.render);
+        this.render();
+        if (originalOnClick) originalOnClick(e);
       };
+
+      console.log('[LilyPondDisplay] Click handler attached');
+    } else {
+      console.warn('[LilyPondDisplay] Tab button not found');
     }
   }
 
   /**
-   * Called when tab is shown
+   * Render current document as compact LilyPond SVG
    */
-  onTabShown() {
-    console.log('[LilyPondPngTab] Tab shown');
-    this.refreshRender();
+  async render() {
+    if (this.isRendering) {
+      return;
+    }
+
+    this._performRender();
   }
 
   /**
-   * Called when editor document is updated
+   * Perform the actual render
    */
-  onDocumentUpdated() {
-    if (!this.isVisible) return;
+  async _performRender() {
+    if (this.isRendering) return;
+    this.isRendering = true;
 
-    // Get current LilyPond source from editor
-    const lilypondSource = this.getLilyPondSource();
-    if (lilypondSource) {
-      // Real-time debounced render
-      this.lilypondRenderer.render(lilypondSource, {
-        minimal: true,
-        format: this.currentFormat,
-        onSuccess: (result) => this.displayResult(result),
-        onError: (error) => this.displayError(error)
+    console.log('[LilyPondDisplay] _performRender started');
+
+    try {
+      // Get LilyPond source from document
+      console.log('[LilyPondDisplay] Getting LilyPond source...');
+      const lilypondSource = this.getLilyPondSource();
+
+      console.log('[LilyPondDisplay] Source retrieved:', {
+        isNull: lilypondSource === null,
+        isUndefined: lilypondSource === undefined,
+        isEmpty: lilypondSource === '',
+        length: lilypondSource?.length || 0,
+        type: typeof lilypondSource
       });
+
+      if (!lilypondSource) {
+        console.log('[LilyPondDisplay] No source, displaying message');
+        this.displayMessage('No musical content to render');
+        this.isRendering = false;
+        return;
+      }
+
+      console.log('[LilyPondDisplay] Rendering compact SVG...');
+
+      // Render using LilyPond service
+      await this.lilypondRenderer.renderNow(lilypondSource, {
+        minimal: false,
+        format: 'svg',
+        onSuccess: (result) => {
+          this.displaySVG(result.svg_base64);
+        },
+        onError: (error) => {
+          console.error('[LilyPondDisplay] Render error:', error);
+          // Show detailed error message
+          const errorMsg = error?.message || error || 'Unknown error';
+          this.displayMessage(`Render error: ${errorMsg}`);
+          console.log('[LilyPondDisplay] Full error object:', error);
+        }
+      });
+    } catch (error) {
+      console.error('[LilyPondDisplay] Error:', error);
+      this.displayMessage(`Error: ${error.message}`);
+    } finally {
+      this.isRendering = false;
     }
   }
 
   /**
-   * Get LilyPond source from editor
+   * Get LilyPond source from document using WASM conversion
    */
   getLilyPondSource() {
-    if (!this.editor || !this.editor.theDocument) {
+    console.log('[LilyPondDisplay] getLilyPondSource called');
+
+    if (!this.editor?.theDocument || !this.editor?.wasmModule) {
+      console.error('[LilyPondDisplay] Document or WASM module not available');
       return null;
     }
 
-    // Try to get from lilypond-source element
-    const lilyPondDisplay = document.getElementById('lilypond-source');
-    if (lilyPondDisplay && lilyPondDisplay.textContent) {
-      return lilyPondDisplay.textContent;
-    }
+    try {
+      console.log('[LilyPondDisplay] Exporting to MusicXML...');
+      // Export to MusicXML
+      const musicxml = this.editor.wasmModule.exportMusicXML(this.editor.theDocument);
+      console.log('[LilyPondDisplay] MusicXML export: ', musicxml?.length || 0, 'bytes');
 
-    // Fallback: convert from MusicXML
-    if (this.editor.wasmModule && this.editor.wasmModule.convertMusicXMLToLilyPond) {
-      try {
-        const musicxml = this.editor.wasmModule.exportMusicXML(this.editor.theDocument);
-        const result = this.editor.wasmModule.convertMusicXMLToLilyPond(musicxml, null);
-        const parsed = JSON.parse(result);
-        return parsed.lilypond_source;
-      } catch (e) {
-        console.error('[LilyPondPngTab] Failed to generate LilyPond source:', e);
+      if (!musicxml) {
+        console.error('[LilyPondDisplay] Empty MusicXML export');
         return null;
       }
-    }
 
-    return null;
-  }
+      console.log('[LilyPondDisplay] Converting MusicXML to LilyPond...');
+      // Convert to LilyPond (uses compact template automatically)
+      const result = this.editor.wasmModule.convertMusicXMLToLilyPond(musicxml, null);
+      const parsed = JSON.parse(result);
 
-  /**
-   * Manually trigger refresh
-   */
-  async refreshRender() {
-    this.updateStatus('Rendering...');
-
-    const lilypondSource = this.getLilyPondSource();
-    if (!lilypondSource) {
-      this.displayError('No LilyPond source available');
-      return;
-    }
-
-    this.lilypondRenderer.renderNow(lilypondSource, {
-      minimal: true,
-      format: this.currentFormat,
-      onSuccess: (result) => {
-        this.displayResult(result);
-        this.updateStatus('Ready');
-      },
-      onError: (error) => {
-        this.displayError(error);
+      if (!parsed.lilypond_source) {
+        console.error('[LilyPondDisplay] No LilyPond source generated');
+        return null;
       }
-    });
-  }
 
-  /**
-   * Set zoom level
-   */
-  setZoom(zoomLevel) {
-    this.currentZoom = Math.max(0.5, Math.min(2.0, zoomLevel));
-    if (this.zoomLabel) {
-      this.zoomLabel.textContent = Math.round(this.currentZoom * 100) + '%';
-    }
-    this.applyZoom();
-  }
-
-  /**
-   * Apply zoom to SVG or image elements
-   */
-  applyZoom() {
-    const svg = this.renderArea.querySelector('svg');
-    const img = this.renderArea.querySelector('img');
-
-    if (svg) {
-      svg.style.width = (this.currentZoom * 100) + '%';
-      svg.style.height = (this.currentZoom * 100) + '%';
-      svg.style.maxWidth = 'none';
-      svg.style.maxHeight = 'none';
-      svg.style.objectFit = 'contain';
-    } else if (img) {
-      img.style.width = (this.currentZoom * 100) + '%';
-      img.style.height = (this.currentZoom * 100) + '%';
-      img.style.objectFit = 'contain';
-      img.style.padding = '0';
+      console.log('[LilyPondDisplay] Generated LilyPond:', parsed.lilypond_source.length, 'bytes');
+      return parsed.lilypond_source;
+    } catch (e) {
+      console.error('[LilyPondDisplay] WASM conversion failed:', e.message);
+      return null;
     }
   }
 
   /**
-   * Display rendered result
+   * Display SVG in render area
    */
-  displayResult(result) {
-    // Reset zoom when displaying new result
-    this.currentZoom = 1.0;
-    if (this.zoomLabel) {
-      this.zoomLabel.textContent = '100%';
-    }
+  displaySVG(base64Data) {
+    if (!this.renderArea) return;
 
-    if (result.svg) {
-      this.renderArea.innerHTML = result.svg;
-      this.renderArea.style.background = 'white';
-      this.renderArea.style.display = 'flex';
-      this.renderArea.style.alignItems = 'center';
-      this.renderArea.style.justifyContent = 'center';
-      this.renderArea.style.padding = '0';
-      this.renderArea.style.overflow = 'auto';
-
-      // Make SVG expand to fill the container
-      const svg = this.renderArea.querySelector('svg');
-      if (svg) {
-        svg.style.width = '100%';
-        svg.style.height = '100%';
-        svg.style.maxWidth = 'none';
-        svg.style.maxHeight = 'none';
-        svg.style.objectFit = 'contain';
+    try {
+      const binaryString = atob(base64Data);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
       }
-    } else if (result.png_base64) {
-      const img = document.createElement('img');
-      img.src = `data:image/png;base64,${result.png_base64}`;
-      img.style.cssText = `
-        width: 100%;
-        height: 100%;
-        object-fit: contain;
-        padding: 0;
-      `;
+      const blob = new Blob([bytes], { type: 'image/svg+xml' });
+      const url = URL.createObjectURL(blob);
+
       this.renderArea.innerHTML = '';
+      const img = document.createElement('img');
+      img.src = url;
+      img.style.cssText = `
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
+      `;
       this.renderArea.appendChild(img);
+
+      console.log('[LilyPondDisplay] SVG rendered successfully');
+    } catch (error) {
+      console.error('[LilyPondDisplay] SVG display error:', error);
+      this.displayMessage('Failed to display SVG');
     }
   }
 
   /**
-   * Display error message
+   * Display message in render area
    */
-  displayError(error) {
-    // Extract just the file path and error lines from the full error message
-    const errorLines = error.split('\n');
-    const relevantErrors = [];
-
-    for (let line of errorLines) {
-      // Include lines with .ly: (file errors) and lines starting with / (file paths)
-      if (line.includes('.ly:') || line.startsWith('/') || line.includes('error:') || line.includes('fatal error:') || line.includes('warning:')) {
-        relevantErrors.push(line);
-      }
-    }
-
-    // If we found relevant errors, use them; otherwise use the full error
-    const errorMsg = relevantErrors.length > 0 ? relevantErrors.join('\n') : error;
-
+  displayMessage(message) {
+    if (!this.renderArea) return;
     this.renderArea.innerHTML = `
-      <div style="padding: 20px; max-width: 100%; display: flex; flex-direction: column; gap: 15px;">
-        <div style="padding: 12px; background: #e3f2fd; border: 1px solid #2196f3; border-radius: 4px; text-align: left;">
-          <strong style="color: #1976d2; display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
-            <span>⚠️ LilyPond Compilation Error</span>
-          </strong>
-          <pre style="margin: 0; background: white; padding: 12px; border-radius: 3px; overflow-x: auto; font-size: 12px; color: #d32f2f; border: 1px solid #bbdefb; max-height: 400px; overflow-y: auto; font-family: 'Courier New', monospace; white-space: pre-wrap; word-wrap: break-word;">
-${this.escapeHtml(errorMsg)}
-          </pre>
-        </div>
-      </div>
+      <div style="
+        color: #666;
+        font-size: 14px;
+        text-align: center;
+        padding: 20px;
+      ">${message}</div>
     `;
-    this.updateStatus(`Error: ${error.substring(0, 50)}`);
   }
 
-  /**
-   * Update status text
-   */
-  updateStatus(text) {
-    if (this.statusElement) {
-      this.statusElement.textContent = text;
-    }
-  }
-
-  /**
-   * Copy to clipboard (SVG or PNG)
-   */
-  async copyToClipboard() {
-    const svgElement = this.renderArea.querySelector('svg');
-    if (svgElement) {
-      const svgString = new XMLSerializer().serializeToString(svgElement);
-      try {
-        await navigator.clipboard.writeText(svgString);
-        alert('SVG copied to clipboard!');
-      } catch (err) {
-        console.error('Failed to copy SVG:', err);
-        alert('Failed to copy SVG');
-      }
-      return;
-    }
-
-    const imgElement = this.renderArea.querySelector('img');
-    if (imgElement) {
-      try {
-        const response = await fetch(imgElement.src);
-        const blob = await response.blob();
-        await navigator.clipboard.write([
-          new ClipboardItem({ [blob.type]: blob })
-        ]);
-        alert('Image copied to clipboard!');
-      } catch (err) {
-        console.error('Failed to copy image:', err);
-        alert('Failed to copy image');
-      }
-      return;
-    }
-
-    alert('No rendered image to copy');
-  }
-
-  /**
-   * Escape HTML for display
-   */
-  escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-  }
-
-  /**
-   * Show/hide tab
-   */
-  setVisible(visible) {
-    this.isVisible = visible;
-    if (this.container) {
-      this.container.style.display = visible ? 'flex' : 'none';
-    }
-  }
 }
 
 export default LilyPondPngTab;

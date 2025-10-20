@@ -7,7 +7,8 @@
 
 class LilyPondRenderer {
   constructor() {
-    this.apiEndpoint = '/api/lilypond/render';
+    // Call lilypond-service directly at http://localhost:8787/engrave
+    this.apiEndpoint = 'http://localhost:8787/engrave';
     this.debounceTimer = null;
     this.debounceMs = 2000; // 2 second debounce for in-tab rendering
     this.isRendering = false;
@@ -69,10 +70,10 @@ class LilyPondRenderer {
     this.isRendering = true;
 
     try {
+      // Prepare payload for lilypond-service (expects 'ly' and 'format')
       const payload = {
-        lilypond_source: lilypondSource,
-        template_variant: minimal ? 'minimal' : 'full',
-        output_format: format
+        ly: lilypondSource,
+        format: format  // 'svg' or 'pdf'
       };
 
       const response = await fetch(this.apiEndpoint, {
@@ -86,19 +87,28 @@ class LilyPondRenderer {
         throw new Error(errorData.error || `HTTP ${response.status}`);
       }
 
-      const data = await response.json();
+      // lilypond-service returns binary data with appropriate Content-Type
+      // We need to handle this differently than a JSON response
+      const contentType = response.headers.get('content-type');
 
-      if (data.success) {
-        console.log(`[LilyPond] Rendered successfully (${format.toUpperCase()})`);
-        if (onSuccess) {
-          onSuccess({
-            svg: data.svg,
-            png_base64: data.png_base64,
-            format: format
-          });
-        }
-      } else {
+      if (contentType && contentType.includes('application/json')) {
+        // Error response
+        const data = await response.json();
         throw new Error(data.error || 'Unknown rendering error');
+      }
+
+      // Binary response (SVG or PDF) - convert to base64
+      const arrayBuffer = await response.arrayBuffer();
+      const base64Data = this._arrayBufferToBase64(arrayBuffer);
+
+      console.log(`[LilyPond] Rendered successfully (${format.toUpperCase()})`);
+      if (onSuccess) {
+        const fieldName = format === 'pdf' ? 'pdf_base64' : 'svg_base64';
+        onSuccess({
+          [fieldName]: base64Data,
+          format: format,
+          success: true
+        });
       }
     } catch (error) {
       console.error('[LilyPond] Render failed:', error);
@@ -106,6 +116,19 @@ class LilyPondRenderer {
     } finally {
       this.isRendering = false;
     }
+  }
+
+  /**
+   * Convert ArrayBuffer to base64 string
+   * @private
+   */
+  _arrayBufferToBase64(buffer) {
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
   }
 
   /**

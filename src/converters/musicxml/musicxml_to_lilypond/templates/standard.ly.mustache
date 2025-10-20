@@ -1,0 +1,66 @@
+\version "{{version}}"
+\language "english"
+
+{{#source_comment}}
+% Original notation source:
+{{{source_comment}}}
+{{/source_comment}}
+
+\header {
+  {{#title}}title = "{{{title}}}"{{/title}}
+  {{#composer}}composer = "{{{composer}}}"{{/composer}}
+  tagline = ##f
+  print-page-number = ##f
+  oddHeaderMarkup = ##f
+  evenHeaderMarkup = ##f
+  oddFooterMarkup = ##f
+  evenFooterMarkup = ##f
+}
+
+\paper {
+  indent = 0\mm
+  top-margin = 0.5\mm
+  bottom-margin = 0.5\mm
+  left-margin = 1\mm
+  right-margin = 1\mm
+  ragged-right = ##t
+  page-breaking = #ly:one-page-breaking
+  system-system-spacing = #'((basic-distance . 1) (minimum-distance . 1) (padding . 0) (stretchability . 0))
+  markup-system-spacing = #'((basic-distance . 0) (minimum-distance . 0) (padding . 0) (stretchability . 0))
+  score-system-spacing = #'((basic-distance . 0) (minimum-distance . 0) (padding . 0) (stretchability . 0))
+  top-system-spacing = #'((basic-distance . 1) (minimum-distance . 1) (padding . 0) (stretchability . 0))
+  last-bottom-spacing = #'((basic-distance . 1) (minimum-distance . 1) (padding . 0) (stretchability . 0))
+  paper-height = 50\mm
+  paper-width = 200\mm
+}
+
+\score {
+  \new Staff {
+    \fixed c' {
+      \key c \major
+      {{#time_signature}}{{{time_signature}}}{{/time_signature}}{{^time_signature}}\time 4/4{{/time_signature}}
+      % \set Score.measureBarType = #""
+      % \set Score.startRepeatBarType = #""
+      % \set Score.endRepeatBarType = #""
+      {{#key_signature}}{{{key_signature}}}{{/key_signature}}
+      {{{staves}}}
+    }
+  }
+
+  {{#lyrics}}
+  \addlyrics {
+    \override LyricText.font-size = #-2
+    \override LyricText.font-shape = #'italic
+    {{{lyrics}}}
+  }
+  {{/lyrics}}
+
+  \layout {
+    \context {
+      \Score
+      \override SpacingSpanner.base-shortest-duration = #(ly:make-moment 1/32)
+      \override SpacingSpanner.shortest-duration-space = #0.8
+      % \remove "Bar_number_engraver"
+    }
+  }
+}

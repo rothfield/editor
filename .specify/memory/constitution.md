@@ -1,24 +1,26 @@
 <!--
 Sync Impact Report:
-Version change: 1.2.0 → 1.3.0 (technology stack update)
-Modified principles: None
+Version change: 1.3.0 → 1.3.1 (E2E testing requirements clarification)
+Modified principles:
+  - Principle II (Test-Driven Development): Added requirement that E2E tests MUST execute through WASM
 Added sections:
-  - Updated Core Technologies to include OSMD (OpenSheetMusicDisplay) 1.7.6
-  - Updated Development Environment to reflect current Rust/JavaScript versions
+  - Testing Standards: Added explicit WASM build requirement and pipeline validation
 Removed sections: None
 Templates requiring updates:
-✅ plan-template.md (constitution check gates already generic)
-✅ spec-template.md (requirements template agnostic to tech stack)
-✅ tasks-template.md (task structure independent of technology choices)
-✅ All templates verified for consistency
-Follow-up TODOs: None
+✅ plan-template.md (constitution checks already include E2E verification)
+✅ spec-template.md (testing requirements aligned with WASM-inclusive approach)
+✅ tasks-template.md (E2E task creation already enforces full pipeline)
+⚠ Developer guidance: May need to document WASM build prerequisite for test execution
+Follow-up TODOs:
+  - Update Makefile test targets to enforce WASM build dependency
+  - Document common mistake: running E2E tests without WASM rebuild
 -->
 
 # Music Notation Editor POC Constitution
 
-**Version**: 1.3.0
+**Version**: 1.3.1
 **Ratified**: 2025-10-11
-**Last Amended**: 2025-10-14
+**Last Amended**: 2025-10-18
 **Purpose**: Define development environment, standards, principles, and governance for the Music Notation Editor POC project
 
 ## Core Principles
@@ -29,9 +31,9 @@ Every performance-critical operation MUST be implemented in Rust/WASM. JavaScrip
 **Rationale**: Meeting sub-16ms response time targets requires compiled code for computational tasks. WASM provides near-native performance while maintaining web platform compatibility.
 
 ### II. Test-Driven Development (NON-NEGOTIABLE)
-All features MUST have comprehensive end-to-end tests written and approved BEFORE implementation. Tests run in headless mode using Playwright Python bindings. No feature is considered complete without passing E2E tests.
+All features MUST have comprehensive end-to-end tests written and approved BEFORE implementation. Tests run in headless mode using Playwright Python bindings. No feature is considered complete without passing E2E tests. **E2E tests MUST execute through the compiled WASM module** - tests that bypass WASM (e.g., testing only lilypond-service or JavaScript APIs) do not validate the full integration and are insufficient.
 
-**Rationale**: Headless E2E testing ensures CI/CD compatibility and provides confidence in user-facing functionality. Test-first development prevents regressions and validates requirements.
+**Rationale**: Headless E2E testing ensures CI/CD compatibility and provides confidence in user-facing functionality. Test-first development prevents regressions and validates requirements. WASM-inclusive E2E tests verify the entire integration from data model through rendering, ensuring that template changes, converter logic, and WASM compilation are all validated before merge.
 
 ### III. User Experience Focus
 Focus management MUST return to editor canvas immediately after any UI interaction (menu operations, tab switching). All keyboard operations MUST meet 60fps target (< 16ms latency). Cursor activation MUST be immediate upon focus.
@@ -188,6 +190,8 @@ music-notation-editor/
 - **Tests run in headless mode** (no visual inspection required)
 - **Python Playwright bindings** for test implementation
 - **Makefile orchestration** for test execution
+- **WASM MUST be built before E2E test execution** - tests that bypass WASM do not validate the full feature integration
+- **Test scenarios MUST exercise the complete pipeline**: user action → WASM processing → rendering output
 
 ### Test Coverage Requirements
 - Basic music notation entry (Number and Western pitch systems)

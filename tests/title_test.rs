@@ -2,7 +2,7 @@
 
 use editor_wasm::models::Document;
 use editor_wasm::renderers::musicxml::to_musicxml;
-use editor_wasm::musicxml_import::{convert_musicxml_to_lilypond, ConversionSettings};
+use editor_wasm::converters::musicxml::{convert_musicxml_to_lilypond, ConversionSettings};
 
 #[test]
 fn test_title_in_musicxml_export() {
