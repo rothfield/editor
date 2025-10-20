@@ -1417,7 +1417,7 @@ class MusicNotationEditor {
     }
 
     // Remove 'selected' class from all cells
-    const selectedCells = this.renderer.element.querySelectorAll('.char-cell.selected');
+    const selectedCells = this.renderer.element.querySelectorAll('.cell-char.selected');
     selectedCells.forEach(cell => {
       cell.classList.remove('selected');
     });

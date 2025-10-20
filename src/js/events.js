@@ -45,8 +45,8 @@ class EventManager {
      * Setup global event listeners
      */
   setupGlobalListeners() {
-    // Global keyboard events
-    document.addEventListener('keydown', this.handleGlobalKeyDown);
+    // Global keyboard events - use capture phase to intercept before other handlers
+    document.addEventListener('keydown', this.handleGlobalKeyDown, { capture: true });
 
     // Global focus events
     document.addEventListener('focusin', this.handleGlobalFocus);
@@ -134,6 +134,29 @@ class EventManager {
     if (modifierKeys.includes(event.key)) {
       console.log('⏭️ Ignoring bare modifier key press:', event.key);
       return;
+    }
+
+    // Special handling for Alt+Shift+L using layout-safe e.code
+    // This is more reliable than using e.key which varies with keyboard layout
+    const isAlt = event.altKey && !event.ctrlKey && !event.metaKey; // Guard against AltGr
+    const isKeyL = event.code === 'KeyL';
+
+    if (isAlt && isKeyL && !event.repeat) {
+      if (event.shiftKey) {
+        // Shift+Alt+L → open lyrics dialog
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        console.log('🎵 Shift+Alt+L: Opening lyrics dialog');
+        try {
+          this.editor?.ui?.setLyrics();
+        } catch (error) {
+          console.error('Shift+Alt+L action failed:', error);
+        }
+        return;
+      } else {
+        // Alt+L → toggle octave down (handled via globalShortcuts below, but this is a safety net)
+        console.log('🎵 Alt+L: Toggle octave down');
+      }
     }
 
     // Debug logging for Alt key combinations
@@ -623,7 +646,7 @@ Focus Management:
      * Clean up event listeners
      */
   destroy() {
-    document.removeEventListener('keydown', this.handleGlobalKeyDown);
+    document.removeEventListener('keydown', this.handleGlobalKeyDown, { capture: true });
     document.removeEventListener('focusin', this.handleGlobalFocus);
     document.removeEventListener('focusout', this.handleGlobalBlur);
     document.removeEventListener('click', this.handleGlobalClick);
