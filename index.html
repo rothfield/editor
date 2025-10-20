@@ -186,7 +186,7 @@
         }
 
         /* Scrollbar styling for tab content */
-        #document-json,
+        #layout-display,
         #persistent-json,
         #lilypond-source,
         #html-content,
@@ -208,7 +208,7 @@
         }
 
         /* Webkit scrollbar styling */
-        #document-json::-webkit-scrollbar,
+        #layout-display::-webkit-scrollbar,
         #persistent-json::-webkit-scrollbar,
         #lilypond-source::-webkit-scrollbar,
         #html-content::-webkit-scrollbar,
@@ -217,7 +217,7 @@
             width: 10px;
         }
 
-        #document-json::-webkit-scrollbar-track,
+        #layout-display::-webkit-scrollbar-track,
         #persistent-json::-webkit-scrollbar-track,
         #lilypond-source::-webkit-scrollbar-track,
         #html-content::-webkit-scrollbar-track,
@@ -227,7 +227,7 @@
             border-radius: 4px;
         }
 
-        #document-json::-webkit-scrollbar-thumb,
+        #layout-display::-webkit-scrollbar-thumb,
         #persistent-json::-webkit-scrollbar-thumb,
         #lilypond-source::-webkit-scrollbar-thumb,
         #html-content::-webkit-scrollbar-thumb,
@@ -237,7 +237,7 @@
             border-radius: 4px;
         }
 
-        #document-json::-webkit-scrollbar-thumb:hover,
+        #layout-display::-webkit-scrollbar-thumb:hover,
         #persistent-json::-webkit-scrollbar-thumb:hover,
         #lilypond-source::-webkit-scrollbar-thumb:hover,
         #html-content::-webkit-scrollbar-thumb:hover,
@@ -440,8 +440,8 @@
                         <button id="tab-lilypond-png" class="tab" data-tab="lilypond-png">
                             LilyPond PNG
                         </button>
-                        <button id="tab-ephemeral" class="tab" data-tab="ephemeral">
-                            Ephemeral Model
+                        <button id="tab-layout" class="tab" data-tab="layout">
+                            Layout
                         </button>
                         <button id="tab-persistent" class="tab" data-tab="persistent">
                             Persistent Model
@@ -457,7 +457,6 @@
                     <!-- Staff Notation Tab -->
                     <div id="tab-content-staff-notation" data-tab-content="staff-notation" class="tab-content flex-1 flex flex-col p-4">
                         <div id="staff-notation-container" class="flex-1 bg-white p-4 border-2 border-gray-300 rounded overflow-auto">
-                            <div class="text-sm text-gray-500">Start typing music to see staff notation...</div>
                         </div>
                     </div>
 
@@ -498,7 +497,6 @@
 
                     <!-- MusicXML Tab -->
                     <div id="tab-content-musicxml" data-tab-content="musicxml" class="tab-content hidden flex-1 flex flex-col p-4">
-                        <h3 class="text-sm font-semibold mb-2 text-gray-700">MusicXML Source</h3>
                         <pre id="musicxml-source" class="flex-1 text-xs font-mono bg-white p-3 border-2 border-gray-300 rounded overflow-auto"></pre>
                     </div>
 
@@ -514,21 +512,18 @@
                         </div>
                     </div>
 
-                    <!-- Ephemeral Model Tab (full document with state) -->
-                    <div id="tab-content-ephemeral" data-tab-content="ephemeral" class="tab-content hidden flex-1 flex flex-col p-4">
-                        <h3 class="text-sm font-semibold mb-2 text-gray-700">Ephemeral Model (includes runtime state)</h3>
-                        <pre id="document-json" class="flex-1 text-xs font-mono bg-white p-3 border-2 border-gray-300 rounded overflow-auto"></pre>
+                    <!-- Layout Tab (DisplayList from WASM) -->
+                    <div id="tab-content-layout" data-tab-content="layout" class="tab-content hidden flex-1 flex flex-col p-4">
+                        <pre id="layout-display" class="flex-1 text-xs font-mono bg-white p-3 border-2 border-gray-300 rounded overflow-auto"></pre>
                     </div>
 
                     <!-- Persistent Model Tab (saveable content only) -->
                     <div id="tab-content-persistent" data-tab-content="persistent" class="tab-content hidden flex-1 flex flex-col p-4">
-                        <h3 class="text-sm font-semibold mb-2 text-gray-700">Persistent Model (saved to disk)</h3>
                         <pre id="persistent-json" class="flex-1 text-xs font-mono bg-white p-3 border-2 border-gray-300 rounded overflow-auto"></pre>
                     </div>
 
                     <!-- HTML Tab -->
                     <div id="tab-content-html" data-tab-content="html" class="tab-content hidden flex-1 flex flex-col p-4">
-                        <h3 class="text-sm font-semibold mb-2 text-gray-700">Rendered HTML Structure</h3>
                         <pre id="html-content" class="flex-1 text-xs font-mono bg-white p-3 border-2 border-gray-300 rounded overflow-auto"></pre>
                     </div>
                 </div>

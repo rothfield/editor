@@ -62,7 +62,6 @@ class MusicNotationEditor {
       // Initialize WASM components
       this.wasmModule = {
         beatDeriver: new wasmModule.BeatDeriver(),
-        layoutRenderer: new wasmModule.LayoutRenderer(16),
         // New recursive descent API
         insertCharacter: wasmModule.insertCharacter,
         parseText: wasmModule.parseText,
@@ -1818,8 +1817,27 @@ class MusicNotationEditor {
     }
 
     try {
-      const selection = this.getSelection();
-      const selectedText = this.getSelectedText();
+      const selection = this.getEffectiveSelection();
+
+      // Get the appropriate line for selected text extraction
+      let line;
+      if (this.hasSelection()) {
+        line = this.getCurrentLine();
+      } else {
+        const currentLineIndex = this.theDocument.state?.cursor?.stave || 0;
+        line = this.theDocument.lines[currentLineIndex - 1];
+      }
+
+      if (!line) {
+        console.log('❌ No line found for applySlur');
+        return;
+      }
+
+      const cells = line.cells;
+      const selectedCells = cells.filter((cell, index) =>
+        index >= selection.start && index < selection.end
+      );
+      const selectedText = selectedCells.map(cell => cell.char || '').join('');
 
       console.log('✅ Proceeding with slur application:', { selection, selectedText });
 
@@ -1833,9 +1851,6 @@ class MusicNotationEditor {
         this.addToConsoleLog(`Applying slur to selection: "${selectedText}"`);
         // Apply slur using WASM API
         if (this.theDocument && this.theDocument.lines && this.theDocument.lines.length > 0) {
-          const line = this.getCurrentLine();
-        if (!line) return;
-          const cells = line.cells;
 
           console.log('🔧 Calling WASM applySlur:', {
             cellCount: cells.length,
@@ -1985,8 +2000,7 @@ class MusicNotationEditor {
 
       // Call WASM function to apply octave to selected cells
       if (this.theDocument && this.theDocument.lines && this.theDocument.lines.length > 0) {
-        const line = this.getCurrentLine();
-        if (!line) return;
+        // Note: 'line' was already retrieved above for selectedText
         const cells = line.cells;
 
         logger.debug(LOG_CATEGORIES.COMMAND, 'Calling WASM applyOctave', {
@@ -2908,12 +2922,10 @@ class MusicNotationEditor {
   }
 
   updateDocumentDisplay() {
-    // Update ephemeral model (full document with state)
-    const docJson = document.getElementById('document-json');
-    if (docJson && this.theDocument) {
-      // Create a display-friendly version of the document
-      const displayDoc = this.createDisplayDocument(this.theDocument);
-      docJson.textContent = this.toYAML(displayDoc);
+    // Update layout display (DisplayList from WASM)
+    const layoutDisplay = document.getElementById('layout-display');
+    if (layoutDisplay && this.displayList) {
+      layoutDisplay.textContent = JSON.stringify(this.displayList, null, 2);
     }
 
     // Update persistent model (saveable content only, no state)

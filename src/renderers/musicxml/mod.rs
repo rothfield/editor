@@ -435,39 +435,46 @@ fn process_beat(
 
     // Write all collected elements with tuplet brackets
     let element_count = elements.len();
-    for (idx, element) in elements.iter().enumerate() {
-        // Tuplet bracket only on first and last elements
-        let tuplet_bracket = if tuplet_info.is_some() && element_count > 1 {
-            if idx == 0 {
-                Some("start")
-            } else if idx == element_count - 1 {
-                Some("stop")
-            } else {
-                None
-            }
-        } else {
-            None
-        };
 
-        match element {
-            BeatElement::Note { pitch_code, octave, duration_divs, musical_duration, is_last_note, slur_indicator } => {
-                let tie = if *is_last_note && next_beat_starts_with_div {
+    if element_count == 0 {
+        // No notes or rests found (e.g., beat contains only text elements)
+        // Add a whole rest
+        builder.write_rest(4, 4.0);
+    } else {
+        for (idx, element) in elements.iter().enumerate() {
+            // Tuplet bracket only on first and last elements
+            let tuplet_bracket = if tuplet_info.is_some() && element_count > 1 {
+                if idx == 0 {
                     Some("start")
+                } else if idx == element_count - 1 {
+                    Some("stop")
                 } else {
                     None
-                };
+                }
+            } else {
+                None
+            };
 
-                // Determine slur type based on indicator
-                let slur = match slur_indicator {
-                    SlurIndicator::SlurStart => Some("start"),
-                    SlurIndicator::SlurEnd => Some("stop"),
-                    SlurIndicator::None => None,
-                };
+            match element {
+                BeatElement::Note { pitch_code, octave, duration_divs, musical_duration, is_last_note, slur_indicator } => {
+                    let tie = if *is_last_note && next_beat_starts_with_div {
+                        Some("start")
+                    } else {
+                        None
+                    };
 
-                builder.write_note_with_beam_from_pitch_code(pitch_code, *octave, *duration_divs, *musical_duration, None, tuplet_info, tuplet_bracket, tie, slur)?;
-            }
-            BeatElement::Rest { duration_divs, musical_duration } => {
-                builder.write_rest_with_tuplet(*duration_divs, *musical_duration, tuplet_info, tuplet_bracket);
+                    // Determine slur type based on indicator
+                    let slur = match slur_indicator {
+                        SlurIndicator::SlurStart => Some("start"),
+                        SlurIndicator::SlurEnd => Some("stop"),
+                        SlurIndicator::None => None,
+                    };
+
+                    builder.write_note_with_beam_from_pitch_code(pitch_code, *octave, *duration_divs, *musical_duration, None, tuplet_info, tuplet_bracket, tie, slur)?;
+                }
+                BeatElement::Rest { duration_divs, musical_duration } => {
+                    builder.write_rest_with_tuplet(*duration_divs, *musical_duration, tuplet_info, tuplet_bracket);
+                }
             }
         }
     }

@@ -5,6 +5,7 @@
 
 pub mod models;
 pub mod parse;
+pub mod html_layout;
 pub mod renderers;
 pub mod utils;
 pub mod api;

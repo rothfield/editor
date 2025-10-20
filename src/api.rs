@@ -1184,7 +1184,7 @@ pub fn compute_layout(
         })?;
 
     // Deserialize config from JavaScript
-    let config: crate::renderers::layout_engine::LayoutConfig = serde_wasm_bindgen::from_value(config_js)
+    let config: crate::html_layout::LayoutConfig = serde_wasm_bindgen::from_value(config_js)
         .map_err(|e| {
             wasm_error!("Config deserialization error: {}", e);
             JsValue::from_str(&format!("Config deserialization error: {}", e))
@@ -1195,7 +1195,7 @@ pub fn compute_layout(
              config.cell_widths.len(), config.syllable_widths.len());
 
     // Create layout engine and compute layout
-    let engine = crate::renderers::layout_engine::LayoutEngine::new();
+    let engine = crate::html_layout::LayoutEngine::new();
     let display_list = engine.compute_layout(&document, &config);
 
     wasm_info!("  DisplayList generated: {} lines", display_list.lines.len());

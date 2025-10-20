@@ -233,6 +233,7 @@ class DOMRenderer {
 
     // Cache DisplayList for cursor positioning
     this.displayList = displayList;
+    this.editor.displayList = displayList; // Store in editor for tab display
 
     // STEP 3: Render from DisplayList (fast native JS DOM)
     const renderStart = performance.now();
@@ -487,6 +488,9 @@ class DOMRenderer {
       line.appendChild(labelElement);
     }
 
+    // Get line index from renderLine
+    const lineIndex = renderLine.line_index;
+
     // Build map of lyrics by x position for quick lookup
     const lyricsByXPosition = new Map();
     renderLine.lyrics.forEach(lyric => {
@@ -553,7 +557,6 @@ class DOMRenderer {
       }
 
       // Add event handlers
-      const lineIndex = renderLine.line_index;
       let cellIndex = idx;
       if (cellData.dataset) {
         if (cellData.dataset instanceof Map) {
@@ -686,7 +689,8 @@ class DOMRenderer {
       line.appendChild(cellContainer);
     });
 
-    // Render any remaining lyrics that didn't match a cell (shouldn't happen, but handle gracefully)
+    // Render any remaining lyrics that didn't match a cell
+    // (Now handled by WASM with assigned=false field)
     lyricsByXPosition.forEach(lyric => {
       const span = document.createElement('span');
       span.className = 'cell-text lyric text-sm';
