@@ -11,7 +11,7 @@ class AutoSave {
   constructor(editor) {
     this.editor = editor;
     this.saveInterval = null;
-    this.saveIntervalMs = 5000; // 5 seconds
+    this.saveIntervalMs = 10000; // 10 seconds
     this.isEnabled = ENABLE_AUTOSAVE; // Respect global flag
     this.lastSaveTime = null;
     this.lastSaveKey = null;

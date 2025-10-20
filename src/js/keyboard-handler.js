@@ -53,6 +53,7 @@ class KeyboardHandler {
     this.registerShortcut('Alt+M', () => this.editor.toggleOctave(0));
     this.registerShortcut('Alt+l', () => this.editor.toggleOctave(-1));
     this.registerShortcut('Alt+L', () => this.editor.toggleOctave(-1));
+    this.registerShortcut('Alt+Shift+L', () => this.editor.ui?.setLyrics());
     this.registerShortcut('Alt+t', () => this.editor.enterTalaMode());
     this.registerShortcut('Alt+T', () => this.editor.enterTalaMode());
 

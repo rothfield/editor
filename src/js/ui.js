@@ -70,10 +70,11 @@ class UI {
   setupFileMenu() {
     const menuItems = [
       { id: 'menu-new', label: 'New', action: 'new-document' },
-      { id: 'menu-open', label: 'Open...', action: 'open-document' },
-      { id: 'menu-save', label: 'Save', action: 'save-document' },
+      { id: 'menu-save-to-storage', label: 'Save to Storage...', action: 'save-to-storage' },
+      { id: 'menu-load-from-storage', label: 'Load from Storage...', action: 'load-from-storage' },
       { id: 'menu-separator-1', label: null, separator: true },
-      { id: 'menu-export', label: 'Export...', action: 'export-dialog' },
+      { id: 'menu-export-json', label: 'Export as JSON...', action: 'export-json' },
+      { id: 'menu-import-json', label: 'Import from JSON...', action: 'import-json' },
       { id: 'menu-separator-2', label: null, separator: true },
       { id: 'menu-set-title', label: 'Set Title...', action: 'set-title' },
       { id: 'menu-set-composer', label: 'Set Composer...', action: 'set-composer' },
@@ -361,6 +362,18 @@ class UI {
         break;
       case 'save-document':
         this.saveDocument();
+        break;
+      case 'save-to-storage':
+        this.saveToStorage();
+        break;
+      case 'load-from-storage':
+        this.loadFromStorage();
+        break;
+      case 'export-json':
+        this.exportAsJSON();
+        break;
+      case 'import-json':
+        this.importFromJSON();
         break;
       case 'export-dialog':
         this.openExportDialog();
@@ -1152,6 +1165,103 @@ class UI {
   applyOctave(octave) {
     if (this.editor) {
       this.editor.applyOctave(octave);
+    }
+  }
+
+  /**
+   * Save document to browser localStorage
+   */
+  async saveToStorage() {
+    if (!this.editor) {
+      alert('No editor available');
+      return;
+    }
+
+    const name = prompt('Enter document name:');
+    if (name === null) return; // User cancelled
+
+    try {
+      const success = await this.editor.storage.saveDocument(name);
+      if (success) {
+        this.editor.addToConsoleLog(`✅ Document saved to storage: "${name}"`);
+      }
+    } catch (error) {
+      console.error('Failed to save to storage:', error);
+      alert(`Failed to save: ${error.message}`);
+    }
+  }
+
+  /**
+   * Load document from browser localStorage
+   */
+  async loadFromStorage() {
+    if (!this.editor) {
+      alert('No editor available');
+      return;
+    }
+
+    try {
+      const saved = this.editor.storage.getSavedDocuments();
+
+      if (saved.length === 0) {
+        alert('No saved documents found in storage');
+        return;
+      }
+
+      // Create a list of saved documents for the user to choose from
+      const names = saved.map((s, i) => `${i + 1}. ${s.name} (${s.title})`).join('\n');
+      const selectedName = prompt(`Select a document to load:\n\n${names}\n\nEnter document name:`, saved[0].name);
+
+      if (selectedName === null) return; // User cancelled
+
+      const success = await this.editor.storage.loadDocument(selectedName);
+      if (success) {
+        this.editor.addToConsoleLog(`✅ Document loaded from storage: "${selectedName}"`);
+      }
+    } catch (error) {
+      console.error('Failed to load from storage:', error);
+      alert(`Failed to load: ${error.message}`);
+    }
+  }
+
+  /**
+   * Export document as JSON file
+   */
+  async exportAsJSON() {
+    if (!this.editor) {
+      alert('No editor available');
+      return;
+    }
+
+    try {
+      const filename = prompt('Enter filename (without .json):', this.getDocumentTitle());
+      if (filename === null) return; // User cancelled
+
+      await this.editor.storage.exportAsJSON(filename);
+      this.editor.addToConsoleLog(`✅ Document exported as JSON: "${filename}.json"`);
+    } catch (error) {
+      console.error('Failed to export as JSON:', error);
+      alert(`Failed to export: ${error.message}`);
+    }
+  }
+
+  /**
+   * Import document from JSON file
+   */
+  async importFromJSON() {
+    if (!this.editor) {
+      alert('No editor available');
+      return;
+    }
+
+    try {
+      const success = await this.editor.storage.importFromJSON();
+      if (success) {
+        this.editor.addToConsoleLog('✅ Document imported from JSON');
+      }
+    } catch (error) {
+      console.error('Failed to import from JSON:', error);
+      alert(`Failed to import: ${error.message}`);
     }
   }
 

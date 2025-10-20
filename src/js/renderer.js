@@ -54,64 +54,8 @@ class DOMRenderer {
         box-sizing: content-box;
       }
 
-      /* Octave dots using ::before pseudo-element */
-      .char-cell[data-octave="1"]::before {
-        content: '•';
-        position: absolute;
-        left: 50%;
-        right: auto;
-        top: -10px;
-        transform: translateX(-50%);
-        font-size: ${SMALL_FONT_SIZE}px;
-        line-height: 1;
-        color: #000;
-        pointer-events: none;
-        z-index: 2;
-      }
-
-      .char-cell[data-octave="2"]::before {
-        content: '••';
-        position: absolute;
-        left: 50%;
-        right: auto;
-        top: -10px;
-        transform: translateX(-50%);
-        font-size: ${SMALL_FONT_SIZE}px;
-        line-height: 1;
-        color: #000;
-        letter-spacing: 2px;
-        pointer-events: none;
-        z-index: 2;
-      }
-
-      .char-cell[data-octave="-1"]::before {
-        content: '•';
-        position: absolute;
-        left: 50%;
-        right: auto;
-        bottom: -6px;
-        transform: translateX(-50%);
-        font-size: ${SMALL_FONT_SIZE}px;
-        line-height: 1;
-        color: #000;
-        pointer-events: none;
-        z-index: 2;
-      }
-
-      .char-cell[data-octave="-2"]::before {
-        content: '••';
-        position: absolute;
-        left: 50%;
-        right: auto;
-        bottom: -6px;
-        transform: translateX(-50%);
-        font-size: ${SMALL_FONT_SIZE}px;
-        line-height: 1;
-        color: #000;
-        letter-spacing: 2px;
-        pointer-events: none;
-        z-index: 2;
-      }
+      /* Octave dots now use real DOM elements (span.octave-dot) instead of ::before pseudo-elements */
+      /* The octave-dot spans are positioned absolutely within the pitch-octave-group */
 
       /* Symbol elements styled in green */
       .char-cell.kind-symbol {
@@ -543,14 +487,21 @@ class DOMRenderer {
       line.appendChild(labelElement);
     }
 
-    // Render cells (fast native JS)
+    // Build map of lyrics by x position for quick lookup
+    const lyricsByXPosition = new Map();
+    renderLine.lyrics.forEach(lyric => {
+      lyricsByXPosition.set(Math.round(lyric.x), lyric);
+    });
+
+    // Render cells with new DOM structure
+    // Structure: pitch-lyric-group > (pitch-octave-group > (char-cell + octave-dot) + lyric-syllable)
     renderLine.cells.forEach((cellData, idx) => {
-      const span = document.createElement('span');
-      span.className = cellData.classes.join(' ');
-      span.textContent = cellData.char === ' ' ? '\u00A0' : cellData.char;
+      // Create pitch span (the actual note character)
+      const charCell = document.createElement('span');
+      charCell.className = cellData.classes.join(' ');
+      charCell.textContent = cellData.char === ' ' ? '\u00A0' : cellData.char;
 
       // Detect multi-character barlines for CSS overlay
-      // Check if this is a barline head (not a continuation) that's followed by a continuation
       const isBarline = cellData.classes.includes('kind-barline');
       const isContinuation = cellData.dataset && (
         cellData.dataset instanceof Map ?
@@ -567,68 +518,39 @@ class DOMRenderer {
             nextCell.dataset.continuation === 'true'
         );
 
-        // If next cell is a barline continuation, determine the pattern
         if (nextIsBarline && nextIsContinuation) {
           const pattern = cellData.char + nextCell.char;
           if (pattern === '|:') {
-            span.classList.add('repeat-left-start');
+            charCell.classList.add('repeat-left-start');
           } else if (pattern === ':|') {
-            span.classList.add('repeat-right-start');
+            charCell.classList.add('repeat-right-start');
           } else if (pattern === '||') {
-            span.classList.add('double-bar-start');
+            charCell.classList.add('double-bar-start');
           }
         }
       }
 
-      span.style.cssText = `
-        position: absolute;
-        left: ${cellData.x}px;
-        top: ${cellData.y}px;
+      charCell.style.cssText = `
         width: ${cellData.w}px;
         height: ${cellData.h}px;
-        overflow: visible;
+        display: inline-block;
       `;
 
-      // Set data attributes (handle both Map and plain objects)
+      // Set data attributes on char-cell
       if (cellData.dataset) {
-        // Debug logging for first cell to verify Map handling
-        if (idx === 0) {
-          console.log('🔍 DEBUG: Dataset type:', cellData.dataset.constructor.name);
-          console.log('🔍 DEBUG: Is Map?', cellData.dataset instanceof Map);
-          console.log('🔍 DEBUG: Dataset contents:', cellData.dataset);
-        }
-
-        // Check if it's a Map (from Rust) or plain object
         if (cellData.dataset instanceof Map) {
-          // It's a Map from Rust
-          console.log('🔍 DEBUG: Using Map iteration');
           for (const [key, value] of cellData.dataset.entries()) {
-            span.dataset[key] = value;
-            if (idx === 0) {
-              console.log(`🔍 DEBUG: Set data-${key}="${value}"`);
-            }
+            charCell.dataset[key] = value;
           }
         } else {
-          // It's a plain object
-          console.log('🔍 DEBUG: Using Object iteration');
           for (const [key, value] of Object.entries(cellData.dataset)) {
-            span.dataset[key] = value;
-            if (idx === 0) {
-              console.log(`🔍 DEBUG: Set data-${key}="${value}" (from object)`);
-            }
+            charCell.dataset[key] = value;
           }
-        }
-
-        // Verify the attributes were actually set
-        if (idx === 0) {
-          console.log('🔍 DEBUG: Resulting span.dataset:', span.dataset);
-          console.log('🔍 DEBUG: Resulting HTML:', span.outerHTML);
         }
       }
 
-      // Add event handlers (JS-only)
+      // Add event handlers
       const lineIndex = renderLine.line_index;
-      // Get cellIndex from dataset (handle both Map and plain object)
       let cellIndex = idx;
       if (cellData.dataset) {
         if (cellData.dataset instanceof Map) {
@@ -639,24 +561,110 @@ class DOMRenderer {
       }
       const cell = this.theDocument.lines[lineIndex].cells[cellIndex];
 
-      span.addEventListener('click', (e) => {
+      charCell.addEventListener('click', (e) => {
         e.stopPropagation();
         this.handleCellClick(cell, e);
       });
 
-      span.addEventListener('mouseenter', () => {
+      charCell.addEventListener('mouseenter', () => {
         this.handleCellHover(cell, true);
       });
 
-      span.addEventListener('mouseleave', () => {
+      charCell.addEventListener('mouseleave', () => {
         this.handleCellHover(cell, false);
       });
 
-      line.appendChild(span);
+      // Create octave-dot span if needed (real DOM element, not pseudo-element)
+      const octaveDot = document.createElement('span');
+      octaveDot.className = 'octave-dot';
+      const octaveValue = charCell.dataset.octave;
+
+      if (octaveValue && octaveValue !== '0') {
+        if (octaveValue === '1') {
+          octaveDot.textContent = '•';
+        } else if (octaveValue === '2') {
+          octaveDot.textContent = '••';
+        } else if (octaveValue === '-1') {
+          octaveDot.textContent = '•';
+        } else if (octaveValue === '-2') {
+          octaveDot.textContent = '••';
+        }
+
+        // Add letter-spacing for double dots
+        const letterSpacing = (octaveValue === '2' || octaveValue === '-2') ? 'letter-spacing: 2px;' : '';
+
+        octaveDot.style.cssText = `
+          position: absolute;
+          font-size: ${SMALL_FONT_SIZE}px;
+          color: #000;
+          pointer-events: none;
+          z-index: 2;
+          line-height: 1;
+          white-space: nowrap;
+          ${letterSpacing}
+        `;
+
+        // Position octave dot based on octave value
+        if (octaveValue === '1' || octaveValue === '2') {
+          // Upper octave: above the cell
+          octaveDot.style.top = '-10px';
+          octaveDot.style.left = '50%';
+          octaveDot.style.transform = 'translateX(-50%)';
+        } else {
+          // Lower octave: below the cell
+          octaveDot.style.bottom = '-6px';
+          octaveDot.style.left = '50%';
+          octaveDot.style.transform = 'translateX(-50%)';
+        }
+      }
+
+      // Create pitch-octave-group wrapper
+      const pitchOctaveGroup = document.createElement('span');
+      pitchOctaveGroup.className = 'pitch-octave-group';
+      pitchOctaveGroup.appendChild(charCell);
+      if (octaveDot.textContent) {
+        pitchOctaveGroup.appendChild(octaveDot);
+      }
+
+      // Create pitch-lyric-group wrapper - positioned at cell location
+      const pitchLyricGroup = document.createElement('span');
+      pitchLyricGroup.className = 'pitch-lyric-group';
+      pitchLyricGroup.style.cssText = `
+        position: absolute;
+        left: ${cellData.x}px;
+        top: ${cellData.y}px;
+        width: ${cellData.w}px;
+        height: ${cellData.h}px;
+      `;
+      pitchLyricGroup.appendChild(pitchOctaveGroup);
+
+      // Check if there's a lyric for this cell (match by x position)
+      const cellCenterX = Math.round(cellData.x + cellData.w / 2);
+      const matchingLyric = lyricsByXPosition.get(cellCenterX);
+
+      if (matchingLyric) {
+        const lyricSpan = document.createElement('span');
+        lyricSpan.className = 'lyric-syllable text-sm';
+        lyricSpan.textContent = matchingLyric.text;
+        lyricSpan.style.cssText = `
+          position: absolute;
+          left: 50%;
+          top: ${matchingLyric.y - cellData.y}px;
+          font-style: italic;
+          color: #6b7280;
+          transform: translateX(-50%);
+          pointer-events: none;
+          white-space: nowrap;
+        `;
+        pitchLyricGroup.appendChild(lyricSpan);
+        lyricsByXPosition.delete(cellCenterX); // Mark as used
+      }
+
+      line.appendChild(pitchLyricGroup);
     });
 
-    // Render lyrics (positioned syllables from DisplayList)
-    renderLine.lyrics.forEach(lyric => {
+    // Render any remaining lyrics that didn't match a cell (shouldn't happen, but handle gracefully)
+    lyricsByXPosition.forEach(lyric => {
       const span = document.createElement('span');
       span.className = 'lyric-syllable text-sm';
       span.textContent = lyric.text;

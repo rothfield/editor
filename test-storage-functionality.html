@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Storage Manager Test</title>
+    <style>
+        body {
+            font-family: monospace;
+            margin: 20px;
+            background: #f0f0f0;
+        }
+        .test-section {
+            background: white;
+            padding: 15px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        h2 {
+            margin-top: 0;
+            color: #333;
+        }
+        .test-item {
+            padding: 10px;
+            margin: 5px 0;
+            background: #f9f9f9;
+            border-left: 3px solid #ccc;
+        }
+        .test-item.pass {
+            border-left-color: green;
+            background: #f0fff0;
+        }
+        .test-item.fail {
+            border-left-color: red;
+            background: #fff0f0;
+        }
+        button {
+            padding: 8px 12px;
+            margin: 5px 5px 5px 0;
+            background: #0066cc;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #0052a3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .output {
+            background: #f0f0f0;
+            padding: 10px;
+            border-radius: 3px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-size: 12px;
+            white-space: pre-wrap;
+        }
+        .console-log {
+            color: #333;
+        }
+        .console-error {
+            color: #cc0000;
+        }
+        .console-success {
+            color: #00aa00;
+        }
+    </style>
+</head>
+<body>
+    <h1>Storage Manager Test Suite</h1>
+
+    <div class="test-section">
+        <h2>1. Basic API Availability</h2>
+        <button onclick="testStorageAPI()">Test localStorage API</button>
+        <div id="api-test" class="output"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>2. Storage Manager Initialization</h2>
+        <button onclick="testStorageManagerInit()">Initialize StorageManager</button>
+        <div id="init-test" class="output"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>3. Save Document Test</h2>
+        <button onclick="testSaveDocument()">Save Test Document</button>
+        <div id="save-test" class="output"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>4. Get Saved Documents Test</h2>
+        <button onclick="testGetSavedDocuments()">List Saved Documents</button>
+        <div id="list-test" class="output"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>5. Load Document Test</h2>
+        <button onclick="testLoadDocument()">Load Test Document</button>
+        <div id="load-test" class="output"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>6. Delete Document Test</h2>
+        <button onclick="testDeleteDocument()">Delete Test Document</button>
+        <div id="delete-test" class="output"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>7. Export/Import JSON Test</h2>
+        <button onclick="testExportJSON()">Test JSON Export (check downloads)</button>
+        <div id="export-test" class="output"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>8. Storage Info Test</h2>
+        <button onclick="testStorageInfo()">Get Storage Info</button>
+        <div id="storage-info-test" class="output"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Cleanup</h2>
+        <button onclick="clearAllTests()">Clear All Test Data from localStorage</button>
+        <button onclick="window.location.reload()">Reload Page</button>
+        <div id="cleanup-test" class="output"></div>
+    </div>
+
+    <script type="module">
+        import StorageManager from './src/js/storage-manager.js';
+
+        // Mock editor object for testing
+        const mockEditor = {
+            theDocument: {
+                title: 'Test Document',
+                composer: 'Test Composer',
+                lines: [
+                    { label: 'Line 1', beats: [] },
+                    { label: 'Line 2', beats: [] }
+                ],
+                state: { cursor: 0 }
+            },
+            showError: (msg) => console.error('Editor Error:', msg),
+            addToConsoleLog: (msg) => console.log('Editor Log:', msg),
+            loadDocument: async (doc) => {
+                mockEditor.theDocument = typeof doc === 'string' ? JSON.parse(doc) : doc;
+                console.log('Document loaded in mock editor');
+            }
+        };
+
+        window.storageManager = new StorageManager(mockEditor);
+
+        // Test Functions
+        window.testStorageAPI = function() {
+            const output = document.getElementById('api-test');
+            output.innerHTML = '';
+
+            try {
+                // Test localStorage availability
+                const test = '__localStorage-test__';
+                localStorage.setItem(test, 'test');
+                const value = localStorage.getItem(test);
+                localStorage.removeItem(test);
+
+                if (value === 'test') {
+                    addOutput(output, 'PASS: localStorage API is available', 'success');
+                } else {
+                    addOutput(output, 'FAIL: localStorage API test failed', 'fail');
+                }
+            } catch (error) {
+                addOutput(output, `FAIL: ${error.message}`, 'fail');
+            }
+        };
+
+        window.testStorageManagerInit = function() {
+            const output = document.getElementById('init-test');
+            output.innerHTML = '';
+
+            try {
+                if (window.storageManager && window.storageManager.editor) {
+                    addOutput(output, 'PASS: StorageManager initialized', 'success');
+                    addOutput(output, `  - SAVED_PREFIX: ${window.storageManager.SAVED_PREFIX}`);
+                    addOutput(output, `  - SAVED_INDEX_KEY: ${window.storageManager.SAVED_INDEX_KEY}`);
+                } else {
+                    addOutput(output, 'FAIL: StorageManager not properly initialized', 'fail');
+                }
+            } catch (error) {
+                addOutput(output, `FAIL: ${error.message}`, 'fail');
+            }
+        };
+
+        window.testSaveDocument = function() {
+            const output = document.getElementById('save-test');
+            output.innerHTML = '';
+
+            try {
+                const success = window.storageManager.saveDocument('Test-Doc-1');
+                if (success) {
+                    addOutput(output, 'PASS: Document saved successfully', 'success');
+
+                    // Verify it's in localStorage
+                    const key = window.storageManager.SAVED_PREFIX + 'Test-Doc-1';
+                    const saved = localStorage.getItem(key);
+                    if (saved) {
+                        addOutput(output, `  - Document stored with key: ${key}`);
+                        addOutput(output, `  - Storage size: ${saved.length} bytes`);
+                    } else {
+                        addOutput(output, 'WARNING: Document not found in localStorage', 'fail');
+                    }
+                } else {
+                    addOutput(output, 'FAIL: saveDocument returned false', 'fail');
+                }
+            } catch (error) {
+                addOutput(output, `FAIL: ${error.message}`, 'fail');
+            }
+        };
+
+        window.testGetSavedDocuments = function() {
+            const output = document.getElementById('list-test');
+            output.innerHTML = '';
+
+            try {
+                const saved = window.storageManager.getSavedDocuments();
+                if (Array.isArray(saved)) {
+                    addOutput(output, `PASS: Retrieved ${saved.length} saved document(s)`, 'success');
+                    saved.forEach((doc, i) => {
+                        addOutput(output, `  ${i + 1}. ${doc.name} (${doc.title})`);
+                        addOutput(output, `     - Key: ${doc.key}`);
+                        addOutput(output, `     - Saved: ${doc.savedAt}`);
+                    });
+                } else {
+                    addOutput(output, 'FAIL: getSavedDocuments did not return an array', 'fail');
+                }
+            } catch (error) {
+                addOutput(output, `FAIL: ${error.message}`, 'fail');
+            }
+        };
+
+        window.testLoadDocument = function() {
+            const output = document.getElementById('load-test');
+            output.innerHTML = '';
+
+            try {
+                const success = window.storageManager.loadDocument('Test-Doc-1');
+                if (success) {
+                    addOutput(output, 'PASS: Document loaded successfully', 'success');
+                    addOutput(output, `  - Document title: ${mockEditor.theDocument.title}`);
+                    addOutput(output, `  - Document composer: ${mockEditor.theDocument.composer}`);
+                    addOutput(output, `  - Number of lines: ${mockEditor.theDocument.lines.length}`);
+                } else {
+                    addOutput(output, 'FAIL: loadDocument returned false', 'fail');
+                }
+            } catch (error) {
+                addOutput(output, `FAIL: ${error.message}`, 'fail');
+            }
+        };
+
+        window.testDeleteDocument = function() {
+            const output = document.getElementById('delete-test');
+            output.innerHTML = '';
+
+            try {
+                // First, make sure document exists
+                window.storageManager.saveDocument('Test-Doc-Delete');
+
+                // Now delete it
+                const success = window.storageManager.deleteDocument('Test-Doc-Delete');
+                if (success) {
+                    addOutput(output, 'PASS: Document deleted successfully', 'success');
+
+                    // Verify it's gone
+                    const key = window.storageManager.SAVED_PREFIX + 'Test-Doc-Delete';
+                    const stillThere = localStorage.getItem(key);
+                    if (!stillThere) {
+                        addOutput(output, '  - Verified: Document removed from localStorage');
+                    } else {
+                        addOutput(output, 'WARNING: Document still in localStorage', 'fail');
+                    }
+                } else {
+                    addOutput(output, 'FAIL: deleteDocument returned false', 'fail');
+                }
+            } catch (error) {
+                addOutput(output, `FAIL: ${error.message}`, 'fail');
+            }
+        };
+
+        window.testExportJSON = function() {
+            const output = document.getElementById('export-test');
+            output.innerHTML = '';
+
+            try {
+                window.storageManager.exportAsJSON('test-export');
+                addOutput(output, 'PASS: Export function called (check your Downloads folder)', 'success');
+                addOutput(output, '  - A JSON file should download with the current document');
+            } catch (error) {
+                addOutput(output, `FAIL: ${error.message}`, 'fail');
+            }
+        };
+
+        window.testStorageInfo = function() {
+            const output = document.getElementById('storage-info-test');
+            output.innerHTML = '';
+
+            try {
+                const info = window.storageManager.getStorageInfo();
+                if (info) {
+                    addOutput(output, 'PASS: Retrieved storage information', 'success');
+                    addOutput(output, `  - Saved documents: ${info.savedCount}`);
+                    addOutput(output, `  - Autosave documents: ${info.autosaveCount}`);
+                    addOutput(output, `  - Total size: ${info.totalSizeKB} KB`);
+                    addOutput(output, `  - Storage limit: ${info.storageLimit}`);
+                } else {
+                    addOutput(output, 'FAIL: getStorageInfo returned null', 'fail');
+                }
+            } catch (error) {
+                addOutput(output, `FAIL: ${error.message}`, 'fail');
+            }
+        };
+
+        window.clearAllTests = function() {
+            const output = document.getElementById('cleanup-test');
+            output.innerHTML = '';
+
+            try {
+                window.storageManager.clearAllSaved();
+                addOutput(output, 'PASS: All test data cleared from localStorage', 'success');
+            } catch (error) {
+                addOutput(output, `FAIL: ${error.message}`, 'fail');
+            }
+        };
+
+        // Helper function
+        function addOutput(element, message, type = 'log') {
+            const line = document.createElement('div');
+            line.className = 'console-' + type;
+            line.textContent = message;
+            element.appendChild(line);
+        }
+
+        // Auto-test on page load
+        console.log('Storage Manager Test Suite Loaded');
+        console.log('StorageManager instance:', window.storageManager);
+    </script>
+</body>
+</html>

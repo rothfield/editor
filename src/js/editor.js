@@ -10,6 +10,7 @@ import logger, { LOG_CATEGORIES } from './logger.js';
 import { OSMDRenderer } from './osmd-renderer.js';
 import { LEFT_MARGIN_PX, ENABLE_AUTOSAVE } from './constants.js';
 import AutoSave from './autosave.js';
+import StorageManager from './storage-manager.js';
 
 class MusicNotationEditor {
   constructor(editorElement) {
@@ -32,6 +33,9 @@ class MusicNotationEditor {
 
     // AutoSave manager
     this.autoSave = new AutoSave(this);
+
+    // Storage manager for explicit save/load
+    this.storage = new StorageManager(this);
   }
 
   /**
