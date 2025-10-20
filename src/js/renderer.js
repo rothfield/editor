@@ -48,28 +48,28 @@ class DOMRenderer {
     const style = document.createElement('style');
     style.textContent = `
       /* Base cell styles */
-      .char-cell {
+      .cell-char {
         padding: 0;
         margin: 0;
         box-sizing: content-box;
       }
 
-      /* Octave dots now use real DOM elements (span.octave-dot) instead of ::before pseudo-elements */
-      /* The octave-dot spans are positioned absolutely within the pitch-octave-group */
+      /* Octave dots now use real DOM elements (span.cell-modifier.octave-dot) instead of ::before pseudo-elements */
+      /* The octave-dot spans are positioned absolutely within the cell-content */
 
       /* Symbol elements styled in green */
-      .char-cell.kind-symbol {
+      .cell-char.kind-symbol {
         color: #22c55e; /* green-500 */
         font-weight: 500;
       }
 
       /* Accidental symbols using SMuFL music font */
       /* Sharp sign (♯) - SMuFL U+E262 */
-      .char-cell.accidental-sharp {
+      .cell-char.accidental-sharp {
         color: transparent;
       }
 
-      .char-cell.accidental-sharp::after {
+      .cell-char.accidental-sharp::after {
         content: '\uE262'; /* SMuFL sharp glyph */
         font-family: 'Bravura', serif;
         position: absolute;
@@ -84,11 +84,11 @@ class DOMRenderer {
       }
 
       /* Flat sign (♭) - SMuFL U+E260 */
-      .char-cell.accidental-flat {
+      .cell-char.accidental-flat {
         color: transparent;
       }
 
-      .char-cell.accidental-flat::after {
+      .cell-char.accidental-flat::after {
         content: '\uE260'; /* SMuFL flat glyph */
         font-family: 'Bravura', serif;
         position: absolute;
@@ -104,19 +104,19 @@ class DOMRenderer {
 
       /* Multi-character barline overlays using SMuFL music font */
       /* Hide underlying ASCII text and show fancy glyph overlay */
-      .char-cell.repeat-left-start,
-      .char-cell.repeat-right-start,
-      .char-cell.double-bar-start {
+      .cell-char.repeat-left-start,
+      .cell-char.repeat-right-start,
+      .cell-char.double-bar-start {
         color: transparent;
       }
 
       /* Hide continuation cells that are part of multi-char barlines */
-      .char-cell.kind-barline[data-continuation="true"] {
+      .cell-char.kind-barline[data-continuation="true"] {
         color: transparent;
       }
 
       /* Left repeat (|:) - SMuFL U+E040 spanning 2 cells */
-      .char-cell.repeat-left-start::after {
+      .cell-char.repeat-left-start::after {
         content: '\uE040';
         font-family: 'Bravura', serif;
         position: absolute;
@@ -133,7 +133,7 @@ class DOMRenderer {
       }
 
       /* Right repeat (:|) - SMuFL U+E041 spanning 2 cells */
-      .char-cell.repeat-right-start::after {
+      .cell-char.repeat-right-start::after {
         content: '\uE041';
         font-family: 'Bravura', serif;
         position: absolute;
@@ -150,7 +150,7 @@ class DOMRenderer {
       }
 
       /* Double barline (||) - SMuFL U+E031 spanning 2 cells */
-      .char-cell.double-bar-start::after {
+      .cell-char.double-bar-start::after {
         content: '\uE031';
         font-family: 'Bravura', serif;
         position: absolute;
@@ -267,7 +267,7 @@ class DOMRenderer {
       // Measure each cell
       for (const cell of line.cells) {
         const span = document.createElement('span');
-        span.className = 'char-cell';
+        span.className = 'cell-char';
         span.textContent = cell.char === ' ' ? '\u00A0' : cell.char;
         temp.appendChild(span);
         cellWidths.push(span.getBoundingClientRect().width);
@@ -279,7 +279,7 @@ class DOMRenderer {
         const syllables = this.extractSyllablesSimple(line.lyrics);
         for (const syllable of syllables) {
           const span = document.createElement('span');
-          span.className = 'lyric-syllable text-sm';
+          span.className = 'cell-text lyric text-sm';
           span.style.fontStyle = 'italic';
           span.textContent = syllable;
           temp.appendChild(span);
@@ -353,7 +353,7 @@ class DOMRenderer {
         // Measure each character in the cell's glyph
         for (const char of cell.char) {
           const span = document.createElement('span');
-          span.className = 'char-cell';
+          span.className = 'cell-char';
           span.textContent = char === ' ' ? '\u00A0' : char;
           temp.appendChild(span);
           charWidths.push(span.getBoundingClientRect().width);
@@ -494,12 +494,16 @@ class DOMRenderer {
     });
 
     // Render cells with new DOM structure
-    // Structure: pitch-lyric-group > (pitch-octave-group > (char-cell + octave-dot) + lyric-syllable)
+    // Structure: cell-container > (cell-content > (cell-char + octave-dot) + cell-text)
     renderLine.cells.forEach((cellData, idx) => {
       // Create pitch span (the actual note character)
-      const charCell = document.createElement('span');
-      charCell.className = cellData.classes.join(' ');
-      charCell.textContent = cellData.char === ' ' ? '\u00A0' : cellData.char;
+      const cellChar = document.createElement('span');
+      // Filter out slur and beat-loop classes - these go on cell-container only
+      const cellCharClasses = cellData.classes.filter(cls =>
+        !cls.includes('slur-') && !cls.includes('beat-loop-')
+      );
+      cellChar.className = cellCharClasses.join(' ');
+      cellChar.textContent = cellData.char === ' ' ? '\u00A0' : cellData.char;
 
       // Detect multi-character barlines for CSS overlay
       const isBarline = cellData.classes.includes('kind-barline');
@@ -521,30 +525,29 @@ class DOMRenderer {
         if (nextIsBarline && nextIsContinuation) {
           const pattern = cellData.char + nextCell.char;
           if (pattern === '|:') {
-            charCell.classList.add('repeat-left-start');
+            cellChar.classList.add('repeat-left-start');
           } else if (pattern === ':|') {
-            charCell.classList.add('repeat-right-start');
+            cellChar.classList.add('repeat-right-start');
           } else if (pattern === '||') {
-            charCell.classList.add('double-bar-start');
+            cellChar.classList.add('double-bar-start');
           }
         }
       }
 
-      charCell.style.cssText = `
-        width: ${cellData.w}px;
-        height: ${cellData.h}px;
+      cellChar.style.cssText = `
         display: inline-block;
+        position: relative;
       `;
 
-      // Set data attributes on char-cell
+      // Set data attributes on cell-char
       if (cellData.dataset) {
         if (cellData.dataset instanceof Map) {
           for (const [key, value] of cellData.dataset.entries()) {
-            charCell.dataset[key] = value;
+            cellChar.dataset[key] = value;
           }
         } else {
           for (const [key, value] of Object.entries(cellData.dataset)) {
-            charCell.dataset[key] = value;
+            cellChar.dataset[key] = value;
           }
         }
       }
@@ -561,23 +564,23 @@ class DOMRenderer {
       }
       const cell = this.theDocument.lines[lineIndex].cells[cellIndex];
 
-      charCell.addEventListener('click', (e) => {
+      cellChar.addEventListener('click', (e) => {
         e.stopPropagation();
         this.handleCellClick(cell, e);
       });
 
-      charCell.addEventListener('mouseenter', () => {
+      cellChar.addEventListener('mouseenter', () => {
         this.handleCellHover(cell, true);
       });
 
-      charCell.addEventListener('mouseleave', () => {
+      cellChar.addEventListener('mouseleave', () => {
         this.handleCellHover(cell, false);
       });
 
       // Create octave-dot span if needed (real DOM element, not pseudo-element)
       const octaveDot = document.createElement('span');
-      octaveDot.className = 'octave-dot';
-      const octaveValue = charCell.dataset.octave;
+      octaveDot.className = 'cell-modifier octave-dot';
+      const octaveValue = cellChar.dataset.octave;
 
       if (octaveValue && octaveValue !== '0') {
         if (octaveValue === '1') {
@@ -604,47 +607,67 @@ class DOMRenderer {
           ${letterSpacing}
         `;
 
-        // Position octave dot based on octave value
+        // Position octave dot based on octave value (using em units for scaling)
         if (octaveValue === '1' || octaveValue === '2') {
-          // Upper octave: above the cell
-          octaveDot.style.top = '-10px';
+          // Upper octave: above the cell, relative to font-size
+          octaveDot.style.top = '-0.5em';
           octaveDot.style.left = '50%';
           octaveDot.style.transform = 'translateX(-50%)';
         } else {
-          // Lower octave: below the cell
-          octaveDot.style.bottom = '-6px';
+          // Lower octave: below the cell, relative to font-size
+          octaveDot.style.bottom = '-0.35em';
           octaveDot.style.left = '50%';
           octaveDot.style.transform = 'translateX(-50%)';
         }
       }
 
-      // Create pitch-octave-group wrapper
-      const pitchOctaveGroup = document.createElement('span');
-      pitchOctaveGroup.className = 'pitch-octave-group';
-      pitchOctaveGroup.appendChild(charCell);
+      // Add octave-dot as child of cell-char (positions relative to the pitch character)
       if (octaveDot.textContent) {
-        pitchOctaveGroup.appendChild(octaveDot);
+        cellChar.appendChild(octaveDot);
       }
 
-      // Create pitch-lyric-group wrapper - positioned at cell location
-      const pitchLyricGroup = document.createElement('span');
-      pitchLyricGroup.className = 'pitch-lyric-group';
-      pitchLyricGroup.style.cssText = `
-        position: absolute;
-        left: ${cellData.x}px;
-        top: ${cellData.y}px;
-        width: ${cellData.w}px;
-        height: ${cellData.h}px;
+      // Create cell-content wrapper (groups character + modifiers)
+      const cellContent = document.createElement('span');
+      cellContent.className = 'cell-content';
+      cellContent.style.cssText = `
+        position: relative;
+        display: inline-block;
       `;
-      pitchLyricGroup.appendChild(pitchOctaveGroup);
+      cellContent.appendChild(cellChar);
 
       // Check if there's a lyric for this cell (match by x position)
       const cellCenterX = Math.round(cellData.x + cellData.w / 2);
       const matchingLyric = lyricsByXPosition.get(cellCenterX);
 
+      // Calculate container width to accommodate lyric if present
+      let containerWidth = cellData.w;
+      if (matchingLyric) {
+        // Estimate lyric width (approximate, for sizing the container)
+        // Each character is roughly 6-8px in text-sm italic
+        const estimatedLyricWidth = matchingLyric.text.length * 7;
+        containerWidth = Math.max(cellData.w, estimatedLyricWidth);
+      }
+
+      // Create cell-container wrapper - positioned at cell location (anchor for slurs/beats)
+      const cellContainer = document.createElement('span');
+      // Add only cell-container base class plus slur/beat-loop marker classes
+      const containerClasses = ['cell-container', ...cellData.classes.filter(cls =>
+        cls.includes('slur-') || cls.includes('beat-loop-')
+      )];
+      cellContainer.className = containerClasses.join(' ');
+
+      cellContainer.style.cssText = `
+        position: absolute;
+        left: ${cellData.x}px;
+        top: ${cellData.y}px;
+        width: ${containerWidth}px;
+        height: ${cellData.h}px;
+      `;
+      cellContainer.appendChild(cellContent);
+
       if (matchingLyric) {
         const lyricSpan = document.createElement('span');
-        lyricSpan.className = 'lyric-syllable text-sm';
+        lyricSpan.className = 'cell-text lyric text-sm';
         lyricSpan.textContent = matchingLyric.text;
         lyricSpan.style.cssText = `
           position: absolute;
@@ -656,17 +679,17 @@ class DOMRenderer {
           pointer-events: none;
           white-space: nowrap;
         `;
-        pitchLyricGroup.appendChild(lyricSpan);
+        cellContainer.appendChild(lyricSpan);
         lyricsByXPosition.delete(cellCenterX); // Mark as used
       }
 
-      line.appendChild(pitchLyricGroup);
+      line.appendChild(cellContainer);
     });
 
     // Render any remaining lyrics that didn't match a cell (shouldn't happen, but handle gracefully)
     lyricsByXPosition.forEach(lyric => {
       const span = document.createElement('span');
-      span.className = 'lyric-syllable text-sm';
+      span.className = 'cell-text lyric text-sm';
       span.textContent = lyric.text;
       span.style.cssText = `
         position: absolute;

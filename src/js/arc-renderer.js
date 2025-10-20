@@ -79,9 +79,9 @@ class ArcRenderer {
 
     const slurs = [];
 
-    // Extract slur spans from each line
-    for (const renderLine of displayList.lines) {
-      const lineSlurs = this.extractSlursFromLine(renderLine);
+    // Extract slur spans from each line in DOM
+    for (let i = 0; i < displayList.lines.length; i++) {
+      const lineSlurs = this.extractSlursFromLine(i);
       slurs.push(...lineSlurs);
     }
 
@@ -108,9 +108,9 @@ class ArcRenderer {
 
     const beatLoops = [];
 
-    // Extract beat loop spans from each line
-    for (const renderLine of displayList.lines) {
-      const lineBeatLoops = this.extractBeatLoopsFromLine(renderLine);
+    // Extract beat loop spans from each line in DOM
+    for (let i = 0; i < displayList.lines.length; i++) {
+      const lineBeatLoops = this.extractBeatLoopsFromLine(i);
       beatLoops.push(...lineBeatLoops);
     }
 
@@ -126,89 +126,127 @@ class ArcRenderer {
 
   /**
    * Extract slur spans from a rendered line
-   * Scans cells for SlurIndicator markers
+   * Scans DOM for cell-container elements with slur-first/slur-last classes
    *
-   * @param {Object} renderLine - RenderLine from DisplayList
+   * @param {number} lineIndex - Line index to find in DOM
    * @returns {Array} Array of slur span objects
    */
-  extractSlursFromLine(renderLine) {
+  extractSlursFromLine(lineIndex) {
     const slurs = [];
     let slurStart = null;
 
-    for (let i = 0; i < renderLine.cells.length; i++) {
-      const cellData = renderLine.cells[i];
+    // Find the rendered line in DOM
+    const lineElement = document.querySelector(`[data-line="${lineIndex}"]`);
+    if (!lineElement) {
+      return slurs;
+    }
 
+    // Get all cell-containers in this line
+    const containers = lineElement.querySelectorAll('.cell-container');
+
+    containers.forEach((container, i) => {
       // Check for slur-first class (indicates SlurStart)
-      const isSlurStart = cellData.classes.includes('slur-first');
-      const isSlurEnd = cellData.classes.includes('slur-last');
+      const isSlurStart = container.classList.contains('slur-first');
+      const isSlurEnd = container.classList.contains('slur-last');
 
       if (isSlurStart) {
         slurStart = {
           cellIndex: i,
-          cellData: cellData,
-          lineIndex: renderLine.line_index
+          container: container,
+          lineIndex: lineIndex
         };
       }
 
       if (isSlurEnd && slurStart) {
+        // Extract position from container styles
+        const startRect = slurStart.container.getBoundingClientRect();
+        const endRect = container.getBoundingClientRect();
+
         // Create slur span
         slurs.push({
-          id: `slur-${renderLine.line_index}-${slurStart.cellIndex}-${i}`,
-          startCell: slurStart.cellData,
-          endCell: cellData,
-          lineIndex: renderLine.line_index,
+          id: `slur-${lineIndex}-${slurStart.cellIndex}-${i}`,
+          startCell: {
+            x: slurStart.container.offsetLeft,
+            y: slurStart.container.offsetTop,
+            w: slurStart.container.offsetWidth,
+            h: slurStart.container.offsetHeight
+          },
+          endCell: {
+            x: container.offsetLeft,
+            y: container.offsetTop,
+            w: container.offsetWidth,
+            h: container.offsetHeight
+          },
+          lineIndex: lineIndex,
           startIndex: slurStart.cellIndex,
           endIndex: i
         });
 
         slurStart = null; // Reset for next slur
       }
-    }
+    });
 
     return slurs;
   }
 
   /**
    * Extract beat loop spans from a rendered line
-   * Scans cells for beat loop role markers
+   * Scans DOM for cell-container elements with beat-loop-first/beat-loop-last classes
    *
-   * @param {Object} renderLine - RenderLine from DisplayList
+   * @param {number} lineIndex - Line index to find in DOM
    * @returns {Array} Array of beat loop span objects
    */
-  extractBeatLoopsFromLine(renderLine) {
+  extractBeatLoopsFromLine(lineIndex) {
     const beatLoops = [];
     let loopStart = null;
 
-    for (let i = 0; i < renderLine.cells.length; i++) {
-      const cellData = renderLine.cells[i];
+    // Find the rendered line in DOM
+    const lineElement = document.querySelector(`[data-line="${lineIndex}"]`);
+    if (!lineElement) {
+      return beatLoops;
+    }
 
+    // Get all cell-containers in this line
+    const containers = lineElement.querySelectorAll('.cell-container');
+
+    containers.forEach((container, i) => {
       // Check for beat loop role markers
-      const isLoopStart = cellData.classes.includes('beat-loop-first');
-      const isLoopEnd = cellData.classes.includes('beat-loop-last');
-      const isLoopMiddle = cellData.classes.includes('beat-loop-middle');
+      const isLoopStart = container.classList.contains('beat-loop-first');
+      const isLoopEnd = container.classList.contains('beat-loop-last');
+      const isLoopMiddle = container.classList.contains('beat-loop-middle');
 
       if (isLoopStart) {
         loopStart = {
           cellIndex: i,
-          cellData: cellData,
-          lineIndex: renderLine.line_index
+          container: container,
+          lineIndex: lineIndex
         };
       }
 
       if (isLoopEnd && loopStart) {
         // Create beat loop span
         beatLoops.push({
-          id: `beat-loop-${renderLine.line_index}-${loopStart.cellIndex}-${i}`,
-          startCell: loopStart.cellData,
-          endCell: cellData,
-          lineIndex: renderLine.line_index,
+          id: `beat-loop-${lineIndex}-${loopStart.cellIndex}-${i}`,
+          startCell: {
+            x: loopStart.container.offsetLeft,
+            y: loopStart.container.offsetTop,
+            w: loopStart.container.offsetWidth,
+            h: loopStart.container.offsetHeight
+          },
+          endCell: {
+            x: container.offsetLeft,
+            y: container.offsetTop,
+            w: container.offsetWidth,
+            h: container.offsetHeight
+          },
+          lineIndex: lineIndex,
           startIndex: loopStart.cellIndex,
           endIndex: i
         });
 
         loopStart = null; // Reset for next loop
       }
-    }
+    });
 
     return beatLoops;
   }
