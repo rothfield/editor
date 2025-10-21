@@ -104,7 +104,7 @@ export class OSMDRenderer {
                 newSystemFromXML: true  // Respect <print new-system="yes"/> directives
             });
 
-            this.osmd.setLogLevel('error');
+            this.osmd.setLogLevel('warn');
 
             // Adjust spacing parameters
             const engravingRules = this.osmd.EngravingRules;
@@ -121,6 +121,7 @@ export class OSMDRenderer {
 
         // Skip if unchanged (dirty flag check - e.g., arrow key navigation)
         if (hash === this.lastMusicXmlHash) {
+            console.log('[OSMD] MusicXML unchanged, skipping render');
             return;
         }
 
@@ -131,6 +132,7 @@ export class OSMDRenderer {
                 if (myToken !== this.renderToken) return; // canceled by newer update
                 document.getElementById(this.containerId).innerHTML = cachedSvg;
                 this.lastMusicXmlHash = hash; // Track what we rendered
+                console.log('[OSMD] Rendered from cache (<50ms)');
 
                 // Still need to load MusicXML for audio playback even when using cached visual
                 await this.init();
@@ -143,6 +145,7 @@ export class OSMDRenderer {
             }
 
             // Cache miss - perform full render (FR-032c: invalidate on content change)
+            console.log('[OSMD] Cache miss, rendering...');
             await this.init();
             await this.osmd.load(musicxml);
             if (myToken !== this.renderToken) return; // canceled by newer update
@@ -156,6 +159,7 @@ export class OSMDRenderer {
             await this.setCachedRender(hash, renderedSvg);
 
             this.lastMusicXmlHash = hash; // Track what we rendered
+            console.log('[OSMD] Rendered successfully and cached');
 
             // Reload audio player with new score if it exists
             await this.reloadAudioPlayerIfNeeded();
@@ -170,8 +174,11 @@ export class OSMDRenderer {
     async reloadAudioPlayerIfNeeded() {
         if (this.audioPlayer && this.osmd && this.osmd.Sheet) {
             try {
+                console.log('[OSMD] Reloading audio player with updated score...');
                 await this.audioPlayer.loadScore(this.osmd);
+                console.log('[OSMD] Audio player reloaded with new content');
             } catch (e) {
+                console.warn('[OSMD] Failed to reload audio player:', e);
             }
         }
     }

@@ -127,7 +127,7 @@ class DOMRenderer {
         text-align: left;
         color: #000;
         font-size: ${BRAVURA_FONT_SIZE}px;
-        line-height: ${BASE_FONT_SIZE * 0.1}px;
+        line-height: 1;
         pointer-events: none;
         z-index: 4;
       }
@@ -144,7 +144,7 @@ class DOMRenderer {
         text-align: left;
         color: #000;
         font-size: ${BRAVURA_FONT_SIZE}px;
-        line-height: ${BASE_FONT_SIZE * 0.1}px;
+        line-height: 1;
         pointer-events: none;
         z-index: 4;
       }
@@ -161,7 +161,7 @@ class DOMRenderer {
         text-align: left;
         color: #000;
         font-size: ${BRAVURA_FONT_SIZE}px;
-        line-height: ${BASE_FONT_SIZE * 0.1}px;
+        line-height: 1;
         pointer-events: none;
         z-index: 4;
       }
