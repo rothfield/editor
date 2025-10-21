@@ -71,6 +71,7 @@ impl LayoutEngine {
         let mut cell_width_offset = 0;
         let mut syllable_width_offset = 0;
         let mut char_width_offset = 0;
+        let mut cumulative_y = 0.0; // Track cumulative Y offset for lines
 
         let line_computer = LayoutLineComputer::new(&self.beat_deriver);
 
@@ -111,10 +112,14 @@ impl LayoutEngine {
                 line,
                 line_idx,
                 config,
+                cumulative_y,
                 cell_widths,
                 syllable_widths,
                 char_widths,
             );
+
+            // Accumulate Y offset for next line
+            cumulative_y += render_line.height;
 
             cell_width_offset += line.cells.len();
             syllable_width_offset += syllable_count;

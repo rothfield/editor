@@ -936,9 +936,9 @@ pub fn set_line_tala(
         return Err(JsValue::from_str("Line index out of bounds"));
     }
 
-    // Validate tala format (only digits 0-9 and +)
-    if !tala.chars().all(|c| c.is_ascii_digit() || c == '+') {
-        wasm_error!("Invalid tala format: '{}' (only digits 0-9 and + allowed)", tala);
+    // Validate tala format (allow empty to clear, or only digits 0-9 and +)
+    if !tala.is_empty() && !tala.chars().all(|c| c.is_ascii_digit() || c == '+') {
+        wasm_error!("Invalid tala format: '{}' (only digits 0-9, + allowed, or empty to clear)", tala);
         return Err(JsValue::from_str("Invalid tala format"));
     }
 

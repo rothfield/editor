@@ -422,7 +422,7 @@ class DOMRenderer {
 
     // Render each line from DisplayList
     displayList.lines.forEach((renderLine, lineIdx) => {
-      const lineElement = this.renderLineFromDisplayList(renderLine);
+      const lineElement = this.renderLineFromDisplayList(renderLine, displayList);
       this.element.appendChild(lineElement);
     });
 
@@ -488,11 +488,20 @@ class DOMRenderer {
    * @param {Object} renderLine - RenderLine data from DisplayList
    * @returns {HTMLElement} The created line element
    */
-  renderLineFromDisplayList(renderLine) {
+  renderLineFromDisplayList(renderLine, displayList) {
     const line = document.createElement('div');
     line.className = 'notation-line';
     line.dataset.line = renderLine.line_index;
     line.style.cssText = `position:relative; height:${renderLine.height}px; width:100%;`;
+
+    // Calculate cumulative Y offset for this line (sum of all previous line heights)
+    let lineStartY = 0;
+    if (displayList && displayList.lines) {
+      for (let i = 0; i < renderLine.line_index; i++) {
+        lineStartY += displayList.lines[i].height;
+      }
+    }
+    line.dataset.lineStartY = lineStartY;
 
     // Render label if present
     if (renderLine.label) {
@@ -666,10 +675,13 @@ class DOMRenderer {
       )];
       cellContainer.className = containerClasses.join(' ');
 
+      // Convert absolute Y to relative Y within this line
+      const relativeY = cellData.y - lineStartY;
+
       cellContainer.style.cssText = `
         position: absolute;
         left: ${cellData.x}px;
-        top: ${cellData.y}px;
+        top: ${relativeY}px;
         width: ${cellData.w}px;
         height: ${cellData.h}px;
       `;
@@ -681,17 +693,18 @@ class DOMRenderer {
       line.appendChild(cellContainer);
     });
 
-    // Render all lyrics using absolute positions from WASM DisplayList
-    // WASM computed X, Y - JavaScript just renders at those exact coordinates
+    // Render all lyrics using positions from WASM DisplayList
+    // Convert absolute Y to relative Y within this line
     renderLine.lyrics.forEach(lyric => {
       const lyricSpan = document.createElement('span');
       lyricSpan.className = 'cell-text lyric';
       lyricSpan.textContent = lyric.text;
       const lyricFontSize = BASE_FONT_SIZE * 0.5; // 1/2 of base font size
+      const lyricRelativeY = lyric.y - lineStartY;
       lyricSpan.style.cssText = `
         position: absolute;
         left: ${lyric.x}px;
-        top: ${lyric.y}px;
+        top: ${lyricRelativeY}px;
         font-size: ${lyricFontSize}px;
         font-family: 'Segoe UI', 'Helvetica Neue', system-ui, sans-serif;
         font-style: italic;
@@ -703,14 +716,16 @@ class DOMRenderer {
     });
 
     // Render tala (positioned characters from DisplayList)
+    // Convert absolute Y to relative Y within this line
     renderLine.tala.forEach(talaChar => {
       const span = document.createElement('span');
       span.className = 'tala-char text-xs';
       span.textContent = talaChar.text;
+      const talaRelativeY = talaChar.y - lineStartY;
       span.style.cssText = `
         position: absolute;
         left: ${talaChar.x}px;
-        top: ${talaChar.y}px;
+        top: ${talaRelativeY}px;
         transform: translateX(-50%);
         color: #4b5563;
         font-weight: 600;

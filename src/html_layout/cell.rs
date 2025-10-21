@@ -25,6 +25,7 @@ impl CellStyleBuilder {
         line_idx: usize,
         cumulative_x: f32,
         config: &LayoutConfig,
+        line_y_offset: f32,
         cell_widths: &[f32],
         char_widths: &[f32],
         char_width_offset: &mut usize,
@@ -101,8 +102,8 @@ impl CellStyleBuilder {
         // cursor_right should be at the position after the last character
         let cursor_right = *char_positions.last().unwrap_or(&(cumulative_x + actual_cell_width));
 
-        // Calculate Y position for cells
-        let y = config.cell_y_offset;
+        // Calculate Y position for cells (with line offset for multi-line documents)
+        let y = line_y_offset + config.cell_y_offset;
 
         RenderCell {
             char: cell.char.clone(),

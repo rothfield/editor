@@ -1392,7 +1392,7 @@ class MusicNotationEditor {
     }
 
     // Find the line element
-    const lineElement = this.renderer.element.querySelector(`[data-line="0"]`);
+    const lineElement = this.renderer.element.querySelector(`[data-line="${this.getCurrentStave()}"]`);
     if (!lineElement) {
       console.warn('❌ Line element not found, cannot render selection');
       return;
@@ -2094,8 +2094,9 @@ class MusicNotationEditor {
         // Preserve the state field before WASM call (it's skipped during serialization)
         const preservedState = this.theDocument.state;
 
-        // Call WASM setStaveTala function
-        const updatedDocument = await this.wasmModule.setLineTala(this.theDocument, 0, talaString);
+        // Call WASM setLineTala function with current stave
+        const currentStave = this.getCurrentStave();
+        const updatedDocument = await this.wasmModule.setLineTala(this.theDocument, currentStave, talaString);
 
         // Restore the state field after WASM call
         updatedDocument.state = preservedState;
@@ -2115,7 +2116,7 @@ class MusicNotationEditor {
         }
 
         this.theDocument = updatedDocument;
-        console.log('📝 After WASM setStaveTala, line[0].tala =', updatedDocument.lines[0]?.tala);
+        console.log(`📝 After WASM setLineTala, line[${currentStave}].tala =`, updatedDocument.lines[currentStave]?.tala);
         this.addToConsoleLog(`Tala set to: ${talaString}`);
         await this.render();
       }

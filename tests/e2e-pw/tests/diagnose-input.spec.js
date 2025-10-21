@@ -7,6 +7,10 @@ import { typeInEditor, waitForEditorReady } from '../utils/editor.helpers';
  * Usage:
  *   CHARS=":| " npx playwright test tests/e2e-pw/tests/diagnose-input.spec.js
  *   CHARS="1 2 3" npx playwright test tests/e2e-pw/tests/diagnose-input.spec.js
+ *   CHARS="1{ArrowLeft}11" npx playwright test tests/e2e-pw/tests/diagnose-input.spec.js
+ *   npx playwright test tests/e2e-pw/tests/diagnose-input.spec.js -- "1{ArrowLeft}11"
+ *
+ * Special keys supported: Enter, ArrowLeft, ArrowRight, ArrowUp, ArrowDown, Backspace, Delete, Home, End, Tab, Escape
  */
 
 test.describe('Diagnostic: Input Sequence Analysis', () => {
@@ -58,7 +62,23 @@ test.describe('Diagnostic: Input Sequence Analysis', () => {
         return tabPanel.textContent;
       };
 
-      // Get all cell data from first line
+      // Get all cell data from all lines
+      const allLinesData = doc?.lines?.map((line, lineIdx) => ({
+        lineIndex: lineIdx,
+        cellCount: line?.cells?.length || 0,
+        content: line?.cells?.map(c => c.char).join('') || '',
+        cells: line?.cells?.map((cell, idx) => ({
+          index: idx,
+          char: cell.char,
+          kind: cell.kind?.name || cell.kind,
+          continuation: cell.continuation,
+          col: cell.col,
+          octave: cell.octave,
+          slur_indicator: cell.slur_indicator?.name || cell.slur_indicator
+        })) || []
+      })) || [];
+
+      // Get cell data from first line for backward compatibility
       const line = doc?.lines?.[0];
       const cellsData = line?.cells?.map((cell, idx) => ({
         index: idx,
@@ -112,6 +132,7 @@ test.describe('Diagnostic: Input Sequence Analysis', () => {
       }) : [];
 
       return {
+        allLines: allLinesData,
         lineData: {
           cellCount: line?.cells?.length || 0,
           content: line?.cells?.map(c => c.char).join('') || '',
@@ -135,6 +156,15 @@ test.describe('Diagnostic: Input Sequence Analysis', () => {
     });
 
     // Print diagnostics
+    console.log('\n📊 DOCUMENT SUMMARY');
+    console.log('─'.repeat(80));
+    console.log(`Total lines: ${diagnostics.allLines?.length || 0}`);
+    if (diagnostics.allLines?.length > 0) {
+      diagnostics.allLines.forEach((lineInfo, lineIdx) => {
+        console.log(`  Line ${lineIdx}: "${lineInfo.content}" (${lineInfo.cellCount} cells)`);
+      });
+    }
+
     console.log('\n📊 CELL DATA (from Document.lines[0])');
     console.log('─'.repeat(80));
     if (diagnostics.lineData?.cells) {
@@ -179,7 +209,7 @@ test.describe('Diagnostic: Input Sequence Analysis', () => {
 
     if (diagnostics.tabData?.layout) {
       console.log('\n▶️  LAYOUT TAB:');
-      console.log(diagnostics.tabData.layout.substring(0, 500));
+      console.log(diagnostics.tabData.layout.substring(0, 2000));
     }
 
     if (diagnostics.tabData?.model) {

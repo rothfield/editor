@@ -27,15 +27,53 @@ export async function getEditorState(page) {
 }
 
 /**
- * Type text into the editor with optional delay
+ * Parse input sequence supporting special keys
+ * Examples: "hello", "1 2 3", "{Enter}", "{ArrowLeft}3", "hello{Enter}{ArrowLeft}world"
+ * Special keys: Enter, ArrowLeft, ArrowRight, ArrowUp, ArrowDown, Backspace, Delete, Home, End, Tab, Escape
+ */
+function parseInputSequence(input) {
+  const sequence = [];
+  let i = 0;
+
+  while (i < input.length) {
+    if (input[i] === '{') {
+      // Find matching }
+      const endIdx = input.indexOf('}', i);
+      if (endIdx === -1) break;
+
+      const keyName = input.substring(i + 1, endIdx);
+      sequence.push({ type: 'key', name: keyName });
+      i = endIdx + 1;
+    } else {
+      // Regular character
+      sequence.push({ type: 'char', value: input[i] });
+      i++;
+    }
+  }
+
+  return sequence;
+}
+
+/**
+ * Type text into the editor with optional delay, supporting special keys
+ * Examples: typeInEditor(page, "1{ArrowLeft}2", { delay: 50 })
  */
 export async function typeInEditor(page, text, options = {}) {
   const { delay = 0 } = options;
   await page.focus('#notation-editor');
-  if (delay > 0) {
-    await page.keyboard.type(text, { delay });
-  } else {
-    await page.keyboard.type(text);
+
+  const sequence = parseInputSequence(text);
+
+  for (const item of sequence) {
+    if (item.type === 'key') {
+      await page.keyboard.press(item.name);
+    } else {
+      await page.keyboard.type(item.value);
+    }
+
+    if (delay > 0) {
+      await page.waitForTimeout(delay);
+    }
   }
 }
 

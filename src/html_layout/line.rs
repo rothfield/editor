@@ -27,6 +27,7 @@ impl<'a> LayoutLineComputer<'a> {
         line: &Line,
         line_idx: usize,
         config: &LayoutConfig,
+        line_y_offset: f32,
         cell_widths: &[f32],
         syllable_widths: &[f32],
         char_widths: &[f32],
@@ -66,6 +67,7 @@ impl<'a> LayoutLineComputer<'a> {
                 line_idx,
                 cumulative_x,
                 config,
+                line_y_offset,
                 &effective_widths,  // Use effective widths (expanded for syllables)
                 char_widths,
                 &mut char_width_offset,
@@ -87,10 +89,11 @@ impl<'a> LayoutLineComputer<'a> {
             &cells,
             &beats,
             config,
+            line_y_offset,
         );
 
         // Position tala characters
-        let tala = self.position_tala(&line.tala, &line.cells, &cells, config);
+        let tala = self.position_tala(&line.tala, &line.cells, &cells, config, line_y_offset);
 
         // Calculate line height based on content
         let has_beats = beats.iter().any(|b| b.end - b.start >= 1);
@@ -325,6 +328,7 @@ impl<'a> LayoutLineComputer<'a> {
         render_cells: &[RenderCell],
         beats: &[BeatSpan],
         config: &LayoutConfig,
+        line_y_offset: f32,
     ) -> Vec<RenderLyric> {
         let mut result = Vec::new();
         let lyrics_trimmed = lyrics_text.trim();
@@ -343,7 +347,8 @@ impl<'a> LayoutLineComputer<'a> {
         let has_beats = beats.iter().any(|b| b.end - b.start >= 1);
         let has_octave_dots = original_cells.iter().any(|c| c.octave != 0);
 
-        let lyrics_y = if has_beats {
+        // Add line_y_offset to calculate absolute Y position for the document
+        let lyrics_y = line_y_offset + if has_beats {
             cell_bottom + BEAT_LOOP_GAP + BEAT_LOOP_HEIGHT + LYRICS_GAP
         } else if has_octave_dots {
             cell_bottom + (OCTAVE_DOT_OFFSET_EM * config.font_size) + LYRICS_GAP
@@ -391,6 +396,7 @@ impl<'a> LayoutLineComputer<'a> {
         original_cells: &[Cell],
         render_cells: &[RenderCell],
         _config: &LayoutConfig,
+        line_y_offset: f32,
     ) -> Vec<RenderTala> {
         if tala.is_empty() {
             return Vec::new();
@@ -410,13 +416,14 @@ impl<'a> LayoutLineComputer<'a> {
             .collect();
 
         // Distribute tala characters to barlines
+        // Add line_y_offset to calculate absolute Y position for the document
         tala.chars()
             .enumerate()
             .take(barline_positions.len())
             .map(|(idx, ch)| RenderTala {
                 text: ch.to_string(),
                 x: barline_positions[idx],
-                y: 8.0, // TALA_VERTICAL_OFFSET constant from JS
+                y: line_y_offset + 8.0, // TALA_VERTICAL_OFFSET constant from JS
             })
             .collect()
     }

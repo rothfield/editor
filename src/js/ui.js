@@ -818,11 +818,10 @@ class UI {
     const currentLyrics = this.getLyrics();
     const newLyrics = prompt('Enter lyrics:', currentLyrics);
 
-    if (newLyrics !== null && newLyrics.trim() !== '') {
-      this.updateLyricsDisplay(newLyrics);
-
+    // Allow empty string to clear lyrics - all validation and updates handled in WASM
+    if (newLyrics !== null) {
       if (this.editor && this.editor.theDocument && this.editor.theDocument.lines.length > 0 && this.editor.wasmModule) {
-        // Call WASM setLineLyrics function
+        // Call WASM setLineLyrics function (handles empty string to clear)
         try {
           // Preserve the state field and beats array before WASM call
           const preservedState = this.editor.theDocument.state;
@@ -838,7 +837,8 @@ class UI {
           });
 
           this.editor.theDocument = updatedDocument;
-          this.editor.addToConsoleLog(`Lyrics set to: ${newLyrics}`);
+          const displayMsg = newLyrics === '' ? 'Lyrics cleared' : `Lyrics set to: ${newLyrics}`;
+          this.editor.addToConsoleLog(displayMsg);
           await this.editor.render();
         } catch (error) {
           console.error('Failed to set lyrics via WASM:', error);
@@ -851,17 +851,18 @@ class UI {
   /**
      * Set tala
      */
-  setTala() {
+  async setTala() {
     const currentTala = this.getTala();
-    const newTala = prompt('Enter tala (digits 0-9+):', currentTala);
+    const newTala = prompt('Enter tala (digits 0-9+ or empty to clear):', currentTala);
 
-    if (newTala !== null && newTala.trim() !== '') {
-      // Validate tala input
-      if (this.validateTalaInput(newTala)) {
+    // Allow empty string to clear tala
+    if (newTala !== null) {
+      // Validate tala input (empty is allowed to clear)
+      if (newTala === '' || this.validateTalaInput(newTala)) {
         this.updateTalaDisplay(newTala);
 
         if (this.editor) {
-          this.editor.setTala(newTala);
+          await this.editor.setTala(newTala);
         }
       } else {
         console.error('Invalid tala format. Only digits 0-9 and + are allowed.');
@@ -1095,8 +1096,11 @@ class UI {
 
   getTala() {
     const lineIdx = this.getCurrentLineIndex();
-    return this.editor?.theDocument?.lines?.length > lineIdx
+    const tala = this.editor?.theDocument?.lines?.length > lineIdx
       ? this.editor.theDocument.lines[lineIdx].tala || '' : '';
+    console.log(`🎯 getTala: lineIdx=${lineIdx}, tala="${tala}", lines.length=${this.editor?.theDocument?.lines?.length}`);
+    console.log(`   Line[${lineIdx}]:`, this.editor?.theDocument?.lines?.[lineIdx]);
+    return tala;
   }
 
   getLineKeySignature() {
