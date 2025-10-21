@@ -121,7 +121,7 @@ class DOMRenderer {
         font-family: 'Bravura', serif;
         position: absolute;
         left: 0;
-        top: calc(50% + ${BRAVURA_VERTICAL_OFFSET}px);
+        top: calc(50% + ${BRAVURA_VERTICAL_OFFSET}px - ${BRAVURA_FONT_SIZE * 0.5}px);
         transform: translateY(-50%);
         width: 200%; /* Span 2 cells */
         text-align: left;
@@ -138,7 +138,7 @@ class DOMRenderer {
         font-family: 'Bravura', serif;
         position: absolute;
         left: 0;
-        top: calc(50% + ${BRAVURA_VERTICAL_OFFSET}px);
+        top: calc(50% + ${BRAVURA_VERTICAL_OFFSET}px - ${BRAVURA_FONT_SIZE * 0.5}px);
         transform: translateY(-50%);
         width: 200%; /* Span 2 cells */
         text-align: left;
@@ -155,7 +155,7 @@ class DOMRenderer {
         font-family: 'Bravura', serif;
         position: absolute;
         left: 0;
-        top: calc(50% + ${BRAVURA_VERTICAL_OFFSET}px);
+        top: calc(50% + ${BRAVURA_VERTICAL_OFFSET}px - ${BRAVURA_FONT_SIZE * 0.5}px);
         transform: translateY(-50%);
         width: 200%; /* Span 2 cells */
         text-align: left;
