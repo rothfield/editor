@@ -54,6 +54,7 @@
         <button onclick="testWASMModule()">Test WASM Module Loading</button>
         <button onclick="testSlurAPI()">Test Slur API Functions</button>
         <button onclick="testFullSlurWorkflow()">Test Full Slur Workflow</button>
+        <button onclick="testSlurCell11()">Test Slur with Cell 11 (Failing)</button>
         <button onclick="clearOutput()">Clear Output</button>
         <div id="testOutput"></div>
     </div>
@@ -199,6 +200,86 @@
 
             } catch (error) {
                 log(`❌ Full workflow test failed: ${error.message}`, 'error');
+                console.error('Full error:', error);
+            }
+        };
+
+        window.testSlurCell11 = function() {
+            if (!wasmModule) {
+                log("❌ WASM module not loaded. Please load WASM first.", 'error');
+                return;
+            }
+
+            try {
+                log("Testing slur application with cell 11...");
+
+                // Create 12 cells (0-11)
+                const testText = "123456789ABC";
+                const cells = parseText(testText, 1); // Number pitch system
+                log(`✅ Created test cells: ${cells.length} cells (0-11)`);
+
+                // Display all cells
+                cells.forEach((cell, index) => {
+                    log(`Cell ${index}: "${cell.char}"`);
+                });
+
+                // Test 1: Apply slur from cell 10 to 11 (should work)
+                log("\n--- Test 1: Slur from cell 10 to 11 ---");
+                let result1 = applySlur(cells, 10, 12);
+                log(`Applied slur to cells 10-11 (end=12, exclusive)`);
+                log(`Cell 10 slurIndicator: ${result1[10].slurIndicator} (should be 1 for SlurStart)`);
+                log(`Cell 11 slurIndicator: ${result1[11].slurIndicator} (should be 2 for SlurEnd)`);
+
+                if (result1[10].slurIndicator === 1 && result1[11].slurIndicator === 2) {
+                    log("✅ Test 1 PASSED", 'success');
+                } else {
+                    log("❌ Test 1 FAILED - Cell 11 slur not applied correctly", 'error');
+                }
+
+                // Test 2: Apply slur with cell 11 as start
+                log("\n--- Test 2: Slur starting at cell 11 ---");
+                let result2 = applySlur(cells, 11, 12);
+                log(`Applied slur starting at cell 11 (start=11, end=12)`);
+                log(`Cell 11 slurIndicator: ${result2[11].slurIndicator} (should be 0 or skipped - only 1 cell)`);
+
+                if (result2[11].slurIndicator === 0) {
+                    log("⚠️  Test 2: Single cell doesn't get slur (expected behavior)", 'info');
+                } else {
+                    log("❌ Test 2 FAILED - Single cell shouldn't have slur", 'error');
+                }
+
+                // Test 3: Apply slur across all 12 cells
+                log("\n--- Test 3: Slur across all cells (0-11) ---");
+                let result3 = applySlur(cells, 0, 12);
+                log(`Applied slur across entire line (0-12)`);
+                log(`Cell 0 slurIndicator: ${result3[0].slurIndicator} (should be 1 for SlurStart)`);
+                log(`Cell 5 slurIndicator: ${result3[5].slurIndicator} (should be 0 for middle)`);
+                log(`Cell 11 slurIndicator: ${result3[11].slurIndicator} (should be 2 for SlurEnd)`);
+
+                if (result3[0].slurIndicator === 1 && result3[11].slurIndicator === 2) {
+                    log("✅ Test 3 PASSED", 'success');
+                } else {
+                    log("❌ Test 3 FAILED - Slur endpoints incorrect", 'error');
+                }
+
+                // Test 4: Apply slur to cells 9-11
+                log("\n--- Test 4: Slur from cell 9 to 11 ---");
+                let result4 = applySlur(cells, 9, 12);
+                log(`Applied slur to cells 9-11 (start=9, end=12)`);
+                log(`Cell 9 slurIndicator: ${result4[9].slurIndicator} (should be 1 for SlurStart)`);
+                log(`Cell 10 slurIndicator: ${result4[10].slurIndicator} (should be 0 for middle)`);
+                log(`Cell 11 slurIndicator: ${result4[11].slurIndicator} (should be 2 for SlurEnd)`);
+
+                if (result4[9].slurIndicator === 1 && result4[11].slurIndicator === 2) {
+                    log("✅ Test 4 PASSED", 'success');
+                } else {
+                    log("❌ Test 4 FAILED - Slur across 3 cells incorrect", 'error');
+                }
+
+                log("\n✅ Cell 11 slur tests completed!", 'success');
+
+            } catch (error) {
+                log(`❌ Cell 11 test failed: ${error.message}`, 'error');
                 console.error('Full error:', error);
             }
         };

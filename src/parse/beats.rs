@@ -67,29 +67,23 @@ impl BeatDeriver {
     /// Grammar: beat-element = pitched-element | unpitched-element | breath-mark
     /// Beats are separated by anything that is NOT a beat-element (whitespace, text, barline, etc.)
     pub fn extract_implicit_beats(&self, cells: &[Cell]) -> Vec<BeatSpan> {
-        log::info!("🎵 BeatDeriver: extracting beats from {} cells", cells.len());
-
         let mut beats = Vec::new();
         let mut beat_start = None;
         let mut current_duration = 1.0;
 
         for (index, cell) in cells.iter().enumerate() {
             let is_beat = self.is_beat_element(cell);
-            log::info!("  Cell {}: '{}' kind={:?} is_beat_element={}",
-                index, cell.char, cell.kind, is_beat);
 
             if is_beat {
                 // This cell is part of a beat
                 if beat_start.is_none() {
                     beat_start = Some(index);
-                    log::info!("    ▶️ Starting new beat at {}", index);
                 }
                 // Continue the current beat
             } else {
                 // This cell is NOT a beat-element (separator: whitespace, text, barline, etc.)
                 // End current beat if one is active
                 if let Some(start) = beat_start {
-                    log::info!("    ⏹️ Ending beat: start={} end={}", start, index - 1);
                     beats.push(BeatSpan::new(start, index - 1, current_duration));
                     beat_start = None;
                     current_duration = 1.0;
@@ -99,11 +93,9 @@ impl BeatDeriver {
 
         // Handle trailing beat
         if let Some(start) = beat_start {
-            log::info!("  ⏹️ Ending trailing beat: start={} end={}", start, cells.len() - 1);
             beats.push(BeatSpan::new(start, cells.len() - 1, current_duration));
         }
 
-        log::info!("✅ BeatDeriver: extracted {} beats", beats.len());
         beats
     }
 

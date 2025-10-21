@@ -47,6 +47,51 @@ pub struct RenderLine {
 
     /// Calculated height for this line
     pub height: f32,
+
+    /// Slur arcs to render (computed with line y-offset already factored in)
+    #[serde(default)]
+    pub slurs: Vec<RenderArc>,
+
+    /// Beat loop arcs to render (computed with line y-offset already factored in)
+    #[serde(default)]
+    pub beat_loops: Vec<RenderArc>,
+}
+
+/// A rendered arc (slur or beat loop) with pre-computed bezier curve control points
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct RenderArc {
+    /// Unique identifier for this arc
+    pub id: String,
+
+    /// Start X position (center of first note)
+    pub start_x: f32,
+
+    /// Start Y position (top/bottom of first note depending on direction)
+    pub start_y: f32,
+
+    /// End X position (center of last note)
+    pub end_x: f32,
+
+    /// End Y position (top/bottom of last note depending on direction)
+    pub end_y: f32,
+
+    /// Control point 1 X
+    pub cp1_x: f32,
+
+    /// Control point 1 Y
+    pub cp1_y: f32,
+
+    /// Control point 2 X
+    pub cp2_x: f32,
+
+    /// Control point 2 Y
+    pub cp2_y: f32,
+
+    /// Arc color (hex string)
+    pub color: String,
+
+    /// Arc direction: "up" for slurs, "down" for beat loops
+    pub direction: String,
 }
 
 /// A single cell with all rendering information

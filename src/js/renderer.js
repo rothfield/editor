@@ -48,7 +48,7 @@ class DOMRenderer {
     const style = document.createElement('style');
     style.textContent = `
       /* Base cell styles */
-      .cell-char {
+      .char-cell {
         padding: 0;
         margin: 0;
         box-sizing: content-box;
@@ -58,18 +58,18 @@ class DOMRenderer {
       /* The octave-dot spans are positioned absolutely within the cell-content */
 
       /* Symbol elements styled in green */
-      .cell-char.kind-symbol {
+      .char-cell.kind-symbol {
         color: #22c55e; /* green-500 */
         font-weight: 500;
       }
 
       /* Accidental symbols using SMuFL music font */
       /* Sharp sign (♯) - SMuFL U+E262 */
-      .cell-char.accidental-sharp {
+      .char-cell.accidental-sharp {
         color: transparent;
       }
 
-      .cell-char.accidental-sharp::after {
+      .char-cell.accidental-sharp::after {
         content: '\uE262'; /* SMuFL sharp glyph */
         font-family: 'Bravura', serif;
         position: absolute;
@@ -84,11 +84,11 @@ class DOMRenderer {
       }
 
       /* Flat sign (♭) - SMuFL U+E260 */
-      .cell-char.accidental-flat {
+      .char-cell.accidental-flat {
         color: transparent;
       }
 
-      .cell-char.accidental-flat::after {
+      .char-cell.accidental-flat::after {
         content: '\uE260'; /* SMuFL flat glyph */
         font-family: 'Bravura', serif;
         position: absolute;
@@ -104,19 +104,19 @@ class DOMRenderer {
 
       /* Multi-character barline overlays using SMuFL music font */
       /* Hide underlying ASCII text and show fancy glyph overlay */
-      .cell-char.repeat-left-start,
-      .cell-char.repeat-right-start,
-      .cell-char.double-bar-start {
+      .char-cell.repeat-left-start,
+      .char-cell.repeat-right-start,
+      .char-cell.double-bar-start {
         color: transparent;
       }
 
       /* Hide continuation cells that are part of multi-char barlines */
-      .cell-char.kind-barline[data-continuation="true"] {
+      .char-cell.kind-barline[data-continuation="true"] {
         color: transparent;
       }
 
       /* Left repeat (|:) - SMuFL U+E040 spanning 2 cells */
-      .cell-char.repeat-left-start::after {
+      .char-cell.repeat-left-start::after {
         content: '\uE040';
         font-family: 'Bravura', serif;
         position: absolute;
@@ -133,7 +133,7 @@ class DOMRenderer {
       }
 
       /* Right repeat (:|) - SMuFL U+E041 spanning 2 cells */
-      .cell-char.repeat-right-start::after {
+      .char-cell.repeat-right-start::after {
         content: '\uE041';
         font-family: 'Bravura', serif;
         position: absolute;
@@ -150,7 +150,7 @@ class DOMRenderer {
       }
 
       /* Double barline (||) - SMuFL U+E031 spanning 2 cells */
-      .cell-char.double-bar-start::after {
+      .char-cell.double-bar-start::after {
         content: '\uE031';
         font-family: 'Bravura', serif;
         position: absolute;
@@ -193,7 +193,6 @@ class DOMRenderer {
     this.characterWidthData = this.measureCharacterWidths(doc);
 
     const measureTime = performance.now() - measureStart;
-    console.log(`⏱️ Measurements completed in ${measureTime.toFixed(2)}ms`);
 
     // Flatten character widths for Rust
     const flattenedCharWidths = [];
@@ -217,19 +216,6 @@ class DOMRenderer {
 
     const displayList = this.editor.wasmModule.computeLayout(doc, config);
     const layoutTime = performance.now() - layoutStart;
-    console.log(`⏱️ Rust layout computed in ${layoutTime.toFixed(2)}ms`);
-
-    // DEBUG: Log the full displayList from WASM
-    console.log('🔍 === WASM DisplayList ===');
-    console.log('📄 DisplayList:', JSON.stringify(displayList, null, 2));
-    console.log('📊 Total lines:', displayList.lines.length);
-    displayList.lines.forEach((line, idx) => {
-      console.log(`📍 Line ${idx}: ${line.cells.length} cells, ${line.lyrics.length} lyrics, ${line.tala.length} tala`);
-      if (line.cells.length > 0) {
-        console.log(`   First cell: char="${line.cells[0].char}", x=${line.cells[0].x}, y=${line.cells[0].y}`);
-      }
-    });
-    console.log('🔍 === End DisplayList ===');
 
     // Cache DisplayList for cursor positioning
     this.displayList = displayList;
@@ -239,13 +225,10 @@ class DOMRenderer {
     const renderStart = performance.now();
     this.renderFromDisplayList(displayList);
     const renderTime = performance.now() - renderStart;
-    console.log(`⏱️ DOM rendering completed in ${renderTime.toFixed(2)}ms`);
 
     // Update render statistics
     const endTime = performance.now();
     this.renderStats.lastRenderTime = endTime - startTime;
-
-    console.log(`✅ Document rendered in ${this.renderStats.lastRenderTime.toFixed(2)}ms (measure: ${measureTime.toFixed(2)}ms, layout: ${layoutTime.toFixed(2)}ms, render: ${renderTime.toFixed(2)}ms)`);
   }
 
   /**
@@ -268,7 +251,7 @@ class DOMRenderer {
       // Measure each cell
       for (const cell of line.cells) {
         const span = document.createElement('span');
-        span.className = 'cell-char';
+        span.className = 'char-cell';
         span.textContent = cell.char === ' ' ? '\u00A0' : cell.char;
         temp.appendChild(span);
         cellWidths.push(span.getBoundingClientRect().width);
@@ -312,7 +295,6 @@ class DOMRenderer {
 
     document.body.removeChild(temp);
 
-    console.log(`📏 Measured ${cellWidths.length} cells, ${syllableWidths.length} syllables`);
     return { cellWidths, syllableWidths };
   }
 
@@ -403,7 +385,7 @@ class DOMRenderer {
         // Measure each character in the cell's glyph
         for (const char of cell.char) {
           const span = document.createElement('span');
-          span.className = 'cell-char';
+          span.className = 'char-cell';
           span.textContent = char === ' ' ? '\u00A0' : char;
           temp.appendChild(span);
           charWidths.push(span.getBoundingClientRect().width);
@@ -423,7 +405,6 @@ class DOMRenderer {
 
     document.body.removeChild(temp);
 
-    console.log(`📏 Measured character widths for ${characterData.length} cells`);
     return characterData;
   }
 
@@ -434,10 +415,6 @@ class DOMRenderer {
    * @param {Object} displayList - DisplayList from Rust computeLayout
    */
   renderFromDisplayList(displayList) {
-    console.log('🎨 renderFromDisplayList called');
-    console.log('📊 DisplayList:', displayList);
-    console.log('📊 DisplayList.lines:', displayList.lines);
-
     // Render header if present
     if (displayList.header) {
       this.renderHeaderFromDisplayList(displayList.header);
@@ -445,8 +422,6 @@ class DOMRenderer {
 
     // Render each line from DisplayList
     displayList.lines.forEach((renderLine, lineIdx) => {
-      console.log(`📍 Rendering line ${lineIdx}:`, renderLine);
-      console.log(`   - cells count: ${renderLine.cells ? renderLine.cells.length : 0}`);
       const lineElement = this.renderLineFromDisplayList(renderLine);
       this.element.appendChild(lineElement);
     });
@@ -751,19 +726,13 @@ class DOMRenderer {
    * Show empty state when no content
    */
   showEmptyState() {
-    this.element.innerHTML = `
-      <div class="text-ui-disabled-text text-sm">
-        Click to start entering musical notation...
-      </div>
-    `;
+    this.element.innerHTML = '';
   }
 
   /**
    * Handle Cell click
    */
   handleCellClick(charCell, event) {
-    console.log('Cell clicked:', charCell);
-
     // Update cursor position
     if (window.musicEditor) {
       window.musicEditor.setCursorPosition(charCell.col);
@@ -775,9 +744,6 @@ class DOMRenderer {
    */
   handleCellHover(charCell, isHovering) {
     // Could add hover effects here
-    if (isHovering) {
-      console.log('Hovering over Cell:', charCell);
-    }
   }
 
 

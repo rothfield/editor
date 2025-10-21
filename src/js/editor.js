@@ -1416,8 +1416,8 @@ class MusicNotationEditor {
       return;
     }
 
-    // Remove 'selected' class from all cells
-    const selectedCells = this.renderer.element.querySelectorAll('.cell-char.selected');
+    // Remove 'selected' class from all cells (querySelectorAll all elements with the selected class that have data-cell-index)
+    const selectedCells = this.renderer.element.querySelectorAll('[data-cell-index].selected');
     selectedCells.forEach(cell => {
       cell.classList.remove('selected');
     });
@@ -2821,13 +2821,10 @@ class MusicNotationEditor {
     try {
       // Export to MusicXML first
       const musicxml = await this.exportMusicXML();
-      console.log('[LilyPond] Exported MusicXML:', musicxml.substring(0, 300));
 
       // Convert to LilyPond
       const resultJson = this.wasmModule.convertMusicXMLToLilyPond(musicxml, null);
       const result = JSON.parse(resultJson);
-
-      console.log('[LilyPond] Conversion result:', result);
 
       // Display the LilyPond source
       lilypondSource.textContent = result.lilypond_source;
@@ -3400,7 +3397,6 @@ class MusicNotationEditor {
       const musicxml = this.wasmModule.exportMusicXML(this.theDocument);
       const exportTime = performance.now() - startTime;
 
-      console.log(`MusicXML exported: ${musicxml.length} bytes in ${exportTime.toFixed(2)}ms`);
       return musicxml;
     } catch (error) {
       console.error('MusicXML export failed:', error);

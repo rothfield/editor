@@ -67,8 +67,8 @@ class ArcRenderer {
   }
 
   /**
-   * Render slurs from cell data
-   * Extracts slur spans and creates SVG paths
+   * Render slurs from DisplayList
+   * Uses pre-computed arc data from Rust layout engine
    *
    * @param {Object} displayList - DisplayList from Rust layout engine
    */
@@ -79,25 +79,23 @@ class ArcRenderer {
 
     const slurs = [];
 
-    // Extract slur spans from each line in DOM
-    for (let i = 0; i < displayList.lines.length; i++) {
-      const lineSlurs = this.extractSlursFromLine(i);
-      slurs.push(...lineSlurs);
+    // Collect all pre-computed slur arcs from DisplayList
+    for (const line of displayList.lines) {
+      if (line.slurs && Array.isArray(line.slurs)) {
+        slurs.push(...line.slurs);
+      }
     }
 
-    // Update SVG paths (reuse existing paths where possible)
-    this.updateArcPaths(slurs, this.slurPaths, this.slurGroup, {
-      direction: 'up',
-      color: '#4a5568'
-    });
+    // Update SVG paths from pre-computed arc data
+    this.updateArcPathsFromData(slurs, this.slurPaths, this.slurGroup);
 
     // Store for comparison on next render
     this.slurData = slurs;
   }
 
   /**
-   * Render beat loops from cell data
-   * Extracts beat loop spans and creates SVG paths with downward arcs
+   * Render beat loops from DisplayList
+   * Uses pre-computed arc data from Rust layout engine
    *
    * @param {Object} displayList - DisplayList from Rust layout engine
    */
@@ -108,17 +106,15 @@ class ArcRenderer {
 
     const beatLoops = [];
 
-    // Extract beat loop spans from each line in DOM
-    for (let i = 0; i < displayList.lines.length; i++) {
-      const lineBeatLoops = this.extractBeatLoopsFromLine(i);
-      beatLoops.push(...lineBeatLoops);
+    // Collect all pre-computed beat loop arcs from DisplayList
+    for (const line of displayList.lines) {
+      if (line.beat_loops && Array.isArray(line.beat_loops)) {
+        beatLoops.push(...line.beat_loops);
+      }
     }
 
-    // Update SVG paths (reuse existing paths where possible)
-    this.updateArcPaths(beatLoops, this.beatLoopPaths, this.beatLoopGroup, {
-      direction: 'down',
-      color: '#666'
-    });
+    // Update SVG paths from pre-computed arc data
+    this.updateArcPathsFromData(beatLoops, this.beatLoopPaths, this.beatLoopGroup);
 
     // Store for comparison on next render
     this.beatLoopData = beatLoops;
@@ -261,6 +257,51 @@ class ArcRenderer {
    * @param {SVGGroup} group - SVG group element to append paths to
    * @param {Object} options - Rendering options (direction, color)
    */
+  /**
+   * Update SVG paths from pre-computed RenderArc data
+   * (Rust layout engine already computed bezier control points)
+   *
+   * @param {Array} arcs - RenderArc objects with pre-computed control points
+   * @param {Map} pathsMap - Map of arc ID to SVG path element
+   * @param {SVGElement} group - SVG group to append paths to
+   */
+  updateArcPathsFromData(arcs, pathsMap, group) {
+    const activeArcIds = new Set();
+
+    // Update or create paths for each pre-computed arc
+    for (const arc of arcs) {
+      activeArcIds.add(arc.id);
+
+      let path = pathsMap.get(arc.id);
+
+      if (!path) {
+        // Create new path element
+        path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('fill', 'none');
+        path.setAttribute('stroke', arc.color);
+        path.setAttribute('stroke-width', '1.5');
+        path.setAttribute('stroke-linecap', 'round');
+        path.setAttribute('vector-effect', 'non-scaling-stroke');
+        path.classList.add(`${arc.direction === 'up' ? 'slur' : 'beat-loop'}-path`);
+
+        group.appendChild(path);
+        pathsMap.set(arc.id, path);
+      }
+
+      // Build cubic bezier path from pre-computed control points
+      const pathData = `M ${arc.start_x} ${arc.start_y} C ${arc.cp1_x} ${arc.cp1_y}, ${arc.cp2_x} ${arc.cp2_y}, ${arc.end_x} ${arc.end_y}`;
+      path.setAttribute('d', pathData);
+    }
+
+    // Remove stale paths (arcs that no longer exist)
+    for (const [id, path] of pathsMap.entries()) {
+      if (!activeArcIds.has(id)) {
+        group.removeChild(path);
+        pathsMap.delete(id);
+      }
+    }
+  }
+
   updateArcPaths(arcs, pathsMap, group, options) {
     const activeArcIds = new Set();
 

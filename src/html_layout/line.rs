@@ -94,8 +94,14 @@ impl<'a> LayoutLineComputer<'a> {
 
         // Calculate line height based on content
         let has_beats = beats.iter().any(|b| b.end - b.start >= 1);
-        let has_octave_dots = original_cells.iter().any(|c| c.octave != 0);
+        let has_octave_dots = line.cells.iter().any(|c| c.octave != 0);
         let height = self.calculate_line_height(!line.lyrics.is_empty(), has_beats, has_octave_dots, config);
+
+        // Compute slur arcs from slur indicators in cells
+        let slurs = self.compute_slur_arcs(&line.cells, &cells, config);
+
+        // Compute beat loop arcs from beat indicators
+        let beat_loops = self.compute_beat_loop_arcs(&beats, &cells, config);
 
         RenderLine {
             line_index: line_idx,
@@ -108,6 +114,162 @@ impl<'a> LayoutLineComputer<'a> {
             lyrics,
             tala,
             height,
+            slurs,
+            beat_loops,
+        }
+    }
+
+    /// Compute slur arcs from slur indicators in cells
+    fn compute_slur_arcs(
+        &self,
+        cells: &[Cell],
+        render_cells: &[RenderCell],
+        config: &LayoutConfig,
+    ) -> Vec<RenderArc> {
+        let mut arcs = Vec::new();
+        let mut slur_start: Option<(usize, &RenderCell)> = None;
+
+        for (idx, cell) in cells.iter().enumerate() {
+            if cell.slur_indicator.is_start() {
+                slur_start = Some((idx, &render_cells[idx]));
+            } else if cell.slur_indicator.is_end() {
+                if let Some((start_idx, start_cell)) = slur_start {
+                    let end_cell = &render_cells[idx];
+
+                    // Create bezier curve for slur
+                    let arc = self.create_bezier_arc(
+                        start_idx,
+                        idx,
+                        start_cell,
+                        end_cell,
+                        "up",
+                        "#4a5568",
+                        config,
+                    );
+                    arcs.push(arc);
+                    slur_start = None;
+                }
+            }
+        }
+
+        arcs
+    }
+
+    /// Compute beat loop arcs from beat spans
+    fn compute_beat_loop_arcs(
+        &self,
+        beats: &[BeatSpan],
+        render_cells: &[RenderCell],
+        config: &LayoutConfig,
+    ) -> Vec<RenderArc> {
+        let mut arcs = Vec::new();
+
+        for beat in beats {
+            if beat.end > beat.start {
+                // Only create visible beat loops for multi-cell beats
+                let start_cell = &render_cells[beat.start];
+                let end_cell = &render_cells[beat.end];
+
+                let arc = self.create_bezier_arc(
+                    beat.start,
+                    beat.end,
+                    start_cell,
+                    end_cell,
+                    "down",
+                    "#8b5cf6",
+                    config,
+                );
+                arcs.push(arc);
+            }
+        }
+
+        arcs
+    }
+
+    /// Create a bezier arc with control points computed for musical aesthetics
+    fn create_bezier_arc(
+        &self,
+        start_idx: usize,
+        end_idx: usize,
+        start_cell: &RenderCell,
+        end_cell: &RenderCell,
+        direction: &str,
+        color: &str,
+        config: &LayoutConfig,
+    ) -> RenderArc {
+        // Anchor points at cell centers
+        let is_downward = direction == "down";
+
+        let start_x = start_cell.x + (start_cell.w / 2.0);
+        let start_y = if is_downward {
+            start_cell.y + start_cell.h
+        } else {
+            start_cell.y
+        };
+
+        let end_x = end_cell.x + (end_cell.w / 2.0);
+        let end_y = if is_downward {
+            end_cell.y + end_cell.h
+        } else {
+            end_cell.y
+        };
+
+        // Calculate horizontal span
+        let span = (end_x - start_x).abs();
+
+        // Calculate arch height based on arc type
+        let arch_height = if is_downward {
+            // Beat loops: shallow arcs
+            if span <= 8.0 {
+                3.0
+            } else {
+                3.0 + (span - 8.0) * 0.05
+            }
+            .min(8.0)
+        } else {
+            // Slurs: proportional to span
+            let base_height = (span * 0.25).clamp(6.0, 28.0);
+            if span > 300.0 {
+                base_height * 0.7 // Soften long arcs
+            } else {
+                base_height
+            }
+        };
+
+        // Asymmetric curve control point (55-60% from start)
+        let control_point_ratio = 0.57;
+
+        let cp1_x = start_x + span * control_point_ratio / 2.0;
+        let cp1_y = if is_downward {
+            start_y + arch_height
+        } else {
+            start_y - arch_height
+        };
+
+        let cp2_x = end_x - span * (1.0 - control_point_ratio) / 2.0;
+        let cp2_y = if is_downward {
+            end_y + arch_height
+        } else {
+            end_y - arch_height
+        };
+
+        RenderArc {
+            id: format!(
+                "arc-{}-{}-{}",
+                if is_downward { "beat" } else { "slur" },
+                start_idx,
+                end_idx
+            ),
+            start_x,
+            start_y,
+            end_x,
+            end_y,
+            cp1_x,
+            cp1_y,
+            cp2_x,
+            cp2_y,
+            color: color.to_string(),
+            direction: direction.to_string(),
         }
     }
 

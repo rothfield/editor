@@ -111,8 +111,6 @@ class AutoSave {
       this.lastSaveTime = new Date();
       this.lastSaveKey = saveKey;
 
-      console.log(`AutoSave: Saved as "${saveKey}" at ${timestamp}`);
-
       // Cleanup old autosaves (keep last 10)
       this.cleanupOldAutosaves();
 
@@ -242,13 +240,10 @@ class AutoSave {
       // Delete from localStorage
       for (const entry of toRemove) {
         localStorage.removeItem(entry.key);
-        console.log(`AutoSave: Cleaned up old save "${entry.key}"`);
       }
 
       // Update index
       localStorage.setItem(this.AUTOSAVE_INDEX_KEY, JSON.stringify(toKeep));
-
-      console.log(`AutoSave: Cleaned up ${toRemove.length} old saves, kept ${toKeep.length}`);
 
     } catch (error) {
       console.error('AutoSave cleanup failed:', error);
