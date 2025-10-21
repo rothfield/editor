@@ -67,6 +67,7 @@ class MusicNotationEditor {
         parseText: wasmModule.parseText,
         deleteCharacter: wasmModule.deleteCharacter,
         applyOctave: wasmModule.applyOctave,
+        applyCommand: wasmModule.applyCommand,
         // Slur API
         applySlur: wasmModule.applySlur,
         removeSlur: wasmModule.removeSlur,
@@ -1757,14 +1758,48 @@ class MusicNotationEditor {
   /**
      * Validate that a selection is valid for musical commands
      */
-  validateSelectionForCommands() {
-    if (!this.hasSelection()) {
-      console.log('No selection for command');
-      return false;
+  /**
+   * Get effective selection: either user selection or single element to left of cursor
+   * Returns {start, end} or null if no valid selection available
+   */
+  getEffectiveSelection() {
+    // If there's a user selection, use it
+    if (this.hasSelection()) {
+      return this.getSelection();
     }
 
-    const selection = this.getSelection();
+    // No selection: try to get element to the left of cursor
+    const line = this.getCurrentLine();
+    if (!line || !line.cells || line.cells.length === 0) {
+      return null;
+    }
+
+    const cursorPos = this.getCursorPosition();
+    const { cellIndex, charOffsetInCell } = this.charPosToCellIndex(cursorPos);
+
+    // Determine which cell is to the left of cursor
+    let targetCellIndex;
+    if (charOffsetInCell > 0) {
+      // Cursor is in the middle or end of a cell, so element to left is this cell
+      targetCellIndex = cellIndex;
+    } else if (cellIndex > 0) {
+      // Cursor is at start of cell, so element to left is previous cell
+      targetCellIndex = cellIndex - 1;
+    } else {
+      // Cursor is at start of first cell, no element to left
+      return null;
+    }
+
+    return {
+      start: targetCellIndex,
+      end: targetCellIndex + 1
+    };
+  }
+
+  validateSelectionForCommands() {
+    const selection = this.getEffectiveSelection();
     if (!selection) {
+      console.log('No selection or element to left of cursor');
       return false;
     }
 
@@ -1774,8 +1809,19 @@ class MusicNotationEditor {
       return false;
     }
 
-    // Get selected text to check if it contains valid musical elements
-    const selectedText = this.getSelectedText();
+    // Get selected text from the line to check if it contains valid musical elements
+    const line = this.getCurrentLine();
+    if (!line || !line.cells) {
+      console.log('No line or cells available for validation');
+      return false;
+    }
+
+    const cells = line.cells || [];
+    const selectedCells = cells.filter((cell, index) =>
+      index >= selection.start && index < selection.end
+    );
+    const selectedText = selectedCells.map(cell => cell.char || '').join('');
+
     if (!selectedText || selectedText.trim().length === 0) {
       this.showError('Empty selection - please select text to apply musical commands', {
         source: 'Command Validation'
@@ -1810,23 +1856,15 @@ class MusicNotationEditor {
       selectedText: this.getSelectedText()
     });
 
-    // Validate selection
-    if (!this.validateSelectionForCommands()) {
-      console.log('❌ Selection validation failed');
+    // Validate selection (requires explicit selection, not element to left of cursor)
+    if (!this.hasSelection()) {
+      console.log('Slur requires an explicit selection');
       return;
     }
 
     try {
-      const selection = this.getEffectiveSelection();
-
-      // Get the appropriate line for selected text extraction
-      let line;
-      if (this.hasSelection()) {
-        line = this.getCurrentLine();
-      } else {
-        const currentLineIndex = this.theDocument.state?.cursor?.stave || 0;
-        line = this.theDocument.lines[currentLineIndex - 1];
-      }
+      const selection = this.getSelection();
+      const line = this.getCurrentLine();
 
       if (!line) {
         console.log('❌ No line found for applySlur');
@@ -1839,49 +1877,23 @@ class MusicNotationEditor {
       );
       const selectedText = selectedCells.map(cell => cell.char || '').join('');
 
-      console.log('✅ Proceeding with slur application:', { selection, selectedText });
+      // Apply slur using unified WASM command
+      if (this.theDocument && this.theDocument.lines && this.theDocument.lines.length > 0) {
+        const updatedCells = this.wasmModule.applyCommand(
+          cells,
+          selection.start,
+          selection.end,
+          'slur'
+        );
 
-      // Check if there's already a slur on this selection
-      const hasExistingSlur = this.hasSlurOnSelection(selection);
-
-      if (hasExistingSlur) {
-        this.addToConsoleLog(`Removing slur from selection: "${selectedText}"`);
-        await this.removeSlurFromSelection(selection);
-      } else {
-        this.addToConsoleLog(`Applying slur to selection: "${selectedText}"`);
-        // Apply slur using WASM API
-        if (this.theDocument && this.theDocument.lines && this.theDocument.lines.length > 0) {
-
-          console.log('🔧 Calling WASM applySlur:', {
-            cellCount: cells.length,
-            start: selection.start,
-            end: selection.end
-          });
-
-          // Call WASM API to apply slur
-          const wasmModule = this.wasmModule;
-          const updatedCells = wasmModule.applySlur(
-            cells,
-            selection.start,
-            selection.end
-          );
-
-          console.log('✅ WASM returned updated cells:', updatedCells.length);
-
-          // Update the line with the updated cells from WASM
-          line.cells = updatedCells;
-
-          this.addToConsoleLog(`Applied slur via WASM: cells ${selection.start}..${selection.end}`);
-        }
+        line.cells = updatedCells;
+        this.addToConsoleLog(`Toggled slur on "${selectedText}"`);
       }
 
       await this.render();
 
       // Restore visual selection after applying slur (slurs now render via CSS)
       this.updateSelectionDisplay();
-
-      const action = hasExistingSlur ? 'removed' : 'applied';
-      this.addToConsoleLog(`Slur ${action} ${action === 'removed' ? 'from' : 'to'} "${selectedText}"`);
     } catch (error) {
       console.error('❌ Failed to apply slur:', error);
     }
@@ -1957,8 +1969,22 @@ class MusicNotationEditor {
     }
 
     try {
-      const selection = this.getSelection();
-      const selectedText = this.getSelectedText();
+      // Save cursor position to restore after command
+      const savedCursorPos = this.getCursorPosition();
+
+      const selection = this.getEffectiveSelection();
+      const line = this.getCurrentLine();
+
+      if (!line) {
+        logger.error(LOG_CATEGORIES.COMMAND, 'No line found for toggleOctave');
+        return;
+      }
+
+      const cells = line.cells;
+      const selectedCells = cells.filter((cell, index) =>
+        index >= selection.start && index < selection.end
+      );
+      const selectedText = selectedCells.map(cell => cell.char || '').join('');
 
       logger.info(LOG_CATEGORIES.COMMAND, 'Toggling octave', {
         octave,
@@ -1979,47 +2005,35 @@ class MusicNotationEditor {
         1: 'upper (1)'
       };
 
-      // For octave=0 (Alt+M), always just set to 0 (clear octave markings)
-      // For octave=1 or -1, toggle: if already set, clear (set to 0); otherwise set
-      let targetOctave;
-      let action;
-
-      if (octave === 0) {
-        // Alt+M: always clear octave markings
-        targetOctave = 0;
-        action = 'cleared';
+      // Map octave number to command name
+      let command;
+      if (octave === -1) {
+        command = 'lower_octave';
+      } else if (octave === 1) {
+        command = 'upper_octave';
       } else {
-        // Alt+U or Alt+L: toggle behavior
-        const shouldToggleOff = this.shouldToggleOctaveOff(selection, octave);
-        targetOctave = shouldToggleOff ? 0 : octave;
-        action = shouldToggleOff ? 'removed' : 'applied';
+        command = 'middle_octave';
       }
 
-      const actionVerb = action === 'applied' ? 'Applying' : (action === 'removed' ? 'Removing' : 'Clearing');
-      this.addToConsoleLog(`${actionVerb} octave ${octaveNames[octave]} ${action === 'applied' ? 'to' : 'from'} selection: "${selectedText}"`);
-
-      // Call WASM function to apply octave to selected cells
+      // Call unified WASM apply_command function
       if (this.theDocument && this.theDocument.lines && this.theDocument.lines.length > 0) {
-        // Note: 'line' was already retrieved above for selectedText
         const cells = line.cells;
 
-        logger.debug(LOG_CATEGORIES.COMMAND, 'Calling WASM applyOctave', {
+        logger.debug(LOG_CATEGORIES.COMMAND, 'Calling WASM applyCommand', {
           cellCount: cells.length,
           range: `${selection.start}..${selection.end}`,
-          targetOctave
+          command
         });
 
-        const updatedCells = this.wasmModule.applyOctave(
+        const updatedCells = this.wasmModule.applyCommand(
           cells,
           selection.start,
           selection.end,
-          targetOctave
+          command
         );
 
-        // Debug: Check what octave values were set
-        logger.debug(LOG_CATEGORIES.COMMAND, 'Octave values after WASM call:', {
-          requestedOctave: octave,
-          targetOctave,
+        logger.debug(LOG_CATEGORIES.COMMAND, 'Cell states after WASM applyCommand:', {
+          command,
           cellsInRange: updatedCells.slice(selection.start, selection.end).map((c, i) => ({
             index: selection.start + i,
             glyph: c.char,
@@ -2028,21 +2042,23 @@ class MusicNotationEditor {
         });
 
         line.cells = updatedCells;
-        logger.info(LOG_CATEGORIES.COMMAND, 'WASM applyOctave successful', {
+        logger.info(LOG_CATEGORIES.COMMAND, 'WASM applyCommand successful', {
+          command,
           cellsModified: updatedCells.length
         });
+
+        this.addToConsoleLog(`Applied ${command} to "${selectedText}"`);
       }
 
       await this.render();
+
+      // Restore cursor position to where it was before the command
+      this.setCursorPosition(savedCursorPos);
 
       // Restore visual selection after applying octave
       this.updateSelectionDisplay();
 
       logger.timeEnd('toggleOctave', LOG_CATEGORIES.COMMAND);
-      const actionMessage = action === 'removed'
-        ? `Octave ${octaveNames[octave]} removed from "${selectedText}"`
-        : `Octave ${octaveNames[octave]} applied to "${selectedText}"`;
-      this.addToConsoleLog(actionMessage);
     } catch (error) {
       logger.error(LOG_CATEGORIES.COMMAND, 'Failed to toggle octave', {
         error: error.message,
@@ -2057,39 +2073,6 @@ class MusicNotationEditor {
      */
   async applyOctave(octave) {
     return this.toggleOctave(octave);
-  }
-
-  /**
-   * Check if octave should be toggled off
-   * Returns true if ANY pitched element in selection has the requested octave
-   *
-   * @param {Object} selection - Selection range {start, end}
-   * @param {number} octave - Target octave value (-1, 0, or 1)
-   * @returns {boolean} True if octave should be toggled off
-   */
-  shouldToggleOctaveOff(selection, octave) {
-    if (!this.theDocument || !this.theDocument.lines || this.theDocument.lines.length === 0) {
-      return false;
-    }
-
-    const line = this.getCurrentLine();
-        if (!line) return;
-    const cells = line.cells;
-
-    if (!cells || cells.length === 0) {
-      return false;
-    }
-
-    // Check if ANY pitched element has the requested octave
-    for (let i = selection.start; i < selection.end && i < cells.length; i++) {
-      const cell = cells[i];
-      // Only consider pitched elements (kind === 1)
-      if (cell.kind === 1 && cell.octave === octave) {
-        return true;
-      }
-    }
-
-    return false;
   }
 
   /**

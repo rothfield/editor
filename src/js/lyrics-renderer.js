@@ -5,6 +5,8 @@
  * respecting slurs (melismas) where multiple notes share one syllable.
  */
 
+import { BASE_FONT_SIZE } from './constants.js';
+
 /**
  * FSM States for lyrics distribution
  */
@@ -176,14 +178,17 @@ export function renderLyricsAssignments(assignments, lineElement, hasBeatLoops =
   const LYRICS_Y_WITHOUT_BEATS = 57; // Close to cells (52px + 5px = 1/3 font height)
 
   const LYRICS_Y_POSITION = hasBeatLoops ? LYRICS_Y_WITH_BEATS : LYRICS_Y_WITHOUT_BEATS;
+  const lyricFontSize = BASE_FONT_SIZE * 0.5; // 1/2 of base font size
 
   for (const assignment of assignments) {
     const syllableElement = document.createElement('span');
-    syllableElement.className = 'lyric-syllable text-sm';
+    syllableElement.className = 'lyric-syllable';
     syllableElement.textContent = assignment.syllable;
     syllableElement.style.position = 'absolute';
     syllableElement.style.left = `${assignment.x}px`;
     syllableElement.style.top = `${LYRICS_Y_POSITION}px`;
+    syllableElement.style.fontSize = `${lyricFontSize}px`;
+    syllableElement.style.fontFamily = "'Segoe UI', 'Helvetica Neue', system-ui, sans-serif";
     syllableElement.style.fontStyle = 'italic';
     syllableElement.style.color = '#6b7280'; // gray-500
     syllableElement.style.pointerEvents = 'none';

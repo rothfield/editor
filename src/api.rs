@@ -421,6 +421,110 @@ pub fn apply_octave(
     Ok(result)
 }
 
+/// Apply a command (slur, octave, etc.) to cells in a selection range
+///
+/// Unified apply function that handles all editing commands with toggle behavior:
+/// - "slur": Toggle slur on/off
+/// - "lower_octave": Toggle lower octave (-1) on/off
+/// - "upper_octave": Toggle upper octave (1) on/off
+/// - "middle_octave": Clear octave (set to 0)
+///
+/// # Parameters
+/// - `cells_js`: JavaScript array of Cell objects
+/// - `start`: Start of selection (0-based index)
+/// - `end`: End of selection (exclusive)
+/// - `command`: Command name (string)
+///
+/// # Returns
+/// Updated JavaScript array of Cell objects with command applied
+#[wasm_bindgen(js_name = applyCommand)]
+pub fn apply_command(
+    cells_js: JsValue,
+    start: usize,
+    end: usize,
+    command: String,
+) -> Result<js_sys::Array, JsValue> {
+    wasm_info!("applyCommand called: start={}, end={}, command={}", start, end, command);
+
+    // Deserialize cells from JavaScript
+    let mut cells: Vec<Cell> = serde_wasm_bindgen::from_value(cells_js)
+        .map_err(|e| {
+            wasm_error!("Deserialization error: {}", e);
+            JsValue::from_str(&format!("Deserialization error: {}", e))
+        })?;
+
+    wasm_log!("  Total cells: {}, selection range: {}..{}", cells.len(), start, end);
+
+    let mut modified_count = 0;
+
+    match command.as_str() {
+        "lower_octave" => {
+            // Toggle lower octave (-1)
+            for i in start..end.min(cells.len()) {
+                if cells[i].kind == crate::models::ElementKind::PitchedElement {
+                    cells[i].octave = if cells[i].octave == -1 { 0 } else { -1 };
+                    modified_count += 1;
+                    wasm_log!("  Toggled octave to {} on cell {}: '{}'", cells[i].octave, i, cells[i].char);
+                }
+            }
+        }
+        "upper_octave" => {
+            // Toggle upper octave (1)
+            for i in start..end.min(cells.len()) {
+                if cells[i].kind == crate::models::ElementKind::PitchedElement {
+                    cells[i].octave = if cells[i].octave == 1 { 0 } else { 1 };
+                    modified_count += 1;
+                    wasm_log!("  Toggled octave to {} on cell {}: '{}'", cells[i].octave, i, cells[i].char);
+                }
+            }
+        }
+        "middle_octave" => {
+            // Clear octave (set to 0)
+            for i in start..end.min(cells.len()) {
+                if cells[i].kind == crate::models::ElementKind::PitchedElement {
+                    cells[i].octave = 0;
+                    modified_count += 1;
+                    wasm_log!("  Cleared octave on cell {}: '{}'", i, cells[i].char);
+                }
+            }
+        }
+        "slur" => {
+            // Toggle slur on/off
+            for i in start..end.min(cells.len()) {
+                if cells[i].flags & 0x20 != 0 {
+                    // Has slur, remove it
+                    cells[i].flags &= !0x20;
+                } else {
+                    // No slur, add it
+                    cells[i].flags |= 0x20;
+                }
+                modified_count += 1;
+                wasm_log!("  Toggled slur on cell {}: '{}'", i, cells[i].char);
+            }
+        }
+        _ => {
+            wasm_error!("Unknown command: {}", command);
+            return Err(JsValue::from_str(&format!("Unknown command: {}", command)));
+        }
+    }
+
+    wasm_info!("  Modified {} cells", modified_count);
+
+    // Convert back to JavaScript array
+    let result = js_sys::Array::new();
+    for cell in cells {
+        let cell_js = serde_wasm_bindgen::to_value(&cell)
+            .map_err(|e| {
+                wasm_error!("Serialization error: {}", e);
+                JsValue::from_str(&format!("Serialization error: {}", e))
+            })?;
+        result.push(&cell_js);
+    }
+
+    wasm_info!("applyCommand completed successfully");
+    Ok(result)
+}
+
 /// Apply slur to cells in a selection range
 ///
 /// # Parameters

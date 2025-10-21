@@ -31,18 +31,18 @@ enum LyricsState {
 
 /// Parse lyrics string into syllables
 ///
-/// Splits on whitespace and hyphens, preserving hyphen indicators.
+/// Splits on whitespace and hyphens, PRESERVING spaces and hyphen indicators.
 ///
 /// # Examples
-/// - "hello world" -> ["hello", "world"]
-/// - "hel-lo wor-ld" -> ["hel-", "lo", "wor-", "ld"]
-/// - "he--llo" -> ["he-", "-", "llo"]
+/// - "hello world" -> ["hello", " ", "world"]
+/// - "hel-lo wor-ld" -> ["hel-", "lo", " ", "wor-", "ld"]
+/// - "he-llo john" -> ["he-", "llo", " ", "john"]
 ///
 /// # Arguments
 /// * `lyrics` - Raw lyrics string
 ///
 /// # Returns
-/// Array of syllable strings
+/// Array of syllable strings (including space characters)
 pub fn parse_lyrics(lyrics: &str) -> Vec<String> {
     let lyrics = lyrics.trim();
     if lyrics.is_empty() {
@@ -50,63 +50,95 @@ pub fn parse_lyrics(lyrics: &str) -> Vec<String> {
     }
 
     let mut syllables = Vec::new();
-    let words: Vec<&str> = lyrics.split_whitespace().collect();
+    let mut current_word = String::new();
 
-    for word in words {
-        if word.is_empty() {
-            continue;
-        }
-
-        // Split on hyphens but track them
-        let mut current_part = String::new();
-        let chars: Vec<char> = word.chars().collect();
-        let mut i = 0;
-
-        while i < chars.len() {
-            let ch = chars[i];
-
-            if ch == '-' {
-                if !current_part.is_empty() {
-                    // Add the part with hyphen
-                    current_part.push('-');
-                    syllables.push(current_part.clone());
-                    current_part.clear();
-                } else {
-                    // Standalone hyphen (from "he--llo")
-                    syllables.push("-".to_string());
-                }
-            } else {
-                current_part.push(ch);
-
-                // Check if this is the last char or next char is hyphen
-                if i + 1 >= chars.len() {
-                    // Last character, add part
-                    syllables.push(current_part.clone());
-                    current_part.clear();
-                } else if chars[i + 1] == '-' {
-                    // Next char is hyphen, will be handled in next iteration
-                    // Don't push yet
-                } else {
-                    // Regular continuation, keep building
-                }
+    for ch in lyrics.chars() {
+        if ch.is_whitespace() {
+            // Finish current word
+            if !current_word.is_empty() {
+                parse_word_into_syllables(&current_word, &mut syllables);
+                current_word.clear();
             }
-
-            i += 1;
+            // Add the space
+            syllables.push(ch.to_string());
+        } else if ch == '-' {
+            // Add current part with hyphen
+            if !current_word.is_empty() {
+                syllables.push(current_word.clone() + "-");
+                current_word.clear();
+            }
+        } else {
+            // Regular character
+            current_word.push(ch);
         }
+    }
 
-        // Flush any remaining part (word without hyphen at end)
-        if !current_part.is_empty() {
-            syllables.push(current_part);
-        }
+    // Add remaining word
+    if !current_word.is_empty() {
+        parse_word_into_syllables(&current_word, &mut syllables);
     }
 
     syllables
 }
 
+/// Helper function to parse a word into syllables (handles internal hyphens)
+fn parse_word_into_syllables(word: &str, syllables: &mut Vec<String>) {
+    let chars: Vec<char> = word.chars().collect();
+    let mut current_part = String::new();
+    let mut i = 0;
+
+    while i < chars.len() {
+        let ch = chars[i];
+
+        if ch == '-' {
+            if !current_part.is_empty() {
+                syllables.push(current_part.clone() + "-");
+                current_part.clear();
+            }
+        } else {
+            current_part.push(ch);
+        }
+
+        i += 1;
+    }
+
+    if !current_part.is_empty() {
+        syllables.push(current_part);
+    }
+}
+
+/// Merge two adjacent syllables into one
+///
+/// Combines syllables while preserving hyphens:
+/// - If first ends with hyphen ("syl-"), keep it and concatenate: "syl-" + "la" → "syl-la"
+/// - Otherwise joins with hyphen separator: "syl" + "la" → "syl-la"
+///
+/// # Arguments
+/// * `syl1` - First syllable
+/// * `syl2` - Second syllable
+///
+/// # Returns
+/// Merged syllable string with hyphen preserved/added
+pub fn merge_syllables(syl1: &str, syl2: &str) -> String {
+    if syl1.ends_with('-') {
+        // First syllable has hyphen, keep it and concatenate
+        format!("{}{}", syl1, syl2)
+    } else {
+        // Join with hyphen
+        format!("{}-{}", syl1, syl2)
+    }
+}
+
 /// Distribute syllables to pitch elements, respecting slurs (melismas)
 ///
-/// # Algorithm (FSM)
-/// 1. Parse lyrics into syllables
+/// # Special Case: 0 or 1 Pitched Notes
+/// If the line has 0 or 1 pitched elements, only the FIRST WORD is assigned
+/// (split by spaces, preserving hyphens within words).
+/// Example: "He-llo world" with 1 note → assigns "He-llo" only
+///
+/// # Normal Case: 2+ Pitched Notes
+/// Uses FSM algorithm:
+/// 1. Parse lyrics into syllables (split on spaces and hyphens)
 /// 2. Scan cells left to right
 /// 3. For each pitched element:
 ///    - If in melisma (inside slur), skip (no syllable)
@@ -121,10 +153,37 @@ pub fn parse_lyrics(lyrics: &str) -> Vec<String> {
 /// # Returns
 /// Array of syllable assignments (cell index and syllable text)
 pub fn distribute_lyrics(lyrics: &str, cells: &[Cell]) -> Vec<SyllableAssignment> {
-    let syllables = parse_lyrics(lyrics);
+    let lyrics_trimmed = lyrics.trim();
     let mut assignments = Vec::new();
 
-    if syllables.is_empty() || cells.is_empty() {
+    if lyrics_trimmed.is_empty() || cells.is_empty() {
+        return assignments;
+    }
+
+    // Count pitched elements
+    let pitched_count = cells.iter()
+        .filter(|c| matches!(c.kind, ElementKind::PitchedElement))
+        .count();
+
+    // Special case: 0 or 1 pitched notes - assign entire lyrics as-is (no splitting)
+    if pitched_count <= 1 {
+        // Find first pitched element index, or use 0 if none exist
+        let cell_index = cells.iter()
+            .position(|c| matches!(c.kind, ElementKind::PitchedElement))
+            .unwrap_or(0);
+
+        // Assign entire lyrics string unchanged
+        assignments.push(SyllableAssignment {
+            cell_index,
+            syllable: lyrics_trimmed.to_string(),
+        });
+        return assignments;
+    }
+
+    // Normal case: 2+ pitched notes - split into syllables and distribute
+    let syllables = parse_lyrics(lyrics_trimmed);
+
+    if syllables.is_empty() {
         return assignments;
     }
 
@@ -138,19 +197,34 @@ pub fn distribute_lyrics(lyrics: &str, cells: &[Cell]) -> Vec<SyllableAssignment
             continue;
         }
 
+        // Skip whitespace syllables (don't assign them to cells)
+        while syllable_index < syllables.len() && syllables[syllable_index].trim().is_empty() {
+            syllable_index += 1;
+        }
+
+        if syllable_index >= syllables.len() {
+            break; // No more non-whitespace syllables
+        }
+
+        // Build syllable text with any following spaces
+        let mut syll_text = syllables[syllable_index].clone();
+        let mut next_idx = syllable_index + 1;
+        while next_idx < syllables.len() && syllables[next_idx].trim().is_empty() {
+            syll_text.push('\u{00A0}'); // Append nbsp
+            next_idx += 1;
+        }
+
         // Track slur state
         let slur_indicator = cell.slur_indicator;
 
         match slur_indicator {
             SlurIndicator::SlurStart => {
                 // Slur starts - assign syllable to this pitch, then enter melisma
-                if syllable_index < syllables.len() {
-                    assignments.push(SyllableAssignment {
-                        cell_index,
-                        syllable: syllables[syllable_index].clone(),
-                    });
-                    syllable_index += 1;
-                }
+                assignments.push(SyllableAssignment {
+                    cell_index,
+                    syllable: syll_text,
+                });
+                syllable_index = next_idx;
 
                 slur_depth += 1;
                 state = LyricsState::InMelisma;
@@ -173,14 +247,12 @@ pub fn distribute_lyrics(lyrics: &str, cells: &[Cell]) -> Vec<SyllableAssignment
                 }
 
                 // Assign syllable to this pitch
-                if syllable_index < syllables.len() {
-                    assignments.push(SyllableAssignment {
-                        cell_index,
-                        syllable: syllables[syllable_index].clone(),
-                    });
-                    syllable_index += 1;
-                    state = LyricsState::SyllableAssigned;
-                }
+                assignments.push(SyllableAssignment {
+                    cell_index,
+                    syllable: syll_text,
+                });
+                syllable_index = next_idx;
+                state = LyricsState::SyllableAssigned;
             }
         }
     }

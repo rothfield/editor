@@ -66,7 +66,7 @@ impl<'a> LayoutLineComputer<'a> {
                 line_idx,
                 cumulative_x,
                 config,
-                cell_widths,
+                &effective_widths,  // Use effective widths (expanded for syllables)
                 char_widths,
                 &mut char_width_offset,
                 &beat_roles,
@@ -94,7 +94,8 @@ impl<'a> LayoutLineComputer<'a> {
 
         // Calculate line height based on content
         let has_beats = beats.iter().any(|b| b.end - b.start >= 1);
-        let height = self.calculate_line_height(!line.lyrics.is_empty(), has_beats, config);
+        let has_octave_dots = original_cells.iter().any(|c| c.octave != 0);
+        let height = self.calculate_line_height(!line.lyrics.is_empty(), has_beats, has_octave_dots, config);
 
         RenderLine {
             line_index: line_idx,
@@ -110,27 +111,37 @@ impl<'a> LayoutLineComputer<'a> {
         }
     }
 
-    /// Calculate effective widths for cells, considering lyrics syllable widths
+    /// Calculate effective widths for cells, using syllable widths
+    ///
+    /// Each cell's effective width is the maximum of:
+    /// - Original cell width
+    /// - Its assigned syllable width + padding
+    ///
+    /// This ensures syllables fit within their cells with no squishing.
     fn calculate_effective_widths(
         &self,
         cell_widths: &[f32],
         syllable_assignments: &[SyllableAssignment],
         syllable_widths: &[f32],
-        config: &LayoutConfig,
+        _config: &LayoutConfig,
     ) -> Vec<f32> {
         let mut effective = cell_widths.to_vec();
 
         // Ensure we have enough effective widths
-        if effective.is_empty() {
+        if effective.is_empty() || syllable_assignments.is_empty() {
             return effective;
         }
 
-        // For each syllable assignment, ensure the cell is wide enough
+        // For each syllable assignment, ensure cell is at least as wide as the syllable
+        // Skip whitespace-only syllables (they don't affect cell width)
         for (syll_idx, assignment) in syllable_assignments.iter().enumerate() {
             if let Some(syll_width) = syllable_widths.get(syll_idx) {
-                let required = syll_width + config.min_syllable_padding;
+                // Skip if syllable is only whitespace
+                if assignment.syllable.trim().is_empty() {
+                    continue;
+                }
                 if let Some(eff) = effective.get_mut(assignment.cell_index) {
-                    *eff = eff.max(required);
+                    *eff = eff.max(*syll_width);
                 }
             }
         }
@@ -153,68 +164,59 @@ impl<'a> LayoutLineComputer<'a> {
         beats: &[BeatSpan],
         config: &LayoutConfig,
     ) -> Vec<RenderLyric> {
-        // Parse all syllables to find unassigned ones
-        let all_syllables = parse_lyrics(lyrics_text);
         let mut result = Vec::new();
+        let lyrics_trimmed = lyrics_text.trim();
 
-        // Adaptive Y positioning based on beat presence
+        if lyrics_trimmed.is_empty() {
+            return result;
+        }
+
+        // Adaptive Y positioning: below beat loops, octave dots, or cell
+        const BEAT_LOOP_GAP: f32 = 2.0;
+        const BEAT_LOOP_HEIGHT: f32 = 5.0;
+        const OCTAVE_DOT_OFFSET_EM: f32 = 0.35;
+        const LYRICS_GAP: f32 = 4.0;
+
+        let cell_bottom = config.cell_y_offset + config.cell_height;
         let has_beats = beats.iter().any(|b| b.end - b.start >= 1);
-        let lyrics_y = if has_beats { 65.0 } else { 57.0 };
+        let has_octave_dots = original_cells.iter().any(|c| c.octave != 0);
+
+        let lyrics_y = if has_beats {
+            cell_bottom + BEAT_LOOP_GAP + BEAT_LOOP_HEIGHT + LYRICS_GAP
+        } else if has_octave_dots {
+            cell_bottom + (OCTAVE_DOT_OFFSET_EM * config.font_size) + LYRICS_GAP
+        } else {
+            cell_bottom + LYRICS_GAP
+        };
 
         // Check if line has any pitched elements
         let has_pitched_elements = original_cells.iter().any(|c| matches!(c.kind, ElementKind::PitchedElement));
 
-        // Add assigned syllables (normal case)
-        for assignment in assignments {
-            if let Some(cell) = render_cells.get(assignment.cell_index) {
-                result.push(RenderLyric {
-                    text: assignment.syllable.clone(),
-                    x: cell.x + cell.w / 2.0, // Center under cell
-                    y: lyrics_y,
-                    assigned: true,
-                });
-            }
+        // Special case: 0 pitched elements - just render entire lyrics as-is
+        if !has_pitched_elements {
+            result.push(RenderLyric {
+                text: lyrics_trimmed.to_string(),
+                x: config.left_margin,
+                y: lyrics_y,
+                assigned: true,
+            });
+            return result;
         }
 
-        // Handle unassigned syllables
-        if assignments.len() < all_syllables.len() {
-            let unassigned_syllables: Vec<String> = all_syllables[assignments.len()..].to_vec();
+        // Render all assignments (which already have spaces included)
+        for assignment in assignments {
+            let lyric_x = if let Some(cell) = render_cells.get(assignment.cell_index) {
+                cell.x // Flush left with cell
+            } else {
+                config.left_margin
+            };
 
-            if !unassigned_syllables.is_empty() {
-                if !has_pitched_elements {
-                    // No pitched elements: assign all unassigned to first cell position
-                    let first_x = if let Some(cell) = render_cells.first() {
-                        cell.x + cell.w / 2.0
-                    } else {
-                        config.left_margin + 30.0 // Default position if no cells
-                    };
-
-                    for syllable in unassigned_syllables {
-                        result.push(RenderLyric {
-                            text: syllable,
-                            x: first_x,
-                            y: lyrics_y,
-                            assigned: false,
-                        });
-                    }
-                } else {
-                    // Has pitched elements: position unassigned to the right
-                    let last_x = if let Some(cell) = render_cells.last() {
-                        cell.x + cell.w + 20.0 // 20px padding after last cell
-                    } else {
-                        config.left_margin + 30.0
-                    };
-
-                    for syllable in unassigned_syllables {
-                        result.push(RenderLyric {
-                            text: syllable,
-                            x: last_x,
-                            y: lyrics_y,
-                            assigned: false,
-                        });
-                    }
-                }
-            }
+            result.push(RenderLyric {
+                text: assignment.syllable.clone(),
+                x: lyric_x,
+                y: lyrics_y,
+                assigned: true,
+            });
         }
 
         result
@@ -262,12 +264,27 @@ impl<'a> LayoutLineComputer<'a> {
         &self,
         has_lyrics: bool,
         has_beats: bool,
-        _config: &LayoutConfig,
+        has_octave_dots: bool,
+        config: &LayoutConfig,
     ) -> f32 {
         if has_lyrics {
-            let lyrics_y = if has_beats { 65.0 } else { 57.0 };
-            let lyrics_font_size = 14.0; // text-sm
-            let lyrics_bottom_padding = 8.0;
+            // Reuse same calculation as position_lyrics
+            const BEAT_LOOP_GAP: f32 = 2.0;
+            const BEAT_LOOP_HEIGHT: f32 = 5.0;
+            const OCTAVE_DOT_OFFSET_EM: f32 = 0.35;
+            const LYRICS_GAP: f32 = 4.0;
+
+            let cell_bottom = config.cell_y_offset + config.cell_height;
+            let lyrics_y = if has_beats {
+                cell_bottom + BEAT_LOOP_GAP + BEAT_LOOP_HEIGHT + LYRICS_GAP
+            } else if has_octave_dots {
+                cell_bottom + (OCTAVE_DOT_OFFSET_EM * config.font_size) + LYRICS_GAP
+            } else {
+                cell_bottom + LYRICS_GAP
+            };
+
+            let lyrics_font_size = config.font_size * 0.5;
+            let lyrics_bottom_padding = 2.0 * config.font_size;
             lyrics_y + lyrics_font_size + lyrics_bottom_padding
         } else {
             80.0 // LINE_CONTAINER_HEIGHT from JS constants

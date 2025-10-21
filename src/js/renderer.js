@@ -274,15 +274,35 @@ class DOMRenderer {
         cellWidths.push(span.getBoundingClientRect().width);
         temp.removeChild(span);
       }
+    }
 
-      // Measure lyrics syllables if present
-      if (line.lyrics) {
+    // Measure lyrics syllables ACROSS ALL LINES (done separately to ensure they're captured)
+    // Measure syllables with their trailing spaces combined (as they'll be rendered)
+    for (const line of doc.lines) {
+      if (line.lyrics && line.lyrics.trim()) {
         const syllables = this.extractSyllablesSimple(line.lyrics);
-        for (const syllable of syllables) {
+        const lyricFontSize = BASE_FONT_SIZE * 0.5; // Match actual rendering (8px)
+
+        // Combine syllables with following spaces
+        let i = 0;
+        while (i < syllables.length) {
+          let text = syllables[i];
+          i++;
+
+          // Append any following spaces
+          while (i < syllables.length && !syllables[i].trim()) {
+            text += '\u00A0'; // Append nbsp
+            i++;
+          }
+
+          // Measure the combined text
           const span = document.createElement('span');
-          span.className = 'cell-text lyric text-sm';
-          span.style.fontStyle = 'italic';
-          span.textContent = syllable;
+          span.style.cssText = `
+            font-size: ${lyricFontSize}px;
+            font-family: 'Segoe UI', 'Helvetica Neue', system-ui, sans-serif;
+            font-style: italic;
+          `;
+          span.textContent = text;
           temp.appendChild(span);
           syllableWidths.push(span.getBoundingClientRect().width);
           temp.removeChild(span);
@@ -298,7 +318,7 @@ class DOMRenderer {
 
   /**
    * Extract syllables from lyrics string (simple version for measurement)
-   * Just splits on whitespace and hyphens to get syllable count
+   * Splits on whitespace and hyphens, PRESERVING spaces
    *
    * @param {string} lyrics - Lyrics string
    * @returns {string[]} Array of syllables
@@ -306,29 +326,58 @@ class DOMRenderer {
   extractSyllablesSimple(lyrics) {
     if (!lyrics) return [];
 
-    // Simple extraction: split on whitespace, then on hyphens
-    const words = lyrics.trim().split(/\s+/);
     const syllables = [];
+    let currentWord = '';
 
-    for (const word of words) {
-      // Split on hyphens but keep them
-      const parts = word.split(/(-)/);
-      for (let i = 0; i < parts.length; i++) {
-        const part = parts[i];
-        if (part === '') continue;
+    for (let i = 0; i < lyrics.length; i++) {
+      const char = lyrics[i];
 
-        if (part === '-') {
-          syllables.push('-');
-        } else if (i < parts.length - 1 && parts[i + 1] === '-') {
-          syllables.push(part + '-');
-          i++; // Skip the hyphen
-        } else {
-          syllables.push(part);
+      if (/\s/.test(char)) {
+        // Whitespace - finish current word and add space
+        if (currentWord) {
+          this.addSyllablesFromWord(currentWord, syllables);
+          currentWord = '';
         }
+        syllables.push(char); // Add the space character
+      } else if (char === '-') {
+        // Hyphen - add current part with hyphen
+        if (currentWord) {
+          syllables.push(currentWord + '-');
+          currentWord = '';
+        }
+      } else {
+        // Regular character
+        currentWord += char;
       }
     }
 
+    // Add remaining word
+    if (currentWord) {
+      this.addSyllablesFromWord(currentWord, syllables);
+    }
+
     return syllables;
+  }
+
+  /**
+   * Helper to add syllables from a word (handles hyphens within word)
+   */
+  addSyllablesFromWord(word, syllables) {
+    const parts = word.split(/(-)/);
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      if (part === '') continue;
+
+      if (part === '-') {
+        // Skip standalone hyphens, they're handled in main loop
+        continue;
+      } else if (i < parts.length - 1 && parts[i + 1] === '-') {
+        syllables.push(part + '-');
+        i++; // Skip the hyphen
+      } else {
+        syllables.push(part);
+      }
+    }
   }
 
   /**
@@ -491,12 +540,6 @@ class DOMRenderer {
     // Get line index from renderLine
     const lineIndex = renderLine.line_index;
 
-    // Build map of lyrics by x position for quick lookup
-    const lyricsByXPosition = new Map();
-    renderLine.lyrics.forEach(lyric => {
-      lyricsByXPosition.set(Math.round(lyric.x), lyric);
-    });
-
     // Render cells with new DOM structure
     // Structure: cell-container > (cell-content > (cell-char + octave-dot) + cell-text)
     renderLine.cells.forEach((cellData, idx) => {
@@ -638,18 +681,7 @@ class DOMRenderer {
       `;
       cellContent.appendChild(cellChar);
 
-      // Check if there's a lyric for this cell (match by x position)
-      const cellCenterX = Math.round(cellData.x + cellData.w / 2);
-      const matchingLyric = lyricsByXPosition.get(cellCenterX);
-
-      // Calculate container width to accommodate lyric if present
-      let containerWidth = cellData.w;
-      if (matchingLyric) {
-        // Estimate lyric width (approximate, for sizing the container)
-        // Each character is roughly 6-8px in text-sm italic
-        const estimatedLyricWidth = matchingLyric.text.length * 7;
-        containerWidth = Math.max(cellData.w, estimatedLyricWidth);
-      }
+      // Container width is just the cell width (lyrics are rendered separately at line level)
 
       // Create cell-container wrapper - positioned at cell location (anchor for slurs/beats)
       const cellContainer = document.createElement('span');
@@ -663,49 +695,36 @@ class DOMRenderer {
         position: absolute;
         left: ${cellData.x}px;
         top: ${cellData.y}px;
-        width: ${containerWidth}px;
+        width: ${cellData.w}px;
         height: ${cellData.h}px;
       `;
       cellContainer.appendChild(cellContent);
 
-      if (matchingLyric) {
-        const lyricSpan = document.createElement('span');
-        lyricSpan.className = 'cell-text lyric text-sm';
-        lyricSpan.textContent = matchingLyric.text;
-        lyricSpan.style.cssText = `
-          position: absolute;
-          left: 50%;
-          top: ${matchingLyric.y - cellData.y}px;
-          font-style: italic;
-          color: #6b7280;
-          transform: translateX(-50%);
-          pointer-events: none;
-          white-space: nowrap;
-        `;
-        cellContainer.appendChild(lyricSpan);
-        lyricsByXPosition.delete(cellCenterX); // Mark as used
-      }
+      // Lyrics are rendered at line level with absolute positioning using WASM coordinates
+      // (see renderLyrics loop below)
 
       line.appendChild(cellContainer);
     });
 
-    // Render any remaining lyrics that didn't match a cell
-    // (Now handled by WASM with assigned=false field)
-    lyricsByXPosition.forEach(lyric => {
-      const span = document.createElement('span');
-      span.className = 'cell-text lyric text-sm';
-      span.textContent = lyric.text;
-      span.style.cssText = `
+    // Render all lyrics using absolute positions from WASM DisplayList
+    // WASM computed X, Y - JavaScript just renders at those exact coordinates
+    renderLine.lyrics.forEach(lyric => {
+      const lyricSpan = document.createElement('span');
+      lyricSpan.className = 'cell-text lyric';
+      lyricSpan.textContent = lyric.text;
+      const lyricFontSize = BASE_FONT_SIZE * 0.5; // 1/2 of base font size
+      lyricSpan.style.cssText = `
         position: absolute;
         left: ${lyric.x}px;
         top: ${lyric.y}px;
+        font-size: ${lyricFontSize}px;
+        font-family: 'Segoe UI', 'Helvetica Neue', system-ui, sans-serif;
         font-style: italic;
         color: #6b7280;
-        transform: translateX(-50%);
         pointer-events: none;
         white-space: nowrap;
       `;
-      line.appendChild(span);
+      line.appendChild(lyricSpan);
     });
 
     // Render tala (positioned characters from DisplayList)
