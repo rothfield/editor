@@ -429,7 +429,7 @@ impl LayoutEngine {
             .iter()
             .enumerate()
             .filter_map(|(idx, cell)| {
-                if matches!(cell.kind, ElementKind::Barline) {
+                if cell.kind.is_barline() {
                     render_cells.get(idx).map(|rc| rc.x)
                 } else {
                     None
@@ -474,7 +474,10 @@ impl LayoutEngine {
             ElementKind::UpperAnnotation => "upper-annotation",
             ElementKind::LowerAnnotation => "lower-annotation",
             ElementKind::BreathMark => "breath",
-            ElementKind::Barline => "barline",
+            ElementKind::SingleBarline
+            | ElementKind::RepeatLeftBarline
+            | ElementKind::RepeatRightBarline
+            | ElementKind::DoubleBarline => "barline",
             ElementKind::Whitespace => "whitespace",
             ElementKind::Text => "text",
             ElementKind::Symbol => "symbol",

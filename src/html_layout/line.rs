@@ -104,7 +104,7 @@ impl<'a> LayoutLineComputer<'a> {
         let slurs = self.compute_slur_arcs(&line.cells, &cells, config);
 
         // Compute beat loop arcs from beat indicators
-        let beat_loops = self.compute_beat_loop_arcs(&beats, &cells, config);
+        let beat_loops = self.compute_beat_loop_arcs(&beats, &cells, &line.cells, config);
 
         RenderLine {
             line_index: line_idx,
@@ -163,13 +163,21 @@ impl<'a> LayoutLineComputer<'a> {
         &self,
         beats: &[BeatSpan],
         render_cells: &[RenderCell],
+        original_cells: &[Cell],
         config: &LayoutConfig,
     ) -> Vec<RenderArc> {
         let mut arcs = Vec::new();
 
         for beat in beats {
-            if beat.end > beat.start {
-                // Only create visible beat loops for multi-cell beats
+            // Only create beat loops for beats with 2+ non-continuation cells
+            let non_continuation_count = (beat.start..=beat.end)
+                .filter(|&i| {
+                    original_cells.get(i).map(|c| !c.continuation).unwrap_or(false)
+                })
+                .count();
+
+            if non_continuation_count >= 2 {
+                // Multi-element beat (not counting continuations) - create beat loop
                 let start_cell = &render_cells[beat.start];
                 let end_cell = &render_cells[beat.end];
 
@@ -198,7 +206,7 @@ impl<'a> LayoutLineComputer<'a> {
         end_cell: &RenderCell,
         direction: &str,
         color: &str,
-        config: &LayoutConfig,
+        _config: &LayoutConfig,
     ) -> RenderArc {
         // Anchor points at cell centers
         let is_downward = direction == "down";
@@ -356,8 +364,8 @@ impl<'a> LayoutLineComputer<'a> {
             cell_bottom + LYRICS_GAP
         };
 
-        // Check if line has any pitched elements
-        let has_pitched_elements = original_cells.iter().any(|c| matches!(c.kind, ElementKind::PitchedElement));
+        // Check if line has any pitched elements (excluding continuation cells)
+        let has_pitched_elements = original_cells.iter().any(|c| !c.continuation && matches!(c.kind, ElementKind::PitchedElement));
 
         // Special case: 0 pitched elements - just render entire lyrics as-is
         if !has_pitched_elements {
@@ -407,7 +415,7 @@ impl<'a> LayoutLineComputer<'a> {
             .iter()
             .enumerate()
             .filter_map(|(idx, cell)| {
-                if matches!(cell.kind, ElementKind::Barline) {
+                if cell.kind.is_barline() {
                     render_cells.get(idx).map(|rc| rc.x)
                 } else {
                     None

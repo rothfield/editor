@@ -45,11 +45,12 @@ export default defineConfig({
       name: 'firefox',
       use: { ...devices['Desktop Firefox'] },
     },
-    // TEMPORARILY DISABLED for faster test runs
-    // {
-    //   name: 'webkit',
-    //   use: { ...devices['Desktop Safari'] },
-    // },
+    // WebKit (Safari) - works in Docker with Ubuntu 20.04 environment
+    // Disable locally on incompatible systems (Arch Linux) - use Docker instead
+    {
+      name: 'webkit',
+      use: { ...devices['Desktop Safari'] },
+    },
   ],
 
   // Development server

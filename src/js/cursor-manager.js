@@ -5,7 +5,7 @@
  * for the Music Notation Editor.
  */
 
-import { DEFAULT_CURSOR, LEFT_MARGIN_PX } from './constants.js';
+import { DEFAULT_CURSOR, LEFT_MARGIN_PX, BASE_FONT_SIZE } from './constants.js';
 import logger, { LOG_CATEGORIES } from './logger.js';
 
 /**
@@ -32,7 +32,7 @@ class CursorManager {
     this.cursorElement.style.cssText = `
       position: absolute;
       width: 2px;
-      height: 16px;
+      height: ${BASE_FONT_SIZE}px;
       background-color: #000;
       z-index: 10;
       pointer-events: none;

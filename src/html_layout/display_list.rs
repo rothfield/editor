@@ -128,6 +128,11 @@ pub struct RenderCell {
     /// Length = glyph.chars().count() + 1
     /// [0] = before first char, [1] = after first char, ..., [n] = after last char
     pub char_positions: Vec<f32>,
+
+    /// Barline type if this is a barline cell (for SMuFL glyph rendering)
+    /// Options: "single", "repeatLeft", "repeatRight", "doubleBar", or empty if not a barline
+    #[serde(default)]
+    pub barline_type: String,
 }
 
 /// A positioned lyric syllable

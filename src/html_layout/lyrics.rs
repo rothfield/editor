@@ -160,16 +160,16 @@ pub fn distribute_lyrics(lyrics: &str, cells: &[Cell]) -> Vec<SyllableAssignment
         return assignments;
     }
 
-    // Count pitched elements
+    // Count pitched elements (excluding continuation cells which are part of accidentals)
     let pitched_count = cells.iter()
-        .filter(|c| matches!(c.kind, ElementKind::PitchedElement))
+        .filter(|c| !c.continuation && matches!(c.kind, ElementKind::PitchedElement))
         .count();
 
     // Special case: 0 or 1 pitched notes - assign entire lyrics as-is (no splitting)
     if pitched_count <= 1 {
-        // Find first pitched element index, or use 0 if none exist
+        // Find first pitched element index (excluding continuations), or use 0 if none exist
         let cell_index = cells.iter()
-            .position(|c| matches!(c.kind, ElementKind::PitchedElement))
+            .position(|c| !c.continuation && matches!(c.kind, ElementKind::PitchedElement))
             .unwrap_or(0);
 
         // Assign entire lyrics string unchanged
@@ -192,8 +192,8 @@ pub fn distribute_lyrics(lyrics: &str, cells: &[Cell]) -> Vec<SyllableAssignment
     let mut slur_depth: i32 = 0; // Track nested slurs
 
     for (cell_index, cell) in cells.iter().enumerate() {
-        // Only process pitched elements (kind == 1 / PitchedElement)
-        if !matches!(cell.kind, ElementKind::PitchedElement) {
+        // Only process pitched elements (kind == 1 / PitchedElement) that are not continuations
+        if cell.continuation || !matches!(cell.kind, ElementKind::PitchedElement) {
             continue;
         }
 

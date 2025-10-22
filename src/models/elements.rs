@@ -29,17 +29,26 @@ pub enum ElementKind {
     /// Text elements that cannot be parsed as musical notation
     Text = 5,
 
-    /// Barline elements for beat separation
-    Barline = 6,
+    /// Single barline (|)
+    SingleBarline = 6,
+
+    /// Left repeat barline (|:)
+    RepeatLeftBarline = 7,
+
+    /// Right repeat barline (:|)
+    RepeatRightBarline = 8,
+
+    /// Double barline (||)
+    DoubleBarline = 9,
 
     /// Breath mark elements
-    BreathMark = 7,
+    BreathMark = 10,
 
     /// Whitespace elements for layout
-    Whitespace = 8,
+    Whitespace = 11,
 
     /// Symbol elements (single non-alphanumeric characters: @, #, !, ?, etc.)
-    Symbol = 9,
+    Symbol = 12,
 }
 
 // Custom serialization to show both name and value
@@ -82,10 +91,13 @@ impl<'de> Deserialize<'de> for ElementKind {
                     3 => Ok(ElementKind::UpperAnnotation),
                     4 => Ok(ElementKind::LowerAnnotation),
                     5 => Ok(ElementKind::Text),
-                    6 => Ok(ElementKind::Barline),
-                    7 => Ok(ElementKind::BreathMark),
-                    8 => Ok(ElementKind::Whitespace),
-                    9 => Ok(ElementKind::Symbol),
+                    6 => Ok(ElementKind::SingleBarline),
+                    7 => Ok(ElementKind::RepeatLeftBarline),
+                    8 => Ok(ElementKind::RepeatRightBarline),
+                    9 => Ok(ElementKind::DoubleBarline),
+                    10 => Ok(ElementKind::BreathMark),
+                    11 => Ok(ElementKind::Whitespace),
+                    12 => Ok(ElementKind::Symbol),
                     _ => Err(E::custom(format!("invalid ElementKind value: {}", value))),
                 }
             }
@@ -109,10 +121,13 @@ impl<'de> Deserialize<'de> for ElementKind {
                     Some(3) => Ok(ElementKind::UpperAnnotation),
                     Some(4) => Ok(ElementKind::LowerAnnotation),
                     Some(5) => Ok(ElementKind::Text),
-                    Some(6) => Ok(ElementKind::Barline),
-                    Some(7) => Ok(ElementKind::BreathMark),
-                    Some(8) => Ok(ElementKind::Whitespace),
-                    Some(9) => Ok(ElementKind::Symbol),
+                    Some(6) => Ok(ElementKind::SingleBarline),
+                    Some(7) => Ok(ElementKind::RepeatLeftBarline),
+                    Some(8) => Ok(ElementKind::RepeatRightBarline),
+                    Some(9) => Ok(ElementKind::DoubleBarline),
+                    Some(10) => Ok(ElementKind::BreathMark),
+                    Some(11) => Ok(ElementKind::Whitespace),
+                    Some(12) => Ok(ElementKind::Symbol),
                     Some(v) => Err(serde::de::Error::custom(format!("invalid ElementKind value: {}", v))),
                     None => Err(serde::de::Error::missing_field("value")),
                 }
@@ -144,6 +159,17 @@ impl ElementKind {
         matches!(self, ElementKind::PitchedElement)
     }
 
+    /// Check if this element is any kind of barline
+    pub fn is_barline(&self) -> bool {
+        matches!(
+            self,
+            ElementKind::SingleBarline
+                | ElementKind::RepeatLeftBarline
+                | ElementKind::RepeatRightBarline
+                | ElementKind::DoubleBarline
+        )
+    }
+
     /// Get a human-readable name for this element type
     pub fn name(&self) -> &'static str {
         match self {
@@ -153,7 +179,10 @@ impl ElementKind {
             ElementKind::UpperAnnotation => "Upper Annotation",
             ElementKind::LowerAnnotation => "Lower Annotation",
             ElementKind::Text => "Text",
-            ElementKind::Barline => "Barline",
+            ElementKind::SingleBarline => "Single Barline",
+            ElementKind::RepeatLeftBarline => "Left Repeat Barline",
+            ElementKind::RepeatRightBarline => "Right Repeat Barline",
+            ElementKind::DoubleBarline => "Double Barline",
             ElementKind::BreathMark => "Breath Mark",
             ElementKind::Whitespace => "Whitespace",
             ElementKind::Symbol => "Symbol",
@@ -169,7 +198,10 @@ impl ElementKind {
             ElementKind::UpperAnnotation => "upper_annotation",
             ElementKind::LowerAnnotation => "lower_annotation",
             ElementKind::Text => "text",
-            ElementKind::Barline => "barline",
+            ElementKind::SingleBarline => "single_barline",
+            ElementKind::RepeatLeftBarline => "repeat_left_barline",
+            ElementKind::RepeatRightBarline => "repeat_right_barline",
+            ElementKind::DoubleBarline => "double_barline",
             ElementKind::BreathMark => "breath_mark",
             ElementKind::Whitespace => "whitespace",
             ElementKind::Symbol => "symbol",

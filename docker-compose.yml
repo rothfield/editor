@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  playwright-tests:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: editor-playwright-tests
+    working_dir: /app
+    volumes:
+      - .:/app
+      - /app/node_modules  # Don't mount node_modules from host
+    environment:
+      - CI=true
+      - PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1  # Skip download since we installed them in Dockerfile
+    ports:
+      - "9090:8080"  # Host:Container - access dev server at localhost:9090
+    command: npm run test:pw
+    networks:
+      - playwright-network
+
+networks:
+  playwright-network:
+    driver: bridge

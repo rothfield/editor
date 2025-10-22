@@ -133,8 +133,8 @@ pub fn distribute_lyrics(lyrics: &str, cells: &[Cell]) -> Vec<SyllableAssignment
     let mut slur_depth: i32 = 0; // Track nested slurs
 
     for (cell_index, cell) in cells.iter().enumerate() {
-        // Only process pitched elements (kind == 1 / PitchedElement)
-        if !matches!(cell.kind, ElementKind::PitchedElement) {
+        // Only process pitched elements (kind == 1 / PitchedElement) that are not continuations
+        if cell.continuation || !matches!(cell.kind, ElementKind::PitchedElement) {
             continue;
         }
 

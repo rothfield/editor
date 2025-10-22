@@ -8,7 +8,7 @@
 import DOMRenderer from './renderer.js';
 import logger, { LOG_CATEGORIES } from './logger.js';
 import { OSMDRenderer } from './osmd-renderer.js';
-import { LEFT_MARGIN_PX, ENABLE_AUTOSAVE } from './constants.js';
+import { LEFT_MARGIN_PX, ENABLE_AUTOSAVE, BASE_FONT_SIZE } from './constants.js';
 import AutoSave from './autosave.js';
 import StorageManager from './storage-manager.js';
 
@@ -2498,38 +2498,35 @@ class MusicNotationEditor {
    * Calculate Cell position from coordinates using DisplayList data
    */
   calculateCellPosition(x, y) {
-    // Use DisplayList for accurate cursor positioning
-    if (!this.renderer || !this.renderer.displayList) {
-      console.warn('DisplayList not available, using fallback');
-      return 0;
-    }
-
-    const displayList = this.renderer.displayList;
-
     // Get the correct line based on Y coordinate
     const lineIndex = this.calculateLineFromY(y);
-    const line = lineIndex !== null && displayList.lines[lineIndex] ? displayList.lines[lineIndex] : (displayList.lines && displayList.lines[0]);
 
-    if (!line || !line.cells || line.cells.length === 0) {
+    // Get all line containers and find the one that was clicked
+    const lineContainers = this.element.querySelectorAll('.notation-line');
+    if (lineIndex >= lineContainers.length) {
       return 0;
     }
 
-    // Use the line's cells for position calculation (not firstLine)
-    const currentLine = line;
+    const lineContainer = lineContainers[lineIndex];
+    const cellElements = lineContainer.querySelectorAll('.char-cell');
 
-    // Build array of cursor positions:
-    // [0] = cursor_left of first cell
-    // [1] = cursor_right of first cell
-    // [2] = cursor_right of second cell
-    // ...
+    if (cellElements.length === 0) {
+      return 0;
+    }
+
+    // Measure actual rendered cell positions from DOM
+    const editorRect = this.element.getBoundingClientRect();
     const cursorPositions = [];
 
-    // Position 0: before first cell
-    cursorPositions.push(currentLine.cells[0].cursor_left);
+    // Position 0: left edge of first cell
+    const firstCell = cellElements[0];
+    const firstRect = firstCell.getBoundingClientRect();
+    cursorPositions.push(firstRect.left - editorRect.left);
 
-    // Positions 1..N: after each cell
-    for (const cell of currentLine.cells) {
-      cursorPositions.push(cell.cursor_right);
+    // Positions 1..N: right edge of each cell
+    for (const cell of cellElements) {
+      const cellRect = cell.getBoundingClientRect();
+      cursorPositions.push(cellRect.right - editorRect.left);
     }
 
     // Find the cursor position closest to the click
@@ -2615,6 +2612,7 @@ class MusicNotationEditor {
 
             .cursor-indicator {
                 width: 2px;
+                height: ${BASE_FONT_SIZE}px;
                 background-color: #0066cc;
                 z-index: 5;
                 pointer-events: none;
@@ -2687,7 +2685,7 @@ class MusicNotationEditor {
     }
 
     const charPos = this.getCursorPosition(); // Character position (0, 1, 2, ...)
-    const lineHeight = 16; // Line height in pixels
+    const lineHeight = BASE_FONT_SIZE; // Line height in pixels - matches base font size
 
     const currentStave = this.getCurrentStave();
 

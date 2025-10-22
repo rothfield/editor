@@ -53,6 +53,16 @@
             list-style: none;
         }
 
+        /* Header styling - use BASE_FONT_SIZE (16px) */
+        header {
+            font-size: 1rem; /* BASE_FONT_SIZE = 16px */
+        }
+
+        /* Document status info in header */
+        #composition-title {
+            font-size: 1rem; /* BASE_FONT_SIZE = 16px */
+        }
+
         /* Tab buttons container */
         .tab-buttons {
             display: flex;
@@ -72,7 +82,7 @@
             background: #f9fafb;
             text-align: center;
             cursor: pointer;
-            font-size: 0.48rem; /* 60% of 0.8rem default */
+            font-size: 18px;
             white-space: nowrap;
             transition: all 0.2s;
             flex: 0 0 auto;
@@ -189,6 +199,7 @@
         #layout-display,
         #persistent-json,
         #lilypond-source,
+        #musicxml-source,
         #html-content,
         #console-errors-list,
         #console-log-list {
@@ -198,6 +209,7 @@
             max-height: 100%; /* Constrain to parent */
             scrollbar-width: thin;
             scrollbar-color: #9ca3af #f3f4f6;
+            font-size: 18px;
         }
 
         /* HTML content wrapping */
@@ -352,7 +364,7 @@
                 </nav>
 
                 <!-- Center: Document Status Information -->
-                <div class="flex items-center space-x-4 text-xs text-gray-600">
+                <div class="flex items-center space-x-4 text-gray-600">
                     <span>Position: <span id="cursor-position">Line: 0, Col: 0 (Lane: 1)</span></span>
                     <span class="text-gray-400">|</span>
                     <span>Pitch System: <span id="current-pitch-system" style="font-weight: bold;">Number</span></span>
@@ -363,7 +375,7 @@
                 </div>
 
                 <!-- Right: Document Title -->
-                <div id="composition-title" class="text-sm text-ui-disabled-text">
+                <div id="composition-title" class="text-ui-disabled-text">
                     Untitled Document
                 </div>
             </div>

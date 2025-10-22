@@ -1,25 +1,34 @@
 # TODO - Persistent Tasks
 
-## 1. Docker for Playwright/WebKit Testing
+## 1. Docker for Playwright/WebKit Testing ✅ COMPLETE
 
 **Problem**: Playwright's WebKit browser fails on Arch Linux due to library incompatibilities (specifically `libffi.so.7: version 'LIBFFI_BASE_7.0' not found`).
 
-**Current Status**:
-- WebKit tests fail immediately with library errors
-- Chromium and Firefox tests work fine
-- WebKit binary is built for Ubuntu 20.04
+**Solution Implemented**: Set up Docker container for cross-browser testing
 
-**Solution**: Set up Docker container for cross-browser testing
-- Create `Dockerfile` with Ubuntu 20.04 base
-- Include all Playwright dependencies
-- Configure for headless testing
-- Update CI/CD pipeline to use Docker
+**Files Created/Modified**:
+- ✅ `Dockerfile` - Multi-stage build with Ubuntu 20.04, all Playwright dependencies, pre-installed browsers
+- ✅ `docker-compose.yml` - Orchestrates test environment with proper mounts and isolation
+- ✅ `.dockerignore` - Optimizes build context
+- ✅ `scripts/run-tests-docker.sh` - Helper script for easy test running
+- ✅ `DOCKER_TESTING.md` - Complete documentation
+- ✅ `playwright.config.js` - WebKit re-enabled (works in Docker)
 
-**Alternative**: Comment out WebKit in `playwright.config.js` if Safari testing isn't critical
+**Usage**:
+```bash
+# Run all tests in Docker (Chromium, Firefox, WebKit)
+docker-compose run --rm playwright-tests
 
-**Files**:
-- `playwright.config.js` - WebKit configuration
-- Error logs show: `/home/john/.cache/ms-playwright/webkit_ubuntu20.04_x64_special-2092/`
+# Or use helper script
+./scripts/run-tests-docker.sh
+```
+
+**How It Works**:
+1. Multi-stage Docker build optimizes image size
+2. Stage 1: Installs dependencies and npm packages
+3. Stage 2: Includes all browser dependencies from Ubuntu 20.04
+4. Pre-installs all three Playwright browsers (Chromium, Firefox, WebKit)
+5. WebKit works reliably in this Ubuntu environment
 
 ---
 
@@ -312,6 +321,17 @@ From `src/parse/pitch_system.rs`:
 - Import detection (auto-set line notation based on content)
 - Notation conversion suggestions when ambiguous
 - Side-by-side view (two notations at once)
+
+---
+
+## Architecture & Technotes
+
+**See**: `technote_lily_pond_rendering_architecture_proxy_bff_pattern.md`
+
+Recommended architecture for production LilyPond rendering:
+- Use Backend-for-Frontend (BFF) proxy pattern
+- Direct browser→LilyPond suitable only for prototypes/internal tools
+- Includes caching, rate limiting, sandboxing, job management strategies
 
 ---
 

@@ -2,6 +2,16 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Represents the type of accidental applied to a pitch
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AccidentalType {
+    None,
+    Sharp,
+    Flat,
+    DoubleSharp,
+    DoubleFlat,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum PitchCode {
     // Naturals (7)
@@ -75,6 +85,30 @@ impl PitchCode {
             6 => PitchCode::N6,
             7 => PitchCode::N7,
             _ => unreachable!("Invalid pitch degree"),
+        }
+    }
+
+    /// Get the type of accidental applied to this pitch (sharp, flat, etc.)
+    pub fn accidental_type(&self) -> AccidentalType {
+        match self {
+            // Sharps
+            PitchCode::N1s | PitchCode::N2s | PitchCode::N3s | PitchCode::N4s |
+            PitchCode::N5s | PitchCode::N6s | PitchCode::N7s => AccidentalType::Sharp,
+
+            // Flats
+            PitchCode::N1b | PitchCode::N2b | PitchCode::N3b | PitchCode::N4b |
+            PitchCode::N5b | PitchCode::N6b | PitchCode::N7b => AccidentalType::Flat,
+
+            // Double sharps
+            PitchCode::N1ss | PitchCode::N2ss | PitchCode::N3ss | PitchCode::N4ss |
+            PitchCode::N5ss | PitchCode::N6ss | PitchCode::N7ss => AccidentalType::DoubleSharp,
+
+            // Double flats
+            PitchCode::N1bb | PitchCode::N2bb | PitchCode::N3bb | PitchCode::N4bb |
+            PitchCode::N5bb | PitchCode::N6bb | PitchCode::N7bb => AccidentalType::DoubleFlat,
+
+            // Naturals
+            _ => AccidentalType::None,
         }
     }
 

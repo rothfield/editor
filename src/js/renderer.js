@@ -52,6 +52,7 @@ class DOMRenderer {
         padding: 0;
         margin: 0;
         box-sizing: content-box;
+        font-size: ${BASE_FONT_SIZE}px;
       }
 
       /* Octave dots now use real DOM elements (span.cell-modifier.octave-dot) instead of ::before pseudo-elements */
@@ -63,50 +64,57 @@ class DOMRenderer {
         font-weight: 500;
       }
 
-      /* Accidental symbols using SMuFL music font */
-      /* Sharp sign (♯) - SMuFL U+E262 */
-      .char-cell.accidental-sharp {
+      /* Hide pitch continuation cells (raw '#', 'b' characters that are part of accidentals) */
+      .char-cell.pitch-continuation {
         color: transparent;
       }
 
-      .char-cell.accidental-sharp::after {
-        content: '\uE262'; /* SMuFL sharp glyph */
+      /* Pitch accidentals using SMuFL music font - positioned like barlines */
+      /* Attach accidental glyphs to the right side of the pitch note */
+
+      /* Base positioning for all pitch accidentals (same as barlines) */
+      .char-cell.pitch-accidental-sharp::after,
+      .char-cell.pitch-accidental-flat::after,
+      .char-cell.pitch-accidental-double-sharp::after,
+      .char-cell.pitch-accidental-double-flat::after {
         font-family: 'Bravura', serif;
         position: absolute;
-        left: 50%;
-        top: calc(50% + ${BRAVURA_VERTICAL_OFFSET}px - ${BRAVURA_FONT_SIZE * 0.75}px);
-        transform: translate(-50%, -50%);
+        left: 100%; /* Attach to right side of note */
+        top: calc(50% + ${BRAVURA_VERTICAL_OFFSET}px - ${BRAVURA_FONT_SIZE * 0.5}px - ${BASE_FONT_SIZE * 0.2}px);
+        transform: translateY(-50%);
         color: #000;
-        font-size: ${BRAVURA_FONT_SIZE * 1.5}px;
+        font-size: ${BRAVURA_FONT_SIZE * 1.4}px;
         line-height: 1;
         pointer-events: none;
         z-index: 3;
       }
 
-      /* Flat sign (♭) - SMuFL U+E260 */
-      .char-cell.accidental-flat {
-        color: transparent;
+      /* Sharp (♯) - SMuFL U+E262 */
+      .char-cell.pitch-accidental-sharp::after {
+        content: '\uE262';
       }
 
-      .char-cell.accidental-flat::after {
-        content: '\uE260'; /* SMuFL flat glyph */
-        font-family: 'Bravura', serif;
-        position: absolute;
-        left: 50%;
-        top: calc(50% + ${BRAVURA_VERTICAL_OFFSET}px - ${BRAVURA_FONT_SIZE * 0.75}px);
-        transform: translate(-50%, -50%);
-        color: #000;
-        font-size: ${BRAVURA_FONT_SIZE * 1.5}px;
-        line-height: 1;
-        pointer-events: none;
-        z-index: 3;
+      /* Flat (♭) - SMuFL U+E260 */
+      .char-cell.pitch-accidental-flat::after {
+        content: '\uE260';
       }
 
-      /* Multi-character barline overlays using SMuFL music font */
+      /* Double sharp (𝄪) - SMuFL U+E263 */
+      .char-cell.pitch-accidental-double-sharp::after {
+        content: '\uE263';
+      }
+
+      /* Double flat (𝄫) - SMuFL U+E264 */
+      .char-cell.pitch-accidental-double-flat::after {
+        content: '\uE264';
+      }
+
+      /* All barline overlays using SMuFL music font */
       /* Hide underlying ASCII text and show fancy glyph overlay */
       .char-cell.repeat-left-start,
       .char-cell.repeat-right-start,
-      .char-cell.double-bar-start {
+      .char-cell.double-bar-start,
+      .char-cell.single-bar {
         color: transparent;
       }
 
@@ -115,55 +123,49 @@ class DOMRenderer {
         color: transparent;
       }
 
-      /* Left repeat (|:) - SMuFL U+E040 spanning 2 cells */
-      .char-cell.repeat-left-start::after {
-        content: '\uE040';
+      /* Base styles for all SMuFL barline glyphs */
+      .char-cell.repeat-left-start::after,
+      .char-cell.repeat-right-start::after,
+      .char-cell.double-bar-start::after,
+      .char-cell.single-bar::after {
         font-family: 'Bravura', serif;
         position: absolute;
         left: 0;
-        top: calc(50% + ${BRAVURA_VERTICAL_OFFSET}px - ${BRAVURA_FONT_SIZE * 0.5}px);
+        top: ${BASE_FONT_SIZE * 0.75}px;
         transform: translateY(-50%);
-        width: 200%; /* Span 2 cells */
-        text-align: left;
         color: #000;
         font-size: ${BRAVURA_FONT_SIZE}px;
         line-height: 1;
         pointer-events: none;
         z-index: 4;
+      }
+
+      /* Left repeat (|:) - SMuFL U+E040 spanning 2 cells */
+      .char-cell.repeat-left-start::after {
+        content: '\uE040';
+        width: 200%;
+        text-align: left;
       }
 
       /* Right repeat (:|) - SMuFL U+E041 spanning 2 cells */
       .char-cell.repeat-right-start::after {
         content: '\uE041';
-        font-family: 'Bravura', serif;
-        position: absolute;
-        left: 0;
-        top: calc(50% + ${BRAVURA_VERTICAL_OFFSET}px - ${BRAVURA_FONT_SIZE * 0.5}px);
-        transform: translateY(-50%);
-        width: 200%; /* Span 2 cells */
+        width: 200%;
         text-align: left;
-        color: #000;
-        font-size: ${BRAVURA_FONT_SIZE}px;
-        line-height: 1;
-        pointer-events: none;
-        z-index: 4;
       }
 
       /* Double barline (||) - SMuFL U+E031 spanning 2 cells */
       .char-cell.double-bar-start::after {
         content: '\uE031';
-        font-family: 'Bravura', serif;
-        position: absolute;
-        left: 0;
-        top: calc(50% + ${BRAVURA_VERTICAL_OFFSET}px - ${BRAVURA_FONT_SIZE * 0.5}px);
-        transform: translateY(-50%);
-        width: 200%; /* Span 2 cells */
+        width: 200%;
         text-align: left;
-        color: #000;
-        font-size: ${BRAVURA_FONT_SIZE}px;
-        line-height: 1;
-        pointer-events: none;
-        z-index: 4;
+      }
+
+      /* Single barline (|) - SMuFL U+E030 */
+      .char-cell.single-bar::after {
+        content: '\uE030';
+        width: 100%;
+        text-align: center;
       }
     `;
     document.head.appendChild(style);
@@ -250,12 +252,18 @@ class DOMRenderer {
     for (const line of doc.lines) {
       // Measure each cell
       for (const cell of line.cells) {
-        const span = document.createElement('span');
-        span.className = 'char-cell';
-        span.textContent = cell.char === ' ' ? '\u00A0' : cell.char;
-        temp.appendChild(span);
-        cellWidths.push(span.getBoundingClientRect().width);
-        temp.removeChild(span);
+        // Continuation cells (raw accidental chars like '#', 'b') should be minimal width
+        if (cell.continuation) {
+          // Use 1/10th of font width for continuation cells
+          cellWidths.push(BASE_FONT_SIZE * 0.1);
+        } else {
+          const span = document.createElement('span');
+          span.className = 'char-cell';
+          span.textContent = cell.char === ' ' ? '\u00A0' : cell.char;
+          temp.appendChild(span);
+          cellWidths.push(span.getBoundingClientRect().width);
+          temp.removeChild(span);
+        }
       }
     }
 
@@ -383,13 +391,21 @@ class DOMRenderer {
         const charWidths = [];
 
         // Measure each character in the cell's glyph
-        for (const char of cell.char) {
-          const span = document.createElement('span');
-          span.className = 'char-cell';
-          span.textContent = char === ' ' ? '\u00A0' : char;
-          temp.appendChild(span);
-          charWidths.push(span.getBoundingClientRect().width);
-          temp.removeChild(span);
+        if (cell.continuation) {
+          // Continuation cells: minimal width for each character (1/10th font size)
+          for (const char of cell.char) {
+            charWidths.push(BASE_FONT_SIZE * 0.1);
+          }
+        } else {
+          // Normal cells: measure actual character widths
+          for (const char of cell.char) {
+            const span = document.createElement('span');
+            span.className = 'char-cell';
+            span.textContent = char === ' ' ? '\u00A0' : char;
+            temp.appendChild(span);
+            charWidths.push(span.getBoundingClientRect().width);
+            temp.removeChild(span);
+          }
         }
 
         characterData.push({
@@ -467,7 +483,7 @@ class DOMRenderer {
       composerElement.textContent = composer;
       composerElement.style.cssText = `
         text-align: right;
-        font-size: 14px;
+        font-size: ${BASE_FONT_SIZE * 0.6}px;
         font-style: italic;
         color: #6b7280;
         width: 100%;
@@ -536,33 +552,9 @@ class DOMRenderer {
       cellChar.className = cellCharClasses.join(' ');
       cellChar.textContent = cellData.char === ' ' ? '\u00A0' : cellData.char;
 
-      // Detect multi-character barlines for CSS overlay
-      const isBarline = cellData.classes.includes('kind-barline');
-      const isContinuation = cellData.dataset && (
-        cellData.dataset instanceof Map ?
-          cellData.dataset.get('continuation') === 'true' :
-          cellData.dataset.continuation === 'true'
-      );
-
-      if (isBarline && !isContinuation && idx < renderLine.cells.length - 1) {
-        const nextCell = renderLine.cells[idx + 1];
-        const nextIsBarline = nextCell.classes.includes('kind-barline');
-        const nextIsContinuation = nextCell.dataset && (
-          nextCell.dataset instanceof Map ?
-            nextCell.dataset.get('continuation') === 'true' :
-            nextCell.dataset.continuation === 'true'
-        );
-
-        if (nextIsBarline && nextIsContinuation) {
-          const pattern = cellData.char + nextCell.char;
-          if (pattern === '|:') {
-            cellChar.classList.add('repeat-left-start');
-          } else if (pattern === ':|') {
-            cellChar.classList.add('repeat-right-start');
-          } else if (pattern === '||') {
-            cellChar.classList.add('double-bar-start');
-          }
-        }
+      // Apply barline glyph class from Rust
+      if (cellData.barline_type) {
+        cellChar.classList.add(cellData.barline_type);
       }
 
       cellChar.style.cssText = `

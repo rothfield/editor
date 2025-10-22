@@ -109,14 +109,18 @@ fn parse_note(s: &str, pitch_system: PitchSystem, column: usize) -> Option<Cell>
 
 /// Parse barline (includes "|", "|:", ":|", "||", etc.)
 /// Note: ":" alone is NOT a barline - it's text
-/// Stores barlines as ASCII - JavaScript layer converts to SMuFL glyphs for display
+/// Determines barline type and creates appropriate ElementKind variant
 fn parse_barline(s: &str, column: usize) -> Option<Cell> {
-    if matches!(s, "|" | "|:" | ":|" | "||") {
-        let cell = Cell::new(s.to_string(), ElementKind::Barline, column);
-        Some(cell)
-    } else {
-        None
-    }
+    let barline_kind = match s {
+        "|" => ElementKind::SingleBarline,
+        "|:" => ElementKind::RepeatLeftBarline,
+        ":|" => ElementKind::RepeatRightBarline,
+        "||" => ElementKind::DoubleBarline,
+        _ => return None,
+    };
+
+    let cell = Cell::new(s.to_string(), barline_kind, column);
+    Some(cell)
 }
 
 /// Parse whitespace
@@ -208,11 +212,21 @@ pub fn mark_continuations(cells: &mut Vec<Cell>) {
            (prev_char == ':' && curr_char == '|') ||   // :|
            (prev_char == '|' && curr_char == '|') {    // ||
             cells[i].continuation = true;
-            cells[i].kind = ElementKind::Barline;
-            // Also force the previous cell to be a Barline (for ":" in ":|")
-            cells[i - 1].kind = ElementKind::Barline;
-            log::info!("  ✅ Cell[{}] '{}' marked as barline continuation of Cell[{}] '{}' → combined barline",
-                     i, cells[i].char, i - 1, cells[i - 1].char);
+
+            // Determine which barline type this is
+            let barline_type = if prev_char == '|' && curr_char == ':' {
+                ElementKind::RepeatLeftBarline
+            } else if prev_char == ':' && curr_char == '|' {
+                ElementKind::RepeatRightBarline
+            } else {
+                ElementKind::DoubleBarline
+            };
+
+            cells[i].kind = barline_type;
+            // Also force the previous cell to have the correct barline type
+            cells[i - 1].kind = barline_type;
+            log::info!("  ✅ Cell[{}] '{}' marked as {:?} continuation of Cell[{}] '{}' → combined barline",
+                     i, cells[i].char, barline_type, i - 1, cells[i - 1].char);
         }
         // Check if current cell should continue previous cell (accidentals, text)
         else if should_continue_with_limit(cells, i, prev_kind, curr_char) {
@@ -331,6 +345,15 @@ mod tests {
     }
 
     #[test]
+    fn test_barline_single() {
+        // Test single "|" should be SingleBarline, not DoubleBarline
+        let cell = parse_single('|', PitchSystem::Number, 0);
+        assert_eq!(cell.char, "|");
+        assert_eq!(cell.kind, ElementKind::SingleBarline);
+        assert_eq!(cell.continuation, false);
+    }
+
+    #[test]
     fn test_barline_left_repeat() {
         // Test "|:" should be left repeat barline
         let mut cells = vec![
@@ -343,15 +366,15 @@ mod tests {
         // Should have 2 cells
         assert_eq!(cells.len(), 2);
 
-        // First cell: "|" as Barline
+        // First cell: "|" as RepeatLeftBarline
         assert_eq!(cells[0].char, "|");
-        assert_eq!(cells[0].kind, ElementKind::Barline);
+        assert_eq!(cells[0].kind, ElementKind::RepeatLeftBarline);
         assert_eq!(cells[0].continuation, false);
 
-        // Second cell: ":" as continuation, forced to Barline
+        // Second cell: ":" as continuation, forced to RepeatLeftBarline
         assert_eq!(cells[1].char, ":");
         assert_eq!(cells[1].continuation, true);
-        assert_eq!(cells[1].kind, ElementKind::Barline);
+        assert_eq!(cells[1].kind, ElementKind::RepeatLeftBarline);
     }
 
     #[test]
@@ -367,15 +390,15 @@ mod tests {
         // Should have 2 cells
         assert_eq!(cells.len(), 2);
 
-        // First cell: ":" was Text, but should be forced to Barline
+        // First cell: ":" was Symbol, but should be forced to RepeatRightBarline
         assert_eq!(cells[0].char, ":");
-        assert_eq!(cells[0].kind, ElementKind::Barline); // Forced to Barline
+        assert_eq!(cells[0].kind, ElementKind::RepeatRightBarline); // Forced to RepeatRightBarline
         assert_eq!(cells[0].continuation, false);
 
         // Second cell: "|" as continuation of barline
         assert_eq!(cells[1].char, "|");
         assert_eq!(cells[1].continuation, true);
-        assert_eq!(cells[1].kind, ElementKind::Barline);
+        assert_eq!(cells[1].kind, ElementKind::RepeatRightBarline);
     }
 
     #[test]
@@ -391,15 +414,15 @@ mod tests {
         // Should have 2 cells
         assert_eq!(cells.len(), 2);
 
-        // First cell: "|" as Barline
+        // First cell: "|" as DoubleBarline
         assert_eq!(cells[0].char, "|");
-        assert_eq!(cells[0].kind, ElementKind::Barline);
+        assert_eq!(cells[0].kind, ElementKind::DoubleBarline);
         assert_eq!(cells[0].continuation, false);
 
         // Second cell: "|" as continuation
         assert_eq!(cells[1].char, "|");
         assert_eq!(cells[1].continuation, true);
-        assert_eq!(cells[1].kind, ElementKind::Barline);
+        assert_eq!(cells[1].kind, ElementKind::DoubleBarline);
     }
 
     #[test]

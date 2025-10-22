@@ -56,19 +56,34 @@ pub struct Cell {
 rust
 Copy code
 pub enum ElementKind {
-    PitchedElement,      // S, r, R, g, G, m, M, P, d, D, n, N, C#, 3b, etc.
-    UnpitchedElement,    // -, --, |, ', space
-    UpperAnnotation,     // ., :, ~, tala digits, etc.
-    LowerAnnotation,     // ., :
-    LyricElement,        // syllables under the line
+    Unknown,                    // Uninitialized or unknown
+    PitchedElement,             // S, r, R, g, G, m, M, P, d, D, n, N, C#, 3b, etc.
+    UnpitchedElement,           // -, _, space
+    UpperAnnotation,            // ., :, ~, tala digits, etc.
+    LowerAnnotation,            // ., :
+    Text,                       // Non-musical text (fallback)
+    SingleBarline,              // |
+    RepeatLeftBarline,          // |:
+    RepeatRightBarline,         // :|
+    DoubleBarline,              // ||
+    BreathMark,                 // ', ,
+    Whitespace,                 // space
+    Symbol,                     // @, #, !, ?, etc. (non-alphanumeric)
 }
 Meaning
 Kind	Example	Description
 PitchedElement	S, r, C#, 3b	Sounded note (pitch token)
-UnpitchedElement	-, --, ', `	`
+UnpitchedElement	-, _	Non-pitched duration marker
 UpperAnnotation	., :, ~, 5	Above-line annotation (octaves, mordents, tala)
 LowerAnnotation	., :	Below-line annotation (lower octaves)
-LyricElement	sa, re, ga	Lyric syllables below the line
+Text	lorem, ipsum	Non-musical text (fallback for unknown input)
+SingleBarline	|	Single bar line (beat separator)
+RepeatLeftBarline	|:	Left repeat sign
+RepeatRightBarline	:|	Right repeat sign
+DoubleBarline	||	Double bar line
+BreathMark	', ,	Breath mark (pause indicator)
+Whitespace	space	Layout spacing
+Symbol	@, !, ?	Single non-alphanumeric character
 
 4. Line grammar (EBNF)
 ebnf
@@ -79,34 +94,38 @@ LineElement  = PitchedElement
              | BreathMark
              | Barline
              | Whitespace
+             | Symbol
              | Text
 
 PitchedElement    = /[A-Ga-gSrRgGmMPdDnN1-7](#|##|b|bb)?/
-UnpitchedElement  = "-" | "--" | "'" | "|" | " "
-BreathMark        = "'"
-Barline           = "|"
+UnpitchedElement  = "-" | "_"
+BreathMark        = "'" | ","
+Barline           = "|" | "|:" | ":|" | "||"
+                  ; Parsed to: SingleBarline | RepeatLeftBarline | RepeatRightBarline | DoubleBarline
 Whitespace        = " "
-Text              = /[A-Za-z0-9]+/   ; typically lyrics or annotations
-                         ; Text on the Letter lane is non-temporal and rendered differently (e.g., red)
+Symbol            = /[^A-Za-z0-9\s#b',-_|]/   ; Non-alphanumeric, non-reserved characters
+Text              = /[A-Za-z0-9]+/            ; typically lyrics or annotations
+                         ; Text is non-temporal and rendered differently
 5. Implicit beat segmentation
 Beats are not explicitly stored — they are derived from the character sequence.
 
 Rule summary
-Each contiguous run of non-space, non-barline characters (Pitched or Unpitched elements)
+Each contiguous run of Pitched and Unpitched elements (non-space, non-barline characters)
 forms one implicit beat.
 
-Dashes (-) stay inside beats.
+Dashes (-) and underscores (_) stay inside beats.
 
-Whitespace and Barlines always end a beat.
+Whitespace, all Barline types (SingleBarline, RepeatLeftBarline, RepeatRightBarline, DoubleBarline),
+Symbols, and Text always end a beat.
 
-Breath marks (') belong inside a beat (do not split it).
+Breath marks (', ,) belong inside a beat (do not split it).
 
 Formal grammar
 ebnf
 Copy code
 Beat          = BeatElement+
 BeatElement   = PitchedElement | UnpitchedElement | BreathMark
-BeatSeparator = Whitespace | Barline | Text
+BeatSeparator = Whitespace | SingleBarline | RepeatLeftBarline | RepeatRightBarline | DoubleBarline | Symbol | Text
 Each Beat is a contiguous sequence of BeatElements with no BeatSeparator between them.
 
 6. Parsing rules
@@ -122,16 +141,18 @@ fn derive_implicit_beats(cells: &[Cell], breath_ends_beat: bool) -> Vec<BeatSpan
 
     let is_splitter = |c: &Cell| -> bool {
         match c.kind {
-            ElementKind::UnpitchedElement if c.grapheme == "|" => true,
-            ElementKind::UnpitchedElement if c.grapheme == " " => true,
-            ElementKind::UnpitchedElement if c.grapheme == "'" => breath_ends_beat,
+            // Any barline type (SingleBarline, RepeatLeftBarline, etc.)
+            _ if c.kind.is_barline() => true,
+            ElementKind::Whitespace => true,
+            ElementKind::Symbol => true,
+            ElementKind::Text => true,
+            ElementKind::BreathMark => breath_ends_beat,
             _ => false
         }
     };
 
     let is_word_char = |c: &Cell| -> bool {
         matches!(c.kind, ElementKind::PitchedElement | ElementKind::UnpitchedElement)
-            && c.grapheme != "|" && c.grapheme != " " && c.grapheme != "'"
     };
 
     for (i, c) in cells.iter().enumerate() {
@@ -227,12 +248,18 @@ Every column is a moment; every word is a beat.
 - Every **Cell** corresponds to one visible column (grapheme-safe).
 - **Temporal columns** are those whose kind is `PitchedElement` or `UnpitchedElement`.
   - These represent actual musical time (sounded or sustained).
-- **Non-temporal columns** (whitespace, lyrics, annotations, barlines) serve only as layout or visual markers.
-- **Beats are implicit “words”** of temporal columns separated by spaces or barlines.
-- **Breaths and dashes** remain inside beats; they don’t divide time.
+- **Non-temporal columns** (whitespace, symbols, annotations, and barlines) serve only as layout or visual markers.
+- **Barline types** are semantically distinguished in the document model (**parse time, not layout time**):
+  - `SingleBarline` for `|` (simple beat separator)
+  - `RepeatLeftBarline` for `|:` (start of repeated section)
+  - `RepeatRightBarline` for `:|` (end of repeated section)
+  - `DoubleBarline` for `||` (final barline or section break)
+  - **This eliminates the bug where a single `|` could be misclassified as a continuation**
+- **Beats are implicit "words"** of temporal columns separated by spaces or any barline type.
+- **Breaths and dashes** remain inside beats; they don't divide time.
 - **Slurs** can span any elements, temporal or not.
 - **Loops/arcs** are derived automatically from these implicit beat spans.
-- The model is **flat, columnar, and time-linear only across temporal cells** —  
+- The model is **flat, columnar, and time-linear only across temporal cells** —
   everything else is structural ornamentation.
 
 ---

@@ -148,7 +148,7 @@ fn split_at_barlines(cells: &[Cell]) -> Vec<(usize, usize)> {
     let mut start = 0;
 
     for (i, cell) in cells.iter().enumerate() {
-        if cell.kind == ElementKind::Barline {
+        if cell.kind.is_barline() {
             // Add segment before barline
             if i > start {
                 segments.push((start, i));
@@ -230,6 +230,13 @@ fn normalize_beat(beat_cells: &[Cell]) -> (Vec<usize>, usize) {
             // Count this note + following extensions
             let mut slot_count = 1;
             let mut j = i + 1;
+
+            // Skip continuation cells (they're part of the pitched element)
+            while j < beat_cells.len() && beat_cells[j].continuation {
+                j += 1;
+            }
+
+            // Now look for extension "-" characters
             while j < beat_cells.len() {
                 if beat_cells[j].kind == ElementKind::UnpitchedElement && beat_cells[j].char == "-" {
                     slot_count += 1;
@@ -381,7 +388,7 @@ fn process_beat(
                     let is_last_note = {
                         let mut k = i + 1 + extension_count;
                         while k < beat_cells.len() {
-                            if beat_cells[k].kind == ElementKind::PitchedElement {
+                            if !beat_cells[k].continuation && beat_cells[k].kind == ElementKind::PitchedElement {
                                 break;
                             }
                             k += 1;

@@ -25,7 +25,7 @@ help:
 	@echo ""
 	@echo "Development:"
 	@echo "  dev            - Start dev server with auto-rebuild + hot reload ⚡"
-	@echo "  serve          - Alias for 'dev'"
+	@echo "  serve          - Start dev server + LilyPond service ⚡"
 	@echo "  serve-prod     - Serve production build"
 	@echo "  kill           - Kill the running development server"
 	@echo "  clean          - Clean all build artifacts"
@@ -113,18 +113,40 @@ dev: build-wasm build-css
 	@echo "Browser will auto-refresh on JS changes via hot reload"
 	npm run dev
 
-serve: dev
-	@echo "Alias for 'make dev'"
+serve:
+	@echo "🚀 Starting development environment..."
+	@echo ""
+	@echo "Starting LilyPond service..."
+	@$(MAKE) lilypond-start
+	@echo ""
+	@echo "Starting development server..."
+	@$(MAKE) dev
 
 serve-prod: build-prod
 	@echo "Starting production server..."
 	npm run serve-prod
 
 kill:
-	@echo "Stopping development server..."
-	@pkill -f "node src/js/dev-server.js" && echo "Development server stopped!" || echo "No development server running"
-	@pkill -f "npm run dev" 2>/dev/null || true
-	@pkill -f "rollup.*watch" 2>/dev/null || true
+	@echo "🛑 Stopping all servers..."
+	@echo ""
+	@echo "1️⃣  Development server processes:"
+	@pgrep -f "node src/js/dev-server.js" > /dev/null && pkill -9 -f "node src/js/dev-server.js" && echo "  ✓ Node dev server stopped" || echo "  - No dev server running"
+	@pgrep -f "npm.*dev" > /dev/null && pkill -9 -f "npm.*dev" && echo "  ✓ npm dev process stopped" || echo "  - No npm dev running"
+	@pgrep -f "rollup.*watch" > /dev/null && pkill -9 -f "rollup.*watch" && echo "  ✓ Rollup watcher stopped" || echo "  - No rollup watcher running"
+	@echo ""
+	@echo "2️⃣  LilyPond service:"
+	@cd lilypond-service && docker-compose down 2>/dev/null && echo "  ✓ LilyPond containers stopped" || echo "  - LilyPond not running"
+	@echo ""
+	@echo "3️⃣  Playwright Docker containers:"
+	@CONTAINERS=$$(docker ps -q --filter "name=playwright" 2>/dev/null); \
+	if [ -n "$$CONTAINERS" ]; then \
+		echo "  Stopping Playwright containers: $$CONTAINERS"; \
+		docker stop $$CONTAINERS 2>/dev/null && echo "  ✓ Playwright containers stopped"; \
+	else \
+		echo "  - No Playwright containers running"; \
+	fi
+	@echo ""
+	@echo "✅ All servers stopped!"
 
 # Cleanup
 clean:

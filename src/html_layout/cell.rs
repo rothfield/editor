@@ -4,6 +4,7 @@
 //! and effective width calculations for individual cells.
 
 use crate::models::*;
+use crate::models::pitch_code::AccidentalType;
 use super::display_list::*;
 use super::document::LayoutConfig;
 use std::collections::HashMap;
@@ -60,12 +61,24 @@ impl CellStyleBuilder {
             classes.push(format!("pitch-system-{}", self.pitch_system_to_css(pitch_system)));
         }
 
-        // Accidental (sharp/flat) class - for music font rendering
-        if cell.char.contains('#') {
-            classes.push("accidental-sharp".to_string());
+        // Accidental rendering - attach glyph to the note cell (non-continuation only)
+        // For multi-char pitches like "1#", "1##", "c#", etc., the accidental class
+        // is applied to the note cell, and the continuation cells are hidden
+        if !cell.continuation && cell.kind == ElementKind::PitchedElement {
+            if let Some(pitch_code) = cell.pitch_code {
+                match pitch_code.accidental_type() {
+                    AccidentalType::Sharp => classes.push("pitch-accidental-sharp".to_string()),
+                    AccidentalType::Flat => classes.push("pitch-accidental-flat".to_string()),
+                    AccidentalType::DoubleSharp => classes.push("pitch-accidental-double-sharp".to_string()),
+                    AccidentalType::DoubleFlat => classes.push("pitch-accidental-double-flat".to_string()),
+                    AccidentalType::None => {},
+                }
+            }
         }
-        if cell.char.contains('b') {
-            classes.push("accidental-flat".to_string());
+
+        // Hide continuation cells of pitched elements (they're part of accidentals)
+        if cell.continuation && cell.kind == ElementKind::PitchedElement {
+            classes.push("pitch-continuation".to_string());
         }
 
         // Build data attributes
@@ -105,6 +118,33 @@ impl CellStyleBuilder {
         // Calculate Y position for cells (with line offset for multi-line documents)
         let y = line_y_offset + config.cell_y_offset;
 
+        // Get barline type from ElementKind for SMuFL rendering (CSS class name)
+        let barline_type = match cell.kind {
+            ElementKind::SingleBarline => "single-bar".to_string(),
+            ElementKind::RepeatLeftBarline => {
+                if !cell.continuation {
+                    "repeat-left-start".to_string()
+                } else {
+                    String::new()
+                }
+            }
+            ElementKind::RepeatRightBarline => {
+                if !cell.continuation {
+                    "repeat-right-start".to_string()
+                } else {
+                    String::new()
+                }
+            }
+            ElementKind::DoubleBarline => {
+                if !cell.continuation {
+                    "double-bar-start".to_string()
+                } else {
+                    String::new()
+                }
+            }
+            _ => String::new(),
+        };
+
         RenderCell {
             char: cell.char.clone(),
             x: cumulative_x,
@@ -116,6 +156,7 @@ impl CellStyleBuilder {
             cursor_left: cumulative_x,
             cursor_right,
             char_positions,
+            barline_type,
         }
     }
 
@@ -195,7 +236,10 @@ impl CellStyleBuilder {
             ElementKind::UpperAnnotation => "upper-annotation",
             ElementKind::LowerAnnotation => "lower-annotation",
             ElementKind::BreathMark => "breath",
-            ElementKind::Barline => "barline",
+            ElementKind::SingleBarline
+            | ElementKind::RepeatLeftBarline
+            | ElementKind::RepeatRightBarline
+            | ElementKind::DoubleBarline => "barline",
             ElementKind::Whitespace => "whitespace",
             ElementKind::Text => "text",
             ElementKind::Symbol => "symbol",
