@@ -146,6 +146,7 @@ impl LayoutEngine {
         // Build role maps for CSS classes
         let beat_roles = self.build_beat_role_map(&beats, &line.cells);
         let slur_roles = self.build_slur_role_map(&line.cells);
+        let ornament_roles = self.build_ornament_role_map(&line.cells);
 
         // Distribute lyrics to cells
         let syllable_assignments = if !line.lyrics.is_empty() {
@@ -183,11 +184,14 @@ impl LayoutEngine {
                 classes.push("head-marker".to_string());
             }
 
-            // Beat/slur role classes
+            // Beat/slur/ornament role classes
             if let Some(role) = beat_roles.get(&cell_idx) {
                 classes.push(role.clone());
             }
             if let Some(role) = slur_roles.get(&cell_idx) {
+                classes.push(role.clone());
+            }
+            if let Some(role) = ornament_roles.get(&cell_idx) {
                 classes.push(role.clone());
             }
 
@@ -274,6 +278,14 @@ impl LayoutEngine {
         // Position tala characters
         let tala = self.position_tala(&line.tala, &line.cells, &cells, config);
 
+        // Position ornaments (grace notes)
+        let ornaments = self.position_ornaments(
+            &line.cells,
+            &cells,
+            line_idx,
+            config,
+        );
+
         // Calculate line height based on content
         let has_beats = beats.iter().any(|b| b.end - b.start >= 1);
         let height = self.calculate_line_height(!line.lyrics.is_empty(), has_beats, config);
@@ -288,6 +300,7 @@ impl LayoutEngine {
             },
             lyrics,
             tala,
+            ornaments,
             height,
         }
     }
@@ -388,6 +401,39 @@ impl LayoutEngine {
         map
     }
 
+    /// Build map of cell index to ornament role class
+    fn build_ornament_role_map(&self, cells: &[Cell]) -> HashMap<usize, String> {
+        let mut map = HashMap::new();
+        let mut ornament_start: Option<usize> = None;
+
+        for (idx, cell) in cells.iter().enumerate() {
+            match cell.ornament_indicator {
+                OrnamentIndicator::OrnamentStart => {
+                    ornament_start = Some(idx);
+                }
+                OrnamentIndicator::OrnamentEnd => {
+                    if let Some(start) = ornament_start {
+                        // Mark all cells in the ornament span
+                        for i in start..=idx {
+                            let role = if i == start {
+                                "ornament-first"
+                            } else if i == idx {
+                                "ornament-last"
+                            } else {
+                                "ornament-middle"
+                            };
+                            map.insert(i, role.to_string());
+                        }
+                        ornament_start = None;
+                    }
+                }
+                OrnamentIndicator::None => {}
+            }
+        }
+
+        map
+    }
+
     /// Position lyrics syllables below their cells
     fn position_lyrics(
         &self,
@@ -410,6 +456,81 @@ impl LayoutEngine {
                 })
             })
             .collect()
+    }
+
+    /// Position ornaments relative to their target cells
+    fn position_ornaments(
+        &self,
+        original_cells: &[Cell],
+        render_cells: &[RenderCell],
+        line_index: usize,
+        config: &LayoutConfig,
+    ) -> Vec<RenderOrnament> {
+        let mut ornaments = Vec::new();
+        let mut global_ornament_index = 0;
+
+        // Iterate through cells to find ornaments
+        for (cell_index, cell) in original_cells.iter().enumerate() {
+            if cell.ornaments.is_empty() {
+                continue;
+            }
+
+            // Get the render cell for position information
+            let render_cell = match render_cells.get(cell_index) {
+                Some(rc) => rc,
+                None => continue,
+            };
+
+            // Process each ornament attached to this cell
+            for (ornament_index, ornament) in cell.ornaments.iter().enumerate() {
+                // Calculate position using the same logic as WASM calculate_ornament_layout
+                let ornament_size = config.font_size * 0.75; // 75% of base
+                let pitch_count = ornament.cells.len();
+                let ornament_width = ornament_size * pitch_count as f32;
+
+                let (x, y) = match ornament.placement {
+                    crate::models::OrnamentPlacement::Top => (
+                        render_cell.x,
+                        render_cell.y - (config.font_size * 0.6) // 60% above baseline
+                    ),
+                    crate::models::OrnamentPlacement::Before => (
+                        render_cell.x - ornament_width - (config.font_size * 0.2), // Left with gap
+                        render_cell.y
+                    ),
+                    crate::models::OrnamentPlacement::After => (
+                        render_cell.x + render_cell.w + (config.font_size * 0.2), // Right of cell with gap
+                        render_cell.y
+                    ),
+                };
+
+                // Convert ornament cells to RenderOrnamentCell
+                let ornament_cells: Vec<RenderOrnamentCell> = ornament.cells.iter().map(|cell| {
+                    RenderOrnamentCell {
+                        char: cell.char.clone(),
+                        accidental: if cell.accidental == crate::models::Accidental::Natural {
+                            None
+                        } else {
+                            Some(format!("{:?}", cell.accidental))
+                        },
+                        octave: cell.octave,
+                    }
+                }).collect();
+
+                ornaments.push(RenderOrnament {
+                    cells: ornament_cells,
+                    x: (x * 10.0).round() / 10.0, // 0.1px precision
+                    y: (y * 10.0).round() / 10.0, // 0.1px precision
+                    placement: format!("{:?}", ornament.placement),
+                    cell_index,
+                    line_index,
+                    ornament_index: global_ornament_index,
+                });
+
+                global_ornament_index += 1;
+            }
+        }
+
+        ornaments
     }
 
     /// Position tala characters above barlines

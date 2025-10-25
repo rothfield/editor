@@ -36,6 +36,7 @@ class MusicNotationEditor {
 
     // Storage manager for explicit save/load
     this.storage = new StorageManager(this);
+
   }
 
   /**
@@ -72,6 +73,9 @@ class MusicNotationEditor {
         applySlur: wasmModule.applySlur,
         removeSlur: wasmModule.removeSlur,
         hasSlurInSelection: wasmModule.hasSlurInSelection,
+        // Ornament Edit Mode API
+        getOrnamentEditMode: wasmModule.getOrnamentEditMode,
+        setOrnamentEditMode: wasmModule.setOrnamentEditMode,
         // Document API
         createNewDocument: wasmModule.createNewDocument,
         setTitle: wasmModule.setTitle,
@@ -104,6 +108,9 @@ class MusicNotationEditor {
 
       // Setup event handlers
       this.setupEventHandlers();
+
+      // Setup ornament event listeners
+      this.setupOrnamentListeners();
 
       // Mark as initialized BEFORE creating document
       this.isInitialized = true;
@@ -188,8 +195,7 @@ class MusicNotationEditor {
           }
         }
 
-        await this.render();
-        this.updateDocumentDisplay();
+        await this.renderAndUpdate();
 
         // Update UI displays
         if (this.ui && this.theDocument) {
@@ -197,6 +203,7 @@ class MusicNotationEditor {
             this.ui.updateDocumentTitle(this.theDocument.title);
           }
           this.ui.updateCurrentPitchSystemDisplay();
+          this.ui.syncOrnamentEditModeUI();
         }
       }
     } catch (error) {
@@ -318,8 +325,7 @@ class MusicNotationEditor {
         this.deriveBeats(line);
       }
 
-      await this.render();
-      this.updateDocumentDisplay();
+      await this.renderAndUpdate();
 
       // Ensure hitbox values are properly set on the document cells
       // The WASM insertCharacter may return cells without hitbox fields
@@ -417,8 +423,7 @@ class MusicNotationEditor {
       await this.extractAndRenderBeats(text);
 
       // Render updated document
-      await this.render();
-      this.updateDocumentDisplay();
+      await this.renderAndUpdate();
 
       // Log successful parsing
       this.addToConsoleLog(`Parsed notation: "${text}"`);
@@ -581,8 +586,7 @@ class MusicNotationEditor {
       }
 
       this.setCursorPosition(start);
-      await this.render();
-      this.updateDocumentDisplay();
+      await this.renderAndUpdate();
 
       // Restore visual selection after deletion
       this.updateSelectionDisplay();
@@ -767,11 +771,14 @@ class MusicNotationEditor {
       case 't':
         this.showTalaDialog();
         break;
+      case 'o':
+        this.applyOrnamentIndicator();
+        break;
       default:
         console.log('Unknown Alt command:', key);
         this.showWarning(`Unknown musical command: Alt+${key}`, {
           important: false,
-          details: `Available commands: Alt+S (slur), Alt+U (upper octave), Alt+M (middle octave), Alt+L (lower octave), Alt+T (tala)`
+          details: `Available commands: Alt+S (slur), Alt+O (ornament), Alt+U (upper octave), Alt+M (middle octave), Alt+L (lower octave), Alt+T (tala)`
         });
         return;
     }
@@ -1498,6 +1505,25 @@ class MusicNotationEditor {
         const cellIndexToDelete = charOffsetInCell === 0 ? cellIndex - 1 : cellIndex;
 
         if (cellIndexToDelete >= 0 && cellIndexToDelete < cells.length) {
+          const cellToDelete = cells[cellIndexToDelete];
+
+          // Check if cell has an ornament indicator - if so, act as left arrow instead of deleting
+          if (cellToDelete && cellToDelete.has_ornament_indicator && cellToDelete.has_ornament_indicator()) {
+            logger.info(LOG_CATEGORIES.EDITOR, 'Backspace on ornament cell - acting as left arrow', {
+              cellIndexToDelete,
+              currentCharPos: charPos
+            });
+
+            // Move cursor left instead of deleting
+            const newCharPos = Math.max(0, charPos - 1);
+            this.setCursorPosition(newCharPos);
+            this.showCursor();
+            this.updateSelectionDisplay();
+
+            logger.timeEnd('handleBackspace', LOG_CATEGORIES.EDITOR);
+            return; // Early return - don't delete
+          }
+
           logger.debug(LOG_CATEGORIES.EDITOR, 'Calling WASM deleteCharacter', {
             cellIndexToDelete,
             cellCount: cells.length
@@ -1520,8 +1546,7 @@ class MusicNotationEditor {
       // Recalculate beats after deletion
       await this.recalculateBeats();
 
-      await this.render();
-      this.updateDocumentDisplay();
+      await this.renderAndUpdate();
 
       // Show cursor (showCursor will call updateCursorVisualPosition internally)
       this.showCursor();
@@ -1566,8 +1591,7 @@ class MusicNotationEditor {
           // Recalculate beats for the merged line
           this.deriveBeats(prevLine);
 
-          await this.render();
-          this.updateDocumentDisplay();
+          await this.renderAndUpdate();
           this.showCursor();
 
           logger.info(LOG_CATEGORIES.EDITOR, 'Backspace merge complete', {
@@ -1622,8 +1646,7 @@ class MusicNotationEditor {
         // Recalculate beats after deletion
         await this.recalculateBeats();
 
-        await this.render();
-        this.updateDocumentDisplay();
+        await this.renderAndUpdate();
 
         // Restore visual selection after delete
         this.updateSelectionDisplay();
@@ -1702,8 +1725,7 @@ class MusicNotationEditor {
         this.deriveBeats(this.theDocument.lines[currentStave + 1]);
       }
 
-      await this.render();
-      this.updateDocumentDisplay();
+      await this.renderAndUpdate();
       this.showCursor();
 
       logger.info(LOG_CATEGORIES.EDITOR, 'Line split successfully', {
@@ -1768,7 +1790,7 @@ class MusicNotationEditor {
       return this.getSelection();
     }
 
-    // No selection: try to get element to the left of cursor
+    // No selection: try to get element to the left of cursor (or at cursor if at position 0 with cells)
     const line = this.getCurrentLine();
     if (!line || !line.cells || line.cells.length === 0) {
       return null;
@@ -1777,16 +1799,16 @@ class MusicNotationEditor {
     const cursorPos = this.getCursorPosition();
     const { cellIndex, charOffsetInCell } = this.charPosToCellIndex(cursorPos);
 
-    // Determine which cell is to the left of cursor
+    // Determine which cell to target
     let targetCellIndex;
     if (charOffsetInCell > 0) {
-      // Cursor is in the middle or end of a cell, so element to left is this cell
+      // Cursor is in the middle or end of a cell, so target is this cell
       targetCellIndex = cellIndex;
     } else if (cellIndex > 0) {
-      // Cursor is at start of cell, so element to left is previous cell
+      // Cursor is at start of cell (not first cell), so target is previous cell
       targetCellIndex = cellIndex - 1;
     } else {
-      // Cursor is at start of first cell, no element to left
+      // Cursor is at start of line (no cell to left), no element available
       return null;
     }
 
@@ -1890,7 +1912,7 @@ class MusicNotationEditor {
         this.addToConsoleLog(`Toggled slur on "${selectedText}"`);
       }
 
-      await this.render();
+      await this.renderAndUpdate();
 
       // Restore visual selection after applying slur (slurs now render via CSS)
       this.updateSelectionDisplay();
@@ -1946,6 +1968,263 @@ class MusicNotationEditor {
     this.addToConsoleLog(`Removed slur via WASM: cells ${selection.start}..${selection.end}`);
   }
 
+  /**
+   * Apply ornament indicator to current selection
+   * Toggles ornament indicator on/off using the ornament_indicator command
+   */
+  async applyOrnamentIndicator() {
+    console.log('🎵 applyOrnamentIndicator called');
+
+    if (!this.isInitialized || !this.wasmModule) {
+      console.log('❌ Not initialized or no WASM module');
+      return;
+    }
+
+    // Validate selection (requires explicit selection)
+    if (!this.hasSelection()) {
+      console.log('Ornament indicator requires an explicit selection');
+      this.showWarning('Please select notes to mark as ornament');
+      return;
+    }
+
+    try {
+      const selection = this.getSelection();
+      const line = this.getCurrentLine();
+
+      if (!line) {
+        console.log('❌ No line found for applyOrnamentIndicator');
+        return;
+      }
+
+      const cells = line.cells;
+      const selectedCells = cells.filter((cell, index) =>
+        index >= selection.start && index < selection.end
+      );
+      const selectedText = selectedCells.map(cell => cell.char || '').join('');
+
+      // Apply ornament indicator using WASM command
+      if (this.theDocument && this.theDocument.lines && this.theDocument.lines.length > 0) {
+        const updatedCells = this.wasmModule.applyCommand(
+          cells,
+          selection.start,
+          selection.end,
+          'ornament_indicator'
+        );
+
+        line.cells = updatedCells;
+        this.addToConsoleLog(`Toggled ornament indicator on "${selectedText}"`);
+      }
+
+      await this.renderAndUpdate();
+
+      // Restore visual selection after applying ornament indicator
+      this.updateSelectionDisplay();
+    } catch (error) {
+      console.error('❌ Failed to apply ornament indicator:', error);
+    }
+  }
+
+  /**
+   * Toggle ornament edit mode
+   * When enabled, ornaments are displayed in normal position with superscript styling
+   * When disabled, ornaments are attached to adjacent notes
+   */
+  toggleOrnamentEditMode() {
+    // Get current mode from document
+    const currentMode = this.wasmModule.getOrnamentEditMode(this.theDocument);
+    const newMode = !currentMode;
+
+    // Update document via WASM API
+    this.theDocument = this.wasmModule.setOrnamentEditMode(this.theDocument, newMode);
+
+    console.log(`🎨 Ornament edit mode: ${newMode ? 'ON' : 'OFF'}`);
+    this.addToConsoleLog(`Ornament edit mode: ${newMode ? 'ON' : 'OFF'}`);
+
+    // Update header display
+    const headerDisplay = document.getElementById('ornament-edit-mode-display');
+    if (headerDisplay) {
+      headerDisplay.textContent = `Edit Ornament Mode: ${newMode ? 'ON' : 'OFF'}`;
+    }
+
+    // Update menu checkbox
+    if (this.ui) {
+      this.ui.updateOrnamentEditModeCheckbox(newMode);
+    }
+
+    // Re-render to apply the new mode
+    this.renderAndUpdate();
+  }
+
+  /**
+   * Setup ornament event listeners
+   */
+  setupOrnamentListeners() {
+    document.addEventListener('ornament-save', (event) => {
+      this.handleOrnamentSave(event.detail);
+    });
+  }
+
+  /**
+   * Open ornament editor dialog
+   */
+  /**
+   * Handle click on an ornament element
+   * Opens the ornament editor for the clicked ornament
+   */
+  handleOrnamentClick(lineIndex, cellIndex, ornamentIndex) {
+    console.log(`Ornament clicked: line=${lineIndex}, cell=${cellIndex}, ornament=${ornamentIndex}`);
+
+    if (!this.isInitialized) {
+      this.showError('Editor not initialized');
+      return;
+    }
+
+    if (!this.ornamentEditor) {
+      this.showError('Ornament editor not initialized');
+      return;
+    }
+
+    // Get the line and cell
+    const line = this.theDocument?.lines?.[lineIndex];
+    if (!line) {
+      this.showError('Line not found');
+      return;
+    }
+
+    const cell = line.cells?.[cellIndex];
+    if (!cell) {
+      this.showError('Cell not found');
+      return;
+    }
+
+    // Get the ornament
+    const ornament = cell.ornaments?.[ornamentIndex];
+    if (!ornament) {
+      this.showError('Ornament not found');
+      return;
+    }
+
+    // Prepare ornament data for editing
+    const existingOrnament = {
+      text: ornament.cells.map(c => c.char).join(''),
+      cells: ornament.cells,
+      placement: ornament.placement,
+      index: ornamentIndex
+    };
+
+    // Open editor
+    this.ornamentEditor.open(lineIndex, cellIndex, existingOrnament);
+  }
+
+  openOrnamentEditor() {
+    if (!this.isInitialized) {
+      this.showError('Editor not initialized');
+      return;
+    }
+
+    if (!this.ornamentEditor) {
+      this.showError('Ornament editor not initialized');
+      console.error('ornamentEditor is null - not initialized properly');
+      return;
+    }
+
+    // Use effective selection logic (same as octave commands Alt+U/M/L)
+    // If selection exists, use first item; otherwise use item to left of cursor
+    const selection = this.getEffectiveSelection();
+    if (!selection) {
+      this.showError('No note at cursor - position cursor after a note to add an ornament');
+      return;
+    }
+
+    const lineIndex = this.getCurrentStave();
+    const cellIndex = selection.start; // Target cell index
+
+    // Check if there's a valid line and cell
+    const line = this.theDocument?.lines?.[lineIndex];
+    if (!line) {
+      this.showError('Please type some notes first before adding ornaments');
+      return;
+    }
+
+    const cell = line.cells?.[cellIndex];
+    if (!cell) {
+      this.showError('No note found at target position');
+      return;
+    }
+
+    // Check for existing ornaments
+    let existingOrnament = null;
+    if (cell.ornaments && cell.ornaments.length > 0) {
+      // Edit first ornament
+      const ornament = cell.ornaments[0];
+      existingOrnament = {
+        text: ornament.cells.map(c => c.char).join(''),
+        cells: ornament.cells,
+        placement: ornament.placement,
+        index: 0
+      };
+    }
+
+    // Open editor
+    this.ornamentEditor.open(lineIndex, cellIndex, existingOrnament);
+  }
+
+  /**
+   * Handle ornament save event
+   */
+  async handleOrnamentSave(detail) {
+    const { mode, lineIndex, cellIndex, ornamentIndex, text, cells, placement } = detail;
+
+    console.log('Ornament save:', { mode, lineIndex, cellIndex, text, placement });
+
+    if (!this.theDocument?.lines?.[lineIndex]) {
+      console.error('Invalid line index');
+      return;
+    }
+
+    const line = this.theDocument.lines[lineIndex];
+    if (!line.cells?.[cellIndex]) {
+      console.error('Invalid cell index');
+      return;
+    }
+
+    const cell = line.cells[cellIndex];
+
+    // Create ornament structure
+    const ornament = {
+      cells: cells,
+      placement: placement,
+      position: {
+        x: 0,
+        y: 0,
+        width: 0,
+        height: 0
+      },
+      bounding_box: {
+        left: 0,
+        top: 0,
+        width: 0,
+        height: 0
+      }
+    };
+
+    // Initialize ornaments array if needed
+    if (!cell.ornaments) {
+      cell.ornaments = [];
+    }
+
+    // Add or update ornament
+    if (mode === 'edit' && ornamentIndex !== null) {
+      cell.ornaments[ornamentIndex] = ornament;
+    } else {
+      cell.ornaments.push(ornament);
+    }
+
+    this.addToConsoleLog(`${mode === 'edit' ? 'Updated' : 'Created'} ornament: ${text}`);
+
+    // Re-render and update inspector tabs
+    await this.renderAndUpdate();
+  }
 
   /**
      * Toggle octave on current selection
@@ -2050,7 +2329,7 @@ class MusicNotationEditor {
         this.addToConsoleLog(`Applied ${command} to "${selectedText}"`);
       }
 
-      await this.render();
+      await this.renderAndUpdate();
 
       // Restore cursor position to where it was before the command
       this.setCursorPosition(savedCursorPos);
@@ -2118,7 +2397,7 @@ class MusicNotationEditor {
         this.theDocument = updatedDocument;
         console.log(`📝 After WASM setLineTala, line[${currentStave}].tala =`, updatedDocument.lines[currentStave]?.tala);
         this.addToConsoleLog(`Tala set to: ${talaString}`);
-        await this.render();
+        await this.renderAndUpdate();
       }
     } catch (error) {
       console.error('Failed to set tala:', error);
@@ -2177,6 +2456,14 @@ class MusicNotationEditor {
     }
   }
 
+  /**
+   * Render and update inspector tabs (DRY helper)
+   * Combines render() + updateDocumentDisplay() which are almost always called together
+   */
+  async renderAndUpdate() {
+    await this.render();
+    this.updateDocumentDisplay();
+  }
 
   /**
      * Setup event handlers
@@ -2681,6 +2968,11 @@ class MusicNotationEditor {
   updateCursorVisualPosition() {
     const cursor = this.getCursorElement();
     if (!cursor) {
+      return;
+    }
+
+    // Skip cursor updates when ornament editor is open
+    if (this.ornamentEditor && this.ornamentEditor.isOpen) {
       return;
     }
 

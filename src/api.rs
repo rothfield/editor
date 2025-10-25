@@ -4,7 +4,7 @@
 //! and token combination using the recursive descent parser.
 
 use wasm_bindgen::prelude::*;
-use crate::models::{Cell, PitchSystem, Document, Line};
+use crate::models::{Cell, PitchSystem, Document, Line, OrnamentIndicator};
 use crate::parse::grammar::{parse, parse_single, mark_continuations};
 
 // Logging macros for WASM
@@ -519,6 +519,37 @@ pub fn apply_command(
                 wasm_warn!("  Selection too short for slur ({} cells), skipping", actual_end - start);
             }
         }
+        "ornament_indicator" => {
+            // Toggle ornament indicator on/off
+            // Note: end parameter is treated as exclusive (standard range semantics)
+            let actual_end = end.min(cells.len());
+
+            // Check if ornament indicator already exists on the first cell
+            let has_existing_ornament = cells.get(start).map(|c| c.has_ornament_indicator()).unwrap_or(false);
+
+            if has_existing_ornament {
+                // Remove existing ornament indicators - clear all in range
+                for i in start..actual_end {
+                    if cells[i].has_ornament_indicator() {
+                        cells[i].clear_ornament();
+                        modified_count += 1;
+                        wasm_log!("  Removed ornament indicator from cell {}: '{}'", i, cells[i].char);
+                    }
+                }
+            } else if actual_end - start >= 2 {
+                // Apply new ornament indicator - need at least 2 cells
+                for i in start..actual_end {
+                    cells[i].clear_ornament();
+                }
+                cells[start].set_ornament_start();
+                cells[actual_end - 1].set_ornament_end();
+                modified_count = (actual_end - start) as usize;
+                wasm_info!("  Applied ornament indicator: cell[{}] = OrnamentStart, cell[{}] = OrnamentEnd",
+                          start, actual_end - 1);
+            } else {
+                wasm_warn!("  Selection too short for ornament ({} cells), skipping", actual_end - start);
+            }
+        }
         _ => {
             wasm_error!("Unknown command: {}", command);
             return Err(JsValue::from_str(&format!("Unknown command: {}", command)));
@@ -856,6 +887,171 @@ pub fn set_document_pitch_system(
 
     wasm_info!("setDocumentPitchSystem completed successfully");
     Ok(result)
+}
+
+/// Expand ornaments from cell.ornaments into the cells vector
+/// This is called when turning edit mode ON
+fn expand_ornaments_to_cells(line: &mut Line) {
+    let mut new_cells = Vec::new();
+
+    for cell in line.cells.drain(..) {
+        // Add the parent cell
+        let mut parent_cell = cell.clone();
+        let ornaments_to_expand = parent_cell.ornaments.clone();
+        parent_cell.ornaments.clear(); // Clear ornaments from parent
+        new_cells.push(parent_cell);
+
+        // Expand each ornament into cells
+        for ornament in ornaments_to_expand {
+            let ornament_cells = ornament.cells;
+            if !ornament_cells.is_empty() {
+                // Mark first cell as OrnamentStart
+                let mut first_cell = ornament_cells[0].clone();
+                first_cell.ornament_indicator = OrnamentIndicator::OrnamentStart;
+                new_cells.push(first_cell);
+
+                // Add middle cells (no indicator)
+                for middle_cell in ornament_cells.iter().skip(1).take(ornament_cells.len().saturating_sub(2)) {
+                    new_cells.push(middle_cell.clone());
+                }
+
+                // Mark last cell as OrnamentEnd (if more than one cell)
+                if ornament_cells.len() > 1 {
+                    let mut last_cell = ornament_cells[ornament_cells.len() - 1].clone();
+                    last_cell.ornament_indicator = OrnamentIndicator::OrnamentEnd;
+                    new_cells.push(last_cell);
+                }
+            }
+        }
+    }
+
+    line.cells = new_cells;
+}
+
+/// Collapse ornament cells back into cell.ornaments
+/// This is called when turning edit mode OFF
+fn collapse_ornaments_from_cells(line: &mut Line) {
+    use crate::models::elements::{Ornament, OrnamentPlacement};
+
+    let mut new_cells: Vec<Cell> = Vec::new();
+    let mut i = 0;
+
+    while i < line.cells.len() {
+        let cell = &line.cells[i];
+
+        // Check if this cell starts an ornament
+        if cell.ornament_indicator == OrnamentIndicator::OrnamentStart {
+            // Find the parent cell (previous cell)
+            if let Some(parent_cell) = new_cells.last_mut() {
+                // Collect ornament cells
+                let mut ornament_cells = Vec::new();
+                let mut j = i;
+
+                loop {
+                    let ornament_cell = &line.cells[j];
+                    let mut clean_cell = ornament_cell.clone();
+                    clean_cell.ornament_indicator = OrnamentIndicator::None;
+                    ornament_cells.push(clean_cell);
+
+                    if ornament_cell.ornament_indicator == OrnamentIndicator::OrnamentEnd {
+                        break;
+                    }
+
+                    j += 1;
+                    if j >= line.cells.len() {
+                        break;
+                    }
+                }
+
+                // Create ornament and attach to parent
+                let ornament = Ornament {
+                    cells: ornament_cells,
+                    placement: OrnamentPlacement::After,
+                };
+                parent_cell.ornaments.push(ornament);
+
+                i = j + 1; // Skip past the ornament cells
+                continue;
+            }
+        }
+
+        // Regular cell - just add it
+        new_cells.push(cell.clone());
+        i += 1;
+    }
+
+    line.cells = new_cells;
+}
+
+/// Set the ornament edit mode for the document
+///
+/// # Parameters
+/// - `document_js`: JavaScript Document object
+/// - `mode`: true to enable edit mode (ornaments display in normal position), false for attached mode
+///
+/// # Returns
+/// Updated JavaScript Document object with the ornament edit mode set
+#[wasm_bindgen(js_name = setOrnamentEditMode)]
+pub fn set_ornament_edit_mode(
+    document_js: JsValue,
+    mode: bool,
+) -> Result<JsValue, JsValue> {
+    wasm_info!("setOrnamentEditMode called: mode={}", mode);
+
+    // Deserialize document from JavaScript
+    let mut document: Document = serde_wasm_bindgen::from_value(document_js)
+        .map_err(|e| {
+            wasm_error!("Deserialization error: {}", e);
+            JsValue::from_str(&format!("Deserialization error: {}", e))
+        })?;
+
+    // Expand or collapse ornaments in all lines
+    for line in &mut document.lines {
+        if mode {
+            // OFF → ON: expand ornaments into cells
+            expand_ornaments_to_cells(line);
+            wasm_info!("  Expanded ornaments in line");
+        } else {
+            // ON → OFF: collapse cells back to ornaments
+            collapse_ornaments_from_cells(line);
+            wasm_info!("  Collapsed ornaments in line");
+        }
+    }
+
+    document.ornament_edit_mode = mode;
+    wasm_info!("  Ornament edit mode set to: {}", mode);
+
+    // Compute glyphs before serialization
+    document.compute_glyphs();
+
+    // Serialize back to JavaScript
+    let result = serde_wasm_bindgen::to_value(&document)
+        .map_err(|e| {
+            wasm_error!("Serialization error: {}", e);
+            JsValue::from_str(&format!("Serialization error: {}", e))
+        })?;
+
+    wasm_info!("setOrnamentEditMode completed successfully");
+    Ok(result)
+}
+
+/// Get the ornament edit mode from the document
+///
+/// # Parameters
+/// - `document_js`: JavaScript Document object
+///
+/// # Returns
+/// true if edit mode is enabled, false for attached mode
+#[wasm_bindgen(js_name = getOrnamentEditMode)]
+pub fn get_ornament_edit_mode(document_js: JsValue) -> Result<bool, JsValue> {
+    // Deserialize document from JavaScript
+    let document: Document = serde_wasm_bindgen::from_value(document_js)
+        .map_err(|e| {
+            wasm_error!("Deserialization error: {}", e);
+            JsValue::from_str(&format!("Deserialization error: {}", e))
+        })?;
+
+    Ok(document.ornament_edit_mode)
 }
 
 /// Set lyrics for a specific line
@@ -1445,23 +1641,7 @@ mod tests {
 
     /// Helper to create a simple Cell for testing
     fn make_cell(char: &str, col: usize) -> Cell {
-        Cell {
-            char: char.to_string(),
-            kind: crate::models::ElementKind::Unknown,
-            continuation: false,
-            col,
-            flags: 0,
-            pitch_code: None,
-            pitch_system: None,
-            octave: 0,
-            slur_indicator: crate::models::SlurIndicator::None,
-            x: 0.0,
-            y: 0.0,
-            w: 0.0,
-            h: 0.0,
-            bbox: (0.0, 0.0, 0.0, 0.0),
-            hit: (0.0, 0.0, 0.0, 0.0),
-        }
+        Cell::new(char.to_string(), crate::models::ElementKind::Unknown, col)
     }
 
     #[test]

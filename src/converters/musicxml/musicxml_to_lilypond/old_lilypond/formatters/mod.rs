@@ -1,1 +1,0 @@
-// Formatters module (full.rs removed as it was unused)

@@ -338,6 +338,7 @@ fn process_beat(
             musical_duration: f64,
             is_last_note: bool,
             slur_indicator: SlurIndicator,
+            grace_notes: Vec<(PitchCode, i8)>, // (pitch_code, octave) pairs for grace notes
         },
         Rest {
             duration_divs: usize,
@@ -346,12 +347,40 @@ fn process_beat(
     }
     let mut elements = Vec::new();
 
+    // Track ornaments (grace notes) to be attached to next main note
+    let mut pending_grace_notes: Vec<(PitchCode, i8)> = Vec::new();
+
     // Process remaining elements in the beat
+    let mut in_ornament_span = false;
     while i < beat_cells.len() {
         let cell = &beat_cells[i];
 
         // IMPORTANT: Skip continuation cells - they're part of the previous cell
         if cell.continuation {
+            i += 1;
+            continue;
+        }
+
+        // Track ornament indicator spans and collect grace notes
+        if cell.is_ornament_start() {
+            in_ornament_span = true;
+            i += 1;
+            continue;
+        }
+
+        if cell.is_ornament_end() {
+            in_ornament_span = false;
+            i += 1;
+            continue;
+        }
+
+        // Collect pitched elements within ornament spans as grace notes
+        if in_ornament_span {
+            if cell.kind == ElementKind::PitchedElement {
+                if let Some(pitch_code) = &cell.pitch_code {
+                    pending_grace_notes.push((*pitch_code, cell.octave));
+                }
+            }
             i += 1;
             continue;
         }
@@ -403,7 +432,11 @@ fn process_beat(
                         musical_duration,
                         is_last_note,
                         slur_indicator: cell.slur_indicator,
+                        grace_notes: pending_grace_notes.clone(),
                     });
+
+                    // Clear pending grace notes after attaching to main note
+                    pending_grace_notes.clear();
                 }
 
                 // Skip the extensions
@@ -463,7 +496,12 @@ fn process_beat(
             };
 
             match element {
-                BeatElement::Note { pitch_code, octave, duration_divs, musical_duration, is_last_note, slur_indicator } => {
+                BeatElement::Note { pitch_code, octave, duration_divs, musical_duration, is_last_note, slur_indicator, grace_notes } => {
+                    // Write grace notes before the main note
+                    for (grace_pitch_code, grace_octave) in grace_notes {
+                        builder.write_grace_note(grace_pitch_code, *grace_octave, true)?; // true = with slash (acciaccatura)
+                    }
+
                     let tie = if *is_last_note && next_beat_starts_with_div {
                         Some("start")
                     } else {

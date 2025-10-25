@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
 // Re-export from other modules
-pub use super::elements::{ElementKind, PitchSystem, SlurIndicator};
+pub use super::elements::{ElementKind, OrnamentIndicator, PitchSystem, SlurIndicator};
 pub use super::notation::{BeatSpan, SlurSpan, Position, Selection, Range, CursorPosition};
 pub use super::pitch_code::PitchCode;
 
@@ -43,6 +43,13 @@ pub struct Cell {
     /// Slur indicator (None, SlurStart, SlurEnd)
     pub slur_indicator: SlurIndicator,
 
+    /// Ornament indicator (None, OrnamentStart, OrnamentEnd)
+    pub ornament_indicator: OrnamentIndicator,
+
+    /// Ornaments attached to this cell (when ornament_edit_mode is OFF)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ornaments: Vec<crate::models::elements::Ornament>,
+
     /// Layout cache properties (calculated at render time) - ephemeral, not saved
     #[serde(skip)]
     pub x: f32,
@@ -75,6 +82,8 @@ impl Cell {
             pitch_system: None,
             octave: 0,
             slur_indicator: SlurIndicator::None,
+            ornament_indicator: OrnamentIndicator::None,
+            ornaments: Vec::new(),
             x: 0.0,
             y: 0.0,
             w: 0.0,
@@ -175,6 +184,36 @@ impl Cell {
     /// Check if this cell ends a slur
     pub fn is_slur_end(&self) -> bool {
         self.slur_indicator.is_end()
+    }
+
+    /// Set ornament indicator to start an ornament
+    pub fn set_ornament_start(&mut self) {
+        self.ornament_indicator = OrnamentIndicator::OrnamentStart;
+    }
+
+    /// Set ornament indicator to end an ornament
+    pub fn set_ornament_end(&mut self) {
+        self.ornament_indicator = OrnamentIndicator::OrnamentEnd;
+    }
+
+    /// Clear ornament indicator
+    pub fn clear_ornament(&mut self) {
+        self.ornament_indicator = OrnamentIndicator::None;
+    }
+
+    /// Check if this cell has an ornament indicator
+    pub fn has_ornament_indicator(&self) -> bool {
+        self.ornament_indicator.has_ornament()
+    }
+
+    /// Check if this cell starts an ornament
+    pub fn is_ornament_start(&self) -> bool {
+        self.ornament_indicator.is_start()
+    }
+
+    /// Check if this cell ends an ornament
+    pub fn is_ornament_end(&self) -> bool {
+        self.ornament_indicator.is_end()
     }
 }
 
@@ -317,6 +356,10 @@ pub struct Document {
     /// Array of musical lines
     pub lines: Vec<Line>,
 
+    /// Ornament edit mode flag (ephemeral, not saved)
+    #[serde(skip)]
+    pub ornament_edit_mode: bool,
+
     /// Application state (cursor position, selection, etc.)
     #[serde(skip)]
     pub state: DocumentState,
@@ -335,6 +378,7 @@ impl Document {
             modified_at: None,  // Timestamps set by JavaScript layer
             version: None,
             lines: Vec::new(),
+            ornament_edit_mode: false,
             state: DocumentState::new(),
         }
     }
@@ -394,6 +438,7 @@ impl Document {
     /// Clear the document
     pub fn clear(&mut self) {
         self.lines.clear();
+        self.ornament_edit_mode = false;
         self.state = DocumentState::new();
     }
 

@@ -33,8 +33,30 @@ class UI {
     this.setupEventListeners();
     this.updateCurrentPitchSystemDisplay();
     this.restoreTabPreference();
+    this.syncOrnamentEditModeUI();
 
     console.log('UI components initialized');
+  }
+
+  /**
+   * Sync ornament edit mode UI with document state
+   */
+  syncOrnamentEditModeUI() {
+    if (this.editor && this.editor.wasmModule && this.editor.theDocument) {
+      try {
+        const mode = this.editor.wasmModule.getOrnamentEditMode(this.editor.theDocument);
+        this.updateOrnamentEditModeCheckbox(mode);
+
+        // Update header display
+        const headerDisplay = document.getElementById('ornament-edit-mode-display');
+        if (headerDisplay) {
+          headerDisplay.textContent = `Edit Ornament Mode: ${mode ? 'ON' : 'OFF'}`;
+        }
+      } catch (e) {
+        // WASM function not available yet, will sync later
+        console.log('Ornament edit mode sync skipped (WASM not ready)');
+      }
+    }
   }
 
   /**
@@ -108,7 +130,9 @@ class UI {
      */
   setupEditMenu() {
     const menuItems = [
+      { id: 'menu-ornament', label: 'Ornament...', action: 'ornament' },
       { id: 'menu-apply-slur', label: 'Apply Slur (Alt+S)', action: 'apply-slur' },
+      { id: 'menu-edit-ornaments', label: 'Edit Ornaments (Alt+Shift+O)', action: 'edit-ornaments', checkable: true },
       { id: 'menu-separator-1', label: null, separator: true },
       { id: 'menu-octave-upper', label: 'Upper Octave (Alt+U)', action: 'octave-upper' },
       { id: 'menu-octave-middle', label: 'Middle Octave (Alt+M)', action: 'octave-middle' },
@@ -128,7 +152,22 @@ class UI {
         menuItem.id = item.id;
         menuItem.className = 'menu-item';
         menuItem.dataset.action = item.action;
-        menuItem.textContent = item.label;
+
+        if (item.checkable) {
+          // Add checkbox indicator for checkable items
+          const checkbox = document.createElement('span');
+          checkbox.className = 'menu-checkbox';
+          checkbox.textContent = '☐ '; // Empty checkbox
+          checkbox.dataset.checked = 'false';
+          menuItem.appendChild(checkbox);
+
+          const label = document.createElement('span');
+          label.textContent = item.label;
+          menuItem.appendChild(label);
+        } else {
+          menuItem.textContent = item.label;
+        }
+
         menuItem.addEventListener('click', this.handleMenuItemClick);
         editMenu.appendChild(menuItem);
       }
@@ -393,6 +432,12 @@ class UI {
       case 'set-key-signature':
         this.setKeySignature();
         break;
+      case 'ornament':
+        this.openOrnamentEditor();
+        break;
+      case 'edit-ornaments':
+        this.toggleOrnamentEditMode();
+        break;
       case 'apply-slur':
         this.applySlur();
         break;
@@ -603,8 +648,7 @@ class UI {
       if (this.editor && this.editor.theDocument) {
         this.editor.theDocument.tonic = newTonic;
         this.editor.addToConsoleLog(`Document tonic set to: ${newTonic}`);
-        await this.editor.render(); // Re-render to update WebUI
-        this.editor.updateDocumentDisplay(); // Update tabs
+        await this.editor.renderAndUpdate();
       }
     }
   }
@@ -646,10 +690,9 @@ class UI {
 
           this.editor.addToConsoleLog(`Document pitch system set to: ${this.getPitchSystemName(newSystem)}`);
           console.log('🎨 Rendering after document pitch system change...');
-          await this.editor.render(); // Re-render to update WebUI
+          await this.editor.renderAndUpdate();
           console.log('🎨 Render complete');
           this.editor.updateCurrentPitchSystemDisplay(); // Update UI
-          this.editor.updateDocumentDisplay(); // Update tabs
         } catch (error) {
           console.error('Failed to set pitch system:', error);
           this.editor.showError('Failed to set pitch system');
@@ -697,8 +740,7 @@ class UI {
       if (this.editor && this.editor.theDocument) {
         this.editor.theDocument.key_signature = newSignature;
         this.editor.addToConsoleLog(`Document key signature set to: ${newSignature}`);
-        await this.editor.render(); // Re-render to update WebUI
-        this.editor.updateDocumentDisplay(); // Update tabs
+        await this.editor.renderAndUpdate();
       }
     }
   }
@@ -754,8 +796,7 @@ class UI {
         const lineIdx = this.getCurrentLineIndex();
         this.editor.theDocument.lines[lineIdx].tonic = newTonic;
         this.editor.addToConsoleLog(`Line tonic set to: ${newTonic}`);
-        await this.editor.render(); // Re-render to update WebUI
-        this.editor.updateDocumentDisplay(); // Update tabs
+        await this.editor.renderAndUpdate();
       }
     }
   }
@@ -799,10 +840,9 @@ class UI {
 
           this.editor.addToConsoleLog(`Line pitch system set to: ${this.getPitchSystemName(newSystem)}`);
           console.log('🎨 Rendering after line pitch system change...');
-          await this.editor.render(); // Re-render to update WebUI
+          await this.editor.renderAndUpdate();
           console.log('🎨 Render complete');
           this.editor.updateCurrentPitchSystemDisplay(); // Update UI
-          this.editor.updateDocumentDisplay(); // Update tabs
         } catch (error) {
           console.error('Failed to set line pitch system:', error);
           this.editor.showError('Failed to set line pitch system');
@@ -891,8 +931,7 @@ class UI {
         const lineIdx = this.getCurrentLineIndex();
         this.editor.theDocument.lines[lineIdx].key_signature = newSignature;
         this.editor.addToConsoleLog(`Line key signature set to: ${newSignature}`);
-        await this.editor.render(); // Re-render to update WebUI
-        this.editor.updateDocumentDisplay(); // Update tabs
+        await this.editor.renderAndUpdate();
       }
     }
   }
@@ -1164,11 +1203,52 @@ class UI {
   }
 
   /**
+   * Apply ornament indicator to current selection
+   */
+  applyOrnamentIndicator() {
+    if (this.editor) {
+      this.editor.applyOrnamentIndicator();
+    }
+  }
+
+  /**
+   * Toggle ornament edit mode
+   */
+  toggleOrnamentEditMode() {
+    if (this.editor) {
+      this.editor.toggleOrnamentEditMode();
+    }
+  }
+
+  /**
+   * Update menu checkbox state for ornament edit mode
+   */
+  updateOrnamentEditModeCheckbox(isEnabled) {
+    const menuItem = document.getElementById('menu-edit-ornaments');
+    if (menuItem) {
+      const checkbox = menuItem.querySelector('.menu-checkbox');
+      if (checkbox) {
+        checkbox.textContent = isEnabled ? '☑ ' : '☐ ';
+        checkbox.dataset.checked = isEnabled.toString();
+      }
+    }
+  }
+
+  /**
      * Apply octave to current selection
      */
   applyOctave(octave) {
     if (this.editor) {
       this.editor.applyOctave(octave);
+    }
+  }
+
+  /**
+   * Open ornament editor dialog
+   */
+  openOrnamentEditor() {
+    if (this.editor) {
+      this.editor.openOrnamentEditor();
     }
   }
 

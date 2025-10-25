@@ -32,6 +32,7 @@ impl CellStyleBuilder {
         char_width_offset: &mut usize,
         beat_roles: &HashMap<usize, String>,
         slur_roles: &HashMap<usize, String>,
+        ornament_roles: &HashMap<usize, String>,
     ) -> RenderCell {
         // Build CSS classes
         let mut classes = vec!["char-cell".to_string()];
@@ -48,11 +49,14 @@ impl CellStyleBuilder {
             classes.push("head-marker".to_string());
         }
 
-        // Beat/slur role classes
+        // Beat/slur/ornament role classes
         if let Some(role) = beat_roles.get(&cell_idx) {
             classes.push(role.clone());
         }
         if let Some(role) = slur_roles.get(&cell_idx) {
+            classes.push(role.clone());
+        }
+        if let Some(role) = ornament_roles.get(&cell_idx) {
             classes.push(role.clone());
         }
 
@@ -222,6 +226,39 @@ impl CellStyleBuilder {
                     }
                 }
                 SlurIndicator::None => {}
+            }
+        }
+
+        map
+    }
+
+    /// Build map of cell index to ornament role class
+    pub fn build_ornament_role_map(&self, cells: &[Cell]) -> HashMap<usize, String> {
+        let mut map = HashMap::new();
+        let mut ornament_start: Option<usize> = None;
+
+        for (idx, cell) in cells.iter().enumerate() {
+            match cell.ornament_indicator {
+                OrnamentIndicator::OrnamentStart => {
+                    ornament_start = Some(idx);
+                }
+                OrnamentIndicator::OrnamentEnd => {
+                    if let Some(start) = ornament_start {
+                        // Mark all cells in the ornament span
+                        for i in start..=idx {
+                            let role = if i == start {
+                                "ornament-first"
+                            } else if i == idx {
+                                "ornament-last"
+                            } else {
+                                "ornament-middle"
+                            };
+                            map.insert(i, role.to_string());
+                        }
+                        ornament_start = None;
+                    }
+                }
+                OrnamentIndicator::None => {}
             }
         }
 

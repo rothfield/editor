@@ -18,13 +18,19 @@ import {
 import ArcRenderer from './arc-renderer.js';
 
 class DOMRenderer {
-  constructor(editorElement, editor) {
+  constructor(editorElement, editor, options = {}) {
     this.element = editorElement;
     this.editor = editor; // Store reference to editor instance
     this.charCellElements = new Map();
     this.beatLoopElements = new Map();
     this.theDocument = null;
     this.renderCache = new Map();
+
+    // Configuration options
+    this.options = {
+      skipBeatLoops: options.skipBeatLoops || false,
+      ...options
+    };
 
     // Performance metrics
     this.renderStats = {
@@ -37,7 +43,7 @@ class DOMRenderer {
     this.setupBeatLoopStyles(); // Sets up octave dots CSS
 
     // Initialize arc renderer (for slurs and beat loops)
-    this.arcRenderer = new ArcRenderer(this.element);
+    this.arcRenderer = new ArcRenderer(this.element, { skipBeatLoops: this.options.skipBeatLoops });
   }
 
   /**
@@ -227,6 +233,8 @@ class DOMRenderer {
     const renderStart = performance.now();
     this.renderFromDisplayList(displayList);
     const renderTime = performance.now() - renderStart;
+
+    // Ornaments are now rendered from DisplayList in renderFromDisplayList()
 
     // Update render statistics
     const endTime = performance.now();
@@ -706,6 +714,27 @@ class DOMRenderer {
       `;
       line.appendChild(lyricSpan);
     });
+
+    // Render ornaments when ornament_edit_mode is OFF
+    // Ornaments are positioned to the RIGHT and UP (70%) from anchor notes, scaled smaller
+    if (renderLine.ornaments && renderLine.ornaments.length > 0) {
+      renderLine.ornaments.forEach(ornament => {
+        const ornamentSpan = document.createElement('span');
+        ornamentSpan.className = 'char-cell ' + (ornament.classes || []).join(' ');
+        ornamentSpan.textContent = ornament.text;
+        const ornamentRelativeY = ornament.y - lineStartY;
+        ornamentSpan.style.cssText = `
+          position: absolute;
+          left: ${ornament.x}px;
+          top: ${ornamentRelativeY}px;
+          font-size: ${BASE_FONT_SIZE * 0.6}px;
+          color: #1e40af;
+          pointer-events: none;
+          white-space: nowrap;
+        `;
+        line.appendChild(ornamentSpan);
+      });
+    }
 
     // Render tala (positioned characters from DisplayList)
     // Convert absolute Y to relative Y within this line

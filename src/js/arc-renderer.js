@@ -8,13 +8,21 @@
 import { CELL_Y_OFFSET } from './constants.js';
 
 class ArcRenderer {
-  constructor(containerElement) {
+  constructor(containerElement, options = {}) {
     this.container = containerElement;
     this.svgOverlay = null;
     this.slurPaths = new Map(); // Map of slur ID to SVG path element
     this.beatLoopPaths = new Map(); // Map of beat loop ID to SVG path element
+    this.ornamentArcPaths = new Map(); // Map of ornament arc ID to SVG path element
     this.slurData = []; // Current slur data for comparison
     this.beatLoopData = []; // Current beat loop data for comparison
+    this.ornamentArcData = []; // Current ornament arc data for comparison
+
+    // Configuration options
+    this.options = {
+      skipBeatLoops: options.skipBeatLoops || false,
+      ...options
+    };
 
     this.setupSVGOverlay();
   }
@@ -47,6 +55,11 @@ class ArcRenderer {
     this.beatLoopGroup.setAttribute('id', 'beat-loops');
     this.svgOverlay.appendChild(this.beatLoopGroup);
 
+    // Create group for ornament arcs (above cells, shallow arcs)
+    this.ornamentArcGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    this.ornamentArcGroup.setAttribute('id', 'ornament-arcs');
+    this.svgOverlay.appendChild(this.ornamentArcGroup);
+
     // Append to container
     this.container.appendChild(this.svgOverlay);
   }
@@ -63,7 +76,13 @@ class ArcRenderer {
     }
 
     this.renderSlurs(displayList);
-    this.renderBeatLoops(displayList);
+
+    // Skip beat loops if configured (e.g., in ornament editor mini canvas)
+    if (!this.options.skipBeatLoops) {
+      this.renderBeatLoops(displayList);
+    }
+
+    this.renderOrnamentArcs(displayList);
   }
 
   /**
@@ -118,6 +137,33 @@ class ArcRenderer {
 
     // Store for comparison on next render
     this.beatLoopData = beatLoops;
+  }
+
+  /**
+   * Render ornament arcs from DisplayList
+   * Uses pre-computed arc data from Rust layout engine
+   *
+   * @param {Object} displayList - DisplayList from Rust layout engine
+   */
+  renderOrnamentArcs(displayList) {
+    if (!displayList || !displayList.lines) {
+      return;
+    }
+
+    const ornamentArcs = [];
+
+    // Collect all pre-computed ornament arcs from DisplayList
+    for (const line of displayList.lines) {
+      if (line.ornament_arcs && Array.isArray(line.ornament_arcs)) {
+        ornamentArcs.push(...line.ornament_arcs);
+      }
+    }
+
+    // Update SVG paths from pre-computed arc data
+    this.updateArcPathsFromData(ornamentArcs, this.ornamentArcPaths, this.ornamentArcGroup);
+
+    // Store for comparison on next render
+    this.ornamentArcData = ornamentArcs;
   }
 
   /**
@@ -279,10 +325,23 @@ class ArcRenderer {
         path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         path.setAttribute('fill', 'none');
         path.setAttribute('stroke', arc.color);
-        path.setAttribute('stroke-width', '1.5');
+
+        // Check if this is an ornament arc (by ID)
+        const isOrnamentArc = arc.id && arc.id.includes('ornament');
+
+        // Set stroke properties
+        path.setAttribute('stroke-width', isOrnamentArc ? '1.5' : '1.5');
         path.setAttribute('stroke-linecap', 'round');
+        path.setAttribute('stroke-linejoin', 'round');
+        path.setAttribute('stroke-dasharray', '');  // Explicitly empty for solid line
         path.setAttribute('vector-effect', 'non-scaling-stroke');
-        path.classList.add(`${arc.direction === 'up' ? 'slur' : 'beat-loop'}-path`);
+
+        // Add appropriate class
+        if (isOrnamentArc) {
+          path.classList.add('ornament-arc-path');
+        } else {
+          path.classList.add(`${arc.direction === 'up' ? 'slur' : 'beat-loop'}-path`);
+        }
 
         group.appendChild(path);
         pathsMap.set(arc.id, path);
@@ -443,6 +502,7 @@ class ArcRenderer {
   clearAllArcs() {
     this.clearSlurs();
     this.clearBeatLoops();
+    this.clearOrnamentArcs();
   }
 
   /**
@@ -470,6 +530,18 @@ class ArcRenderer {
   }
 
   /**
+   * Clear all ornament arcs from the overlay
+   */
+  clearOrnamentArcs() {
+    // Remove all path elements
+    for (const path of this.ornamentArcPaths.values()) {
+      this.ornamentArcGroup.removeChild(path);
+    }
+    this.ornamentArcPaths.clear();
+    this.ornamentArcData = [];
+  }
+
+  /**
    * Destroy the arc renderer and cleanup
    */
   destroy() {
@@ -480,6 +552,7 @@ class ArcRenderer {
     this.svgOverlay = null;
     this.slurGroup = null;
     this.beatLoopGroup = null;
+    this.ornamentArcGroup = null;
   }
 }
 

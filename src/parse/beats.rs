@@ -66,12 +66,28 @@ impl BeatDeriver {
     /// Extract implicit beats from cells based on line grammar rules
     /// Grammar: beat-element = pitched-element | unpitched-element | breath-mark
     /// Beats are separated by anything that is NOT a beat-element (whitespace, text, barline, etc.)
+    /// Note: Cells within ornament indicator spans are skipped (grace notes don't count toward beats)
     pub fn extract_implicit_beats(&self, cells: &[Cell]) -> Vec<BeatSpan> {
         let mut beats = Vec::new();
         let mut beat_start = None;
         let mut current_duration = 1.0;
+        let mut in_ornament_span = false;
 
         for (index, cell) in cells.iter().enumerate() {
+            // Track ornament span boundaries
+            if cell.is_ornament_start() {
+                in_ornament_span = true;
+            }
+
+            // Skip cells within ornament spans (grace notes)
+            // Ornaments are transparent to beat grouping - beat continues through them
+            if in_ornament_span {
+                if cell.is_ornament_end() {
+                    in_ornament_span = false;
+                }
+                continue;
+            }
+
             let is_beat = self.is_beat_element(cell);
 
             if is_beat {

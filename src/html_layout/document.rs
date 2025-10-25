@@ -116,6 +116,7 @@ impl LayoutEngine {
                 cell_widths,
                 syllable_widths,
                 char_widths,
+                document.ornament_edit_mode,
             );
 
             // Accumulate Y offset for next line

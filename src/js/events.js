@@ -100,10 +100,12 @@ class EventManager {
       // File operations shortcuts
       'Alt+n': () => this.handleNewFile(),
       'Alt+N': () => this.handleNewFile(),
-      'Alt+o': () => this.handleOpenFile(),
-      'Alt+O': () => this.handleOpenFile(),
       'Ctrl+o': () => this.handleOpenFile(),
       'Ctrl+O': () => this.handleOpenFile(),
+
+      // Ornament edit mode toggle (Alt+Shift+O)
+      'Alt+Shift+o': () => this.toggleOrnamentEditMode(),
+      'Alt+Shift+O': () => this.toggleOrnamentEditMode(),
 
       // Debug shortcuts
       F12: () => this.toggleDebugMode(),
@@ -116,9 +118,11 @@ class EventManager {
       'F1', 'F5', 'F7', 'F12',
       // Alt commands for musical notation
       'Alt+s', 'Alt+S', 'Alt+u', 'Alt+U', 'Alt+m', 'Alt+M',
-      'Alt+l', 'Alt+L', 'Alt+t', 'Alt+T',
+      'Alt+l', 'Alt+L', 'Alt+t', 'Alt+T', 'Alt+o', 'Alt+O',
+      // Alt+Shift commands
+      'Alt+Shift+o', 'Alt+Shift+O',
       // Alt commands for file operations
-      'Alt+n', 'Alt+N', 'Alt+o', 'Alt+O',
+      'Alt+n', 'Alt+N',
       // Ctrl commands for file operations
       'Ctrl+o', 'Ctrl+O'
     ];
@@ -339,7 +343,7 @@ class EventManager {
      * Handle Escape key
      */
   handleEscapeKey() {
-    // Could implement modal dismissal or other escape behaviors
+    // Could implement modal dismissal or escape behaviors
     console.log('Escape key pressed');
   }
 
@@ -366,6 +370,18 @@ class EventManager {
       this.editor.ui.executeMenuAction('open-document');
     } else {
       console.warn('UI menu action handler not available');
+    }
+  }
+
+  /**
+   * Toggle ornament edit mode (Alt+Shift+O)
+   */
+  toggleOrnamentEditMode() {
+    console.log('Alt+Shift+O: Toggle ornament edit mode shortcut triggered');
+    if (this.editor && this.editor.toggleOrnamentEditMode) {
+      this.editor.toggleOrnamentEditMode();
+    } else {
+      console.warn('Ornament edit mode toggle not available');
     }
   }
 
@@ -482,11 +498,13 @@ Music Notation Editor POC - Help
 
 File Operations:
 • Alt+N: New file
-• Alt+O or Ctrl+O: Open file
+• Ctrl+O: Open file
 
 Musical Notation:
 • Number System: 1-7 (with #/b for accidentals)
 • Western System: cdefgab/CDEFGAB (with #/b for accidentals)
+• Alt+O: Apply ornament indicator to selection
+• Alt+Shift+O: Toggle Edit Ornaments mode
 • Alt+S: Apply slur to selection
 • Alt+U/M/L: Apply octave +1/0/-1 to selection
 • Alt+T: Enter tala notation

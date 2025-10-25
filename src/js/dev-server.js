@@ -633,11 +633,31 @@ async function gracefulShutdown(signal) {
 
     logger.info('Graceful shutdown complete');
     clearTimeout(shutdownTimeout);
+
+    // Print final summary
+    console.log('');
+    console.log('==========================================');
+    console.log('Development Environment Stopped');
+    console.log('==========================================');
+    console.log('Session complete. To restart, run: make serve');
+    console.log('==========================================');
+    console.log('');
+
     process.exit(0);
   } catch (error) {
     logger.error('Error during graceful shutdown', {
       error: error.message
     });
+
+    // Print final summary even on error
+    console.log('');
+    console.log('==========================================');
+    console.log('Development Environment Stopped (Error)');
+    console.log('==========================================');
+    console.log('Session ended with error. Check logs above.');
+    console.log('==========================================');
+    console.log('');
+
     process.exit(1);
   }
 }
@@ -691,6 +711,21 @@ async function startServer() {
       websocket: 'WS /ws',
       note: 'LilyPond rendering: Call http://localhost:8787/engrave directly'
     });
+
+    // Print startup summary
+    console.log('');
+    console.log('==========================================');
+    console.log('Development Environment Summary');
+    console.log('==========================================');
+    console.log('✓ LilyPond Service:     http://localhost:8787');
+    console.log('✓ Development Server:   http://localhost:3000');
+    console.log('✓ Hot Reload:           Enabled');
+    console.log('');
+    console.log('Commands:');
+    console.log('  make kill   - Stop all servers');
+    console.log('  make test   - Run tests');
+    console.log('==========================================');
+    console.log('');
 
     // Setup file watching for hot reload
     setupFileWatcher();

@@ -293,6 +293,40 @@ impl MusicXmlBuilder {
         self.last_note = None;
     }
 
+    /// Write a grace note (ornament/embellishment before main note)
+    /// Grace notes have no duration and appear with a slash by default
+    /// pitch_code: The pitch of the grace note
+    /// octave: Octave offset relative to middle C
+    /// slash: Whether to show slash (true = acciaccatura, false = appoggiatura)
+    pub fn write_grace_note(&mut self, pitch_code: &PitchCode, octave: i8, slash: bool) -> Result<(), String> {
+        let (step, alter) = pitch_code_to_step_alter(pitch_code);
+        let xml_octave = octave + 4; // music-text octave 0 = MIDI octave 4 (middle C)
+
+        self.buffer.push_str("<note>\n");
+
+        // Grace element (with or without slash)
+        if slash {
+            self.buffer.push_str("  <grace slash=\"yes\"/>\n");
+        } else {
+            self.buffer.push_str("  <grace/>\n");
+        }
+
+        self.buffer.push_str("  <pitch>\n");
+        self.buffer.push_str(&format!("    <step>{}</step>\n", step));
+        if alter != 0 {
+            self.buffer.push_str(&format!("    <alter>{}</alter>\n", alter));
+        }
+        self.buffer.push_str(&format!("    <octave>{}</octave>\n", xml_octave));
+        self.buffer.push_str("  </pitch>\n");
+
+        // Grace notes use 8th note type by default
+        self.buffer.push_str("  <type>eighth</type>\n");
+
+        self.buffer.push_str("</note>\n");
+
+        Ok(())
+    }
+
     /// Reset note context (for breath marks, line starts)
     pub fn reset_context(&mut self) {
         self.last_note = None;
@@ -540,5 +574,56 @@ mod tests {
         let attr_pos = buffer.find("<attributes>").unwrap();
 
         assert!(print_pos < attr_pos, "print element should come before attributes");
+    }
+
+    #[test]
+    fn test_write_grace_note() {
+        let mut builder = MusicXmlBuilder::new();
+        builder.start_measure();
+
+        // Write grace note using PitchCode for G (pitch 5 in number system = G)
+        let grace_pitch_code = PitchCode::N5; // G natural
+        builder.write_grace_note(&grace_pitch_code, 0, true).unwrap();
+
+        // Should contain grace element with slash
+        assert!(builder.buffer.contains("<grace slash=\"yes\"/>"));
+
+        // Should contain pitch information
+        assert!(builder.buffer.contains("<step>G</step>"));
+        assert!(builder.buffer.contains("<octave>4</octave>"));
+
+        // Should have eighth note type (default for grace notes)
+        assert!(builder.buffer.contains("<type>eighth</type>"));
+
+        // Should NOT contain duration element (grace notes have no duration)
+        assert!(!builder.buffer.contains("<duration>"));
+    }
+
+    #[test]
+    fn test_write_grace_note_without_slash() {
+        let mut builder = MusicXmlBuilder::new();
+        builder.start_measure();
+
+        // Write grace note without slash (appoggiatura)
+        let grace_pitch_code = PitchCode::N1; // C natural
+        builder.write_grace_note(&grace_pitch_code, 0, false).unwrap();
+
+        // Should contain grace element without slash
+        assert!(builder.buffer.contains("<grace/>"));
+        assert!(!builder.buffer.contains("slash=\"yes\""));
+    }
+
+    #[test]
+    fn test_grace_note_with_accidental() {
+        let mut builder = MusicXmlBuilder::new();
+        builder.start_measure();
+
+        // Write grace note with sharp (F# = pitch 4 with sharp)
+        let grace_pitch_code = PitchCode::N4s; // F#
+        builder.write_grace_note(&grace_pitch_code, 0, true).unwrap();
+
+        // Should contain pitch with alteration
+        assert!(builder.buffer.contains("<step>F</step>"));
+        assert!(builder.buffer.contains("<alter>1</alter>"));
     }
 }

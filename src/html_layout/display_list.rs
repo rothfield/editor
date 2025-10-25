@@ -55,6 +55,14 @@ pub struct RenderLine {
     /// Beat loop arcs to render (computed with line y-offset already factored in)
     #[serde(default)]
     pub beat_loops: Vec<RenderArc>,
+
+    /// Ornament arcs to render (very shallow, connecting anchor note to ornaments)
+    #[serde(default)]
+    pub ornament_arcs: Vec<RenderArc>,
+
+    /// Positioned ornaments (when ornament_edit_mode is OFF)
+    #[serde(default)]
+    pub ornaments: Vec<RenderOrnament>,
 }
 
 /// A rendered arc (slur or beat loop) with pre-computed bezier curve control points
@@ -164,4 +172,20 @@ pub struct RenderTala {
 
     /// Y position (top of text)
     pub y: f32,
+}
+
+/// A positioned ornament (when ornament_edit_mode is OFF)
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct RenderOrnament {
+    /// Ornament character text
+    pub text: String,
+
+    /// X position (positioned relative to anchor note)
+    pub x: f32,
+
+    /// Y position (same as cells)
+    pub y: f32,
+
+    /// CSS class names to apply
+    pub classes: Vec<String>,
 }

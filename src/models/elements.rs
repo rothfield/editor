@@ -592,6 +592,170 @@ impl Default for SlurIndicator {
     }
 }
 
+/// Ornament placement relative to parent note
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum OrnamentPlacement {
+    Before,
+    After,
+}
+
+impl Default for OrnamentPlacement {
+    fn default() -> Self {
+        OrnamentPlacement::After
+    }
+}
+
+/// Ornament structure attached to a parent note
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct Ornament {
+    /// The cells that make up the ornament
+    pub cells: Vec<super::core::Cell>,
+
+    /// Placement relative to parent note
+    #[serde(default)]
+    pub placement: OrnamentPlacement,
+}
+
+/// Ornament indicator for cells that start or end an ornament
+#[wasm_bindgen]
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum OrnamentIndicator {
+    /// No ornament indicator
+    None = 0,
+
+    /// This cell starts an ornament
+    OrnamentStart = 1,
+
+    /// This cell ends an ornament
+    OrnamentEnd = 2,
+}
+
+// Custom serialization to show both name and value
+impl Serialize for OrnamentIndicator {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut state = serializer.serialize_struct("OrnamentIndicator", 2)?;
+        state.serialize_field("name", &self.snake_case_name())?;
+        state.serialize_field("value", &(*self as u8))?;
+        state.end()
+    }
+}
+
+// Custom deserialization - accepts either number or object format
+impl<'de> Deserialize<'de> for OrnamentIndicator {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct OrnamentIndicatorVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for OrnamentIndicatorVisitor {
+            type Value = OrnamentIndicator;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("an OrnamentIndicator number or object")
+            }
+
+            fn visit_u64<E>(self, value: u64) -> Result<OrnamentIndicator, E>
+            where
+                E: serde::de::Error,
+            {
+                match value {
+                    0 => Ok(OrnamentIndicator::None),
+                    1 => Ok(OrnamentIndicator::OrnamentStart),
+                    2 => Ok(OrnamentIndicator::OrnamentEnd),
+                    _ => Err(E::custom(format!("invalid OrnamentIndicator value: {}", value))),
+                }
+            }
+
+            fn visit_i64<E>(self, value: i64) -> Result<OrnamentIndicator, E>
+            where
+                E: serde::de::Error,
+            {
+                self.visit_u64(value as u64)
+            }
+
+            fn visit_map<A>(self, mut map: A) -> Result<OrnamentIndicator, A::Error>
+            where
+                A: serde::de::MapAccess<'de>,
+            {
+                let mut value: Option<u8> = None;
+                while let Some(key) = map.next_key::<String>()? {
+                    if key == "value" {
+                        value = Some(map.next_value()?);
+                    } else {
+                        map.next_value::<serde::de::IgnoredAny>()?;
+                    }
+                }
+                match value {
+                    Some(0) => Ok(OrnamentIndicator::None),
+                    Some(1) => Ok(OrnamentIndicator::OrnamentStart),
+                    Some(2) => Ok(OrnamentIndicator::OrnamentEnd),
+                    Some(v) => Err(serde::de::Error::custom(format!("invalid OrnamentIndicator value: {}", v))),
+                    None => Err(serde::de::Error::missing_field("value")),
+                }
+            }
+        }
+
+        deserializer.deserialize_any(OrnamentIndicatorVisitor)
+    }
+}
+
+impl OrnamentIndicator {
+    /// Get the human-readable name for this ornament indicator
+    pub fn name(&self) -> &'static str {
+        match self {
+            OrnamentIndicator::None => "None",
+            OrnamentIndicator::OrnamentStart => "Ornament Start",
+            OrnamentIndicator::OrnamentEnd => "Ornament End",
+        }
+    }
+
+    /// Get snake_case name for JSON serialization
+    pub fn snake_case_name(&self) -> &'static str {
+        match self {
+            OrnamentIndicator::None => "none",
+            OrnamentIndicator::OrnamentStart => "ornament_start",
+            OrnamentIndicator::OrnamentEnd => "ornament_end",
+        }
+    }
+
+    /// Get CSS class name for this ornament indicator
+    pub fn css_class(&self) -> &'static str {
+        match self {
+            OrnamentIndicator::None => "ornament-none",
+            OrnamentIndicator::OrnamentStart => "ornament-start",
+            OrnamentIndicator::OrnamentEnd => "ornament-end",
+        }
+    }
+
+    /// Check if this is an ornament start
+    pub fn is_start(&self) -> bool {
+        matches!(self, OrnamentIndicator::OrnamentStart)
+    }
+
+    /// Check if this is an ornament end
+    pub fn is_end(&self) -> bool {
+        matches!(self, OrnamentIndicator::OrnamentEnd)
+    }
+
+    /// Check if this cell has any ornament indicator
+    pub fn has_ornament(&self) -> bool {
+        !matches!(self, OrnamentIndicator::None)
+    }
+}
+
+impl Default for OrnamentIndicator {
+    fn default() -> Self {
+        OrnamentIndicator::None
+    }
+}
+
 /// Text token properties for non-musical text
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct TextToken {

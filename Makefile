@@ -120,6 +120,7 @@ serve:
 	@$(MAKE) lilypond-start
 	@echo ""
 	@echo "Starting development server..."
+	@echo ""
 	@$(MAKE) dev
 
 serve-prod: build-prod

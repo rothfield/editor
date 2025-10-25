@@ -291,6 +291,213 @@
         .char-cell.selected {
             background-color: rgba(59, 130, 246, 0.3); /* Blue with transparency */
         }
+
+        /* Ornament indicator spans - rendered smaller and raised */
+        .char-cell.ornament-first,
+        .char-cell.ornament-middle,
+        .char-cell.ornament-last {
+            font-size: 0.75em; /* 75% of base font size */
+            vertical-align: super; /* Raised/superscript position */
+            position: relative;
+            top: -0.5em; /* Additional vertical offset for better positioning */
+            z-index: 10; /* Render on top of other cells */
+        }
+
+        /* Visual indicator for ornament boundaries */
+        .char-cell.ornament-first {
+            border-left: 2px solid rgba(147, 51, 234, 0.3); /* Purple border on left */
+            padding-left: 2px;
+        }
+
+        .char-cell.ornament-last {
+            border-right: 2px solid rgba(147, 51, 234, 0.3); /* Purple border on right */
+            padding-right: 2px;
+        }
+
+        /* Ornament Editor Dialog */
+        .ornament-editor-dialog {
+            position: fixed;
+            z-index: 1000;
+            background: white;
+            border: 2px solid #3b82f6;
+            border-radius: 8px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+            min-width: 400px;
+            max-width: 600px;
+        }
+
+        .ornament-editor-header {
+            background: #3b82f6;
+            color: white;
+            padding: 12px 16px;
+            border-radius: 6px 6px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: move;
+        }
+
+        .ornament-editor-header h3 {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .ornament-editor-header .close-btn {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 0;
+            line-height: 1;
+        }
+
+        .ornament-editor-header .close-btn:hover {
+            opacity: 0.8;
+        }
+
+        .ornament-editor-body {
+            padding: 20px;
+        }
+
+        .ornament-mini-canvas {
+            min-height: 60px;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            padding: 8px;
+            background: white;
+            position: relative;
+            outline: none;
+        }
+
+        .ornament-mini-canvas:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: 500;
+            color: #374151;
+        }
+
+        .form-group input[type="text"] {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .form-group input[type="text"]:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .placement-controls {
+            display: flex;
+            gap: 16px;
+        }
+
+        .placement-controls label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            font-weight: normal;
+        }
+
+        .ornament-preview {
+            min-height: 60px;
+            padding: 12px;
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 4px;
+        }
+
+        .ornament-error {
+            padding: 12px;
+            background: #fee2e2;
+            border: 1px solid #fecaca;
+            border-radius: 4px;
+            color: #991b1b;
+            font-size: 14px;
+        }
+
+        .form-actions {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+            margin-top: 20px;
+        }
+
+        .btn-primary, .btn-secondary {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: #3b82f6;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #2563eb;
+        }
+
+        .btn-secondary {
+            background: #e5e7eb;
+            color: #374151;
+        }
+
+        .btn-secondary:hover {
+            background: #d1d5db;
+        }
+
+        /* Ornament Container */
+        .ornament-container {
+            position: absolute;
+            font-family: 'Bravura', serif;
+            z-index: 5;
+            pointer-events: auto;
+            cursor: pointer;
+        }
+
+        .ornament-container:hover {
+            opacity: 0.8;
+        }
+
+        .ornament-symbol {
+            display: inline-block;
+            margin-right: 1px;
+        }
+
+        .ornament-accidental {
+            font-size: 1.4em;
+            position: relative;
+            top: -0.1em;
+        }
+
+        .ornament-octave {
+            font-size: 0.6em;
+        }
+
+        /* Ornament Preview */
+        .ornament-preview-container {
+            position: relative;
+        }
     </style>
 
     <!-- OSMD for staff notation rendering -->
@@ -338,6 +545,7 @@
                                 Edit
                             </button>
                             <ul id="edit-menu" class="absolute top-full left-0 bg-white border border-ui-border rounded shadow-lg hidden z-menu min-w-48">
+                                <li><button id="menu-ornament" class="menu-item">Ornament...</button></li>
                                 <li><button id="menu-apply-slur" class="menu-item">Apply Slur (Alt+S)</button></li>
                                 <li class="border-t border-ui-border my-1"></li>
                                 <li><button id="menu-octave-upper" class="menu-item">Upper Octave (Alt+U)</button></li>
@@ -368,6 +576,8 @@
                     <span>Position: <span id="cursor-position">Line: 0, Col: 0 (Lane: 1)</span></span>
                     <span class="text-gray-400">|</span>
                     <span>Pitch System: <span id="current-pitch-system" style="font-weight: bold;">Number</span></span>
+                    <span class="text-gray-400">|</span>
+                    <span><span id="ornament-edit-mode-display" style="font-weight: bold;">Edit Ornament Mode: OFF</span></span>
                     <span class="text-gray-400">|</span>
                     <span>Characters: <span id="char-count">0</span></span>
                     <span class="text-gray-400">|</span>

@@ -1,6 +1,6 @@
 # Music Notation Editor
 
-A high-performance music notation editor built with a **Cell-based architecture**, combining Rust WebAssembly for logic with a modern JavaScript frontend.
+A high-performance **letter music notation editor** where pitches are represented as letters and digits (e.g., S, R, G, M, P for sargam; 1-7 for numbers; c-b for ABC notation). Built with a **Cell-based architecture**, combining Rust WebAssembly for logic with a modern JavaScript frontend.
 
 ![Status](https://img.shields.io/badge/status-active-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-blue)

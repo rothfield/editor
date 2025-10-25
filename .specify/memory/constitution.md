@@ -1,39 +1,39 @@
 <!--
 Sync Impact Report:
-Version change: 1.3.0 → 1.3.1 (E2E testing requirements clarification)
-Modified principles:
-  - Principle II (Test-Driven Development): Added requirement that E2E tests MUST execute through WASM
+Version change: 1.5.0 → 1.5.1 (Clarifying WASM API exposure requirements)
+Modified principles: None
+Added principles: None
 Added sections:
-  - Testing Standards: Added explicit WASM build requirement and pipeline validation
+  - New bullet in WASM/Rust Integration Standards: "WASM API Exposure"
+  - Clarifies when Rust functions must be exposed via #[wasm_bindgen] in api.rs
 Removed sections: None
 Templates requiring updates:
-✅ plan-template.md (constitution checks already include E2E verification)
-✅ spec-template.md (testing requirements aligned with WASM-inclusive approach)
-✅ tasks-template.md (E2E task creation already enforces full pipeline)
-⚠ Developer guidance: May need to document WASM build prerequisite for test execution
+  - None (clarification of existing practice)
 Follow-up TODOs:
-  - Update Makefile test targets to enforce WASM build dependency
-  - Document common mistake: running E2E tests without WASM rebuild
+  - Review existing Rust modules for functions that should be in WASM API
+  - Ensure all JavaScript-callable functions are properly exposed
 -->
 
 # Music Notation Editor POC Constitution
 
-**Version**: 1.3.1
+**Version**: 1.5.1
 **Ratified**: 2025-10-11
-**Last Amended**: 2025-10-18
+**Last Amended**: 2025-10-24
 **Purpose**: Define development environment, standards, principles, and governance for the Music Notation Editor POC project
 
 ## Core Principles
 
 ### I. Performance First
-Every performance-critical operation MUST be implemented in Rust/WASM. JavaScript host application handles UI and orchestration only. All text processing, beat derivation, and layout calculations execute in WASM for optimal performance.
+Every performance-critical operation MUST be implemented in Rust/WASM. JavaScript host application handles UI and orchestration only. All text processing, beat derivation, layout calculations, and rendering (including coordinate calculation, positioning logic, and bounding box computation) execute in WASM for optimal performance.
 
-**Rationale**: Meeting sub-16ms response time targets requires compiled code for computational tasks. WASM provides near-native performance while maintaining web platform compatibility.
+**Rationale**: Meeting sub-16ms response time targets requires compiled code for computational tasks. WASM provides near-native performance while maintaining web platform compatibility. Rendering logic in particular (coordinate calculation, positioning, measurements) MUST be in WASM to ensure consistent, high-performance calculations that can be reused across dialog preview and final output without duplication or divergence.
 
 ### II. Test-Driven Development (NON-NEGOTIABLE)
 All features MUST have comprehensive end-to-end tests written and approved BEFORE implementation. Tests run in headless mode using Playwright Python bindings. No feature is considered complete without passing E2E tests. **E2E tests MUST execute through the compiled WASM module** - tests that bypass WASM (e.g., testing only lilypond-service or JavaScript APIs) do not validate the full integration and are insufficient.
 
-**Rationale**: Headless E2E testing ensures CI/CD compatibility and provides confidence in user-facing functionality. Test-first development prevents regressions and validates requirements. WASM-inclusive E2E tests verify the entire integration from data model through rendering, ensuring that template changes, converter logic, and WASM compilation are all validated before merge.
+**MANDATORY**: Before completing ANY new feature, at minimum ONE end-to-end test MUST be written and MUST pass that demonstrates the complete user workflow from start to finish. This test MUST run in Docker using the provided playwright container to ensure cross-platform compatibility. Developers MUST execute `./scripts/run-tests-docker.sh [test-file]` and verify test success before marking any feature as complete.
+
+**Rationale**: Headless E2E testing ensures CI/CD compatibility and provides confidence in user-facing functionality. Test-first development prevents regressions and validates requirements. WASM-inclusive E2E tests verify the entire integration from data model through rendering, ensuring that template changes, converter logic, and WASM compilation are all validated before merge. Running tests in Docker guarantees consistency across development environments and prevents "works on my machine" issues.
 
 ### III. User Experience Focus
 Focus management MUST return to editor canvas immediately after any UI interaction (menu operations, tab switching). All keyboard operations MUST meet 60fps target (< 16ms latency). Cursor activation MUST be immediate upon focus.
@@ -59,6 +59,16 @@ Code organization follows documented file structure exactly. JavaScript uses ES6
 All implementations MUST be done correctly the first time. No JavaScript fallbacks for WASM functionality. No partial implementations that rely on degraded behavior. If WASM/Rust cannot provide the functionality, the feature MUST NOT be implemented until proper WASM support exists. Fallback code indicates architectural failure and technical debt accumulation.
 
 **Rationale**: JavaScript fallbacks for WASM operations defeat Performance First principle and create maintenance burden. Partial implementations that "sort of work" lead to undefined behavior, difficult debugging, and user confusion. Doing it right the first time saves debugging time, prevents technical debt, and maintains architectural integrity. Quality over speed of delivery.
+
+### VIII. MusicXML First - Standardized Interchange Format
+MusicXML is the primary interchange format for all musical notation created in this editor. Every feature MUST be designed with full MusicXML import/export capability in mind. All note entry methods, ornaments, annotations, performance directives, and musical constructs MUST have corresponding MusicXML representations. Features that cannot be cleanly mapped to MusicXML MUST be explicitly reviewed, documented, and approved with clear justification for the limitation. MusicXML compatibility MUST be validated during development alongside functional testing.
+
+**Rationale**: MusicXML is the de facto industry standard for music notation interchange, enabling seamless interoperability with professional music software (Finale, Sibelius, MuseScore, Dorico, notation software, publishing tools). By making MusicXML compatibility a core design principle, we ensure users can freely exchange their compositions without data loss, format corruption, or vendor lock-in. This establishes the editor as a first-class participant in the broader music software ecosystem. MusicXML-first design also provides a clear, unambiguous reference specification for musical features and helps identify under-specified musical concepts early in development. Making it explicit in the constitution ensures that every architectural decision considers its impact on interoperability, preventing the accumulation of "MusicXML-incompatible" features that would require costly refactoring later.
+
+### IX. Export Strategy - Leverage Ecosystem Tools
+MusicXML is the primary export target. For other formats (Lilypond, PDF, MEI, etc.), prefer using existing MusicXML → format converters rather than maintaining parallel exporters. Only implement direct exporters when: (1) No reliable converter exists, (2) MusicXML roundtrip loses critical information, or (3) Performance requirements demand it.
+
+**Rationale**: Reduces maintenance burden by leveraging mature ecosystem tools (e.g., `musicxml2ly` for Lilypond conversion, `verovio` for MEI). Ensures MusicXML representation stays comprehensive and standards-compliant by making it the single source of truth. Prevents code duplication and divergence between parallel export paths. Focuses development effort on MusicXML quality rather than maintaining multiple format-specific exporters.
 
 ## Development Environment
 
@@ -182,6 +192,7 @@ music-notation-editor/
 - **Module Loading**: WebAssembly.instantiateStreaming with proper caching
 - **Optimization**: Release builds with optimal compilation settings
 - **No Fallbacks**: JavaScript MUST NOT implement fallback versions of WASM functionality
+- **WASM API Exposure**: When creating Rust functions, ALWAYS check if JavaScript needs to call them. If so, the function MUST be exposed through the WASM API (src/api.rs) with #[wasm_bindgen] annotation. Internal Rust functions stay in their respective modules; only JavaScript-facing functions go in api.rs.
 
 ## Testing Standards
 
@@ -293,18 +304,28 @@ music-notation-editor/
 - 100% accurate musical operations
 - Complete focus management functionality
 - Full E2E test coverage
+- Full MusicXML import/export roundtrip fidelity (95%+ data preservation)
+- Zero loss of musical meaning in MusicXML interchange
 
 ### Performance Success
 - All response time targets met
 - Headless test execution < 30 seconds
 - Resource usage within specified limits
 - No memory leaks in long-running sessions
+- MusicXML export time < 500ms for typical compositions
+
+### Interoperability Success
+- All created notation renders correctly in MuseScore, Finale, Sibelius
+- MusicXML files can be imported from all major notation applications
+- Feature compatibility matrix maintained and updated per release
+- Zero unspecified features that break MusicXML interchange
 
 ### Development Success
 - Clean, maintainable codebase
 - Comprehensive documentation
 - Automated testing and quality gates
 - Smooth developer experience
+- MusicXML compatibility verified as part of code review process
 
 ## Governance
 
@@ -337,11 +358,11 @@ This constitution follows semantic versioning (MAJOR.MINOR.PATCH):
 
 ### Conflict Resolution
 When conflicts arise between principles:
-1. **No Fallbacks** and **Test-Driven** are NON-NEGOTIABLE and override all other principles
+1. **No Fallbacks**, **Test-Driven**, and **MusicXML First** are NON-NEGOTIABLE and override all other principles
 2. **Performance First** takes precedence over implementation convenience
-3. **User Experience Focus** overrides architectural preferences when user impact is significant
+3. **User Experience Focus** overrides architectural preferences when user impact is significant and does not compromise MusicXML compatibility
 4. **Clean Architecture** guides implementation decisions but doesn't prevent pragmatic solutions
-5. **Standards Compliance** ensures consistency but allows for justified exceptions
+5. **Standards Compliance** ensures consistency and enforces MusicXML interoperability requirements
 
 ### Constitutional Evolution
 This constitution is a living document that should evolve with the project:
