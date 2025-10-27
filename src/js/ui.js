@@ -130,9 +130,11 @@ class UI {
      */
   setupEditMenu() {
     const menuItems = [
-      { id: 'menu-ornament', label: 'Ornament...', action: 'ornament' },
+      { id: 'menu-apply-ornament', label: 'Ornament (Alt+0)', action: 'apply-ornament-after', testid: 'menu-apply-ornament' },
+      { id: 'menu-apply-ornament-before', label: 'Ornament Before', action: 'apply-ornament-before', testid: 'menu-apply-ornament-before' },
+      { id: 'menu-apply-ornament-top', label: 'Ornament Top', action: 'apply-ornament-top', testid: 'menu-apply-ornament-top' },
       { id: 'menu-apply-slur', label: 'Apply Slur (Alt+S)', action: 'apply-slur' },
-      { id: 'menu-edit-ornaments', label: 'Edit Ornaments (Alt+Shift+O)', action: 'edit-ornaments', checkable: true },
+      { id: 'menu-edit-ornaments', label: 'Toggle Ornament Edit Mode (Alt+Shift+O)', action: 'edit-ornaments', checkable: true },
       { id: 'menu-separator-1', label: null, separator: true },
       { id: 'menu-octave-upper', label: 'Upper Octave (Alt+U)', action: 'octave-upper' },
       { id: 'menu-octave-middle', label: 'Middle Octave (Alt+M)', action: 'octave-middle' },
@@ -152,6 +154,14 @@ class UI {
         menuItem.id = item.id;
         menuItem.className = 'menu-item';
         menuItem.dataset.action = item.action;
+
+        // Add data-testid attributes (for E2E tests)
+        if (item.testid) {
+          menuItem.dataset.testid = item.testid;
+        }
+        if (item.id === 'menu-edit-ornaments') {
+          menuItem.dataset.testid = 'btn-toggle-ornament-edit-mode';
+        }
 
         if (item.checkable) {
           // Add checkbox indicator for checkable items
@@ -432,8 +442,14 @@ class UI {
       case 'set-key-signature':
         this.setKeySignature();
         break;
-      case 'ornament':
-        this.openOrnamentEditor();
+      case 'apply-ornament-after':
+        this.editor.applyOrnament('after');
+        break;
+      case 'apply-ornament-before':
+        this.editor.applyOrnament('before');
+        break;
+      case 'apply-ornament-top':
+        this.editor.applyOrnament('top');
         break;
       case 'edit-ornaments':
         this.toggleOrnamentEditMode();
@@ -1240,15 +1256,6 @@ class UI {
   applyOctave(octave) {
     if (this.editor) {
       this.editor.applyOctave(octave);
-    }
-  }
-
-  /**
-   * Open ornament editor dialog
-   */
-  openOrnamentEditor() {
-    if (this.editor) {
-      this.editor.openOrnamentEditor();
     }
   }
 

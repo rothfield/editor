@@ -1,84 +1,90 @@
 # Data Model: Music Notation Ornament Support
 
 **Feature**: 006-music-notation-ornament
-**Date**: 2025-10-25
-**Phase**: 1 (Design & Contracts)
+**Date**: 2025-10-26
 
-## Overview
+## Entity Overview
 
-This document defines the data structures, enums, and state required to implement ornament support in the music notation editor. The design follows the "tokens in stream" principle: ornaments are first-class tokens in the linear Cell sequence, marked by indicator variants that implicitly encode position type. Attachment to parent notes is computed algorithmically at render/export time, not stored in the editing model.
+| Entity | Type | Persistence | Purpose |
+|--------|------|-------------|---------|
+| Cell | Struct (modify existing) | Persistent | Add `ornament_indicator` field |
+| OrnamentIndicator | Enum (add new) | Persistent | Mark ornament span boundaries |
+| Ornament PositionType | Enum (ephemeral) | Runtime only | Helper for algorithms |
+| OrnamentSpan | Struct (ephemeral) | Runtime only | Group cells in ornament span |
+| AttachmentMap | Type alias (ephemeral) | Runtime only | Map ornaments to anchor cells |
 
 ---
 
-## Core Entities
+## 1. Cell (Existing - MODIFY)
 
-### 1. OrnamentIndicator Enum (MODIFIED)
+**File**: `src/models/core.rs`
 
-**Location**: `src/models/elements.rs`
-
-**Current Definition** (3 variants):
+**Modifications**:
 ```rust
-#[repr(u8)]
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum OrnamentIndicator {
-    None = 0,
-    OrnamentStart = 1,
-    OrnamentEnd = 2,
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Cell {
+    // ... existing fields ...
+
+    #[serde(default)]
+    pub ornament_indicator: OrnamentIndicator,  // NEW FIELD
+
+    // ... existing fields ...
+}
+
+impl Cell {
+    // NEW METHOD
+    pub fn is_rhythm_transparent(&self) -> bool {
+        !matches!(self.ornament_indicator, OrnamentIndicator::None)
+    }
 }
 ```
 
-**New Definition** (6 variants):
+**Validation Rules**:
+- `ornament_indicator` defaults to `OrnamentIndicator::None`
+- Only one indicator type per cell (no mixing)
+- Start/End indicators must be balanced in cell sequence
+
+---
+
+## 2. OrnamentIndicator (NEW)
+
+**File**: `src/models/elements.rs`
+
+**Definition**:
 ```rust
+#[wasm_bindgen]
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub enum OrnamentIndicator {
-    /// No ornament indicator (default state)
     None = 0,
 
-    /// Start of before-position ornament span (attaches to first token to right)
     OrnamentBeforeStart = 1,
-
-    /// End of before-position ornament span
     OrnamentBeforeEnd = 2,
 
-    /// Start of after-position ornament span (attaches to last token to left) - DEFAULT
     OrnamentAfterStart = 3,
-
-    /// End of after-position ornament span
     OrnamentAfterEnd = 4,
 
-    /// Start of on-top-position ornament span (attaches to nearest token)
     OrnamentOnTopStart = 5,
-
-    /// End of on-top-position ornament span
     OrnamentOnTopEnd = 6,
 }
-```
 
-**Methods** (add to impl block):
-```rust
 impl OrnamentIndicator {
-    /// Check if this indicator marks the start of an ornament span
     pub fn is_start(&self) -> bool {
-        matches!(
-            self,
+        matches!(self,
             OrnamentIndicator::OrnamentBeforeStart
-                | OrnamentIndicator::OrnamentAfterStart
-                | OrnamentIndicator::OrnamentOnTopStart
+            | OrnamentIndicator::OrnamentAfterStart
+            | OrnamentIndicator::OrnamentOnTopStart
         )
     }
 
-    /// Check if this indicator marks the end of an ornament span
     pub fn is_end(&self) -> bool {
-        matches!(
-            self,
+        matches!(self,
             OrnamentIndicator::OrnamentBeforeEnd
-                | OrnamentIndicator::OrnamentAfterEnd
-                | OrnamentIndicator::OrnamentOnTopEnd
+            | OrnamentIndicator::OrnamentAfterEnd
+            | OrnamentIndicator::OrnamentOnTopEnd
         )
     }
 
-    /// Get the position type for this indicator
     pub fn position_type(&self) -> Option<OrnamentPositionType> {
         match self {
             OrnamentIndicator::OrnamentBeforeStart | OrnamentIndicator::OrnamentBeforeEnd => {
@@ -94,577 +100,292 @@ impl OrnamentIndicator {
         }
     }
 
-    /// Check if start/end indicators match (form a valid pair)
     pub fn matches(&self, other: &OrnamentIndicator) -> bool {
-        match (self, other) {
-            (OrnamentIndicator::OrnamentBeforeStart, OrnamentIndicator::OrnamentBeforeEnd) => true,
-            (OrnamentIndicator::OrnamentAfterStart, OrnamentIndicator::OrnamentAfterEnd) => true,
-            (OrnamentIndicator::OrnamentOnTopStart, OrnamentIndicator::OrnamentOnTopEnd) => true,
-            _ => false,
-        }
-    }
-
-    /// Convert to snake_case string for serialization (existing pattern)
-    pub fn snake_case_name(&self) -> &'static str {
-        match self {
-            OrnamentIndicator::None => "none",
-            OrnamentIndicator::OrnamentBeforeStart => "ornament_before_start",
-            OrnamentIndicator::OrnamentBeforeEnd => "ornament_before_end",
-            OrnamentIndicator::OrnamentAfterStart => "ornament_after_start",
-            OrnamentIndicator::OrnamentAfterEnd => "ornament_after_end",
-            OrnamentIndicator::OrnamentOnTopStart => "ornament_on_top_start",
-            OrnamentIndicator::OrnamentOnTopEnd => "ornament_on_top_end",
-        }
+        self.position_type() == other.position_type()
     }
 }
 ```
 
-**Serialization** (preserve existing custom serialization pattern):
-```rust
-impl Serialize for OrnamentIndicator {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        use serde::ser::SerializeStruct;
-        let mut state = serializer.serialize_struct("OrnamentIndicator", 2)?;
-        state.serialize_field("name", &self.snake_case_name())?;
-        state.serialize_field("value", &(*self as u8))?;
-        state.end()
-    }
-}
-```
+**Serialization**: Uses custom Serialize/Deserialize (like existing enums in elements.rs)
 
 ---
 
-### 2. OrnamentPositionType Enum (NEW)
+## 3. OrnamentPositionType (NEW - Ephemeral)
 
-**Location**: `src/models/elements.rs`
+**File**: `src/models/elements.rs`
 
-**Purpose**: Helper enum for algorithmic position handling (not stored in Cell, derived from indicator).
-
+**Definition**:
 ```rust
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum OrnamentPositionType {
-    /// Ornament appears before (left of) parent note
     Before,
-
-    /// Ornament appears after (right of) parent note - DEFAULT
     After,
-
-    /// Ornament appears on top of (above) parent note
     OnTop,
 }
 ```
 
----
+**Purpose**: Helper enum for attachment algorithm (NOT serialized, runtime only)
 
-### 3. Cell Struct (MODIFIED)
-
-**Location**: `src/models/core.rs`
-
-**Current Definition** (includes `ornament_indicator: OrnamentIndicator`):
+**String conversion**:
 ```rust
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Cell {
-    pub text: String,
-    pub pitch_code: Option<PitchCode>,
-    pub ornament_indicator: OrnamentIndicator,
-    pub slur_indicator: SlurIndicator,
-    // ... other fields
-}
-```
-
-**Changes Required**: None to struct definition, but add helper method:
-
-```rust
-impl Cell {
-    /// Check if this cell is part of an ornament span (rhythm-transparent)
-    pub fn is_rhythm_transparent(&self) -> bool {
-        !matches!(self.ornament_indicator, OrnamentIndicator::None)
+impl OrnamentPositionType {
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "before" => Some(Self::Before),
+            "after" => Some(Self::After),
+            "top" => Some(Self::OnTop),
+            _ => None,
+        }
     }
 
-    /// Check if this cell is an ornament content cell (between start/end indicators)
-    pub fn is_ornament_content(&self) -> bool {
-        // Ornament content cells have pitch/text but no indicator (or are within span)
-        // This is determined during parsing/attachment resolution
-        // For now, rhythm-transparent is sufficient
-        self.is_rhythm_transparent()
+    pub fn to_str(&self) -> &'static str {
+        match self {
+            Self::Before => "before",
+            Self::After => "after",
+            Self::OnTop => "top",
+        }
     }
 }
 ```
 
-**No New Fields Required**: Existing `ornament_indicator` field is sufficient.
-
 ---
 
-### 4. OrnamentSpan Struct (NEW - Ephemeral)
+## 4. OrnamentSpan (NEW - Ephemeral)
 
-**Location**: `src/parse/tokens.rs` or `src/renderers/layout_engine.rs`
+**File**: `src/renderers/layout_engine.rs` (new module)
 
-**Purpose**: Temporary structure for attachment resolution and rendering (NOT serialized to JSON).
-
+**Definition**:
 ```rust
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub struct OrnamentSpan {
-    /// Starting index in cell array (OrnamentXxxStart indicator)
-    pub start_index: usize,
-
-    /// Ending index in cell array (OrnamentXxxEnd indicator)
-    pub end_index: usize,
-
-    /// Cells contained within the span (between start/end)
-    pub content_cells: Vec<Cell>,
-
-    /// Position type (derived from indicator variant)
-    pub position_type: OrnamentPositionType,
-
-    /// Index of anchor token (computed during attachment resolution)
-    pub anchor_index: Option<usize>,
+    pub start_idx: usize,          // Index of cell with Start indicator
+    pub end_idx: usize,            // Index of cell with End indicator
+    pub position_type: OrnamentPositionType,  // Before/After/Top
+    pub cells: Vec<Cell>,          // Cells in span (for rendering)
 }
 
 impl OrnamentSpan {
-    /// Create span from cell slice and start/end indices
-    pub fn from_cells(
-        cells: &[Cell],
-        start_index: usize,
-        end_index: usize,
-    ) -> Result<Self, String> {
-        if start_index >= end_index || end_index > cells.len() {
-            return Err(format!(
-                "Invalid ornament span indices: start={}, end={}",
-                start_index, end_index
-            ));
-        }
+    pub fn from_cells(cells: &[Cell], start: usize, end: usize) -> Self {
+        let position_type = cells[start].ornament_indicator.position_type()
+            .expect("Start cell must have position type");
 
-        let start_indicator = cells[start_index].ornament_indicator;
-        let end_indicator = cells[end_index].ornament_indicator;
-
-        if !start_indicator.is_start() || !end_indicator.is_end() {
-            return Err("Invalid ornament span: start/end indicators mismatch".to_string());
-        }
-
-        if !start_indicator.matches(&end_indicator) {
-            return Err("Invalid ornament span: position type mismatch".to_string());
-        }
-
-        let position_type = start_indicator
-            .position_type()
-            .ok_or("Invalid ornament indicator")?;
-
-        let content_cells = cells[(start_index + 1)..end_index].to_vec();
-
-        Ok(OrnamentSpan {
-            start_index,
-            end_index,
-            content_cells,
+        Self {
+            start_idx: start,
+            end_idx: end,
             position_type,
-            anchor_index: None, // Computed later
-        })
+            cells: cells[start..=end].to_vec(),
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.end_idx - self.start_idx + 1
     }
 }
 ```
 
+**Purpose**: Groups cells in ornament span for layout/rendering
+
 ---
 
-### 5. OrnamentGroups Struct (NEW - Ephemeral)
+## 5. OrnamentGroups (NEW - Ephemeral)
 
-**Location**: `src/renderers/layout_engine.rs`
+**File**: `src/renderers/layout_engine.rs`
 
-**Purpose**: Group ornaments by position for a single anchor token (used during rendering/export).
-
+**Definition**:
 ```rust
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct OrnamentGroups {
-    /// Ornaments positioned before (left of) anchor
     pub before: Vec<OrnamentSpan>,
-
-    /// Ornaments positioned after (right of) anchor
     pub after: Vec<OrnamentSpan>,
-
-    /// Ornaments positioned on top (above) anchor
     pub on_top: Vec<OrnamentSpan>,
 }
 
 impl OrnamentGroups {
-    /// Check if any ornaments exist for this anchor
+    pub fn add_span(&mut self, span: OrnamentSpan) {
+        match span.position_type {
+            OrnamentPositionType::Before => self.before.push(span),
+            OrnamentPositionType::After => self.after.push(span),
+            OrnamentPositionType::OnTop => self.on_top.push(span),
+        }
+    }
+
     pub fn is_empty(&self) -> bool {
         self.before.is_empty() && self.after.is_empty() && self.on_top.is_empty()
     }
-
-    /// Get total ornament count
-    pub fn count(&self) -> usize {
-        self.before.len() + self.after.len() + self.on_top.len()
-    }
 }
 ```
 
+**Purpose**: Groups ornament spans by position type for a single anchor cell
+
 ---
 
-### 6. AttachmentMap Type (NEW - Ephemeral)
+## 6. AttachmentMap (NEW - Type Alias)
 
-**Location**: `src/renderers/layout_engine.rs`
+**File**: `src/renderers/layout_engine.rs`
 
-**Purpose**: Map anchor token indices to their grouped ornaments.
-
+**Definition**:
 ```rust
 use std::collections::HashMap;
 
-/// Map of anchor token index → grouped ornaments
 pub type AttachmentMap = HashMap<usize, OrnamentGroups>;
 ```
 
----
+**Purpose**: Maps anchor cell index → ornaments attached to that cell
 
-## State Management
+**Example**:
+```
+Cell sequence: [0:note-C] [1:orn-start] [2:orn-D] [3:orn-end] [4:note-E]
 
-### JavaScript State (Edit Mode)
-
-**Location**: `src/js/editor.js`
-
-```javascript
-class Editor {
-    constructor() {
-        // ... existing fields
-
-        // NEW: Ornament edit mode state
-        this.ornamentEditMode = false; // false = floating layout, true = inline layout
-    }
-
-    /**
-     * Toggle ornament edit mode (inline ↔ floating layout)
-     */
-    toggleOrnamentEditMode() {
-        this.ornamentEditMode = !this.ornamentEditMode;
-
-        // Recompute layout with new mode
-        this.recomputeLayout();
-
-        // Re-render with updated styling
-        this.render();
-
-        // Log performance
-        console.log(`Ornament edit mode: ${this.ornamentEditMode ? 'ON (inline)' : 'OFF (floating)'}`);
-    }
-
-    /**
-     * Recompute layout using WASM with current edit mode
-     */
-    recomputeLayout() {
-        const startTime = performance.now();
-
-        // Call WASM layout function with edit mode parameter
-        const layoutData = wasmModule.compute_layout(
-            JSON.stringify(this.cells),
-            this.ornamentEditMode
-        );
-
-        const duration = performance.now() - startTime;
-        if (duration > 100) {
-            console.warn(`⚠️ Layout computation took ${duration.toFixed(2)}ms (target: < 100ms)`);
-        }
-
-        this.layoutData = JSON.parse(layoutData);
-    }
+AttachmentMap:
+{
+  4: OrnamentGroups {
+    before: [OrnamentSpan { start: 1, end: 3, cells: [D] }],
+    after: [],
+    on_top: []
+  }
 }
 ```
 
 ---
 
-## Algorithms
+## Data Flow
 
-### Attachment Resolution Algorithm
+### 1. Apply Ornament (User Action)
 
-**Location**: `src/renderers/layout_engine.rs`
+```
+User selects cells [2, 3, 4] and presses Alt-0
 
-**Function Signature**:
-```rust
-pub fn resolve_ornament_attachments(cells: &[Cell]) -> AttachmentMap
+JavaScript:
+  editor.applyOrnament('after')
+    ↓
+  wasmModule.apply_ornament(cells, 2, 4, "after")
+
+WASM (api.rs):
+  - Set cells[2].ornament_indicator = OrnamentAfterStart
+  - Set cells[4].ornament_indicator = OrnamentAfterEnd
+  - Return modified cells
+
+JavaScript:
+  editor.cells = modified_cells
+  editor.render()
 ```
 
-**Algorithm**:
-```rust
-use std::collections::HashMap;
+### 2. Render (Normal Mode)
 
-pub fn resolve_ornament_attachments(cells: &[Cell]) -> AttachmentMap {
-    let mut attachment_map: AttachmentMap = HashMap::new();
+```
+renderer.renderLine(cells, editMode: false)
 
-    // Step 1: Identify all ornament spans
-    let spans = extract_ornament_spans(cells);
+1. Filter ornamental cells:
+   mainCells = cells.filter(c => c.ornament_indicator === 'None')
+   ornamentCells = cells.filter(c => c.ornament_indicator !== 'None')
 
-    // Step 2: For each span, compute anchor index based on position type
-    for mut span in spans {
-        let anchor_index = match span.position_type {
-            OrnamentPositionType::Before => {
-                // Attach to first non-ornament token to RIGHT
-                find_anchor_right(cells, span.end_index)
-            }
-            OrnamentPositionType::After => {
-                // Attach to first non-ornament token to LEFT
-                find_anchor_left(cells, span.start_index)
-            }
-            OrnamentPositionType::OnTop => {
-                // Attach to NEAREST non-ornament token (left or right, prefer left if equal)
-                find_anchor_nearest(cells, span.start_index, span.end_index)
-            }
-        };
+2. Compute attachment (WASM):
+   attachmentMap = wasmModule.resolve_ornament_attachments(cells)
 
-        // Step 3: Group span by anchor and position type
-        if let Some(anchor_idx) = anchor_index {
-            span.anchor_index = Some(anchor_idx);
+3. Layout (WASM):
+   layout = wasmModule.compute_ornament_layout(cells, false)
 
-            let groups = attachment_map.entry(anchor_idx).or_insert_with(OrnamentGroups::default);
-
-            match span.position_type {
-                OrnamentPositionType::Before => groups.before.push(span),
-                OrnamentPositionType::After => groups.after.push(span),
-                OrnamentPositionType::OnTop => groups.on_top.push(span),
-            }
-        } else {
-            // Orphaned ornament: log warning
-            web_sys::console::warn_1(&format!(
-                "⚠️ Orphaned ornament span at indices {}-{} (no anchor found)",
-                span.start_index, span.end_index
-            ).into());
-        }
-    }
-
-    attachment_map
-}
-
-/// Extract all ornament spans from cell array
-fn extract_ornament_spans(cells: &[Cell]) -> Vec<OrnamentSpan> {
-    let mut spans = Vec::new();
-    let mut i = 0;
-
-    while i < cells.len() {
-        if cells[i].ornament_indicator.is_start() {
-            // Find matching end indicator
-            if let Some(end_idx) = find_matching_end(cells, i) {
-                if let Ok(span) = OrnamentSpan::from_cells(cells, i, end_idx) {
-                    spans.push(span);
-                }
-                i = end_idx + 1; // Skip past end indicator
-            } else {
-                i += 1; // Unmatched start, continue
-            }
-        } else {
-            i += 1;
-        }
-    }
-
-    spans
-}
-
-/// Find matching end indicator for start indicator at index
-fn find_matching_end(cells: &[Cell], start_index: usize) -> Option<usize> {
-    let start_indicator = cells[start_index].ornament_indicator;
-
-    for (offset, cell) in cells[(start_index + 1)..].iter().enumerate() {
-        if start_indicator.matches(&cell.ornament_indicator) {
-            return Some(start_index + 1 + offset);
-        }
-    }
-
-    None
-}
-
-/// Find first non-ornament token to right of index
-fn find_anchor_right(cells: &[Cell], from_index: usize) -> Option<usize> {
-    for (offset, cell) in cells[(from_index + 1)..].iter().enumerate() {
-        if !cell.is_rhythm_transparent() {
-            return Some(from_index + 1 + offset);
-        }
-    }
-    None
-}
-
-/// Find first non-ornament token to left of index
-fn find_anchor_left(cells: &[Cell], from_index: usize) -> Option<usize> {
-    for idx in (0..from_index).rev() {
-        if !cells[idx].is_rhythm_transparent() {
-            return Some(idx);
-        }
-    }
-    None
-}
-
-/// Find nearest non-ornament token (prefer left if equidistant)
-fn find_anchor_nearest(cells: &[Cell], start_index: usize, end_index: usize) -> Option<usize> {
-    let left = find_anchor_left(cells, start_index);
-    let right = find_anchor_right(cells, end_index);
-
-    match (left, right) {
-        (Some(l), Some(r)) => {
-            let left_dist = start_index - l;
-            let right_dist = r - end_index;
-            if left_dist <= right_dist {
-                Some(l)
-            } else {
-                Some(r)
-            }
-        }
-        (Some(l), None) => Some(l),
-        (None, Some(r)) => Some(r),
-        (None, None) => None,
-    }
-}
+4. Render:
+   - Render mainCells inline
+   - Render ornamentCells as positioned overlays using layout data
 ```
 
----
+### 3. Export to MusicXML
 
-### Beat Derivation Exclusion
+```
+wasmModule.export_to_musicxml(cells)
 
-**Location**: `src/parse/beats.rs`
+1. Resolve attachments:
+   attachmentMap = resolve_attachments(cells)
 
-**Modification**:
-```rust
-pub fn derive_beats(cells: &[Cell]) -> Vec<Beat> {
-    // NEW: Filter out rhythm-transparent cells (ornaments)
-    let rhythmic_cells: Vec<&Cell> = cells
-        .iter()
-        .filter(|cell| !cell.is_rhythm_transparent())
-        .collect();
+2. For each anchor cell:
+   - Export "before" ornaments as <grace/> elements
+   - Export main note as <note> element
+   - Export "after" ornaments as <grace slash="yes"/> elements
 
-    // Existing beat derivation logic operates on rhythmic_cells only
-    // ... (no other changes needed)
-}
+3. Return MusicXML string
 ```
 
 ---
 
 ## Validation Rules
 
-### Parsing Validation
+### Ornament Span Validation
 
-**Location**: `src/parse/tokens.rs`
-
+**Rule 1**: Start/End indicators must be balanced
 ```rust
-/// Validate ornament spans in cell array
-pub fn validate_ornament_spans(cells: &[Cell]) -> Result<(), Vec<String>> {
-    let mut errors = Vec::new();
-    let mut open_indicators = Vec::new();
+fn validate_ornament_spans(cells: &[Cell]) -> Result<(), String> {
+    let mut stack = Vec::new();
 
-    for (i, cell) in cells.iter().enumerate() {
-        let indicator = cell.ornament_indicator;
-
-        if indicator.is_start() {
-            open_indicators.push((i, indicator));
-        } else if indicator.is_end() {
-            if let Some((start_idx, start_indicator)) = open_indicators.pop() {
-                if !start_indicator.matches(&indicator) {
-                    errors.push(format!(
-                        "Mismatched ornament indicators at indices {} and {}",
-                        start_idx, i
-                    ));
+    for (idx, cell) in cells.iter().enumerate() {
+        if cell.ornament_indicator.is_start() {
+            stack.push((idx, cell.ornament_indicator));
+        } else if cell.ornament_indicator.is_end() {
+            match stack.pop() {
+                Some((start_idx, start_ind)) if start_ind.matches(&cell.ornament_indicator) => {
+                    // Valid match
                 }
-            } else {
-                errors.push(format!("Unmatched end indicator at index {}", i));
+                _ => return Err(format!("Unmatched end indicator at index {}", idx)),
             }
         }
     }
 
-    if !open_indicators.is_empty() {
-        for (idx, _) in open_indicators {
-            errors.push(format!("Unmatched start indicator at index {}", idx));
-        }
+    if !stack.is_empty() {
+        return Err(format!("Unmatched start indicators: {:?}", stack));
     }
 
-    if errors.is_empty() {
-        Ok(())
-    } else {
-        Err(errors)
-    }
+    Ok(())
 }
 ```
+
+**Rule 2**: No nested ornaments (ornament spans cannot overlap)
+- Enforcement: UI prevents creating overlapping spans
+- Validation: Check that no cell has both Start and End indicators
+- Validation: Check that spans don't overlap in cell sequence
 
 ---
 
-## Serialization Format
+## Performance Considerations
 
-### JSON Representation (Cell with Ornament Indicator)
+### Memory
 
-```json
-{
-  "text": "2",
-  "pitch_code": {
-    "step": "D",
-    "octave": 4,
-    "accidental": null
-  },
-  "ornament_indicator": {
-    "name": "ornament_before_start",
-    "value": 1
-  },
-  "slur_indicator": {
-    "name": "none",
-    "value": 0
-  }
-}
-```
+- `ornament_indicator` adds 1 byte per Cell (~1KB for 1000 cells)
+- Ephemeral structures (spans, attachment map) created on-demand, dropped after render
+- No persistent overhead
 
-### Full Example Document (with ornaments)
+### Computation
 
-```json
-{
-  "cells": [
-    {
-      "text": "<",
-      "pitch_code": null,
-      "ornament_indicator": {"name": "ornament_before_start", "value": 1},
-      "slur_indicator": {"name": "none", "value": 0}
-    },
-    {
-      "text": "2",
-      "pitch_code": {"step": "D", "octave": 4, "accidental": null},
-      "ornament_indicator": {"name": "none", "value": 0},
-      "slur_indicator": {"name": "none", "value": 0}
-    },
-    {
-      "text": "3",
-      "pitch_code": {"step": "E", "octave": 4, "accidental": null},
-      "ornament_indicator": {"name": "none", "value": 0},
-      "slur_indicator": {"name": "none", "value": 0}
-    },
-    {
-      "text": ">",
-      "pitch_code": null,
-      "ornament_indicator": {"name": "ornament_before_end", "value": 2},
-      "slur_indicator": {"name": "none", "value": 0}
-    },
-    {
-      "text": "1",
-      "pitch_code": {"step": "C", "octave": 4, "accidental": null},
-      "ornament_indicator": {"name": "none", "value": 0},
-      "slur_indicator": {"name": "none", "value": 0}
-    }
-  ]
-}
-```
+**Attachment resolution**: O(n) where n = cell count
+- Single pass to extract spans
+- Single pass to find anchors
+- Total: 2n operations
 
-**Interpretation**: Grace notes 2 and 3 appear before note 1.
+**Collision detection**: O(m²) where m = ornament count
+- Worst case: all ornaments collide
+- Typical case: O(m) (few collisions)
+- Max 100 ornaments expected, so O(10,000) acceptable
+
+**Layout**: O(n + m)
+- Render main cells: O(n)
+- Position ornaments: O(m)
+
+**Total**: O(n + m²) ≈ O(n) for typical use (m << n)
 
 ---
 
-## Summary
+## Migration Notes
 
-### New Data Structures
-- `OrnamentIndicator` enum: Expanded from 3 to 6 variants (position encoded in variant names)
-- `OrnamentPositionType` enum: Helper for algorithmic position handling
-- `OrnamentSpan` struct: Ephemeral structure for attachment resolution
-- `OrnamentGroups` struct: Groups ornaments by position for rendering/export
-- `AttachmentMap` type: Maps anchor indices to grouped ornaments
+**Existing data**: All existing Cell instances get `ornament_indicator = None` by default (backward compatible)
 
-### Modified Structures
-- `Cell` struct: Add `is_rhythm_transparent()` helper method (no new fields)
+**Serialization**: `#[serde(default)]` ensures old JSON files deserialize correctly
 
-### Key Algorithms
-- **Attachment Resolution**: Single-pass O(n) scan to group ornaments by anchor
-- **Beat Derivation Exclusion**: Filter rhythm-transparent cells before beat counting
-- **Span Validation**: Ensure balanced start/end indicator pairs
+**No breaking changes**: Adding field with default value is backward compatible
 
-### State Management
-- **JavaScript**: `ornamentEditMode` boolean flag in Editor class
-- **WASM**: `edit_mode` parameter passed to layout functions (no persistent state)
+---
 
-**Phase 1 Data Model Complete**: Ready to generate API contracts.
+## Next Steps
+
+1. ✅ Data model defined
+2. ⏳ Generate API contracts
+3. ⏳ Generate quickstart examples
+4. ⏳ Generate implementation tasks

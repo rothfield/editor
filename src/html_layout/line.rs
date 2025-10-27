@@ -114,6 +114,9 @@ impl<'a> LayoutLineComputer<'a> {
         // Position tala characters
         let tala = self.position_tala(&line.tala, &line.cells, &cells, config, line_y_offset);
 
+        // Position octave dots
+        let octave_dots = self.position_octave_dots(&line.cells, &cells, config);
+
         // Calculate line height based on content
         let has_beats = beats.iter().any(|b| b.end - b.start >= 1);
         let has_octave_dots = line.cells.iter().any(|c| c.octave != 0);
@@ -167,6 +170,7 @@ impl<'a> LayoutLineComputer<'a> {
             beat_loops,
             ornament_arcs,
             ornaments,
+            octave_dots,
         }
     }
 
@@ -670,6 +674,59 @@ impl<'a> LayoutLineComputer<'a> {
                 y: line_y_offset + 8.0, // TALA_VERTICAL_OFFSET constant from JS
             })
             .collect()
+    }
+
+    /// Position octave dots for cells with octave markings
+    fn position_octave_dots(
+        &self,
+        cells: &[Cell],
+        render_cells: &[RenderCell],
+        config: &LayoutConfig,
+    ) -> Vec<RenderOctaveDot> {
+        use super::display_list::RenderOctaveDot;
+
+        let mut octave_dots = Vec::new();
+
+        // Constants from JS: SMALL_FONT_SIZE = 12, BASE_FONT_SIZE = 32
+        let dot_font_size = 12.0;
+        let upper_offset = dot_font_size * 0.5; // -0.5em
+        let lower_offset = dot_font_size * 0.35; // -0.35em (from bottom)
+
+        for (cell, render_cell) in cells.iter().zip(render_cells.iter()) {
+            // Skip cells without octave markings or continuation cells
+            if cell.octave == 0 || cell.continuation {
+                continue;
+            }
+
+            let text = match cell.octave.abs() {
+                1 => "•",
+                2 => "••",
+                _ => continue, // Invalid octave value
+            };
+
+            let letter_spacing = if cell.octave.abs() == 2 { 2.0 } else { 0.0 };
+
+            // Center horizontally over cell
+            let x = render_cell.x + (render_cell.w / 2.0);
+
+            // Position vertically based on octave sign (absolute coordinates)
+            let y = if cell.octave > 0 {
+                // Upper octave: above cell
+                render_cell.y - upper_offset
+            } else {
+                // Lower octave: below cell (bottom + offset)
+                render_cell.y + config.cell_height + lower_offset
+            };
+
+            octave_dots.push(RenderOctaveDot {
+                text: text.to_string(),
+                x,
+                y,
+                letter_spacing,
+            });
+        }
+
+        octave_dots
     }
 
     /// Position ornaments from cell.ornaments (when ornament_edit_mode is OFF)

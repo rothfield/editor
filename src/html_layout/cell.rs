@@ -60,6 +60,22 @@ impl CellStyleBuilder {
             classes.push(role.clone());
         }
 
+        // Build data attributes
+        let mut dataset = HashMap::new();
+        dataset.insert("lineIndex".to_string(), line_idx.to_string());
+        dataset.insert("cellIndex".to_string(), cell_idx.to_string());
+        dataset.insert("column".to_string(), cell.col.to_string());
+        dataset.insert("glyphLength".to_string(), cell.char.chars().count().to_string());
+        dataset.insert("continuation".to_string(), cell.continuation.to_string());
+
+        // Ornament indicator classes for visual styling
+        // T026: Add "ornament-cell" CSS class when cell is rhythm-transparent
+        if cell.is_rhythm_transparent() {
+            classes.push("ornament-cell".to_string());
+            // Add testid for E2E tests
+            dataset.insert("testid".to_string(), "ornament-cell".to_string());
+        }
+
         // Pitch system class
         if let Some(pitch_system) = cell.pitch_system {
             classes.push(format!("pitch-system-{}", self.pitch_system_to_css(pitch_system)));
@@ -84,15 +100,6 @@ impl CellStyleBuilder {
         if cell.continuation && cell.kind == ElementKind::PitchedElement {
             classes.push("pitch-continuation".to_string());
         }
-
-        // Build data attributes
-        let mut dataset = HashMap::new();
-        dataset.insert("lineIndex".to_string(), line_idx.to_string());
-        dataset.insert("cellIndex".to_string(), cell_idx.to_string());
-        dataset.insert("column".to_string(), cell.col.to_string());
-        dataset.insert("octave".to_string(), cell.octave.to_string());
-        dataset.insert("glyphLength".to_string(), cell.char.chars().count().to_string());
-        dataset.insert("continuation".to_string(), cell.continuation.to_string());
 
         // Get actual cell width (for cursor positioning)
         let actual_cell_width = cell_widths.get(cell_idx).copied().unwrap_or(12.0);
@@ -238,27 +245,23 @@ impl CellStyleBuilder {
         let mut ornament_start: Option<usize> = None;
 
         for (idx, cell) in cells.iter().enumerate() {
-            match cell.ornament_indicator {
-                OrnamentIndicator::OrnamentStart => {
-                    ornament_start = Some(idx);
-                }
-                OrnamentIndicator::OrnamentEnd => {
-                    if let Some(start) = ornament_start {
-                        // Mark all cells in the ornament span
-                        for i in start..=idx {
-                            let role = if i == start {
-                                "ornament-first"
-                            } else if i == idx {
-                                "ornament-last"
-                            } else {
-                                "ornament-middle"
-                            };
-                            map.insert(i, role.to_string());
-                        }
-                        ornament_start = None;
+            if cell.ornament_indicator.is_start() {
+                ornament_start = Some(idx);
+            } else if cell.ornament_indicator.is_end() {
+                if let Some(start) = ornament_start {
+                    // Mark all cells in the ornament span
+                    for i in start..=idx {
+                        let role = if i == start {
+                            "ornament-first"
+                        } else if i == idx {
+                            "ornament-last"
+                        } else {
+                            "ornament-middle"
+                        };
+                        map.insert(i, role.to_string());
                     }
+                    ornament_start = None;
                 }
-                OrnamentIndicator::None => {}
             }
         }
 

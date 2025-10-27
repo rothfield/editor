@@ -4,6 +4,9 @@ Auto-generated from all feature plans. Last updated: 2025-10-14
 
 ## Active Technologies
 - Rust 1.75+ (WASM module), JavaScript ES2022+ (host application), Node.js 18+ + wasm-bindgen 0.2.92, OSMD (OpenSheetMusicDisplay) 1.7.6, existing Cell-based editor (002-real-time-staff)
+- Rust 1.75+ (WASM module) + JavaScript ES2022+ (host application) + wasm-bindgen 0.2.92, OSMD 1.7.6, serde 1.0.197, quick-xml 0.31, mustache 0.9 (006-music-notation-ornament)
+- JSON file format for document persistence (006-music-notation-ornament)
+- Rust 1.75+ (WASM module) + JavaScript ES2022+ (host application) + wasm-bindgen 0.2.92, OSMD 1.7.6, UnoCSS (styling) (006-music-notation-ornament)
 
 ## Project Structure
 ```
@@ -18,6 +21,8 @@ cargo test [ONLY COMMANDS FOR ACTIVE TECHNOLOGIES][ONLY COMMANDS FOR ACTIVE TECH
 Rust 1.75+ (WASM module), JavaScript ES2022+ (host application), Node.js 18+: Follow standard conventions
 
 ## Recent Changes
+- 006-music-notation-ornament: Added Rust 1.75+ (WASM module) + JavaScript ES2022+ (host application) + wasm-bindgen 0.2.92, OSMD 1.7.6, UnoCSS (styling)
+- 006-music-notation-ornament: Added Rust 1.75+ (WASM module) + JavaScript ES2022+ (host application) + wasm-bindgen 0.2.92, OSMD 1.7.6, serde 1.0.197, quick-xml 0.31, mustache 0.9
 - 002-real-time-staff: Added Rust 1.75+ (WASM module), JavaScript ES2022+ (host application), Node.js 18+ + wasm-bindgen 0.2.92, OSMD (OpenSheetMusicDisplay) 1.7.6, existing Cell-based editor
 
 <!-- MANUAL ADDITIONS START -->
@@ -54,13 +59,13 @@ You are an **autonomous test engineer** (CLI only):
 <!-- Inspector tabs -->
 <button data-testid="tab-lilypond">LilyPond</button>
 <button data-testid="tab-musicxml">MusicXML</button>
-<button data-testid="tab-wasm">Layout</button>
+<button data-testid="tab-displaylist">Display List</button>
 <button data-testid="tab-docmodel">Doc Model</button>
 
 <!-- Inspector panes -->
 <pre data-testid="pane-lilypond"></pre>
 <pre data-testid="pane-musicxml"></pre>
-<pre data-testid="pane-wasm"></pre>
+<pre data-testid="pane-displaylist"></pre>
 <pre data-testid="pane-docmodel"></pre>
 
 <!-- Editor -->

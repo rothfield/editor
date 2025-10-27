@@ -4,6 +4,19 @@
 //! musical notation into various output formats.
 
 pub mod musicxml;
+pub mod layout_engine;
+pub mod display_list;
+pub mod lyrics;
+pub mod curves;
 
 // Re-export commonly used types
 pub use musicxml::*;
+pub use layout_engine::{
+    OrnamentSpan,
+    OrnamentGroups,
+    extract_ornament_spans,
+    find_anchor_cell,
+    BoundingBox,
+    detect_collisions,
+    layout_with_collision_detection,
+};

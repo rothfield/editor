@@ -548,9 +548,29 @@ class DOMRenderer {
     // Get line index from renderLine
     const lineIndex = renderLine.line_index;
 
+    // T028: Collect ornamental cells for floating rendering (render filtering)
+    const ornamentalCells = [];
+
     // Render cells with new DOM structure
     // Structure: cell-container > (cell-content > (cell-char + octave-dot) + cell-text)
     renderLine.cells.forEach((cellData, idx) => {
+      // Get cellIndex from dataset
+      let cellIndex = idx;
+      if (cellData.dataset) {
+        if (cellData.dataset instanceof Map) {
+          cellIndex = parseInt(cellData.dataset.get('cellIndex'));
+        } else {
+          cellIndex = parseInt(cellData.dataset.cellIndex);
+        }
+      }
+      const cell = this.theDocument.lines[lineIndex].cells[cellIndex];
+
+      // T028: Filter rhythm-transparent cells from main rendering flow
+      if (cell && cell.ornament_indicator && cell.ornament_indicator.name !== 'none') {
+        // Collect ornamental cell for floating rendering
+        ornamentalCells.push({ cellData, cellIndex, cell });
+        return; // Skip normal rendering for this cell
+      }
       // Create pitch span (the actual note character)
       const cellChar = document.createElement('span');
       // Filter out slur and beat-loop classes - these go on cell-container only
@@ -583,17 +603,7 @@ class DOMRenderer {
         }
       }
 
-      // Add event handlers
-      let cellIndex = idx;
-      if (cellData.dataset) {
-        if (cellData.dataset instanceof Map) {
-          cellIndex = parseInt(cellData.dataset.get('cellIndex'));
-        } else {
-          cellIndex = parseInt(cellData.dataset.cellIndex);
-        }
-      }
-      const cell = this.theDocument.lines[lineIndex].cells[cellIndex];
-
+      // Add event handlers (cellIndex and cell already retrieved at top of loop)
       cellChar.addEventListener('click', (e) => {
         e.stopPropagation();
         this.handleCellClick(cell, e);
@@ -606,55 +616,6 @@ class DOMRenderer {
       cellChar.addEventListener('mouseleave', () => {
         this.handleCellHover(cell, false);
       });
-
-      // Create octave-dot span if needed (real DOM element, not pseudo-element)
-      const octaveDot = document.createElement('span');
-      octaveDot.className = 'cell-modifier octave-dot';
-      const octaveValue = cellChar.dataset.octave;
-
-      if (octaveValue && octaveValue !== '0') {
-        if (octaveValue === '1') {
-          octaveDot.textContent = '•';
-        } else if (octaveValue === '2') {
-          octaveDot.textContent = '••';
-        } else if (octaveValue === '-1') {
-          octaveDot.textContent = '•';
-        } else if (octaveValue === '-2') {
-          octaveDot.textContent = '••';
-        }
-
-        // Add letter-spacing for double dots
-        const letterSpacing = (octaveValue === '2' || octaveValue === '-2') ? 'letter-spacing: 2px;' : '';
-
-        octaveDot.style.cssText = `
-          position: absolute;
-          font-size: ${SMALL_FONT_SIZE}px;
-          color: #000;
-          pointer-events: none;
-          z-index: 2;
-          line-height: 1;
-          white-space: nowrap;
-          ${letterSpacing}
-        `;
-
-        // Position octave dot based on octave value (using em units for scaling)
-        if (octaveValue === '1' || octaveValue === '2') {
-          // Upper octave: above the cell, relative to font-size
-          octaveDot.style.top = '-0.5em';
-          octaveDot.style.left = '50%';
-          octaveDot.style.transform = 'translateX(-50%)';
-        } else {
-          // Lower octave: below the cell, relative to font-size
-          octaveDot.style.bottom = '-0.35em';
-          octaveDot.style.left = '50%';
-          octaveDot.style.transform = 'translateX(-50%)';
-        }
-      }
-
-      // Add octave-dot as child of cell-char (positions relative to the pitch character)
-      if (octaveDot.textContent) {
-        cellChar.appendChild(octaveDot);
-      }
 
       // Create cell-content wrapper (groups character + modifiers)
       const cellContent = document.createElement('span');
@@ -715,6 +676,83 @@ class DOMRenderer {
       line.appendChild(lyricSpan);
     });
 
+    // T029/T066-T069: Render ornamental cells (inline when edit mode ON, floating when OFF)
+    // These are cells with ornament indicators (rhythm-transparent)
+
+    // T066: Get edit mode state from document
+    const ornamentEditMode = this.theDocument.ornament_edit_mode || false;
+
+    ornamentalCells.forEach(({ cellData, cellIndex, cell }) => {
+      const ornamentChar = document.createElement('span');
+
+      // Apply CSS classes including ornament-cell
+      const ornamentClasses = cellData.classes.filter(cls =>
+        !cls.includes('slur-') && !cls.includes('beat-loop-')
+      );
+      ornamentChar.className = ornamentClasses.join(' ');
+      ornamentChar.textContent = cellData.char === ' ' ? '\u00A0' : cellData.char;
+
+      // Set data attributes for testing
+      if (cellData.dataset) {
+        if (cellData.dataset instanceof Map) {
+          for (const [key, value] of cellData.dataset.entries()) {
+            ornamentChar.dataset[key] = value;
+          }
+        } else {
+          for (const [key, value] of Object.entries(cellData.dataset)) {
+            ornamentChar.dataset[key] = value;
+          }
+        }
+      }
+
+      // T067: Add data-edit-mode attribute for CSS styling
+      ornamentChar.dataset.editMode = ornamentEditMode ? 'true' : 'false';
+
+      // Convert absolute Y to relative Y within this line
+      const ornamentRelativeY = cellData.y - lineStartY;
+
+      // T069: Conditional rendering based on edit mode
+      if (ornamentEditMode) {
+        // Edit mode ON: Render inline with normal width and interactivity
+        ornamentChar.style.cssText = `
+          position: absolute;
+          left: ${cellData.x}px;
+          top: ${ornamentRelativeY}px;
+          width: ${cellData.w}px;
+          height: ${cellData.h}px;
+          pointer-events: auto;
+          z-index: 1;
+        `;
+
+        // Add event handlers for editing in edit mode
+        ornamentChar.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.handleCellClick(cell, e);
+        });
+
+        ornamentChar.addEventListener('mouseenter', () => {
+          this.handleCellHover(cell, true);
+        });
+
+        ornamentChar.addEventListener('mouseleave', () => {
+          this.handleCellHover(cell, false);
+        });
+      } else {
+        // Edit mode OFF: Zero-width floating layout with absolute positioning
+        ornamentChar.style.cssText = `
+          position: absolute;
+          left: ${cellData.x}px;
+          top: ${ornamentRelativeY}px;
+          width: 0;
+          height: ${cellData.h}px;
+          pointer-events: none;
+          z-index: 5;
+        `;
+      }
+
+      line.appendChild(ornamentChar);
+    });
+
     // Render ornaments when ornament_edit_mode is OFF
     // Ornaments are positioned to the RIGHT and UP (70%) from anchor notes, scaled smaller
     if (renderLine.ornaments && renderLine.ornaments.length > 0) {
@@ -722,6 +760,7 @@ class DOMRenderer {
         const ornamentSpan = document.createElement('span');
         ornamentSpan.className = 'char-cell ' + (ornament.classes || []).join(' ');
         ornamentSpan.textContent = ornament.text;
+        ornamentSpan.dataset.testid = 'ornament-cell'; // For E2E tests
         const ornamentRelativeY = ornament.y - lineStartY;
         ornamentSpan.style.cssText = `
           position: absolute;
@@ -754,6 +793,33 @@ class DOMRenderer {
       `;
       line.appendChild(span);
     });
+
+    // Render octave dots (positioned overlay elements from WASM)
+    if (renderLine.octave_dots) {
+      renderLine.octave_dots.forEach(dot => {
+        const dotSpan = document.createElement('span');
+        dotSpan.className = 'octave-dot';
+        dotSpan.textContent = dot.text;
+
+        const dotRelativeY = dot.y - lineStartY;
+
+        dotSpan.style.cssText = `
+          position: absolute;
+          left: ${dot.x}px;
+          top: ${dotRelativeY}px;
+          transform: translateX(-50%);
+          font-size: ${SMALL_FONT_SIZE}px;
+          color: #000;
+          pointer-events: none;
+          z-index: 2;
+          line-height: 1;
+          white-space: nowrap;
+          ${dot.letter_spacing > 0 ? `letter-spacing: ${dot.letter_spacing}px;` : ''}
+        `;
+
+        line.appendChild(dotSpan);
+      });
+    }
 
     return line;
   }

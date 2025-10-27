@@ -292,6 +292,28 @@
             background-color: rgba(59, 130, 246, 0.3); /* Blue with transparency */
         }
 
+        /* T027: Ornament cell styling - rhythm-transparent embellishments */
+        .char-cell.ornament-cell {
+            font-size: 0.75em; /* 75% of base font size */
+            vertical-align: super; /* Raised/superscript position */
+            color: #6366f1; /* Indigo-500 for visual distinction */
+        }
+
+        /* T067: Edit mode styling - ornaments inline when edit mode is ON */
+        .char-cell.ornament-cell[data-edit-mode="true"] {
+            /* Inline display: normal width, clickable, same visual styling */
+            vertical-align: baseline; /* Reset to baseline for inline editing */
+            cursor: text; /* Indicate editability */
+            pointer-events: auto; /* Enable interactions */
+        }
+
+        /* T067: Floating mode styling - zero-width overlay when edit mode is OFF */
+        .char-cell.ornament-cell[data-edit-mode="false"] {
+            /* Floating display: zero width, non-interactive, raised positioning */
+            overflow: visible; /* Allow content to extend beyond zero width */
+            cursor: default; /* Not editable in floating mode */
+        }
+
         /* Ornament indicator spans - rendered smaller and raised */
         .char-cell.ornament-first,
         .char-cell.ornament-middle,
@@ -598,6 +620,7 @@
                 <div id="editor-container" class="flex-1 relative overflow-hidden p-4">
                     <!-- Notation Editor -->
                     <div id="notation-editor"
+                         data-testid="editor-root"
                          class="notation-editor focusable"
                          tabindex="0"
                          role="textbox"
@@ -646,10 +669,10 @@
                                 <path d="M12 3v10.55c-.5-.31-1.1-.55-1.8-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
                             </svg>
                         </button>
-                        <button id="tab-musicxml" class="tab" data-tab="musicxml">
+                        <button id="tab-musicxml" class="tab" data-tab="musicxml" data-testid="tab-musicxml">
                             MusicXML
                         </button>
-                        <button id="tab-lilypond-src" class="tab tab-icon" data-tab="lilypond-src" title="LilyPond Source">
+                        <button id="tab-lilypond-src" class="tab tab-icon" data-tab="lilypond-src" data-testid="tab-lilypond" title="LilyPond Source">
                             <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
                                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-8-6z"/>
                                 <polyline points="14 2 14 8 20 8" fill="none" stroke="currentColor" stroke-width="0.5"/>
@@ -660,10 +683,10 @@
                         <button id="tab-lilypond-png" class="tab" data-tab="lilypond-png">
                             LilyPond PNG
                         </button>
-                        <button id="tab-layout" class="tab" data-tab="layout">
-                            Layout
+                        <button id="tab-displaylist" class="tab" data-tab="displaylist" data-testid="tab-displaylist">
+                            Display List
                         </button>
-                        <button id="tab-persistent" class="tab" data-tab="persistent">
+                        <button id="tab-persistent" class="tab" data-tab="persistent" data-testid="tab-docmodel">
                             Persistent Model
                         </button>
                         <button id="tab-html" class="tab" data-tab="html">
@@ -716,12 +739,12 @@
 
                     <!-- MusicXML Tab -->
                     <div id="tab-content-musicxml" data-tab-content="musicxml" class="tab-content hidden flex-1 flex flex-col p-4">
-                        <pre id="musicxml-source" class="flex-1 text-xs font-mono bg-white p-3 border-2 border-gray-300 rounded overflow-auto"></pre>
+                        <pre id="musicxml-source" data-testid="pane-musicxml" class="flex-1 text-xs font-mono bg-white p-3 border-2 border-gray-300 rounded overflow-auto"></pre>
                     </div>
 
                     <!-- LilyPond Source Code Tab -->
                     <div id="tab-content-lilypond-src" data-tab-content="lilypond-src" class="tab-content hidden flex-1 flex flex-col p-4">
-                        <pre id="lilypond-source" class="flex-1 text-xs font-mono bg-white p-3 border-2 border-gray-300 rounded overflow-auto"></pre>
+                        <pre id="lilypond-source" data-testid="pane-lilypond" class="flex-1 text-xs font-mono bg-white p-3 border-2 border-gray-300 rounded overflow-auto"></pre>
                     </div>
 
                     <!-- LilyPond PNG/SVG Rendering Tab -->
@@ -731,14 +754,14 @@
                         </div>
                     </div>
 
-                    <!-- Layout Tab (DisplayList from WASM) -->
-                    <div id="tab-content-layout" data-tab-content="layout" class="tab-content hidden flex-1 flex flex-col p-4">
-                        <pre id="layout-display" class="flex-1 text-xs font-mono bg-white p-3 border-2 border-gray-300 rounded overflow-auto"></pre>
+                    <!-- Display List Tab (pre-computed render commands from WASM) -->
+                    <div id="tab-content-displaylist" data-tab-content="displaylist" class="tab-content hidden flex-1 flex flex-col p-4">
+                        <pre id="displaylist-display" data-testid="pane-displaylist" class="flex-1 text-xs font-mono bg-white p-3 border-2 border-gray-300 rounded overflow-auto"></pre>
                     </div>
 
                     <!-- Persistent Model Tab (saveable content only) -->
                     <div id="tab-content-persistent" data-tab-content="persistent" class="tab-content hidden flex-1 flex flex-col p-4">
-                        <pre id="persistent-json" class="flex-1 text-xs font-mono bg-white p-3 border-2 border-gray-300 rounded overflow-auto"></pre>
+                        <pre id="persistent-json" data-testid="pane-docmodel" class="flex-1 text-xs font-mono bg-white p-3 border-2 border-gray-300 rounded overflow-auto"></pre>
                     </div>
 
                     <!-- HTML Tab -->

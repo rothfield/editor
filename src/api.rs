@@ -4,8 +4,10 @@
 //! and token combination using the recursive descent parser.
 
 use wasm_bindgen::prelude::*;
-use crate::models::{Cell, PitchSystem, Document, Line, OrnamentIndicator};
+use crate::models::{Cell, PitchSystem, Document, Line, OrnamentIndicator, OrnamentPositionType};
 use crate::parse::grammar::{parse, parse_single, mark_continuations};
+use crate::renderers::layout_engine::{extract_ornament_spans, find_anchor_cell, OrnamentGroups};
+use std::collections::HashMap;
 
 // Logging macros for WASM
 #[wasm_bindgen]
@@ -756,6 +758,425 @@ pub fn has_slur_in_selection(
     Ok(false)
 }
 
+// ============================================================================
+// Ornament Functions (WYSIWYG "Select and Apply" Pattern)
+// ============================================================================
+
+/// Apply ornament styling to cells in a selection range
+///
+/// # Parameters
+/// - `cells_js`: JavaScript array of Cell objects
+/// - `start`: Start of selection (0-based index)
+/// - `end`: End of selection (exclusive)
+/// - `position_type`: Position type - "before", "after", or "top"
+///
+/// # Returns
+/// Updated JavaScript array of Cell objects with ornament indicators set
+///
+/// # Toggle Behavior
+/// If the selection already has matching ornament indicators, they will be removed (toggle off)
+#[wasm_bindgen(js_name = applyOrnament)]
+pub fn apply_ornament(
+    cells_js: JsValue,
+    start: usize,
+    end: usize,
+    position_type: &str,
+) -> Result<js_sys::Array, JsValue> {
+    wasm_info!("applyOrnament called: start={}, end={}, position_type='{}'", start, end, position_type);
+
+    // Deserialize cells from JavaScript
+    let mut cells: Vec<Cell> = serde_wasm_bindgen::from_value(cells_js)
+        .map_err(|e| {
+            wasm_error!("Deserialization error: {}", e);
+            JsValue::from_str(&format!("Deserialization error: {}", e))
+        })?;
+
+    wasm_log!("  Total cells: {}, selection range: {}..{}", cells.len(), start, end);
+
+    // Validate selection range
+    if start >= end {
+        wasm_error!("Invalid selection range: start {} >= end {}", start, end);
+        return Err(JsValue::from_str("Start must be less than end"));
+    }
+
+    if start >= cells.len() {
+        wasm_error!("Start position {} out of bounds (max: {})", start, cells.len() - 1);
+        return Err(JsValue::from_str("Start position out of bounds"));
+    }
+
+    let actual_end = end.min(cells.len());
+
+    // Parse position type
+    let ornament_position = match position_type {
+        "before" => OrnamentPositionType::Before,
+        "after" => OrnamentPositionType::After,
+        "top" => OrnamentPositionType::OnTop,
+        _ => {
+            wasm_warn!("Unknown position type '{}', defaulting to 'after'", position_type);
+            OrnamentPositionType::After
+        }
+    };
+
+    // T051-T052: Enhanced toggle behavior with position change support
+    // Check if ornaments already exist in the selection
+    let has_existing_ornament = cells.get(start)
+        .map(|c| c.has_ornament_indicator())
+        .unwrap_or(false);
+
+    if has_existing_ornament {
+        // Check if the existing ornament has the SAME position type
+        let existing_position = cells.get(start)
+            .and_then(|c| {
+                if c.has_ornament_indicator() {
+                    Some(c.ornament_indicator.position_type())
+                } else {
+                    None
+                }
+            });
+
+        if let Some(existing_pos) = existing_position {
+            if existing_pos == ornament_position {
+                // Same position type → Toggle off (remove ornament)
+                let mut removed_count = 0;
+                for i in start..actual_end {
+                    if cells[i].has_ornament_indicator() {
+                        cells[i].clear_ornament();
+                        removed_count += 1;
+                        wasm_log!("  Removed ornament indicator from cell {}: '{}'", i, cells[i].char);
+                    }
+                }
+                wasm_info!("  Toggled off: Removed ornament indicators from {} cells", removed_count);
+            } else {
+                // Different position type → Change position (T052)
+                wasm_info!("  Changing ornament position from {:?} to {:?}", existing_pos, ornament_position);
+
+                // Clear existing ornaments
+                for i in start..actual_end {
+                    cells[i].clear_ornament();
+                }
+
+                // Apply new position type
+                if actual_end - start >= 2 {
+                    cells[start].set_ornament_start_with_position(ornament_position);
+                    cells[actual_end - 1].set_ornament_end_with_position(ornament_position);
+                    wasm_info!("  Changed ornament position to {}: cell[{}] = Start, cell[{}] = End",
+                              position_type, start, actual_end - 1);
+                }
+            }
+        }
+    } else {
+        // Apply new ornament indicators
+        // Need at least 2 cells for an ornament span
+        if actual_end - start >= 2 {
+            // Clear any existing ornaments in range first
+            for i in start..actual_end {
+                cells[i].clear_ornament();
+            }
+
+            // Set start and end indicators with position type
+            cells[start].set_ornament_start_with_position(ornament_position);
+            cells[actual_end - 1].set_ornament_end_with_position(ornament_position);
+
+            wasm_info!("  Applied ornament indicators ({}): cell[{}] = Start, cell[{}] = End",
+                      position_type, start, actual_end - 1);
+        } else {
+            wasm_warn!("  Selection too short for ornament ({} cells), need at least 2", actual_end - start);
+        }
+    }
+
+    // Convert back to JavaScript array
+    let result = js_sys::Array::new();
+    for cell in cells {
+        let cell_js = serde_wasm_bindgen::to_value(&cell)
+            .map_err(|e| {
+                wasm_error!("Serialization error: {}", e);
+                JsValue::from_str(&format!("Serialization error: {}", e))
+            })?;
+        result.push(&cell_js);
+    }
+
+    wasm_info!("applyOrnament completed successfully");
+    Ok(result)
+}
+
+/// Remove ornament styling from cells in a selection range
+///
+/// # Parameters
+/// - `cells_js`: JavaScript array of Cell objects
+/// - `start`: Start of selection (0-based index)
+/// - `end`: End of selection (exclusive)
+///
+/// # Returns
+/// Updated JavaScript array of Cell objects with ornament indicators removed
+#[wasm_bindgen(js_name = removeOrnament)]
+pub fn remove_ornament(
+    cells_js: JsValue,
+    start: usize,
+    end: usize,
+) -> Result<js_sys::Array, JsValue> {
+    wasm_info!("removeOrnament called: start={}, end={}", start, end);
+
+    // Deserialize cells from JavaScript
+    let mut cells: Vec<Cell> = serde_wasm_bindgen::from_value(cells_js)
+        .map_err(|e| {
+            wasm_error!("Deserialization error: {}", e);
+            JsValue::from_str(&format!("Deserialization error: {}", e))
+        })?;
+
+    wasm_log!("  Total cells: {}, selection range: {}..{}", cells.len(), start, end);
+
+    // Validate selection range
+    if start >= end {
+        wasm_error!("Invalid selection range: start {} >= end {}", start, end);
+        return Err(JsValue::from_str("Start must be less than end"));
+    }
+
+    if start >= cells.len() {
+        wasm_error!("Start position {} out of bounds (max: {})", start, cells.len() - 1);
+        return Err(JsValue::from_str("Start position out of bounds"));
+    }
+
+    let actual_end = end.min(cells.len());
+    let mut removed_count = 0;
+
+    // Clear ornament indicators from cells in selection range
+    for i in start..actual_end {
+        if cells[i].has_ornament_indicator() {
+            cells[i].clear_ornament();
+            removed_count += 1;
+            wasm_log!("  Removed ornament indicator from cell {}: '{}'", i, cells[i].char);
+        }
+    }
+
+    wasm_info!("  Removed ornament indicators from {} cells", removed_count);
+
+    // Convert back to JavaScript array
+    let result = js_sys::Array::new();
+    for cell in cells {
+        let cell_js = serde_wasm_bindgen::to_value(&cell)
+            .map_err(|e| {
+                wasm_error!("Serialization error: {}", e);
+                JsValue::from_str(&format!("Serialization error: {}", e))
+            })?;
+        result.push(&cell_js);
+    }
+
+    wasm_info!("removeOrnament completed successfully");
+    Ok(result)
+}
+
+/// T034: Resolve ornament attachments - compute which cells ornaments attach to
+///
+/// This function analyzes ornament indicators to determine anchor cells for each ornament group.
+/// It returns a map of anchor cell indices to their associated ornament groups (before/after/on_top).
+///
+/// # Parameters
+/// - `cells_js`: JavaScript array of Cell objects
+///
+/// # Returns
+/// JSON string representing AttachmentMap: { "anchor_idx": { "before": [...], "after": [...], "on_top": [...] } }
+///
+/// # Example
+/// ```javascript
+/// const attachmentMap = wasmModule.resolveOrnamentAttachments(cells);
+/// // Returns: { "4": { "before": [{"start": 1, "end": 3}], "after": [], "on_top": [] } }
+/// ```
+#[wasm_bindgen(js_name = resolveOrnamentAttachments)]
+pub fn resolve_ornament_attachments(
+    cells_js: JsValue,
+) -> Result<String, JsValue> {
+    wasm_info!("resolveOrnamentAttachments called");
+
+    // Parse JavaScript cells array
+    let cells: Vec<Cell> = serde_wasm_bindgen::from_value(cells_js)
+        .map_err(|e| {
+            wasm_error!("Failed to parse cells: {}", e);
+            JsValue::from_str(&format!("Failed to parse cells: {}", e))
+        })?;
+
+    wasm_info!("Parsed {} cells", cells.len());
+
+    // Extract all ornament spans
+    let spans = extract_ornament_spans(&cells);
+    wasm_info!("Found {} ornament spans", spans.len());
+
+    // Build attachment map: anchor_idx -> OrnamentGroups
+    let mut attachment_map: HashMap<usize, OrnamentGroups> = HashMap::new();
+
+    for span in spans {
+        // Find anchor cell for this span
+        if let Some(anchor_idx) = find_anchor_cell(&cells, &span) {
+            wasm_info!(
+                "Span [{}..{}] ({:?}) anchored to cell {}",
+                span.start_idx,
+                span.end_idx,
+                span.position_type,
+                anchor_idx
+            );
+
+            // Get or create OrnamentGroups for this anchor
+            let groups = attachment_map.entry(anchor_idx).or_insert_with(OrnamentGroups::default);
+
+            // Add span to appropriate position group
+            match span.position_type {
+                OrnamentPositionType::Before => groups.before.push(span),
+                OrnamentPositionType::After => groups.after.push(span),
+                OrnamentPositionType::OnTop => groups.on_top.push(span),
+            }
+        } else {
+            wasm_warn!(
+                "Orphaned ornament span [{}..{}] ({:?}) - no anchor cell found",
+                span.start_idx,
+                span.end_idx,
+                span.position_type
+            );
+        }
+    }
+
+    // Serialize to JSON
+    // Convert to a simpler structure for JSON: { "anchor_idx": { "before": [{"start": x, "end": y}], ... } }
+    let mut json_map = serde_json::Map::new();
+    for (anchor_idx, groups) in attachment_map {
+        let mut groups_obj = serde_json::Map::new();
+
+        // Serialize before spans
+        let before_arr: Vec<serde_json::Value> = groups
+            .before
+            .iter()
+            .map(|span| {
+                serde_json::json!({
+                    "start": span.start_idx,
+                    "end": span.end_idx,
+                    "position_type": "before"
+                })
+            })
+            .collect();
+        groups_obj.insert("before".to_string(), serde_json::Value::Array(before_arr));
+
+        // Serialize after spans
+        let after_arr: Vec<serde_json::Value> = groups
+            .after
+            .iter()
+            .map(|span| {
+                serde_json::json!({
+                    "start": span.start_idx,
+                    "end": span.end_idx,
+                    "position_type": "after"
+                })
+            })
+            .collect();
+        groups_obj.insert("after".to_string(), serde_json::Value::Array(after_arr));
+
+        // Serialize on_top spans
+        let on_top_arr: Vec<serde_json::Value> = groups
+            .on_top
+            .iter()
+            .map(|span| {
+                serde_json::json!({
+                    "start": span.start_idx,
+                    "end": span.end_idx,
+                    "position_type": "on_top"
+                })
+            })
+            .collect();
+        groups_obj.insert("on_top".to_string(), serde_json::Value::Array(on_top_arr));
+
+        json_map.insert(anchor_idx.to_string(), serde_json::Value::Object(groups_obj));
+    }
+
+    let json_result = serde_json::to_string(&json_map)
+        .map_err(|e| {
+            wasm_error!("Failed to serialize attachment map: {}", e);
+            JsValue::from_str(&format!("Failed to serialize: {}", e))
+        })?;
+
+    wasm_info!("resolveOrnamentAttachments completed successfully");
+    Ok(json_result)
+}
+
+/// T035: Compute ornament layout - compute bounding boxes for ornamental cells
+///
+/// This function computes positioning and bounding box information for all cells,
+/// with special handling for ornamental cells based on edit mode.
+///
+/// # Parameters
+/// - `cells_js`: JavaScript array of Cell objects
+/// - `edit_mode`: Boolean indicating if ornaments should be rendered inline (true) or as floating overlays (false)
+///
+/// # Returns
+/// JSON array of bounding boxes: [{ "cell_idx": 0, "x": 0, "y": 0, "width": 0, "height": 12, "is_ornament": false }, ...]
+///
+/// # Layout modes
+/// - **edit_mode=true**: Ornaments rendered inline with normal width
+/// - **edit_mode=false**: Ornaments rendered as floating overlays with zero width
+#[wasm_bindgen(js_name = computeOrnamentLayout)]
+pub fn compute_ornament_layout(
+    cells_js: JsValue,
+    edit_mode: bool,
+) -> Result<String, JsValue> {
+    wasm_info!("computeOrnamentLayout called: edit_mode={}", edit_mode);
+
+    // Parse JavaScript cells array
+    let cells: Vec<Cell> = serde_wasm_bindgen::from_value(cells_js)
+        .map_err(|e| {
+            wasm_error!("Failed to parse cells: {}", e);
+            JsValue::from_str(&format!("Failed to parse cells: {}", e))
+        })?;
+
+    wasm_info!("Parsed {} cells", cells.len());
+
+    // Build layout array
+    let mut layout = Vec::new();
+    let mut cumulative_x = 0.0;
+    let base_font_size = 16.0; // Default font size
+    let base_height = 20.0; // Default height
+
+    for (idx, cell) in cells.iter().enumerate() {
+        let is_ornament = cell.ornament_indicator != OrnamentIndicator::None;
+
+        // Compute width based on mode
+        let width = if is_ornament && !edit_mode {
+            0.0  // Zero width for floating ornaments in normal mode
+        } else {
+            // Approximate width based on character count
+            let char_count = cell.char.chars().count();
+            base_font_size * char_count as f32 * 0.6
+        };
+
+        // Compute height (ornaments are rendered smaller)
+        let height = if is_ornament {
+            base_height * 0.75 // 75% height for ornaments
+        } else {
+            base_height
+        };
+
+        // Build bounding box object
+        let bbox = serde_json::json!({
+            "cell_idx": idx,
+            "x": cumulative_x,
+            "y": 0.0,
+            "width": width,
+            "height": height,
+            "is_ornament": is_ornament,
+        });
+
+        layout.push(bbox);
+
+        // Update cumulative x (for next cell)
+        cumulative_x += width;
+    }
+
+    // Serialize to JSON
+    let json_result = serde_json::to_string(&layout)
+        .map_err(|e| {
+            wasm_error!("Failed to serialize layout: {}", e);
+            JsValue::from_str(&format!("Failed to serialize: {}", e))
+        })?;
+
+    wasm_info!("computeOrnamentLayout completed: {} cells", layout.len());
+    Ok(json_result)
+}
+
 /// Set the document title
 ///
 /// # Parameters
@@ -892,6 +1313,8 @@ pub fn set_document_pitch_system(
 /// Expand ornaments from cell.ornaments into the cells vector
 /// This is called when turning edit mode ON
 fn expand_ornaments_to_cells(line: &mut Line) {
+    use crate::models::elements::OrnamentPlacement;
+
     let mut new_cells = Vec::new();
 
     for cell in line.cells.drain(..) {
@@ -905,9 +1328,15 @@ fn expand_ornaments_to_cells(line: &mut Line) {
         for ornament in ornaments_to_expand {
             let ornament_cells = ornament.cells;
             if !ornament_cells.is_empty() {
-                // Mark first cell as OrnamentStart
+                // Determine position type from ornament placement (default to Before)
+                let position = match ornament.placement {
+                    OrnamentPlacement::Before => OrnamentPositionType::Before,
+                    OrnamentPlacement::After => OrnamentPositionType::After,
+                };
+
+                // Mark first cell with appropriate OrnamentStart variant
                 let mut first_cell = ornament_cells[0].clone();
-                first_cell.ornament_indicator = OrnamentIndicator::OrnamentStart;
+                first_cell.set_ornament_start_with_position(position);
                 new_cells.push(first_cell);
 
                 // Add middle cells (no indicator)
@@ -915,10 +1344,10 @@ fn expand_ornaments_to_cells(line: &mut Line) {
                     new_cells.push(middle_cell.clone());
                 }
 
-                // Mark last cell as OrnamentEnd (if more than one cell)
+                // Mark last cell with appropriate OrnamentEnd variant (if more than one cell)
                 if ornament_cells.len() > 1 {
                     let mut last_cell = ornament_cells[ornament_cells.len() - 1].clone();
-                    last_cell.ornament_indicator = OrnamentIndicator::OrnamentEnd;
+                    last_cell.set_ornament_end_with_position(position);
                     new_cells.push(last_cell);
                 }
             }
@@ -940,12 +1369,20 @@ fn collapse_ornaments_from_cells(line: &mut Line) {
         let cell = &line.cells[i];
 
         // Check if this cell starts an ornament
-        if cell.ornament_indicator == OrnamentIndicator::OrnamentStart {
+        if cell.ornament_indicator.is_start() {
             // Find the parent cell (previous cell)
             if let Some(parent_cell) = new_cells.last_mut() {
                 // Collect ornament cells
                 let mut ornament_cells = Vec::new();
                 let mut j = i;
+
+                // Get the position type from the first ornament cell
+                let position_type = cell.ornament_indicator.position_type();
+                let placement = match position_type {
+                    OrnamentPositionType::Before => OrnamentPlacement::Before,
+                    OrnamentPositionType::After => OrnamentPlacement::After,
+                    OrnamentPositionType::OnTop => OrnamentPlacement::Before, // Default to Before for OnTop
+                };
 
                 loop {
                     let ornament_cell = &line.cells[j];
@@ -953,7 +1390,7 @@ fn collapse_ornaments_from_cells(line: &mut Line) {
                     clean_cell.ornament_indicator = OrnamentIndicator::None;
                     ornament_cells.push(clean_cell);
 
-                    if ornament_cell.ornament_indicator == OrnamentIndicator::OrnamentEnd {
+                    if ornament_cell.ornament_indicator.is_end() {
                         break;
                     }
 
@@ -966,7 +1403,7 @@ fn collapse_ornaments_from_cells(line: &mut Line) {
                 // Create ornament and attach to parent
                 let ornament = Ornament {
                     cells: ornament_cells,
-                    placement: OrnamentPlacement::After,
+                    placement,
                 };
                 parent_cell.ornaments.push(ornament);
 

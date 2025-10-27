@@ -63,6 +63,10 @@ pub struct RenderLine {
     /// Positioned ornaments (when ornament_edit_mode is OFF)
     #[serde(default)]
     pub ornaments: Vec<RenderOrnament>,
+
+    /// Positioned octave dots
+    #[serde(default)]
+    pub octave_dots: Vec<RenderOctaveDot>,
 }
 
 /// A rendered arc (slur or beat loop) with pre-computed bezier curve control points
@@ -172,6 +176,22 @@ pub struct RenderTala {
 
     /// Y position (top of text)
     pub y: f32,
+}
+
+/// A positioned octave dot indicator
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct RenderOctaveDot {
+    /// Dot text ("•" or "••")
+    pub text: String,
+
+    /// X position (centered over cell)
+    pub x: f32,
+
+    /// Y position (absolute, in same coordinate space as cells)
+    pub y: f32,
+
+    /// Letter spacing for double dots (2.0 for "••", 0.0 for "•")
+    pub letter_spacing: f32,
 }
 
 /// A positioned ornament (when ornament_edit_mode is OFF)

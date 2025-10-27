@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
 // Re-export from other modules
-pub use super::elements::{ElementKind, OrnamentIndicator, PitchSystem, SlurIndicator};
+pub use super::elements::{ElementKind, OrnamentIndicator, OrnamentPositionType, PitchSystem, SlurIndicator};
 pub use super::notation::{BeatSpan, SlurSpan, Position, Selection, Range, CursorPosition};
 pub use super::pitch_code::PitchCode;
 
@@ -186,14 +186,32 @@ impl Cell {
         self.slur_indicator.is_end()
     }
 
-    /// Set ornament indicator to start an ornament
+    /// Set ornament indicator to start an ornament (defaults to "before" position)
     pub fn set_ornament_start(&mut self) {
-        self.ornament_indicator = OrnamentIndicator::OrnamentStart;
+        self.ornament_indicator = OrnamentIndicator::OrnamentBeforeStart;
     }
 
-    /// Set ornament indicator to end an ornament
+    /// Set ornament indicator to end an ornament (defaults to "before" position)
     pub fn set_ornament_end(&mut self) {
-        self.ornament_indicator = OrnamentIndicator::OrnamentEnd;
+        self.ornament_indicator = OrnamentIndicator::OrnamentBeforeEnd;
+    }
+
+    /// Set ornament indicator to start with specific position type
+    pub fn set_ornament_start_with_position(&mut self, position: super::elements::OrnamentPositionType) {
+        self.ornament_indicator = match position {
+            super::elements::OrnamentPositionType::Before => OrnamentIndicator::OrnamentBeforeStart,
+            super::elements::OrnamentPositionType::After => OrnamentIndicator::OrnamentAfterStart,
+            super::elements::OrnamentPositionType::OnTop => OrnamentIndicator::OrnamentOnTopStart,
+        };
+    }
+
+    /// Set ornament indicator to end with specific position type
+    pub fn set_ornament_end_with_position(&mut self, position: super::elements::OrnamentPositionType) {
+        self.ornament_indicator = match position {
+            super::elements::OrnamentPositionType::Before => OrnamentIndicator::OrnamentBeforeEnd,
+            super::elements::OrnamentPositionType::After => OrnamentIndicator::OrnamentAfterEnd,
+            super::elements::OrnamentPositionType::OnTop => OrnamentIndicator::OrnamentOnTopEnd,
+        };
     }
 
     /// Clear ornament indicator
@@ -214,6 +232,15 @@ impl Cell {
     /// Check if this cell ends an ornament
     pub fn is_ornament_end(&self) -> bool {
         self.ornament_indicator.is_end()
+    }
+
+    /// Check if this cell is rhythm-transparent (excluded from beat calculations)
+    ///
+    /// Returns true if this cell has an ornament indicator, meaning it's part of
+    /// an ornament and should not contribute to beat counting or duration calculations.
+    /// Per spec: ornaments are "rhythm-transparent embellishments" with zero duration.
+    pub fn is_rhythm_transparent(&self) -> bool {
+        self.has_ornament_indicator()
     }
 }
 
@@ -356,8 +383,8 @@ pub struct Document {
     /// Array of musical lines
     pub lines: Vec<Line>,
 
-    /// Ornament edit mode flag (ephemeral, not saved)
-    #[serde(skip)]
+    /// Ornament edit mode flag
+    #[serde(default)]
     pub ornament_edit_mode: bool,
 
     /// Application state (cursor position, selection, etc.)

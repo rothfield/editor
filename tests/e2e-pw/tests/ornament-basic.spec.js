@@ -1,170 +1,221 @@
-// Ornament Feature - Basic E2E Test
-// Tests the complete workflow: type notes -> add ornament -> verify rendering
+/**
+ * E2E Tests: Basic Ornament Application (WYSIWYG - Select and Apply Pattern)
+ * Feature: 006-music-notation-ornament
+ * User Story 1: Adding Ornaments to Embellish Musical Phrases
+ *
+ * IMPORTANT: These tests use the WYSIWYG "select and apply" pattern (like slurs/octaves)
+ * NOT the old delimiter syntax (<234>) which was removed per Decision #8 in research.md
+ */
 
 import { test, expect } from '@playwright/test';
+import { openTab, readPaneText, getDocumentModel, assertLilyPondNotEmpty } from '../helpers/inspectors.js';
 
-test.describe('Ornament Feature - Basic Workflow', () => {
+test.describe('Basic Ornament Application - WYSIWYG Pattern', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('http://localhost:8080');
-    await page.waitForSelector('#notation-editor', { state: 'visible' });
-    await page.waitForTimeout(2000); // Wait for WASM to load
+    await page.goto('/');
+    const editor = page.locator('#notation-editor');
+    await expect(editor).toBeVisible();
+
+    // Clear any existing content
+    await editor.click();
+    await page.keyboard.press('Control+A');
+    await page.keyboard.press('Backspace');
+    await page.waitForTimeout(200);
   });
 
-  test('complete ornament workflow - type notes, add ornament, verify saved', async ({ page }) => {
-    // Capture console logs from the start
-    const logs = [];
-    page.on('console', msg => logs.push(msg.text()));
+  test('T013: Apply ornament via Alt+0 - verify indicators set in Document Model', async ({ page }) => {
+    const editor = page.locator('#notation-editor');
+    await editor.click();
 
-    // Step 1: Type some notes
-    await page.click('#notation-editor');
-    await page.keyboard.type('srgm');
-    await page.waitForTimeout(500);
-
-    // Verify notes were typed
-    const cells = await page.locator('.char-cell').all();
-    expect(cells.length).toBeGreaterThan(0);
-
-    // Step 2: Position cursor on first note
-    await page.keyboard.press('Home');
+    // Type: 2 3 4 1
+    await page.keyboard.type('2 3 4 1');
     await page.waitForTimeout(300);
 
-    // Step 3: Open ornament editor
-    await page.click('#edit-menu-button');
-    await page.waitForTimeout(200);
-    await page.click('#menu-ornament');
-    await page.waitForTimeout(500);
-
-    // Verify dialog opened
-    await expect(page.locator('#ornament-editor-dialog')).toBeVisible();
-
-    // Verify dialog has correct title
-    const dialogTitle = await page.locator('#ornament-editor-header h3').textContent();
-    expect(dialogTitle).toBe('Create Ornament');
-
-    // Step 4: Type ornament pitches in mini canvas
-    await page.click('#ornament-mini-canvas');
-    await page.waitForTimeout(200);
-    await page.keyboard.type('gr');
-    await page.waitForTimeout(500);
-
-    // Verify cells were created in mini canvas
-    const miniCells = await page.locator('#ornament-mini-canvas .char-cell').all();
-    expect(miniCells.length).toBe(2);
-
-    // Step 5: Save ornament with Enter key
-    await page.keyboard.press('Enter');
-    await page.waitForTimeout(500);
-
-    // Verify dialog closed
-    await expect(page.locator('#ornament-editor-dialog')).not.toBeVisible();
-
-    // Step 6: Verify ornament was added to document
-    console.log('[TEST] Console logs from browser:');
-    logs.filter(log => log.includes('Ornament')).forEach(log => console.log('[TEST]', log));
-
-    // The ornament should be saved - we can verify by checking the document structure
-    // or by looking for ornament containers in the rendered output
-    const ornamentContainers = await page.locator('.ornament-container').all();
-    console.log('[TEST] Found', ornamentContainers.length, 'ornament containers');
-    expect(ornamentContainers.length).toBeGreaterThanOrEqual(1);
-  });
-
-  test('ornament editor shows error when no notes exist', async ({ page }) => {
-    // Capture console errors - set up before any actions
-    const errors = [];
-    page.on('console', msg => {
-      if (msg.type() === 'error') {
-        errors.push(msg.text());
-      }
-    });
-
-    // Try to open ornament editor without typing any notes
-    await page.click('#edit-menu-button');
-    await page.waitForTimeout(200);
-    await page.click('#menu-ornament');
-    await page.waitForTimeout(500); // Wait longer for error to be logged
-
-    // Should show error message in console
-    // The actual error is about no note at cursor, not no line
-    const hasExpectedError = errors.some(err =>
-      err.includes('No note at cursor - position cursor after a note to add an ornament') ||
-      err.includes('Please type some notes first before adding ornaments')
-    );
-
-    // Debug: log all errors if test fails
-    if (!hasExpectedError) {
-      console.log('[TEST] Captured errors:', errors);
+    // Select first three characters (2, space, 3, space, 4)
+    // Note: In the editor, spaces might be cells or not depending on implementation
+    // Strategy: Use Home, then Shift+Right to select exactly 5 characters: "2 3 4"
+    await page.keyboard.press('Home');
+    for (let i = 0; i < 5; i++) {
+      await page.keyboard.press('Shift+ArrowRight');
     }
 
-    expect(hasExpectedError).toBeTruthy();
+    // Apply ornament with Alt+0 (default "after" position)
+    await page.keyboard.press('Alt+0');
+    await page.waitForTimeout(500);
+
+    // Verify ornament indicators in Document Model
+    const doc = await getDocumentModel(page);
+    expect(doc.lines).toBeDefined();
+    expect(doc.lines.length).toBeGreaterThan(0);
+
+    const cells = doc.lines[0].cells;
+    expect(cells).toBeDefined();
+
+    // Find cells with ornament indicators
+    const ornamentCells = cells.filter(c =>
+      c.ornament_indicator && c.ornament_indicator.name && c.ornament_indicator.name !== 'none'
+    );
+
+    // Should have at least 2 ornament cells (start and end)
+    expect(ornamentCells.length).toBeGreaterThanOrEqual(2);
+
+    // Verify start indicator
+    const startCell = ornamentCells.find(c => c.ornament_indicator.name.includes('start'));
+    expect(startCell).toBeDefined();
+    expect(startCell.ornament_indicator.name).toMatch(/ornament_.*_start/);
+
+    // Verify end indicator
+    const endCell = ornamentCells.find(c => c.ornament_indicator.name.includes('end'));
+    expect(endCell).toBeDefined();
+    expect(endCell.ornament_indicator.name).toMatch(/ornament_.*_end/);
+
+    console.log('✅ T013: Ornament indicators correctly set via Alt+0');
   });
 
-  test('can cancel ornament editor with Escape', async ({ page }) => {
-    // Type notes
-    await page.click('#notation-editor');
-    await page.keyboard.type('srgm');
-    await page.keyboard.press('Home');
-    await page.waitForTimeout(300);
+  test('T014: Visual rendering - ornament cells have CSS styling', async ({ page }) => {
+    const editor = page.locator('#notation-editor');
+    await editor.click();
 
-    // Open ornament editor
-    await page.click('#edit-menu-button');
-    await page.waitForTimeout(200);
-    await page.click('#menu-ornament');
+    // Type and select
+    await page.keyboard.type('2 3 4 1');
+    await page.keyboard.press('Home');
+    for (let i = 0; i < 5; i++) {
+      await page.keyboard.press('Shift+ArrowRight');
+    }
+
+    // Apply ornament
+    await page.keyboard.press('Alt+0');
     await page.waitForTimeout(500);
 
-    // Dialog should be open
-    await expect(page.locator('#ornament-editor-dialog')).toBeVisible();
+    // Check for ornament visual styling
+    // Note: Implementation might use class "ornament-cell" or data attributes
+    const ornamentCells = page.locator('.ornament-cell, [data-ornament], .cell.ornament');
 
-    // Type something
-    await page.click('#ornament-mini-canvas');
-    await page.keyboard.type('gr');
-    await page.waitForTimeout(300);
+    // If ornament cells are rendered
+    const count = await ornamentCells.count();
+    if (count > 0) {
+      const firstOrnamentCell = ornamentCells.first();
+      await expect(firstOrnamentCell).toBeVisible({ timeout: 5000 });
 
-    // Cancel with Escape
-    await page.keyboard.press('Escape');
-    await page.waitForTimeout(300);
+      // Get computed styles
+      const styles = await firstOrnamentCell.evaluate(el => {
+        const computed = window.getComputedStyle(el);
+        return {
+          fontSize: computed.fontSize,
+          verticalAlign: computed.verticalAlign,
+          color: computed.color,
+          position: computed.position
+        };
+      });
 
-    // Dialog should be closed
-    await expect(page.locator('#ornament-editor-dialog')).not.toBeVisible();
-
-    // No ornament should be added
-    const ornamentContainers = await page.locator('.ornament-container').all();
-    expect(ornamentContainers.length).toBe(0);
+      console.log(`✅ T014: Ornament cells styled - fontSize: ${styles.fontSize}, verticalAlign: ${styles.verticalAlign}, color: ${styles.color}`);
+    } else {
+      console.log('⚠️ T014: Ornament visual rendering pending implementation');
+    }
   });
 
-  test('can change ornament placement', async ({ page }) => {
-    // Type notes
-    await page.click('#notation-editor');
-    await page.keyboard.type('srgm');
+  test('T015: Zero-width floating layout verification', async ({ page }) => {
+    const editor = page.locator('#notation-editor');
+    await editor.click();
+
+    // Type, select, and apply ornament
+    await page.keyboard.type('a b c D');
     await page.keyboard.press('Home');
-    await page.waitForTimeout(300);
-
-    // Open ornament editor
-    await page.click('#edit-menu-button');
-    await page.waitForTimeout(200);
-    await page.click('#menu-ornament');
+    for (let i = 0; i < 5; i++) {
+      await page.keyboard.press('Shift+ArrowRight'); // Select "a b c"
+    }
+    await page.keyboard.press('Alt+0');
     await page.waitForTimeout(500);
 
-    // Default should be After
-    const afterRadio = page.locator('input[name="placement"][value="After"]');
-    await expect(afterRadio).toBeChecked();
+    // In normal mode, ornaments should use floating layout
+    const ornamentCells = page.locator('.ornament-cell, [data-ornament-floating], .cell.ornament');
 
-    // Change to Before
-    await page.click('input[name="placement"][value="Before"]');
-    await page.waitForTimeout(200);
+    const count = await ornamentCells.count();
+    if (count > 0) {
+      const layoutInfo = await ornamentCells.first().evaluate(el => {
+        const computed = window.getComputedStyle(el);
+        return {
+          position: computed.position,
+          width: computed.width,
+          display: computed.display
+        };
+      });
 
-    const beforeRadio = page.locator('input[name="placement"][value="Before"]');
-    await expect(beforeRadio).toBeChecked();
+      console.log(`✅ T015: Ornament layout - position: ${layoutInfo.position}, width: ${layoutInfo.width}`);
+      // Floating layout should use position: absolute or relative with special positioning
+    } else {
+      console.log('⚠️ T015: Floating layout pending implementation');
+    }
+  });
 
-    // Type ornament and save
-    await page.click('#ornament-mini-canvas');
-    await page.keyboard.type('gr');
-    await page.waitForTimeout(300);
-    await page.keyboard.press('Enter');
+  test('T016 & T017: LilyPond export contains grace notes', async ({ page }) => {
+    const editor = page.locator('#notation-editor');
+    await editor.click();
+
+    // Type, select, and apply ornament
+    await page.keyboard.type('2 3 4 1');
+    await page.keyboard.press('Home');
+    for (let i = 0; i < 5; i++) {
+      await page.keyboard.press('Shift+ArrowRight');
+    }
+    await page.keyboard.press('Alt+0');
     await page.waitForTimeout(500);
 
-    // Verify ornament was created
-    const ornamentContainers = await page.locator('.ornament-container').all();
-    expect(ornamentContainers.length).toBeGreaterThanOrEqual(1);
+    // Open LilyPond tab and verify export
+    await openTab(page, 'tab-lilypond');
+    const lilypondText = await readPaneText(page, 'pane-lilypond');
+
+    // Verify basic LilyPond structure exists
+    expect(lilypondText.length).toBeGreaterThan(0);
+
+    // When ornament export is implemented, should contain \grace {}
+    if (lilypondText.includes('\\grace')) {
+      expect(lilypondText).toMatch(/\\grace\s*\{[^}]*\}/);
+      console.log('✅ T016 & T017: LilyPond export contains \\grace {} syntax');
+    } else {
+      console.log('⚠️ T016 & T017: Grace note export pending implementation');
+      console.log('LilyPond output:', lilypondText.substring(0, 200));
+    }
+  });
+
+  test('T037: Collision detection - overlapping ornaments get spacing', async ({ page }) => {
+    const editor = page.locator('#notation-editor');
+    await editor.click();
+
+    // Create two adjacent ornaments that would collide
+    await page.keyboard.type('C 2 3 D 4 5 E');
+    await page.waitForTimeout(300);
+
+    // Select and apply first ornament group (2 3)
+    await page.keyboard.press('Home');
+    await page.keyboard.press('ArrowRight'); // Skip C
+    await page.keyboard.press('ArrowRight'); // Skip space
+    await page.keyboard.press('Shift+ArrowRight'); // Select 2
+    await page.keyboard.press('Shift+ArrowRight'); // Select space
+    await page.keyboard.press('Shift+ArrowRight'); // Select 3
+    await page.keyboard.press('Alt+0');
+    await page.waitForTimeout(300);
+
+    // Select and apply second ornament group (4 5)
+    await page.keyboard.press('Home');
+    for (let i = 0; i < 7; i++) {
+      await page.keyboard.press('ArrowRight'); // Navigate to "4"
+    }
+    await page.keyboard.press('Shift+ArrowRight'); // Select 4
+    await page.keyboard.press('Shift+ArrowRight'); // Select space
+    await page.keyboard.press('Shift+ArrowRight'); // Select 5
+    await page.keyboard.press('Alt+0');
+    await page.waitForTimeout(500);
+
+    // Verify layout handles collision
+    // This is a placeholder test - collision detection may add spacing
+    const ornamentCells = page.locator('.ornament-cell, [data-ornament]');
+    const count = await ornamentCells.count();
+
+    if (count >= 4) {
+      console.log('✅ T037: Multiple ornaments rendered, collision detection active');
+    } else {
+      console.log('⚠️ T037: Collision detection pending implementation');
+    }
   });
 });

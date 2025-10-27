@@ -73,6 +73,9 @@ class MusicNotationEditor {
         applySlur: wasmModule.applySlur,
         removeSlur: wasmModule.removeSlur,
         hasSlurInSelection: wasmModule.hasSlurInSelection,
+        // Ornament API
+        applyOrnament: wasmModule.applyOrnament,
+        removeOrnament: wasmModule.removeOrnament,
         // Ornament Edit Mode API
         getOrnamentEditMode: wasmModule.getOrnamentEditMode,
         setOrnamentEditMode: wasmModule.setOrnamentEditMode,
@@ -110,7 +113,6 @@ class MusicNotationEditor {
       this.setupEventHandlers();
 
       // Setup ornament event listeners
-      this.setupOrnamentListeners();
 
       // Mark as initialized BEFORE creating document
       this.isInitialized = true;
@@ -731,7 +733,10 @@ class MusicNotationEditor {
     }
 
     // Route to appropriate handler
-    if (modifiers.alt && !modifiers.ctrl && !modifiers.shift) {
+    if (modifiers.alt && modifiers.shift && !modifiers.ctrl) {
+      // T063: Alt+Shift commands
+      this.handleAltShiftCommand(key);
+    } else if (modifiers.alt && !modifiers.ctrl && !modifiers.shift) {
       this.handleAltCommand(key);
     } else if (modifiers.shift && !modifiers.alt && !modifiers.ctrl && this.isSelectionKey(key)) {
       // Only route to selection handler for actual selection keys (arrows, Home, End)
@@ -772,13 +777,37 @@ class MusicNotationEditor {
         this.showTalaDialog();
         break;
       case 'o':
-        this.applyOrnamentIndicator();
+        this.applyOrnamentIndicator(); // Legacy - redirects to applyOrnament('after')
+        break;
+      case '0':
+        this.applyOrnament('after'); // Alt+0: Apply ornament (default "after" position)
         break;
       default:
         console.log('Unknown Alt command:', key);
         this.showWarning(`Unknown musical command: Alt+${key}`, {
           important: false,
           details: `Available commands: Alt+S (slur), Alt+O (ornament), Alt+U (upper octave), Alt+M (middle octave), Alt+L (lower octave), Alt+T (tala)`
+        });
+        return;
+    }
+  }
+
+  /**
+   * T063: Handle Alt+Shift+key commands (mode toggles)
+   */
+  handleAltShiftCommand(key) {
+    this.addToConsoleLog(`Mode command: Alt+Shift+${key.toUpperCase()}`);
+
+    switch (key.toLowerCase()) {
+      case 'o':
+        // Alt+Shift+O: Toggle ornament edit mode
+        this.toggleOrnamentEditMode();
+        break;
+      default:
+        console.log('Unknown Alt+Shift command:', key);
+        this.showWarning(`Unknown mode command: Alt+Shift+${key.toUpperCase()}`, {
+          important: false,
+          details: `Available commands: Alt+Shift+O (toggle ornament edit mode)`
         });
         return;
     }
@@ -1969,11 +1998,11 @@ class MusicNotationEditor {
   }
 
   /**
-   * Apply ornament indicator to current selection
-   * Toggles ornament indicator on/off using the ornament_indicator command
+   * Apply ornament styling to current selection (WYSIWYG "select and apply" pattern)
+   * @param {string} positionType - Position type: "before", "after", or "top"
    */
-  async applyOrnamentIndicator() {
-    console.log('🎵 applyOrnamentIndicator called');
+  async applyOrnament(positionType = 'after') {
+    console.log('🎵 applyOrnament called with position:', positionType);
 
     if (!this.isInitialized || !this.wasmModule) {
       console.log('❌ Not initialized or no WASM module');
@@ -1982,8 +2011,8 @@ class MusicNotationEditor {
 
     // Validate selection (requires explicit selection)
     if (!this.hasSelection()) {
-      console.log('Ornament indicator requires an explicit selection');
-      this.showWarning('Please select notes to mark as ornament');
+      console.log('Ornament requires an explicit selection');
+      this.showWarning('Please select cells to apply ornament styling');
       return;
     }
 
@@ -1992,7 +2021,7 @@ class MusicNotationEditor {
       const line = this.getCurrentLine();
 
       if (!line) {
-        console.log('❌ No line found for applyOrnamentIndicator');
+        console.log('❌ No line found for applyOrnament');
         return;
       }
 
@@ -2002,26 +2031,84 @@ class MusicNotationEditor {
       );
       const selectedText = selectedCells.map(cell => cell.char || '').join('');
 
-      // Apply ornament indicator using WASM command
+      // Call WASM applyOrnament function
       if (this.theDocument && this.theDocument.lines && this.theDocument.lines.length > 0) {
-        const updatedCells = this.wasmModule.applyCommand(
+        const updatedCells = this.wasmModule.applyOrnament(
           cells,
           selection.start,
           selection.end,
-          'ornament_indicator'
+          positionType
         );
 
         line.cells = updatedCells;
-        this.addToConsoleLog(`Toggled ornament indicator on "${selectedText}"`);
+        this.addToConsoleLog(`Applied ornament (${positionType}) to "${selectedText}"`);
       }
 
       await this.renderAndUpdate();
 
-      // Restore visual selection after applying ornament indicator
+      // Restore visual selection after applying ornament
       this.updateSelectionDisplay();
     } catch (error) {
-      console.error('❌ Failed to apply ornament indicator:', error);
+      console.error('❌ Failed to apply ornament:', error);
     }
+  }
+
+  /**
+   * Remove ornament styling from current selection
+   */
+  async removeOrnament() {
+    console.log('🎵 removeOrnament called');
+
+    if (!this.isInitialized || !this.wasmModule) {
+      console.log('❌ Not initialized or no WASM module');
+      return;
+    }
+
+    // Validate selection
+    if (!this.hasSelection()) {
+      console.log('Remove ornament requires an explicit selection');
+      this.showWarning('Please select ornamental cells to remove styling');
+      return;
+    }
+
+    try {
+      const selection = this.getSelection();
+      const line = this.getCurrentLine();
+
+      if (!line) {
+        console.log('❌ No line found for removeOrnament');
+        return;
+      }
+
+      const cells = line.cells;
+
+      // Call WASM removeOrnament function
+      if (this.theDocument && this.theDocument.lines && this.theDocument.lines.length > 0) {
+        const updatedCells = this.wasmModule.removeOrnament(
+          cells,
+          selection.start,
+          selection.end
+        );
+
+        line.cells = updatedCells;
+        this.addToConsoleLog(`Removed ornament styling from selection`);
+      }
+
+      await this.renderAndUpdate();
+
+      // Restore visual selection
+      this.updateSelectionDisplay();
+    } catch (error) {
+      console.error('❌ Failed to remove ornament:', error);
+    }
+  }
+
+  /**
+   * Legacy method - kept for compatibility, redirects to applyOrnament
+   * @deprecated Use applyOrnament() instead
+   */
+  async applyOrnamentIndicator() {
+    return this.applyOrnament('after');
   }
 
   /**
@@ -2053,177 +2140,6 @@ class MusicNotationEditor {
 
     // Re-render to apply the new mode
     this.renderAndUpdate();
-  }
-
-  /**
-   * Setup ornament event listeners
-   */
-  setupOrnamentListeners() {
-    document.addEventListener('ornament-save', (event) => {
-      this.handleOrnamentSave(event.detail);
-    });
-  }
-
-  /**
-   * Open ornament editor dialog
-   */
-  /**
-   * Handle click on an ornament element
-   * Opens the ornament editor for the clicked ornament
-   */
-  handleOrnamentClick(lineIndex, cellIndex, ornamentIndex) {
-    console.log(`Ornament clicked: line=${lineIndex}, cell=${cellIndex}, ornament=${ornamentIndex}`);
-
-    if (!this.isInitialized) {
-      this.showError('Editor not initialized');
-      return;
-    }
-
-    if (!this.ornamentEditor) {
-      this.showError('Ornament editor not initialized');
-      return;
-    }
-
-    // Get the line and cell
-    const line = this.theDocument?.lines?.[lineIndex];
-    if (!line) {
-      this.showError('Line not found');
-      return;
-    }
-
-    const cell = line.cells?.[cellIndex];
-    if (!cell) {
-      this.showError('Cell not found');
-      return;
-    }
-
-    // Get the ornament
-    const ornament = cell.ornaments?.[ornamentIndex];
-    if (!ornament) {
-      this.showError('Ornament not found');
-      return;
-    }
-
-    // Prepare ornament data for editing
-    const existingOrnament = {
-      text: ornament.cells.map(c => c.char).join(''),
-      cells: ornament.cells,
-      placement: ornament.placement,
-      index: ornamentIndex
-    };
-
-    // Open editor
-    this.ornamentEditor.open(lineIndex, cellIndex, existingOrnament);
-  }
-
-  openOrnamentEditor() {
-    if (!this.isInitialized) {
-      this.showError('Editor not initialized');
-      return;
-    }
-
-    if (!this.ornamentEditor) {
-      this.showError('Ornament editor not initialized');
-      console.error('ornamentEditor is null - not initialized properly');
-      return;
-    }
-
-    // Use effective selection logic (same as octave commands Alt+U/M/L)
-    // If selection exists, use first item; otherwise use item to left of cursor
-    const selection = this.getEffectiveSelection();
-    if (!selection) {
-      this.showError('No note at cursor - position cursor after a note to add an ornament');
-      return;
-    }
-
-    const lineIndex = this.getCurrentStave();
-    const cellIndex = selection.start; // Target cell index
-
-    // Check if there's a valid line and cell
-    const line = this.theDocument?.lines?.[lineIndex];
-    if (!line) {
-      this.showError('Please type some notes first before adding ornaments');
-      return;
-    }
-
-    const cell = line.cells?.[cellIndex];
-    if (!cell) {
-      this.showError('No note found at target position');
-      return;
-    }
-
-    // Check for existing ornaments
-    let existingOrnament = null;
-    if (cell.ornaments && cell.ornaments.length > 0) {
-      // Edit first ornament
-      const ornament = cell.ornaments[0];
-      existingOrnament = {
-        text: ornament.cells.map(c => c.char).join(''),
-        cells: ornament.cells,
-        placement: ornament.placement,
-        index: 0
-      };
-    }
-
-    // Open editor
-    this.ornamentEditor.open(lineIndex, cellIndex, existingOrnament);
-  }
-
-  /**
-   * Handle ornament save event
-   */
-  async handleOrnamentSave(detail) {
-    const { mode, lineIndex, cellIndex, ornamentIndex, text, cells, placement } = detail;
-
-    console.log('Ornament save:', { mode, lineIndex, cellIndex, text, placement });
-
-    if (!this.theDocument?.lines?.[lineIndex]) {
-      console.error('Invalid line index');
-      return;
-    }
-
-    const line = this.theDocument.lines[lineIndex];
-    if (!line.cells?.[cellIndex]) {
-      console.error('Invalid cell index');
-      return;
-    }
-
-    const cell = line.cells[cellIndex];
-
-    // Create ornament structure
-    const ornament = {
-      cells: cells,
-      placement: placement,
-      position: {
-        x: 0,
-        y: 0,
-        width: 0,
-        height: 0
-      },
-      bounding_box: {
-        left: 0,
-        top: 0,
-        width: 0,
-        height: 0
-      }
-    };
-
-    // Initialize ornaments array if needed
-    if (!cell.ornaments) {
-      cell.ornaments = [];
-    }
-
-    // Add or update ornament
-    if (mode === 'edit' && ornamentIndex !== null) {
-      cell.ornaments[ornamentIndex] = ornament;
-    } else {
-      cell.ornaments.push(ornament);
-    }
-
-    this.addToConsoleLog(`${mode === 'edit' ? 'Updated' : 'Created'} ornament: ${text}`);
-
-    // Re-render and update inspector tabs
-    await this.renderAndUpdate();
   }
 
   /**
@@ -2971,11 +2887,6 @@ class MusicNotationEditor {
       return;
     }
 
-    // Skip cursor updates when ornament editor is open
-    if (this.ornamentEditor && this.ornamentEditor.isOpen) {
-      return;
-    }
-
     const charPos = this.getCursorPosition(); // Character position (0, 1, 2, ...)
     const lineHeight = BASE_FONT_SIZE; // Line height in pixels - matches base font size
 
@@ -3193,10 +3104,10 @@ class MusicNotationEditor {
   }
 
   updateDocumentDisplay() {
-    // Update layout display (DisplayList from WASM)
-    const layoutDisplay = document.getElementById('layout-display');
-    if (layoutDisplay && this.displayList) {
-      layoutDisplay.textContent = JSON.stringify(this.displayList, null, 2);
+    // Update display list tab (pre-computed render commands from WASM)
+    const displayListDisplay = document.getElementById('displaylist-display');
+    if (displayListDisplay && this.displayList) {
+      displayListDisplay.textContent = JSON.stringify(this.displayList, null, 2);
     }
 
     // Update persistent model (saveable content only, no state)

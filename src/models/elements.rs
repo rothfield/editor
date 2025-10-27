@@ -625,11 +625,23 @@ pub enum OrnamentIndicator {
     /// No ornament indicator
     None = 0,
 
-    /// This cell starts an ornament
-    OrnamentStart = 1,
+    /// This cell starts an ornament positioned before the parent note
+    OrnamentBeforeStart = 1,
 
-    /// This cell ends an ornament
-    OrnamentEnd = 2,
+    /// This cell ends an ornament positioned before the parent note
+    OrnamentBeforeEnd = 2,
+
+    /// This cell starts an ornament positioned after the parent note
+    OrnamentAfterStart = 3,
+
+    /// This cell ends an ornament positioned after the parent note
+    OrnamentAfterEnd = 4,
+
+    /// This cell starts an ornament positioned on top of the parent note
+    OrnamentOnTopStart = 5,
+
+    /// This cell ends an ornament positioned on top of the parent note
+    OrnamentOnTopEnd = 6,
 }
 
 // Custom serialization to show both name and value
@@ -667,8 +679,12 @@ impl<'de> Deserialize<'de> for OrnamentIndicator {
             {
                 match value {
                     0 => Ok(OrnamentIndicator::None),
-                    1 => Ok(OrnamentIndicator::OrnamentStart),
-                    2 => Ok(OrnamentIndicator::OrnamentEnd),
+                    1 => Ok(OrnamentIndicator::OrnamentBeforeStart),
+                    2 => Ok(OrnamentIndicator::OrnamentBeforeEnd),
+                    3 => Ok(OrnamentIndicator::OrnamentAfterStart),
+                    4 => Ok(OrnamentIndicator::OrnamentAfterEnd),
+                    5 => Ok(OrnamentIndicator::OrnamentOnTopStart),
+                    6 => Ok(OrnamentIndicator::OrnamentOnTopEnd),
                     _ => Err(E::custom(format!("invalid OrnamentIndicator value: {}", value))),
                 }
             }
@@ -694,8 +710,12 @@ impl<'de> Deserialize<'de> for OrnamentIndicator {
                 }
                 match value {
                     Some(0) => Ok(OrnamentIndicator::None),
-                    Some(1) => Ok(OrnamentIndicator::OrnamentStart),
-                    Some(2) => Ok(OrnamentIndicator::OrnamentEnd),
+                    Some(1) => Ok(OrnamentIndicator::OrnamentBeforeStart),
+                    Some(2) => Ok(OrnamentIndicator::OrnamentBeforeEnd),
+                    Some(3) => Ok(OrnamentIndicator::OrnamentAfterStart),
+                    Some(4) => Ok(OrnamentIndicator::OrnamentAfterEnd),
+                    Some(5) => Ok(OrnamentIndicator::OrnamentOnTopStart),
+                    Some(6) => Ok(OrnamentIndicator::OrnamentOnTopEnd),
                     Some(v) => Err(serde::de::Error::custom(format!("invalid OrnamentIndicator value: {}", v))),
                     None => Err(serde::de::Error::missing_field("value")),
                 }
@@ -711,8 +731,12 @@ impl OrnamentIndicator {
     pub fn name(&self) -> &'static str {
         match self {
             OrnamentIndicator::None => "None",
-            OrnamentIndicator::OrnamentStart => "Ornament Start",
-            OrnamentIndicator::OrnamentEnd => "Ornament End",
+            OrnamentIndicator::OrnamentBeforeStart => "Ornament Before Start",
+            OrnamentIndicator::OrnamentBeforeEnd => "Ornament Before End",
+            OrnamentIndicator::OrnamentAfterStart => "Ornament After Start",
+            OrnamentIndicator::OrnamentAfterEnd => "Ornament After End",
+            OrnamentIndicator::OrnamentOnTopStart => "Ornament On Top Start",
+            OrnamentIndicator::OrnamentOnTopEnd => "Ornament On Top End",
         }
     }
 
@@ -720,8 +744,12 @@ impl OrnamentIndicator {
     pub fn snake_case_name(&self) -> &'static str {
         match self {
             OrnamentIndicator::None => "none",
-            OrnamentIndicator::OrnamentStart => "ornament_start",
-            OrnamentIndicator::OrnamentEnd => "ornament_end",
+            OrnamentIndicator::OrnamentBeforeStart => "ornament_before_start",
+            OrnamentIndicator::OrnamentBeforeEnd => "ornament_before_end",
+            OrnamentIndicator::OrnamentAfterStart => "ornament_after_start",
+            OrnamentIndicator::OrnamentAfterEnd => "ornament_after_end",
+            OrnamentIndicator::OrnamentOnTopStart => "ornament_on_top_start",
+            OrnamentIndicator::OrnamentOnTopEnd => "ornament_on_top_end",
         }
     }
 
@@ -729,30 +757,203 @@ impl OrnamentIndicator {
     pub fn css_class(&self) -> &'static str {
         match self {
             OrnamentIndicator::None => "ornament-none",
-            OrnamentIndicator::OrnamentStart => "ornament-start",
-            OrnamentIndicator::OrnamentEnd => "ornament-end",
+            OrnamentIndicator::OrnamentBeforeStart => "ornament-before-start",
+            OrnamentIndicator::OrnamentBeforeEnd => "ornament-before-end",
+            OrnamentIndicator::OrnamentAfterStart => "ornament-after-start",
+            OrnamentIndicator::OrnamentAfterEnd => "ornament-after-end",
+            OrnamentIndicator::OrnamentOnTopStart => "ornament-on-top-start",
+            OrnamentIndicator::OrnamentOnTopEnd => "ornament-on-top-end",
         }
     }
 
     /// Check if this is an ornament start
     pub fn is_start(&self) -> bool {
-        matches!(self, OrnamentIndicator::OrnamentStart)
+        matches!(
+            self,
+            OrnamentIndicator::OrnamentBeforeStart
+                | OrnamentIndicator::OrnamentAfterStart
+                | OrnamentIndicator::OrnamentOnTopStart
+        )
     }
 
     /// Check if this is an ornament end
     pub fn is_end(&self) -> bool {
-        matches!(self, OrnamentIndicator::OrnamentEnd)
+        matches!(
+            self,
+            OrnamentIndicator::OrnamentBeforeEnd
+                | OrnamentIndicator::OrnamentAfterEnd
+                | OrnamentIndicator::OrnamentOnTopEnd
+        )
     }
 
     /// Check if this cell has any ornament indicator
     pub fn has_ornament(&self) -> bool {
         !matches!(self, OrnamentIndicator::None)
     }
+
+    /// Get the position type for this ornament indicator
+    pub fn position_type(&self) -> OrnamentPositionType {
+        match self {
+            OrnamentIndicator::None => OrnamentPositionType::Before,
+            OrnamentIndicator::OrnamentBeforeStart | OrnamentIndicator::OrnamentBeforeEnd => {
+                OrnamentPositionType::Before
+            }
+            OrnamentIndicator::OrnamentAfterStart | OrnamentIndicator::OrnamentAfterEnd => {
+                OrnamentPositionType::After
+            }
+            OrnamentIndicator::OrnamentOnTopStart | OrnamentIndicator::OrnamentOnTopEnd => {
+                OrnamentPositionType::OnTop
+            }
+        }
+    }
+
+    /// Check if two indicators form a valid matching pair (same position type, start+end)
+    pub fn matches(&self, other: &OrnamentIndicator) -> bool {
+        matches!(
+            (self, other),
+            (OrnamentIndicator::OrnamentBeforeStart, OrnamentIndicator::OrnamentBeforeEnd)
+                | (OrnamentIndicator::OrnamentAfterStart, OrnamentIndicator::OrnamentAfterEnd)
+                | (OrnamentIndicator::OrnamentOnTopStart, OrnamentIndicator::OrnamentOnTopEnd)
+        )
+    }
 }
 
 impl Default for OrnamentIndicator {
     fn default() -> Self {
         OrnamentIndicator::None
+    }
+}
+
+/// Position type for ornaments relative to their parent note
+#[wasm_bindgen]
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OrnamentPositionType {
+    /// Ornament positioned before the parent note (grace note before)
+    Before = 0,
+
+    /// Ornament positioned after the parent note (grace note after)
+    After = 1,
+
+    /// Ornament positioned on top of the parent note (e.g., trill, mordent)
+    OnTop = 2,
+}
+
+// Custom serialization to show both name and value
+impl Serialize for OrnamentPositionType {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut state = serializer.serialize_struct("OrnamentPositionType", 2)?;
+        state.serialize_field("name", &self.snake_case_name())?;
+        state.serialize_field("value", &(*self as u8))?;
+        state.end()
+    }
+}
+
+// Custom deserialization - accepts either number or object format
+impl<'de> Deserialize<'de> for OrnamentPositionType {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct OrnamentPositionTypeVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for OrnamentPositionTypeVisitor {
+            type Value = OrnamentPositionType;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("an OrnamentPositionType number or object")
+            }
+
+            fn visit_u64<E>(self, value: u64) -> Result<OrnamentPositionType, E>
+            where
+                E: serde::de::Error,
+            {
+                match value {
+                    0 => Ok(OrnamentPositionType::Before),
+                    1 => Ok(OrnamentPositionType::After),
+                    2 => Ok(OrnamentPositionType::OnTop),
+                    _ => Err(E::custom(format!("invalid OrnamentPositionType value: {}", value))),
+                }
+            }
+
+            fn visit_i64<E>(self, value: i64) -> Result<OrnamentPositionType, E>
+            where
+                E: serde::de::Error,
+            {
+                self.visit_u64(value as u64)
+            }
+
+            fn visit_map<A>(self, mut map: A) -> Result<OrnamentPositionType, A::Error>
+            where
+                A: serde::de::MapAccess<'de>,
+            {
+                let mut value: Option<u8> = None;
+                while let Some(key) = map.next_key::<String>()? {
+                    if key == "value" {
+                        value = Some(map.next_value()?);
+                    } else {
+                        map.next_value::<serde::de::IgnoredAny>()?;
+                    }
+                }
+                match value {
+                    Some(0) => Ok(OrnamentPositionType::Before),
+                    Some(1) => Ok(OrnamentPositionType::After),
+                    Some(2) => Ok(OrnamentPositionType::OnTop),
+                    Some(v) => Err(serde::de::Error::custom(format!("invalid OrnamentPositionType value: {}", v))),
+                    None => Err(serde::de::Error::missing_field("value")),
+                }
+            }
+        }
+
+        deserializer.deserialize_any(OrnamentPositionTypeVisitor)
+    }
+}
+
+impl OrnamentPositionType {
+    /// Get the human-readable name for this position type
+    pub fn name(&self) -> &'static str {
+        match self {
+            OrnamentPositionType::Before => "Before",
+            OrnamentPositionType::After => "After",
+            OrnamentPositionType::OnTop => "On Top",
+        }
+    }
+
+    /// Get snake_case name for JSON serialization
+    pub fn snake_case_name(&self) -> &'static str {
+        match self {
+            OrnamentPositionType::Before => "before",
+            OrnamentPositionType::After => "after",
+            OrnamentPositionType::OnTop => "on_top",
+        }
+    }
+
+    /// Get CSS class name for this position type
+    pub fn css_class(&self) -> &'static str {
+        match self {
+            OrnamentPositionType::Before => "ornament-position-before",
+            OrnamentPositionType::After => "ornament-position-after",
+            OrnamentPositionType::OnTop => "ornament-position-on-top",
+        }
+    }
+
+    /// Get MusicXML placement attribute value
+    pub fn musicxml_placement(&self) -> &'static str {
+        match self {
+            OrnamentPositionType::Before => "before",
+            OrnamentPositionType::After => "after",
+            OrnamentPositionType::OnTop => "above",
+        }
+    }
+}
+
+impl Default for OrnamentPositionType {
+    fn default() -> Self {
+        OrnamentPositionType::Before
     }
 }
 
@@ -845,5 +1046,146 @@ impl Default for FontStyle {
 impl Default for TextDecoration {
     fn default() -> Self {
         TextDecoration::None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // T078: Test OrnamentIndicator methods
+    #[test]
+    fn test_ornament_indicator_is_start() {
+        assert!(OrnamentIndicator::OrnamentBeforeStart.is_start());
+        assert!(OrnamentIndicator::OrnamentAfterStart.is_start());
+        assert!(OrnamentIndicator::OrnamentOnTopStart.is_start());
+
+        assert!(!OrnamentIndicator::OrnamentBeforeEnd.is_start());
+        assert!(!OrnamentIndicator::OrnamentAfterEnd.is_start());
+        assert!(!OrnamentIndicator::OrnamentOnTopEnd.is_start());
+        assert!(!OrnamentIndicator::None.is_start());
+    }
+
+    #[test]
+    fn test_ornament_indicator_is_end() {
+        assert!(OrnamentIndicator::OrnamentBeforeEnd.is_end());
+        assert!(OrnamentIndicator::OrnamentAfterEnd.is_end());
+        assert!(OrnamentIndicator::OrnamentOnTopEnd.is_end());
+
+        assert!(!OrnamentIndicator::OrnamentBeforeStart.is_end());
+        assert!(!OrnamentIndicator::OrnamentAfterStart.is_end());
+        assert!(!OrnamentIndicator::OrnamentOnTopStart.is_end());
+        assert!(!OrnamentIndicator::None.is_end());
+    }
+
+    #[test]
+    fn test_ornament_indicator_has_ornament() {
+        assert!(OrnamentIndicator::OrnamentBeforeStart.has_ornament());
+        assert!(OrnamentIndicator::OrnamentBeforeEnd.has_ornament());
+        assert!(OrnamentIndicator::OrnamentAfterStart.has_ornament());
+        assert!(OrnamentIndicator::OrnamentAfterEnd.has_ornament());
+        assert!(OrnamentIndicator::OrnamentOnTopStart.has_ornament());
+        assert!(OrnamentIndicator::OrnamentOnTopEnd.has_ornament());
+
+        assert!(!OrnamentIndicator::None.has_ornament());
+    }
+
+    #[test]
+    fn test_ornament_indicator_position_type() {
+        assert_eq!(
+            OrnamentIndicator::OrnamentBeforeStart.position_type(),
+            OrnamentPositionType::Before
+        );
+        assert_eq!(
+            OrnamentIndicator::OrnamentBeforeEnd.position_type(),
+            OrnamentPositionType::Before
+        );
+
+        assert_eq!(
+            OrnamentIndicator::OrnamentAfterStart.position_type(),
+            OrnamentPositionType::After
+        );
+        assert_eq!(
+            OrnamentIndicator::OrnamentAfterEnd.position_type(),
+            OrnamentPositionType::After
+        );
+
+        assert_eq!(
+            OrnamentIndicator::OrnamentOnTopStart.position_type(),
+            OrnamentPositionType::OnTop
+        );
+        assert_eq!(
+            OrnamentIndicator::OrnamentOnTopEnd.position_type(),
+            OrnamentPositionType::OnTop
+        );
+
+        // None defaults to Before
+        assert_eq!(
+            OrnamentIndicator::None.position_type(),
+            OrnamentPositionType::Before
+        );
+    }
+
+    #[test]
+    fn test_ornament_indicator_matches() {
+        // Valid matches
+        assert!(OrnamentIndicator::OrnamentBeforeStart
+            .matches(&OrnamentIndicator::OrnamentBeforeEnd));
+        assert!(OrnamentIndicator::OrnamentAfterStart
+            .matches(&OrnamentIndicator::OrnamentAfterEnd));
+        assert!(OrnamentIndicator::OrnamentOnTopStart
+            .matches(&OrnamentIndicator::OrnamentOnTopEnd));
+
+        // Invalid matches (different position types)
+        assert!(!OrnamentIndicator::OrnamentBeforeStart
+            .matches(&OrnamentIndicator::OrnamentAfterEnd));
+        assert!(!OrnamentIndicator::OrnamentAfterStart
+            .matches(&OrnamentIndicator::OrnamentBeforeEnd));
+        assert!(!OrnamentIndicator::OrnamentOnTopStart
+            .matches(&OrnamentIndicator::OrnamentBeforeEnd));
+
+        // Invalid matches (same type, both start or both end)
+        assert!(!OrnamentIndicator::OrnamentBeforeStart
+            .matches(&OrnamentIndicator::OrnamentBeforeStart));
+        assert!(!OrnamentIndicator::OrnamentBeforeEnd
+            .matches(&OrnamentIndicator::OrnamentBeforeEnd));
+
+        // None doesn't match anything
+        assert!(!OrnamentIndicator::None.matches(&OrnamentIndicator::OrnamentBeforeStart));
+        assert!(!OrnamentIndicator::None.matches(&OrnamentIndicator::None));
+    }
+
+    #[test]
+    fn test_ornament_indicator_snake_case_name() {
+        assert_eq!(OrnamentIndicator::None.snake_case_name(), "none");
+        assert_eq!(
+            OrnamentIndicator::OrnamentBeforeStart.snake_case_name(),
+            "ornament_before_start"
+        );
+        assert_eq!(
+            OrnamentIndicator::OrnamentBeforeEnd.snake_case_name(),
+            "ornament_before_end"
+        );
+        assert_eq!(
+            OrnamentIndicator::OrnamentAfterStart.snake_case_name(),
+            "ornament_after_start"
+        );
+        assert_eq!(
+            OrnamentIndicator::OrnamentAfterEnd.snake_case_name(),
+            "ornament_after_end"
+        );
+        assert_eq!(
+            OrnamentIndicator::OrnamentOnTopStart.snake_case_name(),
+            "ornament_on_top_start"
+        );
+        assert_eq!(
+            OrnamentIndicator::OrnamentOnTopEnd.snake_case_name(),
+            "ornament_on_top_end"
+        );
+    }
+
+    #[test]
+    fn test_ornament_indicator_default() {
+        assert_eq!(OrnamentIndicator::default(), OrnamentIndicator::None);
     }
 }
