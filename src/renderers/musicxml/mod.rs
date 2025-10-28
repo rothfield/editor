@@ -179,6 +179,7 @@ fn process_segment(
 
     // Track orphaned grace notes from beats with only ornament cells
     let mut orphaned_grace_notes: Vec<(PitchCode, i8, OrnamentPositionType)> = Vec::new();
+    let mut last_beat_had_main_note = false;
 
     for (i, beat) in beats.iter().enumerate() {
         let beat_cells = &cells[beat.start..=beat.end];
@@ -190,13 +191,37 @@ fn process_segment(
             !c.is_rhythm_transparent()
         });
 
-        // If beat contains only ornaments, collect them as grace notes for the next beat
+        // If beat contains only ornaments, collect them as grace notes
         if !has_main_note && beat_cells.iter().any(|c| c.is_rhythm_transparent()) {
-            for cell in beat_cells {
-                if cell.is_rhythm_transparent() && cell.kind == ElementKind::PitchedElement && !cell.continuation {
-                    if let Some(pitch_code) = &cell.pitch_code {
-                        let ornament_position = cell.ornament_indicator.position_type();
-                        orphaned_grace_notes.push((*pitch_code, cell.octave, ornament_position));
+            // Check if this beat immediately follows the previous beat in the cells array
+            // (i.e., no gap between beat[i-1].end and beat[i].start)
+            let is_immediately_after_main_note = if i > 0 && last_beat_had_main_note {
+                let prev_beat = &beats[i - 1];
+                beat.start == prev_beat.end + 1 || beat.start == prev_beat.end + 2
+            } else {
+                false
+            };
+
+            if is_immediately_after_main_note {
+                // These are trailing grace notes from the previous beat, not orphaned
+                // Don't process this beat; let the previous beat handle them as trailing grace notes
+                // Mark them to be handled differently
+                for cell in beat_cells {
+                    if cell.is_rhythm_transparent() && cell.kind == ElementKind::PitchedElement && !cell.continuation {
+                        if let Some(pitch_code) = &cell.pitch_code {
+                            let ornament_position = cell.ornament_indicator.position_type();
+                            orphaned_grace_notes.push((*pitch_code, cell.octave, ornament_position));
+                        }
+                    }
+                }
+            } else {
+                // These are true orphaned grace notes for the next beat
+                for cell in beat_cells {
+                    if cell.is_rhythm_transparent() && cell.kind == ElementKind::PitchedElement && !cell.continuation {
+                        if let Some(pitch_code) = &cell.pitch_code {
+                            let ornament_position = cell.ornament_indicator.position_type();
+                            orphaned_grace_notes.push((*pitch_code, cell.octave, ornament_position));
+                        }
                     }
                 }
             }
@@ -204,7 +229,7 @@ fn process_segment(
             continue;
         }
 
-        // If we have orphaned grace notes, prepend them before processing this beat
+        // If we have orphaned grace notes that are NOT trailing grace notes, prepend them before processing this beat
         if !orphaned_grace_notes.is_empty() {
             for (grace_pitch_code, grace_octave, ornament_position) in orphaned_grace_notes.drain(..) {
                 let placement = match ornament_position {
@@ -215,17 +240,28 @@ fn process_segment(
             }
         }
 
-        // Check if next beat starts with "-" for tie detection
-        let next_beat_starts_with_div = if i + 1 < beats.len() {
-            let next_beat = &beats[i + 1];
-            let next_cells = &cells[next_beat.start..=next_beat.end];
-            beat_starts_with_division(next_cells)
-        } else {
-            false
-        };
+        last_beat_had_main_note = true;
 
-        // Pass full cells array and beat info so we can look back for ornament indicators
-        process_beat_with_context(builder, cells, beat, measure_divisions, next_beat_starts_with_div)?;
+        // Find the next beat with a main note (skip beats with only ornaments)
+        let mut next_beat_starts_with_div = false;
+        let mut next_main_beat_index = None;
+        for j in (i + 1)..beats.len() {
+            let next_beat = &beats[j];
+            let next_cells = &cells[next_beat.start..=next_beat.end];
+            let next_has_main_note = next_cells.iter().any(|c| {
+                !c.continuation &&
+                c.kind == ElementKind::PitchedElement &&
+                !c.is_rhythm_transparent()
+            });
+            if next_has_main_note {
+                next_beat_starts_with_div = beat_starts_with_division(next_cells);
+                next_main_beat_index = Some(j);
+                break;
+            }
+        }
+
+        // Pass full cells array and beat info so we can look ahead and collect trailing grace notes
+        process_beat_with_context(builder, cells, beat, &beats, measure_divisions, next_beat_starts_with_div)?;
     }
 
     Ok(())
@@ -237,6 +273,7 @@ fn process_beat_with_context(
     builder: &mut MusicXmlBuilder,
     all_cells: &[Cell],
     beat: &BeatSpan,
+    beats: &[BeatSpan],
     measure_divisions: usize,
     next_beat_starts_with_div: bool
 ) -> Result<(), String> {
@@ -286,7 +323,36 @@ fn process_beat_with_context(
         }
     }
 
-    process_beat(builder, beat_cells, measure_divisions, next_beat_starts_with_div)
+    // Collect trailing grace notes from following beats that contain only ornaments
+    // These should be attached to this beat's main note as after-grace notes
+    let mut trailing_ornament_cells = Vec::new();
+    let mut beat_index_in_array = beats.iter().position(|b| b.start == beat.start && b.end == beat.end).unwrap_or(0);
+
+    for j in (beat_index_in_array + 1)..beats.len() {
+        let following_beat = &beats[j];
+        let following_cells = &all_cells[following_beat.start..=following_beat.end];
+
+        // Check if this beat contains any main notes
+        let has_main_note = following_cells.iter().any(|c| {
+            !c.continuation &&
+            c.kind == ElementKind::PitchedElement &&
+            !c.is_rhythm_transparent()
+        });
+
+        if has_main_note {
+            // Stop looking when we hit a beat with a main note
+            break;
+        }
+
+        // This beat contains only ornaments, collect them as trailing grace notes
+        for cell in following_cells {
+            if cell.is_rhythm_transparent() && cell.kind == ElementKind::PitchedElement && !cell.continuation {
+                trailing_ornament_cells.push(cell);
+            }
+        }
+    }
+
+    process_beat(builder, beat_cells, measure_divisions, next_beat_starts_with_div, trailing_ornament_cells, all_cells)
 }
 
 /// Check if a beat starts with "-" (division/extension)
@@ -383,7 +449,9 @@ fn process_beat(
     builder: &mut MusicXmlBuilder,
     beat_cells: &[Cell],
     measure_divisions: usize,
-    next_beat_starts_with_div: bool
+    next_beat_starts_with_div: bool,
+    trailing_ornament_cells: Vec<&Cell>,
+    _all_cells: &[Cell]
 ) -> Result<(), String> {
     if beat_cells.is_empty() {
         return Ok(());
@@ -542,23 +610,15 @@ fn process_beat(
                     };
 
                     // Collect grace notes that come AFTER this main note (unmeasured fioritura)
+                    // Use the pre-collected trailing_ornament_cells from following beats with only ornaments
                     let mut trailing_grace_notes: Vec<(PitchCode, i8, OrnamentPositionType)> = Vec::new();
-                    let mut j = i + 1 + extension_count;
-                    let trailing_grace_start = j; // Track where trailing grace notes start
-                    while j < beat_cells.len() {
-                        let c = &beat_cells[j];
-                        if c.is_rhythm_transparent() && c.kind == ElementKind::PitchedElement && !c.continuation {
-                            if let Some(pitch_code) = &c.pitch_code {
-                                let ornament_position = c.ornament_indicator.position_type();
-                                trailing_grace_notes.push((*pitch_code, c.octave, ornament_position));
-                            }
-                        } else if !c.is_rhythm_transparent() && !c.continuation {
-                            // Stop at next main element
-                            break;
+                    for trailing_cell in &trailing_ornament_cells {
+                        if let Some(pitch_code) = &trailing_cell.pitch_code {
+                            let ornament_position = trailing_cell.ornament_indicator.position_type();
+                            trailing_grace_notes.push((*pitch_code, trailing_cell.octave, ornament_position));
                         }
-                        j += 1;
                     }
-                    trailing_grace_count = j - trailing_grace_start; // Count trailing grace notes
+                    trailing_grace_count = trailing_ornament_cells.len();
 
                     // Keep before and after grace notes separate for proper MusicXML output
                     // (before notes go before main note, after notes go after main note with steal-time-following)
