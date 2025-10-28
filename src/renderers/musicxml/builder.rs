@@ -376,14 +376,23 @@ impl MusicXmlBuilder {
         self.write_grace_note_beamed(pitch_code, octave, slash, placement, after_grace, steal_time_following, None)
     }
 
-    /// Write a grace note with beaming support
+    /// Write a grace note with full support for steal-time, beaming, and slurring
+    /// before_grace: if true, steals from previous note; if false, steals from following note
+    /// steal_time_pct: percentage of time stolen (before grace steals-previous, after grace steals-following)
+    /// beam_state: Optional beam state for grouping ("begin", "continue", "end")
+    /// slur_type: Optional slur direction to main note ("start", "stop", or None)
     pub fn write_grace_note_beamed(&mut self, pitch_code: &PitchCode, octave: i8, slash: bool, placement: Option<&str>, after_grace: bool, steal_time_following: Option<f32>, beam_state: Option<&str>) -> Result<(), String> {
+        self.write_grace_note_full(pitch_code, octave, slash, placement, after_grace, steal_time_following, beam_state, None)
+    }
+
+    /// Full grace note with all attributes
+    pub fn write_grace_note_full(&mut self, pitch_code: &PitchCode, octave: i8, slash: bool, placement: Option<&str>, after_grace: bool, steal_time_pct: Option<f32>, beam_state: Option<&str>, slur_type: Option<&str>) -> Result<(), String> {
         let (step, alter) = pitch_code_to_step_alter(pitch_code);
         let xml_octave = octave + 4; // music-text octave 0 = MIDI octave 4 (middle C)
 
         self.buffer.push_str("<note>\n");
 
-        // Grace element with optional attributes
+        // Grace element with steal-time attributes
         let mut grace_attrs = String::new();
 
         if slash {
@@ -394,13 +403,21 @@ impl MusicXmlBuilder {
             grace_attrs.push_str(&format!(" placement=\"{}\"", place));
         }
 
-        // Add steal-time-following for after grace notes (unmeasured fioritura)
-        if after_grace {
-            if let Some(steal_pct) = steal_time_following {
+        // Add steal-time attributes based on grace note position
+        if let Some(steal_pct) = steal_time_pct {
+            if after_grace {
+                // After grace notes steal from the following note (unmeasured fioritura)
                 grace_attrs.push_str(&format!(" steal-time-following=\"{:.0}\"", steal_pct));
             } else {
-                // Default: steal 50% of time from following note for unmeasured fioritura
+                // Before grace notes steal from the previous note (traditional grace notes)
+                grace_attrs.push_str(&format!(" steal-time-previous=\"{:.0}\"", steal_pct));
+            }
+        } else {
+            // Default steal time values
+            if after_grace {
                 grace_attrs.push_str(" steal-time-following=\"50\"");
+            } else {
+                grace_attrs.push_str(" steal-time-previous=\"10\"");
             }
         }
 
@@ -418,16 +435,19 @@ impl MusicXmlBuilder {
         self.buffer.push_str(&format!("    <octave>{}</octave>\n", xml_octave));
         self.buffer.push_str("  </pitch>\n");
 
-        // Grace notes use 8th note type by default (or 16th for smaller after grace notes)
-        if after_grace {
-            self.buffer.push_str("  <type>sixteenth</type>\n");
-        } else {
-            self.buffer.push_str("  <type>eighth</type>\n");
-        }
+        // Grace notes: 16th for before grace (smaller), 16th for after grace (even smaller)
+        self.buffer.push_str("  <type>sixteenth</type>\n");
 
         // Add beam information if provided (for grouping multiple grace notes)
         if let Some(state) = beam_state {
             self.buffer.push_str(&format!("  <beam number=\"1\">{}</beam>\n", state));
+        }
+
+        // Add slur if provided (to connect grace notes to main note)
+        if let Some(slur_dir) = slur_type {
+            self.buffer.push_str("  <notations>\n");
+            self.buffer.push_str(&format!("    <slur type=\"{}\" number=\"1\"/>\n", slur_dir));
+            self.buffer.push_str("  </notations>\n");
         }
 
         self.buffer.push_str("</note>\n");

@@ -666,8 +666,24 @@ fn process_beat(
                             None
                         };
 
-                        // Before grace notes: use write_grace_note_beamed (with beaming support)
-                        builder.write_grace_note_beamed(grace_pitch_code, *grace_octave, true, placement, false, None, beam_state)?; // true = with slash (acciaccatura)
+                        // Determine slur state: start on first, stop on last, none in between
+                        let slur_type = if before_grace_count > 1 {
+                            if idx == 0 {
+                                Some("start")
+                            } else if idx == before_grace_count - 1 {
+                                Some("stop")
+                            } else {
+                                None
+                            }
+                        } else if before_grace_count == 1 {
+                            // Single grace note: start and stop on the same note
+                            Some("start")
+                        } else {
+                            None
+                        };
+
+                        // Before grace notes: use write_grace_note_full with steal-time-previous (10%) and slurring
+                        builder.write_grace_note_full(grace_pitch_code, *grace_octave, true, placement, false, Some(10.0), beam_state, slur_type)?;
                     }
 
                     let tie = if *is_last_note && next_beat_starts_with_div {
@@ -706,9 +722,23 @@ fn process_beat(
                             None
                         };
 
-                        // After grace notes: use write_grace_note_beamed with after_grace=true
-                        // This adds steal-time-following attribute, uses smaller sixteenth note type, and beams grouped notes
-                        builder.write_grace_note_beamed(grace_pitch_code, *grace_octave, true, placement, true, Some(50.0), beam_state)?;
+                        // Determine slur state: start on first, stop on last
+                        let slur_type = if after_grace_count > 1 {
+                            if idx == 0 {
+                                Some("start")
+                            } else if idx == after_grace_count - 1 {
+                                Some("stop")
+                            } else {
+                                None
+                            }
+                        } else if after_grace_count == 1 {
+                            Some("start")
+                        } else {
+                            None
+                        };
+
+                        // After grace notes: use write_grace_note_full with steal-time-following (50%) and slurring
+                        builder.write_grace_note_full(grace_pitch_code, *grace_octave, true, placement, true, Some(50.0), beam_state, slur_type)?;
                     }
                 }
                 BeatElement::Rest { duration_divs, musical_duration } => {

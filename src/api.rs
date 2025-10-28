@@ -859,8 +859,14 @@ pub fn apply_ornament(
                 if actual_end - start >= 2 {
                     cells[start].set_ornament_start_with_position(ornament_position);
                     cells[actual_end - 1].set_ornament_end_with_position(ornament_position);
-                    wasm_info!("  Changed ornament position to {}: cell[{}] = Start, cell[{}] = End",
-                              position_type, start, actual_end - 1);
+
+                    // Mark intermediate cells as rhythm-transparent by giving them an ornament indicator
+                    for i in (start + 1)..( actual_end - 1) {
+                        cells[i].set_ornament_end_with_position(ornament_position);
+                    }
+
+                    wasm_info!("  Changed ornament position to {}: cell[{}] = Start, cell[{}] = End, {} intermediate cells marked",
+                              position_type, start, actual_end - 1, (actual_end - start).saturating_sub(2));
                 }
             }
         }
@@ -877,8 +883,14 @@ pub fn apply_ornament(
             cells[start].set_ornament_start_with_position(ornament_position);
             cells[actual_end - 1].set_ornament_end_with_position(ornament_position);
 
-            wasm_info!("  Applied ornament indicators ({}): cell[{}] = Start, cell[{}] = End",
-                      position_type, start, actual_end - 1);
+            // Mark intermediate cells as rhythm-transparent by giving them an ornament indicator
+            // (they need to have the SAME indicator so they're all treated consistently as ornament cells)
+            for i in (start + 1)..( actual_end - 1) {
+                cells[i].set_ornament_end_with_position(ornament_position);
+            }
+
+            wasm_info!("  Applied ornament indicators ({}): cell[{}] = Start, cell[{}] = End, {} intermediate cells marked",
+                      position_type, start, actual_end - 1, (actual_end - start).saturating_sub(2));
         } else {
             wasm_warn!("  Selection too short for ornament ({} cells), need at least 2", actual_end - start);
         }
