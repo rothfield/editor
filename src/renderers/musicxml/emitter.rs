@@ -120,7 +120,7 @@ fn emit_event(
     match event {
         ExportEvent::Rest { divisions } => {
             let duration_divs = *divisions;
-            let musical_duration = duration_divs as f64 / measure_divisions as f64 * 4.0;
+            let musical_duration = duration_divs as f64 / measure_divisions as f64;
             builder.write_rest(duration_divs, musical_duration);
         }
 
@@ -187,7 +187,7 @@ fn emit_note(
     lyric_index: &mut usize,
 ) -> Result<(), String> {
     let duration_divs = note.divisions;
-    let musical_duration = duration_divs as f64 / measure_divisions as f64 * 4.0;
+    let musical_duration = duration_divs as f64 / measure_divisions as f64;
 
     // Note: Emitting with low-level builder for now
     // TODO: Integrate grace notes, slurs, lyrics, articulations, beam, tie
@@ -243,7 +243,7 @@ fn emit_chord(
     slur: &Option<SlurData>,
 ) -> Result<(), String> {
     let duration_divs = divisions;
-    let musical_duration = duration_divs as f64 / measure_divisions as f64 * 4.0;
+    let musical_duration = duration_divs as f64 / measure_divisions as f64;
 
     // Emit first note with chord flag for subsequent notes
     if !pitches.is_empty() {
