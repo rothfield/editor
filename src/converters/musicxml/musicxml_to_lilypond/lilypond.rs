@@ -199,7 +199,12 @@ fn note_to_lilypond(note: &NoteEvent, settings: &ConversionSettings) -> String {
 
     // Add grace note prefix if needed
     if note.is_grace {
-        if note.grace_slash {
+        if note.is_after_grace {
+            // After grace notes (unmeasured fioritura) - use smaller sizing with \tiny
+            // These don't use \grace or \acciaccatura prefix; they're wrapped by \afterGrace at a higher level
+            // For now, just render with \tiny modifier for visual distinction
+            result.push_str("\\tiny ");
+        } else if note.grace_slash {
             result.push_str("\\acciaccatura ");
         } else {
             result.push_str("\\grace ");

@@ -365,24 +365,49 @@ impl MusicXmlBuilder {
     /// slash: Whether to show slash (true = acciaccatura, false = appoggiatura)
     /// placement: Optional placement ("above" or "below")
     pub fn write_grace_note(&mut self, pitch_code: &PitchCode, octave: i8, slash: bool, placement: Option<&str>) -> Result<(), String> {
+        self.write_grace_note_with_timing(pitch_code, octave, slash, placement, false, None)
+    }
+
+    /// Write a grace note with optional after-grace positioning, steal-time attributes, and beaming
+    /// after_grace: if true, this is an after grace note that comes after the main note
+    /// steal_time_following: percentage (0-100) of time to steal from following note
+    /// beam_state: Optional beam state for grouping multiple grace notes ("begin", "continue", "end")
+    pub fn write_grace_note_with_timing(&mut self, pitch_code: &PitchCode, octave: i8, slash: bool, placement: Option<&str>, after_grace: bool, steal_time_following: Option<f32>) -> Result<(), String> {
+        self.write_grace_note_beamed(pitch_code, octave, slash, placement, after_grace, steal_time_following, None)
+    }
+
+    /// Write a grace note with beaming support
+    pub fn write_grace_note_beamed(&mut self, pitch_code: &PitchCode, octave: i8, slash: bool, placement: Option<&str>, after_grace: bool, steal_time_following: Option<f32>, beam_state: Option<&str>) -> Result<(), String> {
         let (step, alter) = pitch_code_to_step_alter(pitch_code);
         let xml_octave = octave + 4; // music-text octave 0 = MIDI octave 4 (middle C)
 
         self.buffer.push_str("<note>\n");
 
-        // Grace element (with or without slash and optional placement)
+        // Grace element with optional attributes
+        let mut grace_attrs = String::new();
+
         if slash {
-            if let Some(place) = placement {
-                self.buffer.push_str(&format!("  <grace slash=\"yes\" placement=\"{}\"/>\n", place));
+            grace_attrs.push_str(" slash=\"yes\"");
+        }
+
+        if let Some(place) = placement {
+            grace_attrs.push_str(&format!(" placement=\"{}\"", place));
+        }
+
+        // Add steal-time-following for after grace notes (unmeasured fioritura)
+        if after_grace {
+            if let Some(steal_pct) = steal_time_following {
+                grace_attrs.push_str(&format!(" steal-time-following=\"{:.0}\"", steal_pct));
             } else {
-                self.buffer.push_str("  <grace slash=\"yes\"/>\n");
+                // Default: steal 50% of time from following note for unmeasured fioritura
+                grace_attrs.push_str(" steal-time-following=\"50\"");
             }
+        }
+
+        if grace_attrs.is_empty() {
+            self.buffer.push_str("  <grace/>\n");
         } else {
-            if let Some(place) = placement {
-                self.buffer.push_str(&format!("  <grace placement=\"{}\"/>\n", place));
-            } else {
-                self.buffer.push_str("  <grace/>\n");
-            }
+            self.buffer.push_str(&format!("  <grace{}/>\n", grace_attrs));
         }
 
         self.buffer.push_str("  <pitch>\n");
@@ -393,8 +418,17 @@ impl MusicXmlBuilder {
         self.buffer.push_str(&format!("    <octave>{}</octave>\n", xml_octave));
         self.buffer.push_str("  </pitch>\n");
 
-        // Grace notes use 8th note type by default
-        self.buffer.push_str("  <type>eighth</type>\n");
+        // Grace notes use 8th note type by default (or 16th for smaller after grace notes)
+        if after_grace {
+            self.buffer.push_str("  <type>sixteenth</type>\n");
+        } else {
+            self.buffer.push_str("  <type>eighth</type>\n");
+        }
+
+        // Add beam information if provided (for grouping multiple grace notes)
+        if let Some(state) = beam_state {
+            self.buffer.push_str(&format!("  <beam number=\"1\">{}</beam>\n", state));
+        }
 
         self.buffer.push_str("</note>\n");
 

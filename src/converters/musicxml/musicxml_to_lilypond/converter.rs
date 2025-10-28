@@ -174,16 +174,25 @@ pub fn convert_note(
 
     // Check for grace notes BEFORE parsing duration (grace notes don't have duration)
     let is_grace = get_child(note_node, "grace").is_some();
-    let grace_slash = if let Some(grace_node) = get_child(note_node, "grace") {
-        grace_node.attribute("slash").map_or(false, |s| s == "yes")
+    let (grace_slash, is_after_grace, steal_time_following) = if let Some(grace_node) = get_child(note_node, "grace") {
+        let slash = grace_node.attribute("slash").map_or(false, |s| s == "yes");
+        // Check for steal-time-following attribute (indicates unmeasured fioritura / after grace notes)
+        let has_steal_time = grace_node.attribute("steal-time-following").is_some();
+        let steal_pct = grace_node.attribute("steal-time-following")
+            .and_then(|s| s.parse::<f32>().ok());
+        (slash, has_steal_time, steal_pct)
     } else {
-        false
+        (false, false, None)
     };
 
     // Extract duration (or use dummy duration for grace notes)
     let duration = if is_grace {
-        // Grace notes don't have duration in MusicXML, use a dummy 16th note
-        Duration::new(4, 0, None)
+        // Grace notes don't have duration in MusicXML, use a dummy 16th note for before grace, 32nd for after grace
+        if is_after_grace {
+            Duration::new(5, 0, None) // 32nd note for smaller after grace notes
+        } else {
+            Duration::new(4, 0, None) // 16th note for before grace notes
+        }
     } else {
         parse_duration(note_node, divisions)?
     };
@@ -192,6 +201,8 @@ pub fn convert_note(
     let mut note_event = NoteEvent::new(pitch, duration);
     note_event.is_grace = is_grace;
     note_event.grace_slash = grace_slash;
+    note_event.is_after_grace = is_after_grace;
+    note_event.steal_time_following = steal_time_following;
 
     // Check for ties
     for child in note_node.children() {

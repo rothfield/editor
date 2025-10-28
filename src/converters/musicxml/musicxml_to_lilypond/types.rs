@@ -355,6 +355,8 @@ pub struct NoteEvent {
     pub dynamics: Option<DynamicMark>,
     pub is_grace: bool,
     pub grace_slash: bool,
+    pub is_after_grace: bool, // Grace note that comes AFTER the main note (unmeasured fioritura)
+    pub steal_time_following: Option<f32>, // Percentage of time stolen from following note for after grace notes
 }
 
 impl NoteEvent {
@@ -368,6 +370,8 @@ impl NoteEvent {
             dynamics: None,
             is_grace: false,
             grace_slash: false,
+            is_after_grace: false,
+            steal_time_following: None,
         }
     }
 }
