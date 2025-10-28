@@ -199,6 +199,30 @@ This mirrors how you read the handwriting anyway: you visually cluster the littl
 
 **And crucially, this grouping is not stored back into the editing model.** The editing model stays simple and linear. The grouping is computed on demand.
 
+### 3.4 Ornaments are Non-Metrical Elements
+
+A critical observation: **ornaments carry no rhythmic value themselves.**
+
+In the token stream, we distinguish two kinds of elements:
+
+1. **Metrical elements** — Elements that contribute to a beat and have rhythmic duration:
+   - Pitched metrical elements: main notes (e.g., `S`, `r`, `3`)
+   - Unpitched metrical elements: divisions (e.g., `-` for sustain) and unpitched structural markers
+
+2. **Non-metrical elements** — Elements that are visually or expressively present but transparent to rhythm:
+   - **Pitched non-metrical ornament elements**: ornament pitches (grace notes, scoops, releases, flicks)
+   - Unpitched non-metrical markers: barlines, breath marks, symbolic ornaments (trill squiggles, mordents)
+
+**Ornaments, whether pitched or symbolic, have zero rhythmic duration.** They cannot form a beat by themselves. During beat extraction and rhythm calculation:
+
+- Ornaments are explicitly skipped (marked as `rhythm_transparent()` in the implementation).
+- Only metrical elements contribute to measuring out beats.
+- Ornaments are attached to adjacent metrical elements **based on their position type**, not based on beat logic.
+
+This is why ornaments can cluster densely around a note without causing metric confusion. The beat is defined by the main note alone; the ornaments are purely embellishment and expressivity layered on top.
+
+**Implication for export/rendering**: When exporting to MusicXML or LilyPond, ornaments become grace notes or symbolic marks attached to their anchor metrical element. They never exist as independent rhythmic entities in the notation system.
+
 ---
 
 ## 4. Rendering View (Pretty Mode)
