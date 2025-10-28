@@ -26,6 +26,7 @@ pub mod grace_notes;
 pub mod helpers;
 pub mod export_ir;
 pub mod cell_to_ir;
+pub mod emitter;
 
 pub use duration::*;
 pub use pitch::*;
@@ -33,3 +34,4 @@ pub use builder::*;
 pub use converter::to_musicxml;
 pub use grace_notes::{detect_grace_note_ornament_type, ornament_position_to_placement};
 pub use helpers::log_musicxml;
+pub use emitter::emit_musicxml;
