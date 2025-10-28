@@ -66,21 +66,44 @@ impl<'a> LayoutLineComputer<'a> {
             HashMap::new()
         };
 
+        // Extract ornaments from indicators and attach to anchor cells when mode is OFF
+        let (working_cells, cell_index_map) = if !ornament_edit_mode {
+            self.extract_ornaments_from_indicators(&line.cells)
+        } else {
+            // Just copy cells when mode is ON, with identity mapping
+            let cells = line.cells.to_vec();
+            let map: Vec<usize> = (0..cells.len()).collect();
+            (cells, map)
+        };
+
         // Render cells with cumulative X positioning
         let mut cells = Vec::new();
         let mut cumulative_x = config.left_margin;
         let mut char_width_offset = 0;
 
         // Calculate X positions and create render cells
-        // Note: When ornament_edit_mode is OFF, ornaments are stored in cell.ornaments
-        // and won't appear in line.cells, so no filtering is needed
-        for (cell_idx, cell) in line.cells.iter().enumerate() {
+        // Note: When ornament_edit_mode is OFF, ornaments are extracted and stored in cell.ornaments
+        // working_cells contains the modified cells with ornaments attached
+        // cell_index_map maps working_cells indices to original line.cells indices
+        let mut last_original_idx = 0;
+        for (working_idx, cell) in working_cells.iter().enumerate() {
             // All cells use normal inline positioning
             let cell_x = cumulative_x;
 
+            // Use original cell index from mapping for dataset
+            let original_cell_idx = cell_index_map[working_idx];
+
+            // Skip character widths for any cells we skipped (ornaments that were extracted)
+            // This ensures char_width_offset stays in sync with the actual characters we're rendering
+            for skipped_idx in last_original_idx..original_cell_idx {
+                let skipped_char_count = line.cells[skipped_idx].char.chars().count();
+                char_width_offset += skipped_char_count;
+            }
+            last_original_idx = original_cell_idx + 1;
+
             let render_cell = cell_style_builder.build_render_cell(
                 cell,
-                cell_idx,
+                original_cell_idx,  // Use original index so JavaScript can map back correctly
                 line_idx,
                 cell_x,
                 config,
@@ -94,7 +117,9 @@ impl<'a> LayoutLineComputer<'a> {
             );
 
             // Advance X position for next cell
-            let effective_width = effective_widths.get(cell_idx).copied().unwrap_or(12.0);
+            // Use effective_widths which accounts for syllable padding
+            // This ensures X positions match the actual rendered cell widths
+            let effective_width = effective_widths.get(original_cell_idx).copied().unwrap_or(12.0);
             cumulative_x += effective_width;
 
             cells.push(render_cell);
@@ -145,7 +170,7 @@ impl<'a> LayoutLineComputer<'a> {
         // Position ornaments separately when edit mode is OFF
         let ornaments = if !ornament_edit_mode {
             self.position_ornaments_from_cells(
-                &line.cells,
+                &working_cells,
                 &cells,
                 &effective_widths,
                 config,
@@ -790,6 +815,85 @@ impl<'a> LayoutLineComputer<'a> {
         }
 
         ornaments
+    }
+
+    /// Extract ornaments from inline indicator cells and attach them to anchor cells
+    ///
+    /// When ornament_edit_mode is OFF, this function:
+    /// - Scans for OrnamentStart/OrnamentEnd indicator pairs
+    /// - Extracts cells between indicators (the ornament content)
+    /// - Creates Ornament objects and attaches them to the anchor cell
+    /// - Removes the indicator cells from the returned vector
+    ///
+    /// Returns a tuple of (modified cell vector, index mapping)
+    /// where the mapping maps result indices to original cell indices
+    fn extract_ornaments_from_indicators(&self, cells: &[Cell]) -> (Vec<Cell>, Vec<usize>) {
+        let mut result: Vec<Cell> = Vec::new();
+        let mut index_map: Vec<usize> = Vec::new();
+        let mut i = 0;
+
+        while i < cells.len() {
+            let cell = &cells[i];
+
+            // Check if this cell has an ornament start indicator
+            if cell.ornament_indicator.is_start() {
+                let start_idx = i;
+                let position_type = cell.ornament_indicator.position_type();
+
+                // Find the matching end indicator
+                let mut end_idx = None;
+                for j in (start_idx + 1)..cells.len() {
+                    if cells[j].ornament_indicator.is_end()
+                        && cell.ornament_indicator.matches(&cells[j].ornament_indicator) {
+                        end_idx = Some(j);
+                        break;
+                    }
+                }
+
+                if let Some(end_idx) = end_idx {
+                    // Extract ornament cells (from start to end, inclusive)
+                    let ornament_cells: Vec<Cell> = cells[(start_idx)..=end_idx]
+                        .iter()
+                        .cloned()
+                        .collect();
+
+                    // Create the Ornament object
+                    let placement = match position_type {
+                        crate::models::elements::OrnamentPositionType::Before => {
+                            crate::models::elements::OrnamentPlacement::Before
+                        }
+                        crate::models::elements::OrnamentPositionType::After |
+                        crate::models::elements::OrnamentPositionType::OnTop => {
+                            crate::models::elements::OrnamentPlacement::After
+                        }
+                    };
+
+                    let ornament = crate::models::elements::Ornament {
+                        cells: ornament_cells,
+                        placement,
+                    };
+
+                    // Find the anchor cell (the cell immediately before the start indicator)
+                    if start_idx > 0 {
+                        // Attach ornament to the anchor cell
+                        if let Some(anchor_cell) = result.last_mut() {
+                            anchor_cell.ornaments.push(ornament);
+                        }
+                    }
+
+                    // Skip past all the ornament cells (including the end indicator)
+                    i = end_idx + 1;
+                    continue;
+                }
+            }
+
+            // Regular cell - add it to result with its original index
+            result.push(cell.clone());
+            index_map.push(i);
+            i += 1;
+        }
+
+        (result, index_map)
     }
 
 

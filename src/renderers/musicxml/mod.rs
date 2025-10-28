@@ -10,7 +10,7 @@ pub use duration::*;
 pub use pitch::*;
 pub use builder::*;
 
-use crate::models::{Document, ElementKind, Cell, PitchCode, SlurIndicator};
+use crate::models::{Document, ElementKind, Cell, PitchCode, SlurIndicator, OrnamentPositionType, BeatSpan};
 use crate::parse::beats::BeatDeriver;
 
 // Logging for MusicXML export (mirrors api.rs logging macros)
@@ -188,10 +188,69 @@ fn process_segment(
             false
         };
 
-        process_beat(builder, beat_cells, measure_divisions, next_beat_starts_with_div)?;
+        // Pass full cells array and beat info so we can look back for ornament indicators
+        process_beat_with_context(builder, cells, beat, measure_divisions, next_beat_starts_with_div)?;
     }
 
     Ok(())
+}
+
+/// Process a beat with context about preceding ornament indicators
+/// Looks back before the beat to find any ornament start indicators that should apply to this beat
+fn process_beat_with_context(
+    builder: &mut MusicXmlBuilder,
+    all_cells: &[Cell],
+    beat: &BeatSpan,
+    measure_divisions: usize,
+    next_beat_starts_with_div: bool
+) -> Result<(), String> {
+    let beat_cells = &all_cells[beat.start..=beat.end];
+
+    // Look backwards to find any preceding ornament start indicators
+    // These would indicate grace notes that should be attached to the first note in this beat
+    let mut preceding_grace_notes: Vec<(PitchCode, i8, OrnamentPositionType)> = Vec::new();
+    let mut current_ornament_position = OrnamentPositionType::Before;
+
+    // Search backwards from beat start for ornament indicators
+    if beat.start > 0 {
+        let mut search_index = beat.start - 1;
+        loop {
+            let cell = &all_cells[search_index];
+
+            // If we find an ornament start, collect grace notes between here and beat start
+            if cell.is_ornament_start() {
+                current_ornament_position = cell.ornament_indicator.position_type();
+                // Collect pitched elements between this start and the beat start
+                for j in (search_index + 1)..beat.start {
+                    let c = &all_cells[j];
+                    if c.kind == ElementKind::PitchedElement && !c.continuation {
+                        if let Some(pitch_code) = &c.pitch_code {
+                            preceding_grace_notes.push((*pitch_code, c.octave, current_ornament_position));
+                        }
+                    }
+                }
+                break;
+            }
+
+            if search_index == 0 {
+                break;
+            }
+            search_index -= 1;
+        }
+    }
+
+    // If we found preceding grace notes, write them and then process the beat normally
+    if !preceding_grace_notes.is_empty() {
+        for (grace_pitch_code, grace_octave, ornament_position) in preceding_grace_notes {
+            let placement = match ornament_position {
+                OrnamentPositionType::OnTop => Some("above"),
+                OrnamentPositionType::Before | OrnamentPositionType::After => None,
+            };
+            builder.write_grace_note(&grace_pitch_code, grace_octave, true, placement)?;
+        }
+    }
+
+    process_beat(builder, beat_cells, measure_divisions, next_beat_starts_with_div)
 }
 
 /// Check if a beat starts with "-" (division/extension)
@@ -317,7 +376,7 @@ fn process_beat(
             let musical_duration = leading_div_count as f64 / total_cells as f64;
 
             // Write note with tie="stop" using PitchCode
-            builder.write_note_with_beam_from_pitch_code(&prev_pitch_code, prev_octave, duration_divs, musical_duration, None, None, None, Some("stop"), None)?;
+            builder.write_note_with_beam_from_pitch_code(&prev_pitch_code, prev_octave, duration_divs, musical_duration, None, None, None, Some("stop"), None, None, None)?;
         }
     }
 
@@ -338,7 +397,8 @@ fn process_beat(
             musical_duration: f64,
             is_last_note: bool,
             slur_indicator: SlurIndicator,
-            grace_notes: Vec<(PitchCode, i8)>, // (pitch_code, octave) pairs for grace notes
+            grace_notes: Vec<(PitchCode, i8, OrnamentPositionType)>, // (pitch_code, octave, position) triples for grace notes
+            ornament_type: Option<&'static str>, // Detected ornament type (trill, turn, mordent, etc.)
         },
         Rest {
             duration_divs: usize,
@@ -348,7 +408,8 @@ fn process_beat(
     let mut elements = Vec::new();
 
     // Track ornaments (grace notes) to be attached to next main note
-    let mut pending_grace_notes: Vec<(PitchCode, i8)> = Vec::new();
+    let mut pending_grace_notes: Vec<(PitchCode, i8, OrnamentPositionType)> = Vec::new();
+    let mut current_ornament_position = OrnamentPositionType::Before;
 
     // Process remaining elements in the beat
     let mut in_ornament_span = false;
@@ -364,12 +425,7 @@ fn process_beat(
         // Track ornament indicator spans and collect grace notes
         if cell.is_ornament_start() {
             in_ornament_span = true;
-            i += 1;
-            continue;
-        }
-
-        if cell.is_ornament_end() {
-            in_ornament_span = false;
+            current_ornament_position = cell.ornament_indicator.position_type();
             i += 1;
             continue;
         }
@@ -378,9 +434,15 @@ fn process_beat(
         if in_ornament_span {
             if cell.kind == ElementKind::PitchedElement {
                 if let Some(pitch_code) = &cell.pitch_code {
-                    pending_grace_notes.push((*pitch_code, cell.octave));
+                    pending_grace_notes.push((*pitch_code, cell.octave, current_ornament_position));
                 }
             }
+
+            // Check if this is the end of the ornament span
+            if cell.is_ornament_end() {
+                in_ornament_span = false;
+            }
+
             i += 1;
             continue;
         }
@@ -425,6 +487,13 @@ fn process_beat(
                         k >= beat_cells.len()
                     };
 
+                    // Detect ornament type from grace notes
+                    let ornament_type = if !pending_grace_notes.is_empty() {
+                        detect_grace_note_ornament_type(&pending_grace_notes)
+                    } else {
+                        None
+                    };
+
                     elements.push(BeatElement::Note {
                         pitch_code: *pitch_code,
                         octave: cell.octave,
@@ -433,6 +502,7 @@ fn process_beat(
                         is_last_note,
                         slur_indicator: cell.slur_indicator,
                         grace_notes: pending_grace_notes.clone(),
+                        ornament_type,
                     });
 
                     // Clear pending grace notes after attaching to main note
@@ -496,10 +566,14 @@ fn process_beat(
             };
 
             match element {
-                BeatElement::Note { pitch_code, octave, duration_divs, musical_duration, is_last_note, slur_indicator, grace_notes } => {
-                    // Write grace notes before the main note
-                    for (grace_pitch_code, grace_octave) in grace_notes {
-                        builder.write_grace_note(grace_pitch_code, *grace_octave, true)?; // true = with slash (acciaccatura)
+                BeatElement::Note { pitch_code, octave, duration_divs, musical_duration, is_last_note, slur_indicator, grace_notes, ornament_type } => {
+                    // Write grace notes before the main note with placement attributes
+                    for (grace_pitch_code, grace_octave, ornament_position) in grace_notes {
+                        let placement = match ornament_position {
+                            OrnamentPositionType::OnTop => Some("above"),
+                            OrnamentPositionType::Before | OrnamentPositionType::After => None, // Default placement
+                        };
+                        builder.write_grace_note(grace_pitch_code, *grace_octave, true, placement)?; // true = with slash (acciaccatura)
                     }
 
                     let tie = if *is_last_note && next_beat_starts_with_div {
@@ -515,7 +589,7 @@ fn process_beat(
                         SlurIndicator::None => None,
                     };
 
-                    builder.write_note_with_beam_from_pitch_code(pitch_code, *octave, *duration_divs, *musical_duration, None, tuplet_info, tuplet_bracket, tie, slur)?;
+                    builder.write_note_with_beam_from_pitch_code(pitch_code, *octave, *duration_divs, *musical_duration, None, tuplet_info, tuplet_bracket, tie, slur, None, *ornament_type)?;
                 }
                 BeatElement::Rest { duration_divs, musical_duration } => {
                     builder.write_rest_with_tuplet(*duration_divs, *musical_duration, tuplet_info, tuplet_bracket);
@@ -565,4 +639,52 @@ fn detect_tuplet(subdivisions: usize) -> Option<(usize, usize)> {
     };
 
     Some((subdivisions, normal_notes))
+}
+
+/// Detect ornament type from grace note characteristics
+/// Returns the MusicXML ornament type name as a string
+///
+/// Detection heuristic:
+/// - 1-2 grace notes: appoggiatura/acciaccatura (slash handled separately)
+/// - 3+ repeated notes: trill
+/// - Different notes in sequence: turn or other
+///
+/// Note: This is a simplified heuristic. For more accurate detection,
+/// ornament type should be stored in the Ornament struct.
+pub fn detect_grace_note_ornament_type(grace_notes: &[(PitchCode, i8, OrnamentPositionType)]) -> Option<&'static str> {
+    if grace_notes.is_empty() {
+        return None;
+    }
+
+    // For single grace note, it's typically an appoggiatura/acciaccatura (handled by slash param)
+    if grace_notes.len() == 1 {
+        return None; // Not a "typed" ornament, just a grace note
+    }
+
+    // For multiple grace notes, check if they're repeated (trill) or different (turn)
+    if grace_notes.len() >= 2 {
+        let first_pitch = &grace_notes[0].0;
+
+        // Check if all notes are the same pitch (trill)
+        let all_same = grace_notes.iter().all(|(p, _, _)| p == first_pitch);
+        if all_same {
+            return Some("trill");
+        }
+
+        // For now, default to "turn" for multiple different notes
+        // This could be enhanced with more sophisticated detection
+        if grace_notes.len() >= 3 {
+            return Some("turn");
+        }
+    }
+
+    None
+}
+
+/// Map OrnamentPositionType to MusicXML placement attribute
+pub fn ornament_position_to_placement(position: &OrnamentPositionType) -> Option<&'static str> {
+    match position {
+        OrnamentPositionType::OnTop => Some("above"),
+        OrnamentPositionType::Before | OrnamentPositionType::After => None, // Default placement
+    }
 }

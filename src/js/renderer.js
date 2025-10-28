@@ -220,7 +220,10 @@ class DOMRenderer {
       cell_y_offset: CELL_Y_OFFSET,
       cell_height: CELL_HEIGHT,
       min_syllable_padding: 4.0,
+      ornament_edit_mode: doc.ornament_edit_mode || false,
     };
+
+    console.log(`🎨 Layout config ornament_edit_mode: ${config.ornament_edit_mode}`);
 
     const displayList = this.editor.wasmModule.computeLayout(doc, config);
     const layoutTime = performance.now() - layoutStart;
@@ -260,9 +263,10 @@ class DOMRenderer {
     for (const line of doc.lines) {
       // Measure each cell
       for (const cell of line.cells) {
-        // Continuation cells (raw accidental chars like '#', 'b') should be minimal width
-        if (cell.continuation) {
-          // Use 1/10th of font width for continuation cells
+        // Continuation cells that are NOT text should use minimal width (for accidentals)
+        // Text continuation cells should use actual measured width (each char is separate)
+        if (cell.continuation && cell.kind !== 'text') {
+          // Use 1/10th of font width for non-text continuation cells (accidentals, etc)
           cellWidths.push(BASE_FONT_SIZE * 0.1);
         } else {
           const span = document.createElement('span');
@@ -399,13 +403,15 @@ class DOMRenderer {
         const charWidths = [];
 
         // Measure each character in the cell's glyph
-        if (cell.continuation) {
-          // Continuation cells: minimal width for each character (1/10th font size)
+        // For text continuations, measure actual widths (each char is separate)
+        // For non-text continuations (accidentals), use minimal width
+        if (cell.continuation && cell.kind !== 'text') {
+          // Continuation cells with minimal width (for accidentals like #, b)
           for (const char of cell.char) {
             charWidths.push(BASE_FONT_SIZE * 0.1);
           }
         } else {
-          // Normal cells: measure actual character widths
+          // Normal cells or text continuations: measure actual character widths
           for (const char of cell.char) {
             const span = document.createElement('span');
             span.className = 'char-cell';
@@ -835,6 +841,10 @@ class DOMRenderer {
    * Handle Cell click
    */
   handleCellClick(charCell, event) {
+    // Clear any existing selection
+    if (window.musicEditor && window.musicEditor.clearSelection) {
+      window.musicEditor.clearSelection();
+    }
     // Update cursor position
     if (window.musicEditor) {
       window.musicEditor.setCursorPosition(charCell.col);

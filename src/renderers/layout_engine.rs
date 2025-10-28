@@ -8,6 +8,7 @@ use crate::parse::beats::BeatDeriver;
 use super::lyrics::*;
 use super::display_list::*;
 use serde::{Serialize, Deserialize};
+use web_sys::console;
 use std::collections::HashMap;
 
 /// Configuration for layout calculations
@@ -40,6 +41,10 @@ pub struct LayoutConfig {
 
     /// Minimum padding between syllables
     pub min_syllable_padding: f32,
+
+    /// Ornament edit mode: true = editable (inline), false = locked (attached to anchors)
+    #[serde(default)]
+    pub ornament_edit_mode: bool,
 }
 
 /// Main layout engine for computing display lists
@@ -163,12 +168,86 @@ impl LayoutEngine {
             config,
         );
 
-        // Render cells with cumulative X positioning
+        // Render cells with different strategies based on ornament edit mode
+        console::log_1(&format!("🎨 Layout engine: ornament_edit_mode={}", config.ornament_edit_mode).into());
+
+        let cells = if config.ornament_edit_mode {
+            // EDITABLE MODE: Layout all cells inline (including ornaments)
+            console::log_1(&"📝 Using INLINE layout (edit mode ON)".into());
+            self.layout_cells_inline(
+                &line.cells,
+                line_idx,
+                &effective_widths,
+                cell_widths,
+                char_widths,
+                &beat_roles,
+                &slur_roles,
+                &ornament_roles,
+                config,
+            )
+        } else {
+            // LOCKED MODE: Layout main cells tighter, position ornaments attached to anchors
+            console::log_1(&"🔒 Using LOCKED layout (edit mode OFF)".into());
+            self.layout_cells_with_locked_ornaments(
+                &line.cells,
+                line_idx,
+                &effective_widths,
+                cell_widths,
+                char_widths,
+                &beat_roles,
+                &slur_roles,
+                &ornament_roles,
+                config,
+            )
+        };
+
+        // Position lyrics syllables
+        let lyrics = self.position_lyrics(
+            &syllable_assignments,
+            &cells,
+            &beats,
+            config,
+        );
+
+        // Position tala characters
+        let tala = self.position_tala(&line.tala, &line.cells, &cells, config);
+
+        // Calculate line height based on content
+        let has_beats = beats.iter().any(|b| b.end - b.start >= 1);
+        let height = self.calculate_line_height(!line.lyrics.is_empty(), has_beats, config);
+
+        RenderLine {
+            line_index: line_idx,
+            cells,
+            label: if line.label.is_empty() {
+                None
+            } else {
+                Some(line.label.clone())
+            },
+            lyrics,
+            tala,
+            height,
+        }
+    }
+
+    /// Layout all cells inline (editable mode - ornaments are part of normal flow)
+    fn layout_cells_inline(
+        &self,
+        line_cells: &[Cell],
+        line_idx: usize,
+        effective_widths: &[f32],
+        cell_widths: &[f32],
+        char_widths: &[f32],
+        beat_roles: &HashMap<usize, String>,
+        slur_roles: &HashMap<usize, String>,
+        ornament_roles: &HashMap<usize, String>,
+        config: &LayoutConfig,
+    ) -> Vec<RenderCell> {
         let mut cells = Vec::new();
         let mut cumulative_x = config.left_margin;
         let mut char_width_offset = 0;
 
-        for (cell_idx, cell) in line.cells.iter().enumerate() {
+        for (cell_idx, cell) in line_cells.iter().enumerate() {
             // Build CSS classes
             let mut classes = vec!["char-cell".to_string()];
             classes.push(format!("kind-{}", self.element_kind_to_css(cell.kind)));
@@ -267,38 +346,234 @@ impl LayoutEngine {
             cumulative_x += effective_width;
         }
 
-        // Position lyrics syllables
-        let lyrics = self.position_lyrics(
-            &syllable_assignments,
-            &cells,
-            &beats,
-            config,
-        );
+        cells
+    }
 
-        // Position tala characters
-        let tala = self.position_tala(&line.tala, &line.cells, &cells, config);
+    /// Layout cells with locked ornaments (locked mode - ornaments attached to anchors)
+    fn layout_cells_with_locked_ornaments(
+        &self,
+        line_cells: &[Cell],
+        line_idx: usize,
+        effective_widths: &[f32],
+        cell_widths: &[f32],
+        char_widths: &[f32],
+        beat_roles: &HashMap<usize, String>,
+        slur_roles: &HashMap<usize, String>,
+        ornament_roles: &HashMap<usize, String>,
+        config: &LayoutConfig,
+    ) -> Vec<RenderCell> {
+        let mut cells = Vec::with_capacity(line_cells.len());
 
-        // Position ornaments (grace notes)
-        // TEMPORARILY DISABLED: position_ornaments() uses old data structures
-        // Will be re-implemented for User Story 3 (edit mode ornaments)
-        // Ornament rendering for User Story 1 is handled in JavaScript (src/js/renderer.js)
+        // Step 1: Extract ornament spans to identify all cells inside ornament ranges
+        let ornament_spans = extract_ornament_spans(line_cells);
+        console::log_1(&format!("🔍 Found {} ornament spans in line", ornament_spans.len()).into());
 
-        // Calculate line height based on content
-        let has_beats = beats.iter().any(|b| b.end - b.start >= 1);
-        let height = self.calculate_line_height(!line.lyrics.is_empty(), has_beats, config);
+        let mut ornament_cell_indices_set = std::collections::HashSet::new();
 
-        RenderLine {
-            line_index: line_idx,
-            cells,
-            label: if line.label.is_empty() {
-                None
-            } else {
-                Some(line.label.clone())
-            },
-            lyrics,
-            tala,
-            height,
+        for span in &ornament_spans {
+            // Mark all cells in the span as ornament cells (including Start and End indicators)
+            console::log_1(&format!("  Span: start={}, end={}, type={:?}", span.start_idx, span.end_idx, span.position_type).into());
+            for idx in span.start_idx..=span.end_idx {
+                ornament_cell_indices_set.insert(idx);
+            }
         }
+
+        // Step 2: Separate ornament cells from main cells
+        let mut main_cell_indices = Vec::new();
+        let mut ornament_cell_indices = Vec::new();
+
+        for (idx, _cell) in line_cells.iter().enumerate() {
+            if ornament_cell_indices_set.contains(&idx) {
+                ornament_cell_indices.push(idx);
+            } else {
+                main_cell_indices.push(idx);
+            }
+        }
+
+        // Step 3: Layout main cells (tighter spacing - no ornament width)
+        let mut cumulative_x = config.left_margin;
+        let mut char_width_offset = 0;
+        let mut main_cell_positions = HashMap::new(); // Track positions for anchor lookup
+
+        for &cell_idx in &main_cell_indices {
+            let cell = &line_cells[cell_idx];
+
+            // Build CSS classes
+            let mut classes = vec!["char-cell".to_string()];
+            classes.push(format!("kind-{}", self.element_kind_to_css(cell.kind)));
+
+            // State classes
+            if cell.flags & 0x02 != 0 {
+                classes.push("selected".to_string());
+            }
+            if cell.flags & 0x04 != 0 {
+                classes.push("focused".to_string());
+            }
+            if cell.flags & 0x01 != 0 {
+                classes.push("head-marker".to_string());
+            }
+
+            // Beat/slur/ornament role classes
+            if let Some(role) = beat_roles.get(&cell_idx) {
+                classes.push(role.clone());
+            }
+            if let Some(role) = slur_roles.get(&cell_idx) {
+                classes.push(role.clone());
+            }
+            if let Some(role) = ornament_roles.get(&cell_idx) {
+                classes.push(role.clone());
+            }
+
+            // Pitch system class
+            if let Some(pitch_system) = cell.pitch_system {
+                classes.push(format!("pitch-system-{}", self.pitch_system_to_css(pitch_system)));
+            }
+
+            // Accidental classes
+            if cell.char.contains('#') {
+                classes.push("accidental-sharp".to_string());
+            }
+            if cell.char.contains('b') {
+                classes.push("accidental-flat".to_string());
+            }
+
+            // Build data attributes
+            let mut dataset = HashMap::new();
+            dataset.insert("lineIndex".to_string(), line_idx.to_string());
+            dataset.insert("cellIndex".to_string(), cell_idx.to_string());
+            dataset.insert("column".to_string(), cell.col.to_string());
+            dataset.insert("octave".to_string(), cell.octave.to_string());
+            dataset.insert("glyphLength".to_string(), cell.char.chars().count().to_string());
+            dataset.insert("continuation".to_string(), cell.continuation.to_string());
+
+            let effective_width = effective_widths.get(cell_idx).copied().unwrap_or(12.0);
+            let actual_cell_width = cell_widths.get(cell_idx).copied().unwrap_or(12.0);
+
+            // Calculate character positions
+            let char_count = cell.char.chars().count();
+            let mut char_positions = Vec::with_capacity(char_count + 1);
+            char_positions.push(cumulative_x);
+
+            let mut char_x = cumulative_x;
+            for i in 0..char_count {
+                if let Some(&width) = char_widths.get(char_width_offset + i) {
+                    char_x += width;
+                } else {
+                    char_x += actual_cell_width / char_count as f32;
+                }
+                char_positions.push(char_x);
+            }
+
+            char_width_offset += char_count;
+
+            let cursor_right = *char_positions.last().unwrap_or(&(cumulative_x + actual_cell_width));
+            let y = config.cell_y_offset;
+
+            main_cell_positions.insert(cell_idx, cumulative_x);
+
+            cells.push(RenderCell {
+                char: cell.char.clone(),
+                x: cumulative_x,
+                y,
+                w: effective_width,
+                h: config.cell_height,
+                classes,
+                dataset,
+                cursor_left: cumulative_x,
+                cursor_right,
+                char_positions,
+            });
+
+            cumulative_x += effective_width;
+        }
+
+        // Step 4: Group ornament spans by anchor cell
+        let mut ornament_groups: HashMap<usize, Vec<&OrnamentSpan>> = HashMap::new();
+
+        for span in &ornament_spans {
+            if let Some(anchor_idx) = find_anchor_cell(line_cells, span) {
+                ornament_groups.entry(anchor_idx).or_insert_with(Vec::new).push(span);
+            }
+        }
+
+        // Step 5: Position ornament cells attached to anchors with collision avoidance
+        for (anchor_idx, spans) in ornament_groups {
+            let anchor_x = main_cell_positions.get(&anchor_idx).copied().unwrap_or(0.0);
+
+            // Stack ornaments vertically to avoid collision
+            for (stack_idx, span) in spans.iter().enumerate() {
+                // Calculate base offset based on position type
+                let base_offset_x = match span.position_type {
+                    OrnamentPositionType::Before => -10.0,
+                    OrnamentPositionType::After => 10.0,
+                    OrnamentPositionType::OnTop => 0.0,
+                };
+
+                let base_offset_y = match span.position_type {
+                    OrnamentPositionType::OnTop => -10.0,
+                    _ => 0.0,
+                };
+
+                // Collision avoidance: stack vertically
+                let collision_offset_y = stack_idx as f32 * -8.0;
+
+                // Position each cell in the ornament span
+                for ornament_cell_idx in span.start_idx..=span.end_idx {
+                    let cell = &line_cells[ornament_cell_idx];
+
+                    // Build CSS classes for ornament cell
+                    let mut classes = vec!["char-cell".to_string(), "ornament-cell".to_string()];
+                    classes.push(format!("kind-{}", self.element_kind_to_css(cell.kind)));
+
+                    if cell.flags & 0x02 != 0 {
+                        classes.push("selected".to_string());
+                    }
+                    if cell.flags & 0x04 != 0 {
+                        classes.push("focused".to_string());
+                    }
+
+                    if let Some(role) = ornament_roles.get(&ornament_cell_idx) {
+                        classes.push(role.clone());
+                    }
+
+                    if let Some(pitch_system) = cell.pitch_system {
+                        classes.push(format!("pitch-system-{}", self.pitch_system_to_css(pitch_system)));
+                    }
+
+                    let mut dataset = HashMap::new();
+                    dataset.insert("lineIndex".to_string(), line_idx.to_string());
+                    dataset.insert("cellIndex".to_string(), ornament_cell_idx.to_string());
+                    dataset.insert("column".to_string(), cell.col.to_string());
+                    dataset.insert("octave".to_string(), cell.octave.to_string());
+                    dataset.insert("testid".to_string(), "ornament-cell".to_string());
+
+                    let x = anchor_x + base_offset_x;
+                    let y = config.cell_y_offset + base_offset_y + collision_offset_y;
+
+                    cells.push(RenderCell {
+                        char: cell.char.clone(),
+                        x,
+                        y,
+                        w: 0.0, // Zero width - ornament overlay
+                        h: config.cell_height,
+                        classes,
+                        dataset,
+                        cursor_left: x,
+                        cursor_right: x,
+                        char_positions: vec![x],
+                    });
+                }
+            }
+        }
+
+        // Sort cells back to original order for rendering
+        cells.sort_by_key(|cell| {
+            cell.dataset.get("cellIndex")
+                .and_then(|s| s.parse::<usize>().ok())
+                .unwrap_or(0)
+        });
+
+        cells
     }
 
     /// Calculate effective widths for cells, considering lyrics syllable widths
@@ -681,7 +956,7 @@ pub fn extract_ornament_spans(cells: &[Cell]) -> Vec<OrnamentSpan> {
 
             while j < cells.len() {
                 if cells[j].ornament_indicator.is_end()
-                    && cells[j].ornament_indicator.matches(&start_indicator) {
+                    && start_indicator.matches(&cells[j].ornament_indicator) {
                     spans.push(OrnamentSpan::from_cells(cells, i, j));
                     i = j;
                     break;

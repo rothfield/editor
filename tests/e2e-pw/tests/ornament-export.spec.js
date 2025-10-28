@@ -42,16 +42,25 @@ test.describe('Ornament Export - MusicXML and LilyPond', () => {
 
     // When ornament export is implemented, should contain <grace/> elements
     if (musicXMLText.includes('<grace')) {
-      // Verify <grace/> element exists
-      expect(musicXMLText).toMatch(/<grace\s*\/>/);
+      // Verify <grace> element exists (may have attributes like slash="yes")
+      expect(musicXMLText).toMatch(/<grace[^>]*\/>/);
 
       // Grace notes should not have duration
-      const graceNotePattern = /<note>[\s\S]*?<grace\s*\/>[\s\S]*?<\/note>/;
-      const graceNoteMatch = musicXMLText.match(graceNotePattern);
-      expect(graceNoteMatch).not.toBeNull();
+      // Find all note elements and verify at least one has <grace> without <duration>
+      const noteMatches = musicXMLText.match(/<note>[\s\S]*?<\/note>/g);
+      let foundGraceWithoutDuration = false;
 
-      if (graceNoteMatch) {
-        expect(graceNoteMatch[0]).not.toContain('<duration>');
+      if (noteMatches) {
+        for (const noteMatch of noteMatches) {
+          if (noteMatch.includes('<grace') && !noteMatch.includes('<duration>')) {
+            foundGraceWithoutDuration = true;
+            break;
+          }
+        }
+      }
+
+      expect(foundGraceWithoutDuration).toBe(true);
+      if (foundGraceWithoutDuration) {
         console.log('✅ T016: MusicXML contains <grace/> elements without duration');
       }
     } else {

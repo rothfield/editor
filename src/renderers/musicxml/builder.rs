@@ -5,6 +5,37 @@ use crate::models::PitchCode;
 use super::duration::duration_to_note_type;
 use super::pitch::{pitch_to_step_alter, pitch_code_to_step_alter};
 
+/// Articulation types supported in MusicXML export
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ArticulationType {
+    /// Accent mark (>')
+    Accent,
+    /// Staccato dot
+    Staccato,
+    /// Tenuto line (—)
+    Tenuto,
+    /// Pizzicato (plucked)
+    Pizzicato,
+    /// Marcato (accent + staccato)
+    Marcato,
+    /// Strongaccent
+    StrongAccent,
+}
+
+impl ArticulationType {
+    /// Get the MusicXML element name for this articulation
+    pub fn xml_name(&self) -> &'static str {
+        match self {
+            ArticulationType::Accent => "accent",
+            ArticulationType::Staccato => "staccato",
+            ArticulationType::Tenuto => "tenuto",
+            ArticulationType::Pizzicato => "pizzicato",
+            ArticulationType::Marcato => "strong-accent",
+            ArticulationType::StrongAccent => "strong-accent",
+        }
+    }
+}
+
 /// State machine for building MusicXML documents
 pub struct MusicXmlBuilder {
     buffer: String,
@@ -78,15 +109,16 @@ impl MusicXmlBuilder {
 
     /// Write note with pitch and duration
     pub fn write_note(&mut self, pitch: &Pitch, duration_divs: usize, musical_duration: f64) -> Result<(), String> {
-        self.write_note_with_beam(pitch, duration_divs, musical_duration, None, None, None, None, None)
+        self.write_note_with_beam(pitch, duration_divs, musical_duration, None, None, None, None, None, None)
     }
 
-    /// Write note with pitch, duration, and optional beam, time_modification, tuplet_bracket, tie, and slur
+    /// Write note with pitch, duration, and optional beam, time_modification, tuplet_bracket, tie, slur, and articulations
     /// time_modification: Option<(usize, usize)> = (actual_notes, normal_notes) - written on ALL tuplet notes
     /// tuplet_bracket: Option<&str> = "start" or "stop" - only on first/last tuplet notes
     /// tie: Option<&str> = "start" or "stop"
     /// slur: Option<&str> = "start" or "stop"
-    pub fn write_note_with_beam(&mut self, pitch: &Pitch, duration_divs: usize, musical_duration: f64, beam: Option<&str>, time_modification: Option<(usize, usize)>, tuplet_bracket: Option<&str>, tie: Option<&str>, slur: Option<&str>) -> Result<(), String> {
+    /// articulations: Optional vector of articulation types to write in notations block
+    pub fn write_note_with_beam(&mut self, pitch: &Pitch, duration_divs: usize, musical_duration: f64, beam: Option<&str>, time_modification: Option<(usize, usize)>, tuplet_bracket: Option<&str>, tie: Option<&str>, slur: Option<&str>, articulations: Option<Vec<ArticulationType>>) -> Result<(), String> {
         let (step, alter) = pitch_to_step_alter(pitch)?;
         let xml_octave = pitch.octave + 4; // music-text octave 0 = MIDI octave 4 (middle C)
 
@@ -132,12 +164,13 @@ impl MusicXmlBuilder {
             self.buffer.push_str(&format!("  <beam number=\"1\">{}</beam>\n", beam_type));
         }
 
-        // Add notations if tuplet bracket, tie, or slur
+        // Add notations if tuplet bracket, tie, slur, or articulations
         let has_tuplet_bracket = tuplet_bracket.is_some();
         let has_tie = tie.is_some();
         let has_slur = slur.is_some();
+        let has_articulations = articulations.as_ref().map_or(false, |a| !a.is_empty());
 
-        if has_tuplet_bracket || has_tie || has_slur {
+        if has_tuplet_bracket || has_tie || has_slur || has_articulations {
             self.buffer.push_str("  <notations>\n");
 
             // Add tuplet bracket notation if specified (only start/stop)
@@ -155,6 +188,13 @@ impl MusicXmlBuilder {
                 self.buffer.push_str(&format!("    <slur type=\"{}\" number=\"1\"/>\n", slur_type));
             }
 
+            // Add articulations if specified
+            if let Some(arts) = articulations {
+                for art in arts {
+                    self.buffer.push_str(&format!("    <{}/>\n", art.xml_name()));
+                }
+            }
+
             self.buffer.push_str("  </notations>\n");
         }
 
@@ -168,7 +208,9 @@ impl MusicXmlBuilder {
     /// Write note using PitchCode (system-agnostic, works for all pitch systems)
     /// This is the PREFERRED method for MusicXML export
     /// slur: Option<&str> = "start" or "stop"
-    pub fn write_note_with_beam_from_pitch_code(&mut self, pitch_code: &PitchCode, octave: i8, duration_divs: usize, musical_duration: f64, beam: Option<&str>, time_modification: Option<(usize, usize)>, tuplet_bracket: Option<&str>, tie: Option<&str>, slur: Option<&str>) -> Result<(), String> {
+    /// articulations: Optional vector of articulation types to write in notations block
+    /// ornament_type: Optional ornament type ("trill", "turn", "mordent", etc.)
+    pub fn write_note_with_beam_from_pitch_code(&mut self, pitch_code: &PitchCode, octave: i8, duration_divs: usize, musical_duration: f64, beam: Option<&str>, time_modification: Option<(usize, usize)>, tuplet_bracket: Option<&str>, tie: Option<&str>, slur: Option<&str>, articulations: Option<Vec<ArticulationType>>, ornament_type: Option<&str>) -> Result<(), String> {
         let (step, alter) = pitch_code_to_step_alter(pitch_code);
         let xml_octave = octave + 4; // music-text octave 0 = MIDI octave 4 (middle C)
 
@@ -212,12 +254,14 @@ impl MusicXmlBuilder {
             self.buffer.push_str(&format!("  <beam number=\"1\">{}</beam>\n", beam_type));
         }
 
-        // Add notations if tuplet bracket, tie, or slur
+        // Add notations if tuplet bracket, tie, slur, articulations, or ornaments
         let has_tuplet_bracket = tuplet_bracket.is_some();
         let has_tie = tie.is_some();
         let has_slur = slur.is_some();
+        let has_articulations = articulations.as_ref().map_or(false, |a| !a.is_empty());
+        let has_ornament = ornament_type.is_some();
 
-        if has_tuplet_bracket || has_tie || has_slur {
+        if has_tuplet_bracket || has_tie || has_slur || has_articulations || has_ornament {
             self.buffer.push_str("  <notations>\n");
 
             // Add tuplet bracket notation if specified (only start/stop)
@@ -233,6 +277,27 @@ impl MusicXmlBuilder {
             // Add slur element if specified
             if let Some(slur_type) = slur {
                 self.buffer.push_str(&format!("    <slur type=\"{}\" number=\"1\"/>\n", slur_type));
+            }
+
+            // Add ornament element if detected
+            if let Some(orn_type) = ornament_type {
+                self.buffer.push_str("    <ornament>\n");
+                match orn_type {
+                    "trill" => self.buffer.push_str("      <trill-mark/>\n"),
+                    "turn" => self.buffer.push_str("      <turn/>\n"),
+                    "mordent" => self.buffer.push_str("      <mordent/>\n"),
+                    "inverted-turn" => self.buffer.push_str("      <inverted-turn/>\n"),
+                    "inverted-mordent" => self.buffer.push_str("      <inverted-mordent/>\n"),
+                    _ => self.buffer.push_str(&format!("      <{}/>\n", orn_type)),
+                }
+                self.buffer.push_str("    </ornament>\n");
+            }
+
+            // Add articulations if specified
+            if let Some(arts) = articulations {
+                for art in arts {
+                    self.buffer.push_str(&format!("    <{}/>\n", art.xml_name()));
+                }
             }
 
             self.buffer.push_str("  </notations>\n");
@@ -298,17 +363,26 @@ impl MusicXmlBuilder {
     /// pitch_code: The pitch of the grace note
     /// octave: Octave offset relative to middle C
     /// slash: Whether to show slash (true = acciaccatura, false = appoggiatura)
-    pub fn write_grace_note(&mut self, pitch_code: &PitchCode, octave: i8, slash: bool) -> Result<(), String> {
+    /// placement: Optional placement ("above" or "below")
+    pub fn write_grace_note(&mut self, pitch_code: &PitchCode, octave: i8, slash: bool, placement: Option<&str>) -> Result<(), String> {
         let (step, alter) = pitch_code_to_step_alter(pitch_code);
         let xml_octave = octave + 4; // music-text octave 0 = MIDI octave 4 (middle C)
 
         self.buffer.push_str("<note>\n");
 
-        // Grace element (with or without slash)
+        // Grace element (with or without slash and optional placement)
         if slash {
-            self.buffer.push_str("  <grace slash=\"yes\"/>\n");
+            if let Some(place) = placement {
+                self.buffer.push_str(&format!("  <grace slash=\"yes\" placement=\"{}\"/>\n", place));
+            } else {
+                self.buffer.push_str("  <grace slash=\"yes\"/>\n");
+            }
         } else {
-            self.buffer.push_str("  <grace/>\n");
+            if let Some(place) = placement {
+                self.buffer.push_str(&format!("  <grace placement=\"{}\"/>\n", place));
+            } else {
+                self.buffer.push_str("  <grace/>\n");
+            }
         }
 
         self.buffer.push_str("  <pitch>\n");
@@ -325,6 +399,43 @@ impl MusicXmlBuilder {
         self.buffer.push_str("</note>\n");
 
         Ok(())
+    }
+
+    /// Write an ornament element in notations block
+    /// ornament_type: "trill", "mordent", "turn", "inverted-turn", "tremolo"
+    /// placement: Optional placement ("above" or "below")
+    pub fn write_ornament_notation(&mut self, ornament_type: &str, placement: Option<&str>) -> String {
+        let mut notation = format!("    <ornament");
+        if let Some(place) = placement {
+            notation.push_str(&format!(" placement=\"{}\"", place));
+        }
+        notation.push_str(">\n");
+
+        // Add the specific ornament element
+        match ornament_type {
+            "trill" => notation.push_str("      <trill-mark/>\n"),
+            "mordent" => notation.push_str("      <mordent/>\n"),
+            "inverted-mordent" => notation.push_str("      <inverted-mordent/>\n"),
+            "turn" => notation.push_str("      <turn/>\n"),
+            "inverted-turn" => notation.push_str("      <inverted-turn/>\n"),
+            "tremolo" => notation.push_str("      <tremolo/>\n"),
+            _ => notation.push_str(&format!("      <{}/>\n", ornament_type)),
+        }
+
+        notation.push_str("    </ornament>\n");
+        notation
+    }
+
+    /// Write an articulation element
+    /// articulation_type: "accent", "staccato", "tenuto", "pizzicato", etc.
+    /// placement: Optional placement ("above" or "below")
+    pub fn write_articulation_notation(&mut self, articulation_type: &str, placement: Option<&str>) -> String {
+        let mut notation = format!("    <{}", articulation_type);
+        if let Some(place) = placement {
+            notation.push_str(&format!(" placement=\"{}\"", place));
+        }
+        notation.push_str("/>\n");
+        notation
     }
 
     /// Reset note context (for breath marks, line starts)

@@ -622,6 +622,137 @@ class MusicNotationEditor {
     return this.theDocument.lines[stave] || null;
   }
 
+  /**
+   * Get navigable stops from the current line
+   * Returns an ordered array of navigation stops (cells and optionally ornaments)
+   * Each stop has: { stopIndex, kind, cellIndex, x, y, w, h, ... }
+   *
+   * When ornament edit mode is OFF: only non-ornament cells
+   * When ornament edit mode is ON: all cells (including ornaments)
+   */
+  getNavigableStops() {
+    const line = this.getCurrentLine();
+    if (!line || !line.cells) {
+      console.log('[getNavigableStops] No line or cells, returning empty');
+      return [];
+    }
+
+    const editMode = this.wasmModule.getOrnamentEditMode(this.theDocument);
+    const displayList = this.displayList;
+
+    if (!displayList || !displayList.lines) {
+      // Fallback: return basic stops from cells
+      return line.cells
+        .filter((cell, idx) => {
+          if (editMode) return true;
+          return !cell.ornament_indicator || cell.ornament_indicator.name === 'none';
+        })
+        .map((cell, stopIdx) => ({
+          stopIndex: stopIdx,
+          kind: 'cell',
+          cellIndex: line.cells.indexOf(cell),
+          id: `c${line.cells.indexOf(cell)}`,
+          x: 0,
+          y: 0,
+          w: 0,
+          h: 0,
+        }));
+    }
+
+    // Get rendered cells from DisplayList
+    const lineIndex = this.getCurrentStave();
+    const renderLine = displayList.lines[lineIndex];
+
+    if (!renderLine || !renderLine.cells) {
+      return [];
+    }
+
+    // Build stops from rendered cells
+    const stops = [];
+    let stopIndex = 0;
+
+    for (let i = 0; i < renderLine.cells.length; i++) {
+      const renderCell = renderLine.cells[i];
+      // dataset is a Map, not a plain object, so use .get() to access values
+      const cellIndex = parseInt(renderCell.dataset.get('cellIndex'), 10);
+      const cell = line.cells[cellIndex];
+
+      // Check if this cell is navigable
+      const isOrnament = cell && cell.ornament_indicator && cell.ornament_indicator.name !== 'none';
+
+      if (!editMode && isOrnament) {
+        // Skip ornament cells when edit mode is OFF
+        continue;
+      }
+
+      stops.push({
+        stopIndex: stopIndex++,
+        kind: isOrnament ? 'ornament' : 'cell',
+        cellIndex,
+        id: `c${cellIndex}`,
+        x: renderCell.x,
+        y: renderCell.y,
+        w: renderCell.w,
+        h: renderCell.h,
+        cell: cell,
+      });
+    }
+
+    // Sort by x position (left to right)
+    stops.sort((a, b) => {
+      if (Math.abs(a.x - b.x) < 0.1) {
+        return a.y - b.y; // Tiebreak by y
+      }
+      return a.x - b.x;
+    });
+
+    // Re-index after sorting
+    stops.forEach((stop, idx) => {
+      stop.stopIndex = idx;
+    });
+
+    return stops;
+  }
+
+  /**
+   * Find stop from cellIndex
+   */
+  findStopFromCellIndex(stops, cellIndex) {
+    return stops.find(stop => stop.cellIndex === cellIndex);
+  }
+
+  /**
+   * Get current stop based on cursor position
+   * If cursor is on a non-navigable cell (ornament when edit OFF),
+   * finds the nearest navigable stop
+   */
+  getCurrentStop() {
+    const stops = this.getNavigableStops();
+    if (stops.length === 0) return null;
+
+    const charPos = this.getCursorPosition();
+    const { cellIndex } = this.charPosToCellIndex(charPos);
+
+    // Try to find exact match
+    const exactMatch = this.findStopFromCellIndex(stops, cellIndex);
+    if (exactMatch) return exactMatch;
+
+    // Cursor is on a non-navigable cell (e.g., ornament when edit mode OFF)
+    // Find nearest navigable stop
+    let nearestStop = stops[0];
+    let minDistance = Math.abs(cellIndex - nearestStop.cellIndex);
+
+    for (const stop of stops) {
+      const distance = Math.abs(cellIndex - stop.cellIndex);
+      if (distance < minDistance) {
+        minDistance = distance;
+        nearestStop = stop;
+      }
+    }
+
+    return nearestStop;
+  }
+
   getCursorPosition() {
     if (this.theDocument && this.theDocument.state) {
       return this.theDocument.state.cursor.column;
@@ -918,17 +1049,48 @@ class MusicNotationEditor {
   }
 
   /**
-     * Navigate left one character
+     * Navigate left one stop (cell or ornament)
      */
   navigateLeft() {
     logger.debug(LOG_CATEGORIES.CURSOR, 'Navigate left');
-    const currentCharPos = this.getCursorPosition();
 
-    if (currentCharPos > 0) {
-      // Move to previous character within current line
-      this.setCursorPosition(currentCharPos - 1);
-      logger.debug(LOG_CATEGORIES.CURSOR, 'Moved to char position', { pos: currentCharPos - 1 });
-    } else if (currentCharPos === 0 && this.theDocument && this.theDocument.state) {
+    // Get current position and check if we're inside a cell
+    const currentPos = this.getCursorPosition();
+    const { cellIndex, charOffsetInCell } = this.charPosToCellIndex(currentPos);
+
+    // If inside a cell (not at start), move to beginning of current cell
+    if (charOffsetInCell > 0) {
+      // cellIndexToCharPos returns position AFTER a cell, so for start of cell use previous cell's end
+      const charPos = cellIndex === 0 ? 0 : this.cellIndexToCharPos(cellIndex - 1);
+      this.setCursorPosition(charPos);
+      logger.debug(LOG_CATEGORIES.CURSOR, 'Moved to start of current cell', {
+        cellIndex,
+        newCharPos: charPos
+      });
+      return;
+    }
+
+    // At start of a cell, move to previous cell/line
+    const stops = this.getNavigableStops();
+    if (stops.length === 0) return;
+
+    // Find current stop
+    const currentStop = this.getCurrentStop();
+    if (!currentStop) {
+      this.setCursorPosition(0);
+      return;
+    }
+
+    if (currentStop.stopIndex > 0) {
+      // Move to previous stop within current line (to the START of the previous cell)
+      const prevStop = stops[currentStop.stopIndex - 1];
+      const charPos = prevStop.cellIndex === 0 ? 0 : this.cellIndexToCharPos(prevStop.cellIndex - 1);
+      this.setCursorPosition(charPos);
+      logger.debug(LOG_CATEGORIES.CURSOR, 'Moved to previous stop', {
+        stopIndex: prevStop.stopIndex,
+        cellIndex: prevStop.cellIndex
+      });
+    } else if (currentStop.stopIndex === 0 && this.theDocument && this.theDocument.state) {
       // At beginning of current line - move to end of previous line
       const currentStave = this.theDocument.state.cursor.stave;
       if (currentStave > 0) {
@@ -950,25 +1112,58 @@ class MusicNotationEditor {
   }
 
   /**
-     * Navigate right one character
+     * Navigate right one stop (cell or ornament)
      */
   navigateRight() {
     logger.debug(LOG_CATEGORIES.CURSOR, 'Navigate right');
-    const currentCharPos = this.getCursorPosition();
-    const maxCharPos = this.getMaxCharPosition();
 
-    if (currentCharPos < maxCharPos) {
-      // Move to next character within current line
-      this.setCursorPosition(currentCharPos + 1);
-      logger.debug(LOG_CATEGORIES.CURSOR, 'Moved to char position', { pos: currentCharPos + 1 });
-    } else if (currentCharPos === maxCharPos && this.theDocument && this.theDocument.state && this.theDocument.lines) {
+    // Get current position and check if we're at end of cell
+    const currentPos = this.getCursorPosition();
+    const { cellIndex, charOffsetInCell } = this.charPosToCellIndex(currentPos);
+
+    const currentStave = this.theDocument?.state?.cursor?.stave || 0;
+    const line = this.theDocument?.lines?.[currentStave];
+    const cell = line?.cells?.[cellIndex];
+
+    // If not at end of cell, move to end of current cell
+    if (cell && charOffsetInCell < cell.char.length) {
+      const charPos = this.cellIndexToCharPos(cellIndex);
+      this.setCursorPosition(charPos);
+      logger.debug(LOG_CATEGORIES.CURSOR, 'Moved to end of current cell', {
+        cellIndex,
+        newCharPos: charPos
+      });
+      return;
+    }
+
+    // At end of a cell, move to next cell/line
+    const stops = this.getNavigableStops();
+    if (stops.length === 0) return;
+
+    // Find current stop
+    const currentStop = this.getCurrentStop();
+    if (!currentStop) {
+      this.setCursorPosition(0);
+      return;
+    }
+
+    if (currentStop.stopIndex < stops.length - 1) {
+      // Move to next stop within current line
+      const nextStop = stops[currentStop.stopIndex + 1];
+      const charPos = this.cellIndexToCharPos(nextStop.cellIndex);
+      this.setCursorPosition(charPos);
+      logger.debug(LOG_CATEGORIES.CURSOR, 'Moved to next stop', {
+        stopIndex: nextStop.stopIndex,
+        cellIndex: nextStop.cellIndex
+      });
+    } else if (currentStop.stopIndex === stops.length - 1 && this.theDocument && this.theDocument.state && this.theDocument.lines) {
       // At end of current line - move to beginning of next line
-      const currentStave = this.theDocument.state.cursor.stave;
-      if (currentStave < this.theDocument.lines.length - 1) {
-        this.theDocument.state.cursor.stave = currentStave + 1;
+      const currentStaveForMove = this.theDocument.state.cursor.stave;
+      if (currentStaveForMove < this.theDocument.lines.length - 1) {
+        this.theDocument.state.cursor.stave = currentStaveForMove + 1;
         this.setCursorPosition(0);
         logger.debug(LOG_CATEGORIES.CURSOR, `Navigate right to beginning of next line`, {
-          stave: currentStave + 1
+          stave: currentStaveForMove + 1
         });
       }
     }
@@ -1158,7 +1353,8 @@ class MusicNotationEditor {
     const cells = line.cells || [];
 
     let charPos = 0;
-    for (let i = 0; i < cellIndex && i < cells.length; i++) {
+    // Sum up lengths of all cells UP TO AND INCLUDING the target cell
+    for (let i = 0; i <= cellIndex && i < cells.length; i++) {
       charPos += cells[i].char.length;
     }
 
@@ -1221,17 +1417,74 @@ class MusicNotationEditor {
   // ==================== SELECTION MANAGEMENT ====================
 
   /**
-     * Initialize selection range (always on main line, lane 1)
+     * Initialize selection range using cell indices (backward compatibility)
+     * Internally converts to stop indices
      */
-  initializeSelection(startPos, endPos) {
+  initializeSelection(startCellIndex, endCellIndex) {
     if (!this.theDocument || !this.theDocument.state) {
       return;
     }
 
+    const stops = this.getNavigableStops();
+
+    // Find stops corresponding to cell indices
+    const startStop = this.findStopFromCellIndex(stops, Math.min(startCellIndex, endCellIndex));
+    const endStop = this.findStopFromCellIndex(stops, Math.max(startCellIndex, endCellIndex));
+
+    if (!startStop || !endStop) {
+      // Fallback to cell-based selection
+      this.theDocument.state.selection = {
+        start: Math.min(startCellIndex, endCellIndex),
+        end: Math.max(startCellIndex, endCellIndex),
+        active: true,
+        // Stop-based fields
+        startStopIndex: null,
+        endStopIndex: null,
+      };
+      return;
+    }
+
     this.theDocument.state.selection = {
-      start: Math.min(startPos, endPos),
-      end: Math.max(startPos, endPos),
-      active: true
+      // Cell-based (for backward compatibility)
+      start: startStop.cellIndex,
+      end: endStop.cellIndex,
+      active: true,
+      // Stop-based (for navigation)
+      startStopIndex: startStop.stopIndex,
+      endStopIndex: endStop.stopIndex,
+    };
+  }
+
+  /**
+   * Initialize selection using stop indices directly
+   */
+  initializeSelectionByStops(startStopIndex, endStopIndex) {
+    if (!this.theDocument || !this.theDocument.state) {
+      return;
+    }
+
+    const stops = this.getNavigableStops();
+    const startStop = stops[startStopIndex];
+    const endStop = stops[endStopIndex];
+
+    if (!startStop || !endStop) {
+      return;
+    }
+
+    // Normalize so start <= end
+    const minStopIndex = Math.min(startStopIndex, endStopIndex);
+    const maxStopIndex = Math.max(startStopIndex, endStopIndex);
+    const minCellIndex = Math.min(startStop.cellIndex, endStop.cellIndex);
+    const maxCellIndex = Math.max(startStop.cellIndex, endStop.cellIndex);
+
+    this.theDocument.state.selection = {
+      // Cell-based (for backward compatibility)
+      start: minCellIndex,
+      end: maxCellIndex,
+      active: true,
+      // Stop-based (for navigation)
+      startStopIndex: minStopIndex,
+      endStopIndex: maxStopIndex,
     };
   }
 
@@ -1284,66 +1537,88 @@ class MusicNotationEditor {
       return '';
     }
 
-    // Extract text from selection range (no lanes - just cell indices)
+    // Extract text from selection range (inclusive)
     const selectedCells = cells.filter((cell, index) =>
-      index >= selection.start && index < selection.end
+      index >= selection.start && index <= selection.end
     );
 
     return selectedCells.map(cell => cell.char || '').join('');
   }
 
   /**
-     * Extend selection to the left (cell-based)
+     * Extend selection to the left
      */
   extendSelectionLeft() {
-    const currentCellIndex = this.getCursorPosition();
+    const currentPos = this.getCursorPosition();
+    if (currentPos <= 0) return; // Can't go further left
+
+    const stops = this.getNavigableStops();
+    if (stops.length === 0) return;
+
     let selection = this.getSelection();
 
-    if (!selection) {
-      // Start new selection
-      this.initializeSelection(currentCellIndex, currentCellIndex);
-      selection = this.getSelection();
+    if (!selection || selection.startStopIndex === null) {
+      // Start new selection: get the cell immediately to the left of the cursor
+      const { cellIndex } = this.charPosToCellIndex(currentPos);
+
+      // Find the stop for this cell
+      let targetStopIndex = -1;
+      for (const stop of stops) {
+        if (stop.cellIndex === cellIndex) {
+          targetStopIndex = stop.stopIndex;
+          break;
+        }
+      }
+
+      if (targetStopIndex === -1) return;
+      this.initializeSelectionByStops(targetStopIndex, targetStopIndex);
+    } else {
+      // Extend existing selection leftward
+      // Move start one stop to the left, keep end fixed
+      const newStartStopIndex = selection.startStopIndex - 1;
+      if (newStartStopIndex < 0) return; // Can't extend further left
+      this.initializeSelectionByStops(newStartStopIndex, selection.endStopIndex);
     }
 
-    if (currentCellIndex > 0) {
-      const newIndex = currentCellIndex - 1;
-      // Extend selection to include previous cell
-      if (currentCellIndex === selection.end) {
-        // Extending left from end
-        this.initializeSelection(newIndex, selection.end);
-      } else {
-        // Extending left from start
-        this.initializeSelection(newIndex, selection.end);
-      }
-      this.setCursorPosition(newIndex);
-    }
+    this.updateSelectionDisplay();
   }
 
   /**
-     * Extend selection to the right (cell-based)
+     * Extend selection to the right (stop-based)
      */
   extendSelectionRight() {
-    const currentCellIndex = this.getCursorPosition();
-    const maxCellIndex = this.getMaxCellIndex();
+    const stops = this.getNavigableStops();
+    if (stops.length === 0) return;
+
+    const currentStop = this.getCurrentStop();
+    if (!currentStop) return;
+
     let selection = this.getSelection();
 
-    if (!selection) {
-      // Start new selection
-      this.initializeSelection(currentCellIndex, currentCellIndex);
+    if (!selection || selection.startStopIndex === null) {
+      // Start new selection at current stop
+      this.initializeSelectionByStops(currentStop.stopIndex, currentStop.stopIndex);
       selection = this.getSelection();
     }
 
-    if (currentCellIndex < maxCellIndex) {
-      const newIndex = currentCellIndex + 1;
-      // Extend selection to include next cell
-      if (currentCellIndex === selection.start) {
-        // Extending right from start
-        this.initializeSelection(selection.start, newIndex);
+    if (currentStop.stopIndex < stops.length - 1) {
+      const nextStop = stops[currentStop.stopIndex + 1];
+
+      // Determine if we're extending from anchor or head
+      const anchorStopIndex = selection.startStopIndex;
+      const headStopIndex = currentStop.stopIndex;
+
+      if (headStopIndex === selection.startStopIndex) {
+        // Extending right from start (growing)
+        this.initializeSelectionByStops(anchorStopIndex, nextStop.stopIndex);
       } else {
-        // Extending right from end
-        this.initializeSelection(selection.start, newIndex);
+        // Extending right from end (shrinking or reversing)
+        this.initializeSelectionByStops(selection.startStopIndex, nextStop.stopIndex);
       }
-      this.setCursorPosition(newIndex);
+
+      // Move cursor to new position
+      const charPos = this.cellIndexToCharPos(nextStop.cellIndex);
+      this.setCursorPosition(charPos);
     }
   }
 
@@ -1364,38 +1639,55 @@ class MusicNotationEditor {
   }
 
   /**
-     * Extend selection to start of line
+     * Extend selection to start of line (stop-based)
      */
   extendSelectionToStart() {
+    const stops = this.getNavigableStops();
+    if (stops.length === 0) return;
+
+    const currentStop = this.getCurrentStop();
+    if (!currentStop) return;
+
+    const firstStop = stops[0];
     const selection = this.getSelection();
 
-    if (!selection) {
-      // Start new selection from current position to start
-      this.initializeSelection(0, this.getCursorPosition());
+    if (!selection || selection.startStopIndex === null) {
+      // Start new selection from current stop to first stop
+      this.initializeSelectionByStops(firstStop.stopIndex, currentStop.stopIndex);
     } else {
       // Extend existing selection to start
-      this.initializeSelection(0, selection.end);
+      this.initializeSelectionByStops(firstStop.stopIndex, selection.endStopIndex);
     }
 
-    this.setCursorPosition(0);
+    // Move cursor to start (to the START of the first cell)
+    const charPos = firstStop.cellIndex === 0 ? 0 : this.cellIndexToCharPos(firstStop.cellIndex - 1);
+    this.setCursorPosition(charPos);
   }
 
   /**
-     * Extend selection to end of line
+     * Extend selection to end of line (stop-based)
      */
   extendSelectionToEnd() {
-    const maxPos = this.getMaxCellIndex();
+    const stops = this.getNavigableStops();
+    if (stops.length === 0) return;
+
+    const currentStop = this.getCurrentStop();
+    if (!currentStop) return;
+
+    const lastStop = stops[stops.length - 1];
     const selection = this.getSelection();
 
-    if (!selection) {
-      // Start new selection from current position to end
-      this.initializeSelection(this.getCursorPosition(), maxPos);
+    if (!selection || selection.startStopIndex === null) {
+      // Start new selection from current stop to last stop
+      this.initializeSelectionByStops(currentStop.stopIndex, lastStop.stopIndex);
     } else {
       // Extend existing selection to end
-      this.initializeSelection(selection.start, maxPos);
+      this.initializeSelectionByStops(selection.startStopIndex, lastStop.stopIndex);
     }
 
-    this.setCursorPosition(maxPos);
+    // Move cursor to end
+    const charPos = this.cellIndexToCharPos(lastStop.cellIndex);
+    this.setCursorPosition(charPos);
   }
 
   /**
@@ -1407,13 +1699,16 @@ class MusicNotationEditor {
 
     const selection = this.getSelection();
     if (!selection) {
+      // No selection - update display to show "No selection"
+      this.updateCursorPositionDisplay();
       return;
     }
 
     // Add visual selection for selected range
     this.renderSelectionVisual(selection);
 
-    // Update ephemeral model display to show current selection state
+    // Update cursor position display and ephemeral model display
+    this.updateCursorPositionDisplay();
     this.updateDocumentDisplay();
   }
 
@@ -1434,8 +1729,8 @@ class MusicNotationEditor {
       return;
     }
 
-    // Add 'selected' class to all cells in the selection range
-    for (let i = selection.start; i < selection.end; i++) {
+    // Add 'selected' class to all cells in the selection range (inclusive)
+    for (let i = selection.start; i <= selection.end; i++) {
       const cellElement = lineElement.querySelector(`[data-cell-index="${i}"]`);
       if (cellElement) {
         cellElement.classList.add('selected');
@@ -2901,7 +3196,7 @@ class MusicNotationEditor {
     let yOffset = 32; // Default fallback
 
     // Find first cell to get its Y position (relative to the line)
-    const cells = this.element.querySelectorAll(`[data-lineindex="${currentStave}"]`);
+    const cells = this.element.querySelectorAll(`[data-line-index="${currentStave}"]`);
     console.log(`📍 Found ${cells.length} cells for line ${currentStave}`);
 
     if (cells.length > 0) {
@@ -2972,7 +3267,7 @@ class MusicNotationEditor {
       if (this.hasSelection()) {
         const selection = this.getSelection();
         const selectionText = this.getSelectedText();
-        const cellCount = selection.end - selection.start;
+        const cellCount = selection.end - selection.start + 1; // +1 for inclusive range
         selectionInfo.textContent = `Selected: ${cellCount} cells (${selectionText})`;
         selectionInfo.className = 'text-xs text-success';
       } else {
