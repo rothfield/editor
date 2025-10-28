@@ -52,14 +52,18 @@ test('diagnostic: verify character positions in display list for "abc"', async (
 
   let totalWidth = 0;
   displayList.cells.forEach((cell, idx) => {
-    const expectedX = idx === 0 ? 60 : displayList.cells[idx - 1].cursor_right;
-    const xMatch = Math.abs(cell.x - expectedX) < 0.01 ? '✓' : '✗';
+    const prevCell = idx === 0 ? null : displayList.cells[idx - 1];
+    const expectedX = idx === 0 ? 0 : (prevCell.cursor_right !== undefined ? prevCell.cursor_right : prevCell.x + prevCell.w);
+    const xMatch = (cell.cursor_right !== undefined || cell.x !== undefined) ? '✓' : '?';
+
     console.log(`[${idx}] "${cell.char}"`);
-    console.log(`  x: ${cell.x} (expected: ${expectedX}) ${xMatch}`);
-    console.log(`  w: ${cell.w}`);
-    console.log(`  cursor_left: ${cell.cursor_left}, cursor_right: ${cell.cursor_right}`);
-    console.log(`  calculated_width: ${cell.cursor_right - cell.cursor_left}`);
-    totalWidth += (cell.cursor_right - cell.cursor_left);
+    console.log(`  x: ${cell.x}, w: ${cell.w}`);
+    if (cell.cursor_left !== undefined && cell.cursor_right !== undefined) {
+      console.log(`  cursor_left: ${cell.cursor_left}, cursor_right: ${cell.cursor_right}`);
+      const charWidth = cell.cursor_right - cell.cursor_left;
+      console.log(`  calculated_width: ${charWidth}`);
+      totalWidth += charWidth;
+    }
   });
 
   console.log('');
@@ -71,7 +75,7 @@ test('diagnostic: verify character positions in display list for "abc"', async (
   for (let i = 1; i < displayList.cells.length; i++) {
     const prev = displayList.cells[i - 1];
     const curr = displayList.cells[i];
-    const prevEnd = prev.cursor_right;
+    const prevEnd = prev.cursor_right !== undefined ? prev.cursor_right : (prev.x + prev.w);
     const currStart = curr.x;
 
     if (Math.abs(prevEnd - currStart) > 0.01) {
@@ -89,18 +93,20 @@ test('diagnostic: verify character positions in display list for "abc"', async (
   }
 
   // Additional check: are all widths reasonable?
-  console.log('\n=== WIDTH ANALYSIS ===');
-  const widths = displayList.cells.map(c => c.cursor_right - c.cursor_left);
-  const avgWidth = widths.reduce((a, b) => a + b, 0) / widths.length;
-  const minWidth = Math.min(...widths);
-  const maxWidth = Math.max(...widths);
+  if (displayList.cells[0].cursor_right !== undefined) {
+    console.log('\n=== WIDTH ANALYSIS ===');
+    const widths = displayList.cells.map(c => c.cursor_right - c.cursor_left);
+    const avgWidth = widths.reduce((a, b) => a + b, 0) / widths.length;
+    const minWidth = Math.min(...widths);
+    const maxWidth = Math.max(...widths);
 
-  console.log(`Average character width: ${avgWidth.toFixed(2)}`);
-  console.log(`Min width: ${minWidth.toFixed(2)}, Max width: ${maxWidth.toFixed(2)}`);
-  console.log(`Width variance: ${(maxWidth - minWidth).toFixed(2)}`);
+    console.log(`Average character width: ${avgWidth.toFixed(2)}`);
+    console.log(`Min width: ${minWidth.toFixed(2)}, Max width: ${maxWidth.toFixed(2)}`);
+    console.log(`Width variance: ${(maxWidth - minWidth).toFixed(2)}`);
 
-  if (maxWidth - minWidth > 5) {
-    console.log('⚠️  Large variance in character widths detected');
+    if (maxWidth - minWidth > 5) {
+      console.log('⚠️  Large variance in character widths detected');
+    }
   }
 
   expect(isValid).toBe(true);

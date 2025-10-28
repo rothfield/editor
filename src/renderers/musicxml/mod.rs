@@ -116,7 +116,8 @@ fn calculate_measure_divisions(cells: &[Cell], beat_deriver: &BeatDeriver) -> us
         let beat_cells = &cells[beat.start..=beat.end];
         // IMPORTANT: Don't count continuation cells in rhythmic calculations!
         // Continuation cells are part of the same logical element (e.g., "#" in "C#")
-        let subdivision_count = beat_cells.iter().filter(|c| !c.continuation).count();
+        // Also exclude rhythm-transparent cells (ornaments/grace notes) which don't contribute to beat divisions
+        let subdivision_count = beat_cells.iter().filter(|c| !c.continuation && !c.is_rhythm_transparent()).count();
         if subdivision_count > 0 {
             divisions = lcm(divisions, subdivision_count);
         }
@@ -176,8 +177,39 @@ fn process_segment(
     // Extract beats using beat deriver
     let beats = beat_deriver.extract_implicit_beats(cells);
 
+    // Track orphaned grace notes from beats with only ornament cells
+    let mut orphaned_grace_notes: Vec<(PitchCode, i8, OrnamentPositionType)> = Vec::new();
+
     for (i, beat) in beats.iter().enumerate() {
         let beat_cells = &cells[beat.start..=beat.end];
+
+        // Check if this beat contains ONLY rhythm-transparent cells
+        let has_main_note = beat_cells.iter().any(|c| !c.continuation && !c.is_rhythm_transparent() && c.kind == ElementKind::PitchedElement);
+
+        // If beat contains only ornaments, collect them as grace notes for the next beat
+        if !has_main_note && beat_cells.iter().any(|c| c.is_rhythm_transparent()) {
+            for cell in beat_cells {
+                if cell.is_rhythm_transparent() && cell.kind == ElementKind::PitchedElement && !cell.continuation {
+                    if let Some(pitch_code) = &cell.pitch_code {
+                        let ornament_position = cell.ornament_indicator.position_type();
+                        orphaned_grace_notes.push((*pitch_code, cell.octave, ornament_position));
+                    }
+                }
+            }
+            // Skip processing this beat since it has no main notes
+            continue;
+        }
+
+        // If we have orphaned grace notes, prepend them before processing this beat
+        if !orphaned_grace_notes.is_empty() {
+            for (grace_pitch_code, grace_octave, ornament_position) in orphaned_grace_notes.drain(..) {
+                let placement = match ornament_position {
+                    OrnamentPositionType::OnTop => Some("above"),
+                    OrnamentPositionType::Before | OrnamentPositionType::After => None,
+                };
+                builder.write_grace_note(&grace_pitch_code, grace_octave, true, placement)?;
+            }
+        }
 
         // Check if next beat starts with "-" for tie detection
         let next_beat_starts_with_div = if i + 1 < beats.len() {
@@ -285,6 +317,12 @@ fn normalize_beat(beat_cells: &[Cell]) -> (Vec<usize>, usize) {
             continue;
         }
 
+        // IMPORTANT: Skip rhythm-transparent cells (ornaments/grace notes) - they don't contribute to beat rhythm
+        if cell.is_rhythm_transparent() {
+            i += 1;
+            continue;
+        }
+
         if cell.kind == ElementKind::PitchedElement {
             // Count this note + following extensions
             let mut slot_count = 1;
@@ -299,6 +337,9 @@ fn normalize_beat(beat_cells: &[Cell]) -> (Vec<usize>, usize) {
             while j < beat_cells.len() {
                 if beat_cells[j].kind == ElementKind::UnpitchedElement && beat_cells[j].char == "-" {
                     slot_count += 1;
+                    j += 1;
+                } else if beat_cells[j].is_rhythm_transparent() {
+                    // Skip ornaments/grace notes
                     j += 1;
                 } else {
                     break;
@@ -409,10 +450,8 @@ fn process_beat(
 
     // Track ornaments (grace notes) to be attached to next main note
     let mut pending_grace_notes: Vec<(PitchCode, i8, OrnamentPositionType)> = Vec::new();
-    let mut current_ornament_position = OrnamentPositionType::Before;
 
     // Process remaining elements in the beat
-    let mut in_ornament_span = false;
     while i < beat_cells.len() {
         let cell = &beat_cells[i];
 
@@ -422,27 +461,14 @@ fn process_beat(
             continue;
         }
 
-        // Track ornament indicator spans and collect grace notes
-        if cell.is_ornament_start() {
-            in_ornament_span = true;
-            current_ornament_position = cell.ornament_indicator.position_type();
-            i += 1;
-            continue;
-        }
-
-        // Collect pitched elements within ornament spans as grace notes
-        if in_ornament_span {
+        // If this cell is a rhythm-transparent ornament cell, treat it as a grace note
+        if cell.is_rhythm_transparent() {
             if cell.kind == ElementKind::PitchedElement {
                 if let Some(pitch_code) = &cell.pitch_code {
-                    pending_grace_notes.push((*pitch_code, cell.octave, current_ornament_position));
+                    let ornament_position = cell.ornament_indicator.position_type();
+                    pending_grace_notes.push((*pitch_code, cell.octave, ornament_position));
                 }
             }
-
-            // Check if this is the end of the ornament span
-            if cell.is_ornament_end() {
-                in_ornament_span = false;
-            }
-
             i += 1;
             continue;
         }

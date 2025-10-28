@@ -2164,7 +2164,7 @@ class MusicNotationEditor {
 
     const cells = line.cells || [];
     const selectedCells = cells.filter((cell, index) =>
-      index >= selection.start && index < selection.end
+      index >= selection.start && index <= selection.end
     );
     const selectedText = selectedCells.map(cell => cell.char || '').join('');
 
@@ -3027,19 +3027,27 @@ class MusicNotationEditor {
       cursorPositions.push(cellRect.right - editorRect.left);
     }
 
-    // Find the cursor position closest to the click
-    let closestIndex = 0;
-    let minDistance = Math.abs(x - cursorPositions[0]);
+    // Find which cell the X coordinate is in by checking which pair of boundaries it falls between
+    let cellIndex = 0;
 
-    for (let i = 1; i < cursorPositions.length; i++) {
-      const distance = Math.abs(x - cursorPositions[i]);
-      if (distance < minDistance) {
-        minDistance = distance;
-        closestIndex = i;
+    // Check each cell to see if x falls within it
+    for (let i = 0; i < cellElements.length; i++) {
+      const leftBoundary = cursorPositions[i];
+      const rightBoundary = cursorPositions[i + 1];
+
+      // Click is within this cell
+      if (x >= leftBoundary && x < rightBoundary) {
+        cellIndex = i;
+        break;
       }
     }
 
-    return closestIndex;
+    // If x is at or beyond the right edge of the last cell, select the last cell
+    if (x >= cursorPositions[cellElements.length]) {
+      cellIndex = Math.max(0, cellElements.length - 1);
+    }
+
+    return cellIndex;
   }
 
   /**

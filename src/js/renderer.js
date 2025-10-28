@@ -265,7 +265,7 @@ class DOMRenderer {
       for (const cell of line.cells) {
         // Continuation cells that are NOT text should use minimal width (for accidentals)
         // Text continuation cells should use actual measured width (each char is separate)
-        if (cell.continuation && cell.kind !== 'text') {
+        if (cell.continuation && cell.kind.name !== 'text') {
           // Use 1/10th of font width for non-text continuation cells (accidentals, etc)
           cellWidths.push(BASE_FONT_SIZE * 0.1);
         } else {
@@ -405,7 +405,7 @@ class DOMRenderer {
         // Measure each character in the cell's glyph
         // For text continuations, measure actual widths (each char is separate)
         // For non-text continuations (accidentals), use minimal width
-        if (cell.continuation && cell.kind !== 'text') {
+        if (cell.continuation && cell.kind.name !== 'text') {
           // Continuation cells with minimal width (for accidentals like #, b)
           for (const char of cell.char) {
             charWidths.push(BASE_FONT_SIZE * 0.1);
