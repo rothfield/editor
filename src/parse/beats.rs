@@ -70,11 +70,12 @@ impl BeatDeriver {
     pub fn extract_implicit_beats(&self, cells: &[Cell]) -> Vec<BeatSpan> {
         let mut beats = Vec::new();
         let mut beat_start = None;
+        let mut beat_end = None; // Track actual last beat-element cell
         let mut current_duration = 1.0;
 
         for (index, cell) in cells.iter().enumerate() {
             // Skip rhythm-transparent cells (ornaments/grace notes)
-            // Per FR-006: Ornaments are excluded from beat derivation
+            // Per FR-006: Ornaments are non-metrical and excluded from beat derivation
             if cell.is_rhythm_transparent() {
                 continue;
             }
@@ -86,13 +87,16 @@ impl BeatDeriver {
                 if beat_start.is_none() {
                     beat_start = Some(index);
                 }
-                // Continue the current beat
+                beat_end = Some(index); // Track the actual end position
             } else {
                 // This cell is NOT a beat-element (separator: whitespace, text, barline, etc.)
                 // End current beat if one is active
                 if let Some(start) = beat_start {
-                    beats.push(BeatSpan::new(start, index - 1, current_duration));
+                    if let Some(end) = beat_end {
+                        beats.push(BeatSpan::new(start, end, current_duration));
+                    }
                     beat_start = None;
+                    beat_end = None;
                     current_duration = 1.0;
                 }
             }
@@ -100,7 +104,9 @@ impl BeatDeriver {
 
         // Handle trailing beat
         if let Some(start) = beat_start {
-            beats.push(BeatSpan::new(start, cells.len() - 1, current_duration));
+            if let Some(end) = beat_end {
+                beats.push(BeatSpan::new(start, end, current_duration));
+            }
         }
 
         beats
