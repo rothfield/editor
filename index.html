@@ -739,6 +739,9 @@
                         <button id="tab-persistent" class="tab" data-tab="persistent" data-testid="tab-docmodel">
                             Persistent Model
                         </button>
+                        <button id="tab-ir" class="tab" data-tab="ir" data-testid="tab-ir" title="Intermediate Representation - IR structures (ExportLine, ExportMeasure, ExportEvent)">
+                            IR
+                        </button>
                         <button id="tab-html" class="tab" data-tab="html">
                             HTML
                         </button>
@@ -812,6 +815,14 @@
                     <!-- Persistent Model Tab (saveable content only) -->
                     <div id="tab-content-persistent" data-tab-content="persistent" class="tab-content hidden flex-1 flex flex-col p-4">
                         <pre id="persistent-json" data-testid="pane-docmodel" class="flex-1 text-xs font-mono bg-white p-3 border-2 border-gray-300 rounded overflow-auto"></pre>
+                    </div>
+
+                    <!-- Intermediate Representation Tab (IR structures: ExportLine → ExportMeasure → ExportEvent) -->
+                    <div id="tab-content-ir" data-tab-content="ir" class="tab-content hidden flex-1 flex flex-col p-4">
+                        <div class="mb-2 text-xs text-gray-600">
+                            <span title="Intermediate Representation: Bridges Document Model to MusicXML emission">IR (ExportLine → ExportMeasure → ExportEvent)</span>
+                        </div>
+                        <pre id="ir-display" data-testid="pane-ir" class="flex-1 text-xs font-mono bg-white p-3 border-2 border-gray-300 rounded overflow-auto"></pre>
                     </div>
 
                     <!-- HTML Tab -->
