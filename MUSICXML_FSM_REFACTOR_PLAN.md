@@ -826,14 +826,29 @@ fn emit_lyric(
 - 5 core FSM tests (Phase 2)
 - 13 Phase 3 helper function tests
 
-### Phase 4: Measure Builder (2 hours)
+### Phase 4: Measure Builder (2 hours) - HELPER FUNCTIONS ✅
 **File**: `src/renderers/musicxml/cell_to_ir.rs` (continued)
 
+Helper functions completed:
+- [x] Implement `gcd(a, b)` - Greatest common divisor
+- [x] Implement `lcm(a, b)` - Least common multiple
+- [x] Implement `lcm_multiple(numbers)` - LCM of multiple numbers (for measure divisions)
+- [x] Implement `find_barlines(cells)` - Find barline positions for measure splitting
+- [x] Unit tests for all helpers:
+  - ✅ GCD: test_gcd (4 cases)
+  - ✅ LCM: test_lcm (3 cases)
+  - ✅ LCM Multiple: test_lcm_multiple (5 cases)
+  - ✅ Barline finding: 3 tests (no barlines, one barline, multiple barlines)
+
+**Unit tests: 24/24 passing total**
+- 5 Phase 2 (FSM core)
+- 13 Phase 3 (lyrics/slurs/chords)
+- 6 Phase 4 (LCM/GCD/barlines)
+
+**Still TODO for Phase 4**:
 - [ ] Implement `build_export_measures_from_line(line, staff_number)`
-- [ ] Handle barline splitting
-- [ ] Calculate LCM divisions
-- [ ] Detect tuplets
-- [ ] Compute ties (look-ahead)
+- [ ] Detect tuplets from event divisions
+- [ ] Compute ties (look-ahead for note continuity)
 - [ ] Compute beam states (for main notes, not just grace)
 
 ### Phase 5: Build Measures from Document (1 hour)

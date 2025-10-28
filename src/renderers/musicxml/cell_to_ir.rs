@@ -363,6 +363,46 @@ pub fn attach_first_lyric(note: &mut NoteData, syllables: &[(String, Syllabic)],
     }
 }
 
+/// Calculate the greatest common divisor (GCD) of two numbers
+pub fn gcd(a: usize, b: usize) -> usize {
+    if b == 0 {
+        a
+    } else {
+        gcd(b, a % b)
+    }
+}
+
+/// Calculate the least common multiple (LCM) of two numbers
+pub fn lcm(a: usize, b: usize) -> usize {
+    (a * b) / gcd(a, b)
+}
+
+/// Calculate LCM of multiple numbers
+pub fn lcm_multiple(numbers: &[usize]) -> usize {
+    if numbers.is_empty() {
+        return 1;
+    }
+    numbers.iter().copied().reduce(lcm).unwrap_or(1)
+}
+
+/// Find all barline positions in a line of cells
+/// Returns indices where barlines occur (starting from 1, since 0 is implicit start)
+pub fn find_barlines(cells: &[Cell]) -> Vec<usize> {
+    let mut barlines = vec![0]; // Implicit start
+
+    for (i, cell) in cells.iter().enumerate() {
+        if cell.char == "|" && cell.kind == ElementKind::UnpitchedElement {
+            barlines.push(i + 1);
+        }
+    }
+
+    if barlines.len() == 1 || barlines.last() != Some(&cells.len()) {
+        barlines.push(cells.len()); // Implicit end
+    }
+
+    barlines
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -645,5 +685,76 @@ mod tests {
 
         attach_first_lyric(&mut note, &syllables, 10); // Out of bounds
         assert!(note.lyrics.is_none());
+    }
+
+    // ===== PHASE 4: MEASURE BUILDER (LCM, BARLINES, TUPLETS) =====
+
+    #[test]
+    fn test_gcd() {
+        assert_eq!(gcd(12, 8), 4);
+        assert_eq!(gcd(10, 5), 5);
+        assert_eq!(gcd(7, 3), 1);
+        assert_eq!(gcd(0, 5), 5);
+    }
+
+    #[test]
+    fn test_lcm() {
+        assert_eq!(lcm(12, 8), 24);
+        assert_eq!(lcm(10, 5), 10);
+        assert_eq!(lcm(3, 5), 15);
+    }
+
+    #[test]
+    fn test_lcm_multiple() {
+        assert_eq!(lcm_multiple(&[]), 1);
+        assert_eq!(lcm_multiple(&[4]), 4);
+        assert_eq!(lcm_multiple(&[4, 6]), 12);
+        assert_eq!(lcm_multiple(&[4, 6, 8]), 24);
+        assert_eq!(lcm_multiple(&[3, 4, 5]), 60);
+    }
+
+    #[test]
+    fn test_find_barlines_no_barlines() {
+        let cells = vec![
+            make_cell(ElementKind::PitchedElement, "1", Some(PitchCode::N1)),
+            make_cell(ElementKind::PitchedElement, "2", Some(PitchCode::N2)),
+        ];
+        let barlines = find_barlines(&cells);
+        // Should have implicit start and end
+        assert_eq!(barlines.len(), 2);
+        assert_eq!(barlines[0], 0); // Start
+        assert_eq!(barlines[1], 2); // End
+    }
+
+    #[test]
+    fn test_find_barlines_with_barline() {
+        let cells = vec![
+            make_cell(ElementKind::PitchedElement, "1", Some(PitchCode::N1)),
+            make_cell(ElementKind::UnpitchedElement, "|", None),
+            make_cell(ElementKind::PitchedElement, "2", Some(PitchCode::N2)),
+        ];
+        let barlines = find_barlines(&cells);
+        // Should have: start, after barline at index 2, and end
+        assert_eq!(barlines.len(), 3);
+        assert_eq!(barlines[0], 0); // Start
+        assert_eq!(barlines[1], 2); // After barline
+        assert_eq!(barlines[2], 3); // End
+    }
+
+    #[test]
+    fn test_find_barlines_multiple_barlines() {
+        let cells = vec![
+            make_cell(ElementKind::PitchedElement, "1", Some(PitchCode::N1)),
+            make_cell(ElementKind::UnpitchedElement, "|", None),
+            make_cell(ElementKind::PitchedElement, "2", Some(PitchCode::N2)),
+            make_cell(ElementKind::UnpitchedElement, "|", None),
+            make_cell(ElementKind::PitchedElement, "3", Some(PitchCode::N3)),
+        ];
+        let barlines = find_barlines(&cells);
+        assert_eq!(barlines.len(), 4);
+        assert_eq!(barlines[0], 0); // Start
+        assert_eq!(barlines[1], 2); // After first barline
+        assert_eq!(barlines[2], 4); // After second barline
+        assert_eq!(barlines[3], 5); // End
     }
 }
