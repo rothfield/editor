@@ -183,8 +183,12 @@ fn process_segment(
     for (i, beat) in beats.iter().enumerate() {
         let beat_cells = &cells[beat.start..=beat.end];
 
-        // Check if this beat contains ONLY rhythm-transparent cells
-        let has_main_note = beat_cells.iter().any(|c| !c.continuation && !c.is_rhythm_transparent() && c.kind == ElementKind::PitchedElement);
+        // Check if this beat contains at least one non-ornament main note (PitchedElement that's NOT rhythm-transparent)
+        let has_main_note = beat_cells.iter().any(|c| {
+            !c.continuation &&
+            c.kind == ElementKind::PitchedElement &&
+            !c.is_rhythm_transparent()
+        });
 
         // If beat contains only ornaments, collect them as grace notes for the next beat
         if !has_main_note && beat_cells.iter().any(|c| c.is_rhythm_transparent()) {
@@ -451,6 +455,26 @@ fn process_beat(
     // Track ornaments (grace notes) to be attached to next main note
     let mut pending_grace_notes: Vec<(PitchCode, i8, OrnamentPositionType)> = Vec::new();
 
+    // First pass: collect all grace notes that come BEFORE any main note
+    // These will be attached to the first main note
+    let mut grace_notes_before_main: Vec<(PitchCode, i8, OrnamentPositionType)> = Vec::new();
+    let mut found_main_note = false;
+    for j in 0..beat_cells.len() {
+        let cell = &beat_cells[j];
+        if !cell.continuation && !cell.is_rhythm_transparent() && cell.kind == ElementKind::PitchedElement {
+            found_main_note = true;
+            break;
+        }
+        if cell.is_rhythm_transparent() && cell.kind == ElementKind::PitchedElement && !cell.continuation {
+            if let Some(pitch_code) = &cell.pitch_code {
+                grace_notes_before_main.push((*pitch_code, cell.octave, cell.ornament_indicator.position_type()));
+            }
+        }
+    }
+
+    // Start with grace notes that come before the main note
+    pending_grace_notes.extend(grace_notes_before_main);
+
     // Process remaining elements in the beat
     while i < beat_cells.len() {
         let cell = &beat_cells[i];
@@ -512,6 +536,26 @@ fn process_beat(
                         }
                         k >= beat_cells.len()
                     };
+
+                    // Also collect grace notes that come AFTER this main note
+                    let mut trailing_grace_notes: Vec<(PitchCode, i8, OrnamentPositionType)> = Vec::new();
+                    let mut j = i + 1 + extension_count;
+                    while j < beat_cells.len() {
+                        let c = &beat_cells[j];
+                        if c.is_rhythm_transparent() && c.kind == ElementKind::PitchedElement && !c.continuation {
+                            if let Some(pitch_code) = &c.pitch_code {
+                                let ornament_position = c.ornament_indicator.position_type();
+                                trailing_grace_notes.push((*pitch_code, c.octave, ornament_position));
+                            }
+                        } else if !c.is_rhythm_transparent() && !c.continuation {
+                            // Stop at next main element
+                            break;
+                        }
+                        j += 1;
+                    }
+
+                    // Combine pending (before) and trailing (after) grace notes
+                    pending_grace_notes.extend(trailing_grace_notes);
 
                     // Detect ornament type from grace notes
                     let ornament_type = if !pending_grace_notes.is_empty() {

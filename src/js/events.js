@@ -103,6 +103,10 @@ class EventManager {
       'Ctrl+o': () => this.handleOpenFile(),
       'Ctrl+O': () => this.handleOpenFile(),
 
+      // Ornament shortcuts
+      'Alt+o': () => this.applyOrnament(),
+      'Alt+O': () => this.applyOrnament(),
+
       // Ornament edit mode toggle (Alt+Shift+O)
       'Alt+Shift+o': () => this.toggleOrnamentEditMode(),
       'Alt+Shift+O': () => this.toggleOrnamentEditMode(),
@@ -382,6 +386,18 @@ class EventManager {
       this.editor.toggleOrnamentEditMode();
     } else {
       console.warn('Ornament edit mode toggle not available');
+    }
+  }
+
+  /**
+   * Apply ornament to selection (Alt+O)
+   */
+  applyOrnament() {
+    console.log('Alt+O: Apply ornament shortcut triggered');
+    if (this.editor && this.editor.applyOrnament) {
+      this.editor.applyOrnament('after');
+    } else {
+      console.warn('Apply ornament not available');
     }
   }
 

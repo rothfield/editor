@@ -583,6 +583,15 @@ class MusicNotationEditor {
         if (!line) return;
         const cells = line.cells;
 
+        // Check if any cell in range has an ornament indicator - if so, prevent deletion
+        for (let i = start; i < end && i < cells.length; i++) {
+          if (cells[i] && cells[i].ornament_indicator && cells[i].ornament_indicator.name !== 'none') {
+            console.log('[DELETE] Protected: cannot delete ornament cell at index', i);
+            this.showWarning('Cannot delete cells with ornaments - ornaments are non-editable');
+            return; // Don't delete anything if any cell has an ornament
+          }
+        }
+
         // Delete cells in range
         cells.splice(start, end - start);
       }
@@ -1285,10 +1294,15 @@ class MusicNotationEditor {
     }
 
     const cells = line.cells || [];
+    const editMode = this.wasmModule.getOrnamentEditMode(this.theDocument);
 
-    // Sum up lengths of all cell glyphs
+    // Sum up lengths of all navigable cell glyphs (skip ornaments in normal mode)
     let totalChars = 0;
     for (const cell of cells) {
+      // In normal mode, skip ornament cells (they're out of the flow)
+      if (!editMode && cell.ornament_indicator && cell.ornament_indicator.name !== 'none') {
+        continue;
+      }
       totalChars += cell.char.length;
     }
 
@@ -1312,10 +1326,18 @@ class MusicNotationEditor {
     }
 
     const cells = line.cells || [];
+    const editMode = this.wasmModule.getOrnamentEditMode(this.theDocument);
 
     let accumulatedChars = 0;
     for (let cellIndex = 0; cellIndex < cells.length; cellIndex++) {
-      const cellLength = cells[cellIndex].char.length;
+      const cell = cells[cellIndex];
+
+      // In normal mode, skip ornament cells (they're out of the flow)
+      if (!editMode && cell.ornament_indicator && cell.ornament_indicator.name !== 'none') {
+        continue;
+      }
+
+      const cellLength = cell.char.length;
 
       if (charPos <= accumulatedChars + cellLength) {
         return {
@@ -1351,11 +1373,19 @@ class MusicNotationEditor {
     }
 
     const cells = line.cells || [];
+    const editMode = this.wasmModule.getOrnamentEditMode(this.theDocument);
 
     let charPos = 0;
-    // Sum up lengths of all cells UP TO AND INCLUDING the target cell
+    // Sum up lengths of all navigable cells UP TO AND INCLUDING the target cell
     for (let i = 0; i <= cellIndex && i < cells.length; i++) {
-      charPos += cells[i].char.length;
+      const cell = cells[i];
+
+      // In normal mode, skip ornament cells (they're out of the flow)
+      if (!editMode && cell.ornament_indicator && cell.ornament_indicator.name !== 'none') {
+        continue;
+      }
+
+      charPos += cell.char.length;
     }
 
     return charPos;
@@ -1601,6 +1631,7 @@ class MusicNotationEditor {
       selection = this.getSelection();
     }
 
+    // Can we move the cursor right?
     if (currentStop.stopIndex < stops.length - 1) {
       const nextStop = stops[currentStop.stopIndex + 1];
 
@@ -1619,6 +1650,12 @@ class MusicNotationEditor {
       // Move cursor to new position
       const charPos = this.cellIndexToCharPos(nextStop.cellIndex);
       this.setCursorPosition(charPos);
+    } else if (currentStop.stopIndex === selection.endStopIndex && selection.startStopIndex < selection.endStopIndex) {
+      // At right edge of selection and can't move right - shrink selection from the left
+      const nextStartStop = stops[selection.startStopIndex + 1];
+      this.initializeSelectionByStops(nextStartStop.stopIndex, selection.endStopIndex);
+
+      // Cursor stays at the same position (right edge of new selection)
     }
   }
 
@@ -1832,10 +1869,12 @@ class MusicNotationEditor {
           const cellToDelete = cells[cellIndexToDelete];
 
           // Check if cell has an ornament indicator - if so, act as left arrow instead of deleting
-          if (cellToDelete && cellToDelete.has_ornament_indicator && cellToDelete.has_ornament_indicator()) {
+          if (cellToDelete && cellToDelete.ornament_indicator && cellToDelete.ornament_indicator.name !== 'none') {
+            console.log('[BACKSPACE] Protected: ornament cell cannot be deleted, acting as left arrow');
             logger.info(LOG_CATEGORIES.EDITOR, 'Backspace on ornament cell - acting as left arrow', {
               cellIndexToDelete,
-              currentCharPos: charPos
+              currentCharPos: charPos,
+              ornamentIndicator: cellToDelete.ornament_indicator
             });
 
             // Move cursor left instead of deleting
@@ -1962,6 +2001,26 @@ class MusicNotationEditor {
           const cells = line.cells;
 
           if (cellIndex >= 0 && cellIndex < cells.length) {
+            const cellToDelete = cells[cellIndex];
+            console.log('[DELETE] Attempting to delete cell at index', cellIndex, 'char:', cellToDelete?.char, 'ornament_indicator:', cellToDelete?.ornament_indicator);
+
+            // Check if cell has an ornament indicator - if so, prevent deletion
+            if (cellToDelete && cellToDelete.ornament_indicator && cellToDelete.ornament_indicator.name !== 'none') {
+              console.log('[DELETE] Protected: ornament cell cannot be deleted, moving cursor right');
+              logger.info(LOG_CATEGORIES.EDITOR, 'Delete on ornament cell - moving cursor right instead', {
+                cellIndexToDelete: cellIndex,
+                currentCharPos: charPos,
+                ornamentIndicator: cellToDelete.ornament_indicator
+              });
+              // Move cursor right instead of deleting
+              const newCharPos = Math.min(maxCharPos, charPos + 1);
+              this.setCursorPosition(newCharPos);
+              this.showCursor();
+              this.updateSelectionDisplay();
+              return; // Early return - don't delete
+            }
+
+            console.log('[DELETE] No ornament protection - proceeding with deletion');
             const updatedCells = this.wasmModule.deleteCharacter(cells, cellIndex);
             line.cells = updatedCells;
           }
@@ -2219,16 +2278,17 @@ class MusicNotationEditor {
 
       const cells = line.cells;
       const selectedCells = cells.filter((cell, index) =>
-        index >= selection.start && index < selection.end
+        index >= selection.start && index <= selection.end
       );
       const selectedText = selectedCells.map(cell => cell.char || '').join('');
 
       // Apply slur using unified WASM command
+      // Note: WASM expects 'end' to be exclusive (one past the last cell)
       if (this.theDocument && this.theDocument.lines && this.theDocument.lines.length > 0) {
         const updatedCells = this.wasmModule.applyCommand(
           cells,
           selection.start,
-          selection.end,
+          selection.end + 1,  // Convert inclusive end to exclusive
           'slur'
         );
 
@@ -2306,13 +2366,15 @@ class MusicNotationEditor {
 
     // Validate selection (requires explicit selection)
     if (!this.hasSelection()) {
-      console.log('Ornament requires an explicit selection');
+      console.log('❌ No selection found');
       this.showWarning('Please select cells to apply ornament styling');
       return;
     }
 
     try {
       const selection = this.getSelection();
+      console.log('🎵 Selection:', selection);
+
       const line = this.getCurrentLine();
 
       if (!line) {
@@ -2320,20 +2382,38 @@ class MusicNotationEditor {
         return;
       }
 
+      console.log('🎵 Line found with', line.cells?.length, 'cells');
+
       const cells = line.cells;
       const selectedCells = cells.filter((cell, index) =>
-        index >= selection.start && index < selection.end
+        index >= selection.start && index <= selection.end
       );
       const selectedText = selectedCells.map(cell => cell.char || '').join('');
 
+      console.log('🎵 Selected cells:', selectedCells.length, 'text:', selectedText);
+      console.log('🎵 Calling wasmModule.applyOrnament with:', {
+        cellCount: cells.length,
+        startIndex: selection.start,
+        endIndex: selection.end,
+        positionType
+      });
+
       // Call WASM applyOrnament function
+      // Note: WASM expects 'end' to be exclusive (one past the last cell)
+      // Our selection.end is inclusive, so add 1
       if (this.theDocument && this.theDocument.lines && this.theDocument.lines.length > 0) {
         const updatedCells = this.wasmModule.applyOrnament(
           cells,
           selection.start,
-          selection.end,
+          selection.end + 1,  // Convert inclusive end to exclusive
           positionType
         );
+
+        console.log('🎵 WASM returned', updatedCells?.length, 'cells');
+        if (updatedCells && updatedCells.length > 0) {
+          console.log('🎵 Updated cell[1]:', updatedCells[1]);
+          console.log('🎵 Updated cell[2]:', updatedCells[2]);
+        }
 
         line.cells = updatedCells;
         this.addToConsoleLog(`Applied ornament (${positionType}) to "${selectedText}"`);
@@ -2472,7 +2552,7 @@ class MusicNotationEditor {
 
       const cells = line.cells;
       const selectedCells = cells.filter((cell, index) =>
-        index >= selection.start && index < selection.end
+        index >= selection.start && index <= selection.end
       );
       const selectedText = selectedCells.map(cell => cell.char || '').join('');
 
@@ -2518,13 +2598,13 @@ class MusicNotationEditor {
         const updatedCells = this.wasmModule.applyCommand(
           cells,
           selection.start,
-          selection.end,
+          selection.end + 1,  // Convert inclusive end to exclusive for WASM
           command
         );
 
         logger.debug(LOG_CATEGORIES.COMMAND, 'Cell states after WASM applyCommand:', {
           command,
-          cellsInRange: updatedCells.slice(selection.start, selection.end).map((c, i) => ({
+          cellsInRange: updatedCells.slice(selection.start, selection.end + 1).map((c, i) => ({
             index: selection.start + i,
             glyph: c.char,
             octave: c.octave
@@ -3006,9 +3086,27 @@ class MusicNotationEditor {
     }
 
     const lineContainer = lineContainers[lineIndex];
-    const cellElements = lineContainer.querySelectorAll('.char-cell');
+    const allCellElements = lineContainer.querySelectorAll('.char-cell');
 
-    if (cellElements.length === 0) {
+    if (allCellElements.length === 0) {
+      return 0;
+    }
+
+    // In normal mode, filter out ornament cells to make them non-interactive
+    const editMode = this.wasmModule.getOrnamentEditMode(this.theDocument);
+    const line = this.getCurrentLine();
+    const navigableCellElements = Array.from(allCellElements).filter(cellElement => {
+      if (editMode || !line) return true; // In edit mode, all cells are navigable
+      const cellIndex = parseInt(cellElement.getAttribute('data-cell-index'), 10);
+      const cell = line.cells[cellIndex];
+      // Skip ornament cells in normal mode
+      if (cell && cell.ornament_indicator && cell.ornament_indicator.name !== 'none') {
+        return false;
+      }
+      return true;
+    });
+
+    if (navigableCellElements.length === 0) {
       return 0;
     }
 
@@ -3016,13 +3114,13 @@ class MusicNotationEditor {
     const editorRect = this.element.getBoundingClientRect();
     const cursorPositions = [];
 
-    // Position 0: left edge of first cell
-    const firstCell = cellElements[0];
+    // Position 0: left edge of first navigable cell
+    const firstCell = navigableCellElements[0];
     const firstRect = firstCell.getBoundingClientRect();
     cursorPositions.push(firstRect.left - editorRect.left);
 
-    // Positions 1..N: right edge of each cell
-    for (const cell of cellElements) {
+    // Positions 1..N: right edge of each navigable cell
+    for (const cell of navigableCellElements) {
       const cellRect = cell.getBoundingClientRect();
       cursorPositions.push(cellRect.right - editorRect.left);
     }
@@ -3030,21 +3128,22 @@ class MusicNotationEditor {
     // Find which cell the X coordinate is in by checking which pair of boundaries it falls between
     let cellIndex = 0;
 
-    // Check each cell to see if x falls within it
-    for (let i = 0; i < cellElements.length; i++) {
+    // Check each navigable cell to see if x falls within it
+    for (let i = 0; i < navigableCellElements.length; i++) {
       const leftBoundary = cursorPositions[i];
       const rightBoundary = cursorPositions[i + 1];
 
       // Click is within this cell
       if (x >= leftBoundary && x < rightBoundary) {
-        cellIndex = i;
+        // Return the actual cellIndex from the data attribute, not the filtered index
+        cellIndex = parseInt(navigableCellElements[i].getAttribute('data-cell-index'), 10);
         break;
       }
     }
 
-    // If x is at or beyond the right edge of the last cell, select the last cell
-    if (x >= cursorPositions[cellElements.length]) {
-      cellIndex = Math.max(0, cellElements.length - 1);
+    // If x is at or beyond the right edge of the last cell, select the last navigable cell
+    if (x >= cursorPositions[navigableCellElements.length]) {
+      cellIndex = parseInt(navigableCellElements[Math.max(0, navigableCellElements.length - 1)].getAttribute('data-cell-index'), 10);
     }
 
     return cellIndex;

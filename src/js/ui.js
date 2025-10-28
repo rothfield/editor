@@ -277,11 +277,19 @@ class UI {
      * Handle menu item clicks
      */
   handleMenuItemClick(event) {
+    console.log('[UI] handleMenuItemClick event received');
     const menuItem = event.target.closest('.menu-item');
-    if (!menuItem) return;
+    if (!menuItem) {
+      console.log('[UI] No menu item found in event target');
+      return;
+    }
 
     const action = menuItem.dataset.action;
-    if (!action) return;
+    console.log('[UI] Menu item action:', action);
+    if (!action) {
+      console.log('[UI] No action found on menu item');
+      return;
+    }
 
     // Prevent event from propagating and interfering with editor events
     event.preventDefault();
@@ -402,6 +410,7 @@ class UI {
      * Execute menu action
      */
   executeMenuAction(action) {
+    console.log('[UI] executeMenuAction called with action:', action);
     switch (action) {
       case 'new-document':
         this.newDocument();
@@ -443,6 +452,7 @@ class UI {
         this.setKeySignature();
         break;
       case 'apply-ornament-after':
+        console.log('[UI] apply-ornament-after: calling editor.applyOrnament("after")');
         this.editor.applyOrnament('after');
         break;
       case 'apply-ornament-before':

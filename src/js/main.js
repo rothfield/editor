@@ -73,6 +73,9 @@ class MusicNotationApp {
       this.ui.initialize();
       this.resizeHandle.initialize();
 
+      // Setup collapse button
+      this.setupPanelCollapseButton();
+
       // Initialize LilyPond tabs
       this.initializeLilyPondTabs();
 
@@ -294,6 +297,37 @@ class MusicNotationApp {
     }
 
     console.log('✅ MIDI controls initialized');
+  }
+
+  /**
+     * Setup panel collapse/expand button
+     */
+  setupPanelCollapseButton() {
+    const collapseBtn = document.getElementById('panel-collapse-btn');
+
+    if (!collapseBtn) {
+      console.warn('Panel collapse button not found in DOM');
+      return;
+    }
+
+    collapseBtn.addEventListener('click', () => {
+      if (this.resizeHandle) {
+        this.resizeHandle.toggleCollapse();
+        // Update body class to reflect collapsed state (for CSS styling)
+        if (this.resizeHandle.getIsCollapsed()) {
+          document.body.classList.add('panel-collapsed');
+        } else {
+          document.body.classList.remove('panel-collapsed');
+        }
+      }
+    });
+
+    // Initialize body class based on current state
+    if (this.resizeHandle && this.resizeHandle.getIsCollapsed()) {
+      document.body.classList.add('panel-collapsed');
+    }
+
+    console.log('✅ Panel collapse button initialized');
   }
 
   /**

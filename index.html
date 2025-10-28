@@ -190,6 +190,48 @@
                 transparent 100%);
         }
 
+        /* Collapse button styling */
+        #panel-collapse-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 24px;
+            height: 24px;
+            padding: 0.25rem;
+            cursor: pointer;
+            border: none;
+            background: transparent;
+            color: #6b7280;
+            transition: all 0.2s;
+        }
+
+        #panel-collapse-btn:hover {
+            background: rgba(0, 0, 0, 0.05);
+            color: #374151;
+            border-radius: 4px;
+        }
+
+        #panel-collapse-btn svg {
+            width: 16px;
+            height: 16px;
+            stroke: currentColor;
+            transition: transform 0.2s ease-in-out;
+        }
+
+        /* Chevron points left when expanded, right when collapsed */
+        body.panel-collapsed #panel-collapse-btn svg {
+            transform: scaleX(-1) rotate(180deg);
+        }
+
+        /* Inspector panel transitions */
+        #tabs-panel {
+            transition: width 0.2s ease-in-out;
+        }
+
+        #tabs-panel.collapsed {
+            overflow: hidden;
+        }
+
         /* Ensure tab content areas scroll properly */
         .tab-content {
             min-height: 0; /* Critical for flex scrolling */
@@ -606,9 +648,17 @@
                     <span id="selection-info">No selection</span>
                 </div>
 
-                <!-- Right: Document Title -->
-                <div id="composition-title" class="text-ui-disabled-text">
-                    Untitled Document
+                <!-- Right: Document Title and Panel Toggle -->
+                <div class="flex items-center space-x-4">
+                    <div id="composition-title" class="text-ui-disabled-text">
+                        Untitled Document
+                    </div>
+                    <!-- Collapse Inspector Panel Button -->
+                    <button id="panel-collapse-btn" class="px-2 py-1 rounded text-sm hover:bg-ui-hover" title="Toggle inspector panel" data-testid="panel-collapse-btn">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" style="display: inline-block;">
+                            <polyline points="15 18 9 12 15 6"></polyline>
+                        </svg>
+                    </button>
                 </div>
             </div>
         </header>
@@ -649,7 +699,7 @@
             <div id="resize-handle" class="w-4 bg-gray-300 hover:bg-blue-500 cursor-col-resize transition-colors flex-shrink-0"></div>
 
             <!-- Debug Information Panel -->
-            <aside id="tabs-panel" class="bg-ui-background border-l border-ui-border flex flex-col overflow-hidden" style="width: 384px; min-width: 200px; max-width: 800px;">
+            <aside id="tabs-panel" class="bg-ui-background border-l border-ui-border flex flex-col overflow-hidden" style="width: 384px;">
                 <!-- Tab Navigation (Multi-row wrap) -->
                 <div class="bg-white border-b border-ui-border">
                     <div class="tab-buttons flex flex-wrap gap-0">
