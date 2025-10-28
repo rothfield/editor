@@ -519,7 +519,14 @@ pub fn build_export_measures_from_line(line: &Line) -> Vec<ExportMeasure> {
             let beat_events = group_cells_into_events(&beat_cells_refs);
 
             if !beat_events.is_empty() {
-                let beat_div: usize = beat_events.iter().map(|e| e.divisions()).sum();
+                // Use number of events (Rests, Notes) as beat divisor for LCM calculation
+                // This ensures each beat is normalized: 1 beat with 1 event gets full beat,
+                // 1 beat with 2 events gets 2 divisions (each element gets proportional space)
+                // Example: beat "--1-" has Rest{2} + Note{2} = 2 events → beat_div = 2
+                // Example: beat "--" has Rest{2} = 1 event → beat_div = 1
+                // LCM([2,2,1,2]) = 2, so measure_divisions = 2
+                // Then Rest{2} in measure with divisions 2 = duration 2 = r4 (quarter rest) ✓
+                let beat_div: usize = beat_events.len();
                 beat_divisions_list.push(beat_div);
                 all_events.extend(beat_events);
             }
