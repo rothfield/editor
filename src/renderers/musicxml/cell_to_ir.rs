@@ -19,7 +19,7 @@
 //! 4. Continuation cells never appear as standalone elements
 //! 5. sum(event_divisions) == measure_divisions for each measure
 
-use crate::models::{Cell, ElementKind, PitchCode, OrnamentPositionType, SlurIndicator};
+use crate::models::{Cell, ElementKind, PitchCode, OrnamentPositionType, SlurIndicator, Line, Document};
 use super::export_ir::{
     ExportLine, ExportMeasure, ExportEvent, NoteData, GraceNoteData, PitchInfo,
     LyricData, Syllabic, SlurData, SlurPlacement, SlurType,
@@ -226,7 +226,7 @@ pub fn beat_transition(
 
 /// Process cells in a beat using explicit FSM
 /// This is the main entry point for grouping cells into events
-pub fn group_cells_into_events(beat_cells: &[Cell]) -> Vec<ExportEvent> {
+pub fn group_cells_into_events(beat_cells: &[&Cell]) -> Vec<ExportEvent> {
     if beat_cells.is_empty() {
         return Vec::new();
     }
@@ -403,6 +403,192 @@ pub fn find_barlines(cells: &[Cell]) -> Vec<usize> {
     barlines
 }
 
+/// Find beat boundaries by whitespace (space or empty cells)
+/// Returns indices where beats start
+pub fn find_beat_boundaries(cells: &[Cell]) -> Vec<usize> {
+    let mut boundaries = vec![0];
+
+    for (i, cell) in cells.iter().enumerate() {
+        if cell.char.trim().is_empty() && !cell.continuation {
+            // Found a beat separator (space)
+            if i + 1 < cells.len() {
+                boundaries.push(i + 1);
+            }
+        }
+    }
+
+    // Always include end if not already there
+    if boundaries.last() != Some(&cells.len()) {
+        boundaries.push(cells.len());
+    }
+
+    boundaries
+}
+
+/// Find beat boundaries in a slice of cell references
+pub fn find_beat_boundaries_refs(cells: &[&Cell]) -> Vec<usize> {
+    let mut boundaries = vec![0];
+
+    for (i, cell) in cells.iter().enumerate() {
+        if cell.char.trim().is_empty() && !cell.continuation {
+            // Found a beat separator (space)
+            if i + 1 < cells.len() {
+                boundaries.push(i + 1);
+            }
+        }
+    }
+
+    // Always include end if not already there
+    if boundaries.last() != Some(&cells.len()) {
+        boundaries.push(cells.len());
+    }
+
+    boundaries
+}
+
+/// Build export measures from a single line (staff)
+///
+/// This is the core orchestrator that:
+/// 1. Splits the line into measures (by barlines)
+/// 2. For each measure, splits into beats (by whitespace)
+/// 3. For each beat, processes cells through FSM to get events
+/// 4. Calculates measure divisions using LCM of beat divisions
+/// 5. Returns Vec<ExportMeasure>
+pub fn build_export_measures_from_line(line: &Line) -> Vec<ExportMeasure> {
+    let cells = &line.cells;
+
+    if cells.is_empty() {
+        return Vec::new();
+    }
+
+    let barline_indices = find_barlines(cells);
+    let mut measures = Vec::new();
+
+    // Process each measure (segment between barlines)
+    for i in 0..barline_indices.len() - 1 {
+        let start = barline_indices[i];
+        let end = barline_indices[i + 1];
+
+        if start >= end {
+            continue;
+        }
+
+        let measure_cells = &cells[start..end];
+
+        // Skip barline cells themselves
+        let measure_cells: Vec<&Cell> = measure_cells
+            .iter()
+            .filter(|cell| !(cell.char == "|" && cell.kind == ElementKind::UnpitchedElement))
+            .collect();
+
+        if measure_cells.is_empty() {
+            // Empty measure - add single rest
+            measures.push(ExportMeasure {
+                divisions: 4, // Default quarter note divisions
+                events: vec![ExportEvent::Rest { divisions: 4 }],
+            });
+            continue;
+        }
+
+        // Find beat boundaries within this measure
+        let beat_boundaries = find_beat_boundaries_refs(&measure_cells);
+
+        let mut all_events = Vec::new();
+        let mut beat_divisions_list = Vec::new();
+
+        // Process each beat
+        for j in 0..beat_boundaries.len() - 1 {
+            let beat_start = beat_boundaries[j];
+            let beat_end = beat_boundaries[j + 1];
+
+            if beat_start >= beat_end {
+                continue;
+            }
+
+            let beat_cells_refs: Vec<&Cell> = measure_cells[beat_start..beat_end]
+                .iter()
+                .filter(|c| !c.char.trim().is_empty()) // Skip spaces within beat
+                .copied()
+                .collect();
+
+            if beat_cells_refs.is_empty() {
+                continue;
+            }
+
+            // Convert &Cell references to Cell references for FSM
+            let beat_events = group_cells_into_events(&beat_cells_refs);
+
+            if !beat_events.is_empty() {
+                let beat_div: usize = beat_events.iter().map(|e| e.divisions()).sum();
+                beat_divisions_list.push(beat_div);
+                all_events.extend(beat_events);
+            }
+        }
+
+        // If we have no events, add a single rest
+        if all_events.is_empty() {
+            measures.push(ExportMeasure {
+                divisions: 4,
+                events: vec![ExportEvent::Rest { divisions: 4 }],
+            });
+            continue;
+        }
+
+        // Calculate measure divisions using LCM of all beat divisions
+        let measure_divisions = if beat_divisions_list.is_empty() {
+            4
+        } else {
+            lcm_multiple(&beat_divisions_list)
+        };
+
+        measures.push(ExportMeasure {
+            divisions: measure_divisions,
+            events: all_events,
+        });
+    }
+
+    // Ensure at least one measure (required by MusicXML)
+    if measures.is_empty() {
+        measures.push(ExportMeasure {
+            divisions: 4,
+            events: vec![ExportEvent::Rest { divisions: 4 }],
+        });
+    }
+
+    measures
+}
+
+/// Build export measures from entire document
+///
+/// Returns Vec<ExportLine> where each line corresponds to a staff/part
+pub fn build_export_measures_from_document(document: &Document) -> Vec<ExportLine> {
+    let mut export_lines = Vec::new();
+
+    for line in &document.lines {
+        let measures = build_export_measures_from_line(line);
+
+        let export_line = ExportLine {
+            key_signature: if line.key_signature.is_empty() {
+                document.key_signature.clone()
+            } else {
+                Some(line.key_signature.clone())
+            },
+            time_signature: if line.time_signature.is_empty() {
+                None
+            } else {
+                Some(line.time_signature.clone())
+            },
+            clef: "treble".to_string(), // TODO: derive from line metadata
+            lyrics: line.lyrics.clone(),
+            measures,
+        };
+
+        export_lines.push(export_line);
+    }
+
+    export_lines
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -433,7 +619,8 @@ mod tests {
     #[test]
     fn test_single_dash_is_rest() {
         let cells = vec![make_cell(ElementKind::UnpitchedElement, "-", None)];
-        let events = group_cells_into_events(&cells);
+        let cell_refs: Vec<&Cell> = cells.iter().collect();
+        let events = group_cells_into_events(&cell_refs);
 
         assert_eq!(events.len(), 1);
         match &events[0] {
@@ -448,7 +635,8 @@ mod tests {
             make_cell(ElementKind::UnpitchedElement, "-", None),
             make_cell(ElementKind::UnpitchedElement, "-", None),
         ];
-        let events = group_cells_into_events(&cells);
+        let cell_refs: Vec<&Cell> = cells.iter().collect();
+        let events = group_cells_into_events(&cell_refs);
 
         // Two consecutive dashes should be ONE rest with 2 divisions
         assert_eq!(events.len(), 1);
@@ -466,7 +654,8 @@ mod tests {
             make_cell(ElementKind::UnpitchedElement, "-", None),
             make_cell(ElementKind::UnpitchedElement, "-", None),
         ];
-        let events = group_cells_into_events(&cells);
+        let cell_refs: Vec<&Cell> = cells.iter().collect();
+        let events = group_cells_into_events(&cell_refs);
 
         // -- bug: four dashes should be ONE rest with 4 divisions, not 1
         assert_eq!(events.len(), 1);
@@ -487,7 +676,8 @@ mod tests {
             make_cell(ElementKind::UnpitchedElement, "-", None),
             make_cell(ElementKind::UnpitchedElement, "-", None),
         ];
-        let events = group_cells_into_events(&cells);
+        let cell_refs: Vec<&Cell> = cells.iter().collect();
+        let events = group_cells_into_events(&cell_refs);
 
         assert_eq!(events.len(), 1, "Two dashes should create one rest element");
         match &events[0] {
@@ -756,5 +946,35 @@ mod tests {
         assert_eq!(barlines[1], 2); // After first barline
         assert_eq!(barlines[2], 4); // After second barline
         assert_eq!(barlines[3], 5); // End
+    }
+
+    #[test]
+    fn test_find_beat_boundaries_no_spaces() {
+        let cells = vec![
+            make_cell(ElementKind::PitchedElement, "1", Some(PitchCode::N1)),
+            make_cell(ElementKind::PitchedElement, "2", Some(PitchCode::N2)),
+        ];
+        let boundaries = find_beat_boundaries(&cells);
+        // Should have start and end only
+        assert_eq!(boundaries.len(), 2);
+        assert_eq!(boundaries[0], 0);
+        assert_eq!(boundaries[1], 2);
+    }
+
+    #[test]
+    fn test_find_beat_boundaries_with_space() {
+        let mut cells = vec![
+            make_cell(ElementKind::PitchedElement, "1", Some(PitchCode::N1)),
+            make_cell(ElementKind::UnpitchedElement, " ", None),
+            make_cell(ElementKind::PitchedElement, "2", Some(PitchCode::N2)),
+        ];
+        // Mark the space cell
+        cells[1].char = " ".to_string();
+
+        let boundaries = find_beat_boundaries(&cells);
+        assert_eq!(boundaries.len(), 3);
+        assert_eq!(boundaries[0], 0); // Start
+        assert_eq!(boundaries[1], 2); // After space
+        assert_eq!(boundaries[2], 3); // End
     }
 }
