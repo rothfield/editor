@@ -3332,6 +3332,42 @@ class MusicNotationEditor {
      * Update document display in debug panel
      */
   /**
+   * Update Intermediate Representation (IR) display
+   * Shows ExportLine → ExportMeasure → ExportEvent hierarchy
+   */
+  async updateIRDisplay() {
+    const irDisplay = document.getElementById('ir-display');
+    if (!irDisplay || !this.theDocument) {
+      return;
+    }
+
+    try {
+      // Call WASM function to generate IR (ExportLine → ExportMeasure → ExportEvent)
+      // This will be implemented by adding a public WASM export in cell_to_ir.rs
+      if (typeof this.wasmExports?.generateIR === 'function') {
+        const irData = this.wasmExports.generateIR(this.theDocument);
+        irDisplay.textContent = JSON.stringify(irData, null, 2);
+      } else {
+        // Fallback if WASM function not yet implemented
+        irDisplay.textContent = '# IR (Intermediate Representation) not yet exposed via WASM\n\n' +
+          '# To enable IR display:\n' +
+          '# 1. Add public fn to Rust: pub fn generate_ir_json(document: &Document) -> String\n' +
+          '# 2. Add #[wasm_bindgen] decorator\n' +
+          '# 3. Rebuild WASM with: npm run build-wasm\n' +
+          '# 4. IR will then display ExportLine → ExportMeasure → ExportEvent structures\n\n' +
+          '# Current IR pipeline:\n' +
+          '# - build_export_measures_from_document() creates Vec<ExportLine>\n' +
+          '# - Each ExportLine contains measures with FSM-grouped events\n' +
+          '# - Events are: Rest { divisions } | Note { pitch, divisions, grace_notes, slur, lyrics } | Chord\n\n' +
+          '# See: src/renderers/musicxml/export_ir.rs for type definitions';
+      }
+    } catch (error) {
+      console.error('[IR] Error:', error);
+      irDisplay.textContent = `// Error generating IR:\n${error.message}\n${error.stack}`;
+    }
+  }
+
+  /**
    * Update MusicXML source display
    */
   async updateMusicXMLDisplay() {
@@ -3472,6 +3508,11 @@ class MusicNotationEditor {
       const displayDoc = this.createDisplayDocument(persistentDoc);
       persistentJson.textContent = this.toYAML(displayDoc);
     }
+
+    // Update IR (Intermediate Representation) display
+    this.updateIRDisplay().catch(err => {
+      console.error('Failed to update IR display:', err);
+    });
 
     // Update MusicXML source (async, non-blocking)
     this.updateMusicXMLDisplay().catch(err => {
