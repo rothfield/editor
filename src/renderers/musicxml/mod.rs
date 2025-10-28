@@ -191,10 +191,9 @@ fn process_segment(
             !c.is_rhythm_transparent()
         });
 
-        // If beat contains only ornaments, collect them as grace notes
+        // If beat contains only ornaments, handle based on whether it follows a main note
         if !has_main_note && beat_cells.iter().any(|c| c.is_rhythm_transparent()) {
-            // Check if this beat immediately follows the previous beat in the cells array
-            // (i.e., no gap between beat[i-1].end and beat[i].start)
+            // Check if this beat immediately follows the previous beat
             let is_immediately_after_main_note = if i > 0 && last_beat_had_main_note {
                 let prev_beat = &beats[i - 1];
                 beat.start == prev_beat.end + 1 || beat.start == prev_beat.end + 2
@@ -203,19 +202,12 @@ fn process_segment(
             };
 
             if is_immediately_after_main_note {
-                // These are trailing grace notes from the previous beat, not orphaned
-                // Don't process this beat; let the previous beat handle them as trailing grace notes
-                // Mark them to be handled differently
-                for cell in beat_cells {
-                    if cell.is_rhythm_transparent() && cell.kind == ElementKind::PitchedElement && !cell.continuation {
-                        if let Some(pitch_code) = &cell.pitch_code {
-                            let ornament_position = cell.ornament_indicator.position_type();
-                            orphaned_grace_notes.push((*pitch_code, cell.octave, ornament_position));
-                        }
-                    }
-                }
+                // Ornaments immediately after main note: attach to previous note as trailing grace notes
+                // The previous beat's process_beat_with_context() already collected these
+                // Simply skip this beat - nothing to do here
             } else {
-                // These are true orphaned grace notes for the next beat
+                // Ornaments at beginning or with gap from previous note: collect as orphaned
+                // They'll be attached as before-grace notes to the next main note
                 for cell in beat_cells {
                     if cell.is_rhythm_transparent() && cell.kind == ElementKind::PitchedElement && !cell.continuation {
                         if let Some(pitch_code) = &cell.pitch_code {
@@ -229,7 +221,7 @@ fn process_segment(
             continue;
         }
 
-        // If we have orphaned grace notes that are NOT trailing grace notes, prepend them before processing this beat
+        // Attach orphaned grace notes before this main note (as before-grace notes)
         if !orphaned_grace_notes.is_empty() {
             for (grace_pitch_code, grace_octave, ornament_position) in orphaned_grace_notes.drain(..) {
                 let placement = match ornament_position {
