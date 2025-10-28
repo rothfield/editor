@@ -604,17 +604,13 @@ class UI {
       if (this.editor && this.editor.theDocument && this.editor.wasmModule) {
         // Call WASM setTitle function
         try {
-          // Preserve the state field and beats array before WASM call
+          // Preserve the state field before WASM call
           const preservedState = this.editor.theDocument.state;
-          const preservedBeats = this.editor.theDocument.lines.map(line => line.beats);
 
           const updatedDocument = await this.editor.wasmModule.setTitle(this.editor.theDocument, newTitle);
 
-          // Restore the state field and beats array after WASM call
+          // Restore the state field after WASM call
           updatedDocument.state = preservedState;
-          updatedDocument.lines.forEach((line, index) => {
-            line.beats = preservedBeats[index];
-          });
 
           this.editor.theDocument = updatedDocument;
           this.editor.addToConsoleLog(`Document title set to: ${newTitle}`);
@@ -638,17 +634,13 @@ class UI {
       if (this.editor && this.editor.theDocument && this.editor.wasmModule) {
         // Call WASM setComposer function
         try {
-          // Preserve the state field and beats array before WASM call
+          // Preserve the state field before WASM call
           const preservedState = this.editor.theDocument.state;
-          const preservedBeats = this.editor.theDocument.lines.map(line => line.beats);
 
           const updatedDocument = await this.editor.wasmModule.setComposer(this.editor.theDocument, newComposer);
 
-          // Restore the state field and beats array after WASM call
+          // Restore the state field after WASM call
           updatedDocument.state = preservedState;
-          updatedDocument.lines.forEach((line, index) => {
-            line.beats = preservedBeats[index];
-          });
 
           this.editor.theDocument = updatedDocument;
           this.editor.addToConsoleLog(`Composer set to: ${newComposer}`);
@@ -693,9 +685,8 @@ class UI {
       console.log('🎵 Updating pitch system...');
       if (this.editor && this.editor.theDocument && this.editor.wasmModule) {
         try {
-          // Preserve the state field and beats array before WASM call
+          // Preserve the state field before WASM call
           const preservedState = this.editor.theDocument.state;
-          const preservedBeats = this.editor.theDocument.lines.map(line => line.beats);
 
           // Call WASM function to set pitch system
           console.log('🎵 Calling WASM setDocumentPitchSystem with system:', newSystem);
@@ -705,11 +696,8 @@ class UI {
           );
           console.log('🎵 WASM returned updated document:', updatedDocument?.pitch_system);
 
-          // Restore the state field and beats array after WASM call
+          // Restore the state field after WASM call
           updatedDocument.state = preservedState;
-          updatedDocument.lines.forEach((line, index) => {
-            line.beats = preservedBeats[index];
-          });
 
           // Update the editor's document reference
           this.editor.theDocument = updatedDocument;
@@ -784,18 +772,14 @@ class UI {
       if (this.editor && this.editor.theDocument && this.editor.theDocument.lines.length > 0 && this.editor.wasmModule) {
         // Call WASM setStaveLabel function
         try {
-          // Preserve the state field and beats array before WASM call
+          // Preserve the state field before WASM call
           const preservedState = this.editor.theDocument.state;
-          const preservedBeats = this.editor.theDocument.lines.map(line => line.beats);
 
           const lineIdx = this.getCurrentLineIndex();
           const updatedDocument = await this.editor.wasmModule.setLineLabel(this.editor.theDocument, lineIdx, newLabel);
 
-          // Restore the state field and beats array after WASM call
+          // Restore the state field after WASM call
           updatedDocument.state = preservedState;
-          updatedDocument.lines.forEach((line, index) => {
-            line.beats = preservedBeats[index];
-          });
 
           this.editor.theDocument = updatedDocument;
           this.editor.addToConsoleLog(`Line label set to: ${newLabel}`);
@@ -843,9 +827,8 @@ class UI {
     if (newSystem !== null && newSystem !== currentSystem) {
       if (this.editor && this.editor.theDocument && this.editor.wasmModule) {
         try {
-          // Preserve the state field and beats array before WASM call
+          // Preserve the state field before WASM call
           const preservedState = this.editor.theDocument.state;
-          const preservedBeats = this.editor.theDocument.lines.map(line => line.beats);
 
           // Call WASM function to set line pitch system
           const lineIdx = this.getCurrentLineIndex();
@@ -855,11 +838,8 @@ class UI {
             newSystem
           );
 
-          // Restore the state field and beats array after WASM call
+          // Restore the state field after WASM call
           updatedDocument.state = preservedState;
-          updatedDocument.lines.forEach((line, index) => {
-            line.beats = preservedBeats[index];
-          });
 
           // Update the editor's document reference
           this.editor.theDocument = updatedDocument;
@@ -889,18 +869,14 @@ class UI {
       if (this.editor && this.editor.theDocument && this.editor.theDocument.lines.length > 0 && this.editor.wasmModule) {
         // Call WASM setLineLyrics function (handles empty string to clear)
         try {
-          // Preserve the state field and beats array before WASM call
+          // Preserve the state field before WASM call
           const preservedState = this.editor.theDocument.state;
-          const preservedBeats = this.editor.theDocument.lines.map(line => line.beats);
 
           const lineIdx = this.getCurrentLineIndex();
           const updatedDocument = await this.editor.wasmModule.setLineLyrics(this.editor.theDocument, lineIdx, newLyrics);
 
-          // Restore the state field and beats array after WASM call
+          // Restore the state field after WASM call
           updatedDocument.state = preservedState;
-          updatedDocument.lines.forEach((line, index) => {
-            line.beats = preservedBeats[index];
-          });
 
           this.editor.theDocument = updatedDocument;
           const displayMsg = newLyrics === '' ? 'Lyrics cleared' : `Lyrics set to: ${newLyrics}`;

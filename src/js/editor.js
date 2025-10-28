@@ -62,7 +62,6 @@ class MusicNotationEditor {
 
       // Initialize WASM components
       this.wasmModule = {
-        beatDeriver: new wasmModule.BeatDeriver(),
         // New recursive descent API
         insertCharacter: wasmModule.insertCharacter,
         parseText: wasmModule.parseText,
@@ -322,9 +321,6 @@ class MusicNotationEditor {
           this.theDocument.state.cursor.column = currentCharPos;
           this.updateCursorPositionDisplay();
         }
-
-        // Derive beats using WASM BeatDeriver
-        this.deriveBeats(line);
       }
 
       await this.renderAndUpdate();
@@ -355,44 +351,6 @@ class MusicNotationEditor {
     }
   }
 
-  /**
-     * Derive beats from cells using WASM BeatDeriver
-     */
-  deriveBeats(line) {
-    if (!this.wasmModule || !this.wasmModule.beatDeriver) {
-      logger.error(LOG_CATEGORIES.EDITOR, 'BeatDeriver not available - WASM module not loaded');
-      console.error('CRITICAL: BeatDeriver not available. Cannot derive beats.');
-      line.beats = [];
-      return;
-    }
-
-    try {
-      const cells = line.cells;
-      if (!cells || cells.length === 0) {
-        line.beats = [];
-        return;
-      }
-
-      logger.debug(LOG_CATEGORIES.EDITOR, 'Deriving beats via WASM', {
-        cellCount: cells.length
-      });
-
-      // Call WASM BeatDeriver.deriveImplicitBeats method (exposed as deriveImplicitBeats in JS)
-      const beats = this.wasmModule.beatDeriver.deriveImplicitBeats(cells);
-
-      console.log(`WASM BeatDeriver returned ${beats.length} beats:`, beats);
-
-      line.beats = beats;
-      logger.info(LOG_CATEGORIES.EDITOR, `Derived ${beats.length} beats via WASM`);
-    } catch (error) {
-      logger.error(LOG_CATEGORIES.EDITOR, 'WASM BeatDeriver failed', {
-        error: error.message,
-        cellCount: cells?.length || 0
-      });
-      console.error('WASM BeatDeriver failed:', error);
-      line.beats = [];
-    }
-  }
 
   /**
      * Parse musical notation text with real-time processing using recursive descent
@@ -1951,9 +1909,6 @@ class MusicNotationEditor {
             newCursorColumn: mergeCharPos
           });
 
-          // Recalculate beats for the merged line
-          this.deriveBeats(prevLine);
-
           await this.renderAndUpdate();
           this.showCursor();
 
@@ -2100,14 +2055,6 @@ class MusicNotationEditor {
         newColumn: 0
       });
 
-      // Re-derive beats for both old and new lines
-      if (this.theDocument.lines[currentStave]) {
-        this.deriveBeats(this.theDocument.lines[currentStave]);
-      }
-      if (this.theDocument.lines[currentStave + 1]) {
-        this.deriveBeats(this.theDocument.lines[currentStave + 1]);
-      }
-
       await this.renderAndUpdate();
       this.showCursor();
 
@@ -2135,10 +2082,7 @@ class MusicNotationEditor {
         const line = this.getCurrentLine();
         if (!line) return;
 
-        // Re-derive beats using WASM BeatDeriver
-        this.deriveBeats(line);
-
-        this.addToConsoleLog(`Recalculated beats after edit`);
+        this.addToConsoleLog(`Editor updated`);
       }
     } catch (error) {
       console.error('Failed to recalculate beats:', error);

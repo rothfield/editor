@@ -150,7 +150,7 @@ export class OSMDRenderer {
             await this.osmd.load(musicxml);
             if (myToken !== this.renderToken) return; // canceled by newer update
 
-            this.osmd.Zoom = 0.5;
+            this.osmd.Zoom = 0.75;  // Increased from 0.5 (1.5x bigger)
             await this.osmd.render();
 
             // Store rendered SVG in cache

@@ -33,16 +33,10 @@ test('Ornament after: F with GA melisma then C', async ({ page }) => {
         index: i,
         char: c.char,
         isOrnament: c.ornament_indicator && c.ornament_indicator.name !== 'none'
-      })),
-      beats: line.beats.map((b, i) => ({
-        index: i,
-        start: b.start,
-        end: b.end
       }))
     };
   });
   console.log('Cells:', cellInfo.cells);
-  console.log('Beats:', cellInfo.beats);
 
   // Check MusicXML export
   await openTab(page, 'tab-musicxml');

@@ -75,11 +75,11 @@ impl MusicXmlBuilder {
 
     /// Start a new measure with optional divisions value
     pub fn start_measure(&mut self) {
-        self.start_measure_with_divisions(None, false);
+        self.start_measure_with_divisions(None, false, 0);
     }
 
     /// Start a new measure with specific divisions value and optional new-system flag
-    pub fn start_measure_with_divisions(&mut self, divisions: Option<usize>, new_system: bool) {
+    pub fn start_measure_with_divisions(&mut self, divisions: Option<usize>, new_system: bool, beat_count: usize) {
         self.buffer.push_str(&format!("<measure number=\"{}\">\n", self.measure_number));
         self.measure_started = true;
 
@@ -90,12 +90,13 @@ impl MusicXmlBuilder {
 
         // Write attributes (key/clef in first measure, divisions in all measures)
         if !self.attributes_written {
-            self.write_attributes(divisions);
+            self.write_attributes(divisions, beat_count);
             self.attributes_written = true;
         } else if let Some(div) = divisions {
             // Write divisions-only attributes for subsequent measures
             self.buffer.push_str("  <attributes>\n");
             self.buffer.push_str(&format!("    <divisions>{}</divisions>\n", div));
+            self.write_time_signature(beat_count);
             self.buffer.push_str("  </attributes>\n");
         }
     }
@@ -521,20 +522,31 @@ impl MusicXmlBuilder {
         xml
     }
 
-    /// Write MusicXML attributes (clef, key, divisions)
-    fn write_attributes(&mut self, divisions: Option<usize>) {
+    /// Write MusicXML attributes (divisions, key, time, clef)
+    fn write_attributes(&mut self, divisions: Option<usize>, beat_count: usize) {
         self.buffer.push_str("  <attributes>\n");
         if let Some(div) = divisions {
             self.buffer.push_str(&format!("    <divisions>{}</divisions>\n", div));
         }
 
         // Write key signature (use fifths from parsed key, default to C major = 0)
+        // MUST come before time signature per MusicXML spec
         let fifths = self.key_signature.unwrap_or(0);
         self.buffer.push_str(&format!("    <key><fifths>{}</fifths></key>\n", fifths));
 
+        // Write hidden time signature for OSMD compatibility
+        self.write_time_signature(beat_count);
+
         self.buffer.push_str("    <clef><sign>G</sign><line>2</line></clef>\n");
-        // NO time signature per spec (FR-023)
         self.buffer.push_str("  </attributes>\n");
+    }
+
+    /// Write hidden time signature (print-object="no" for OSMD compatibility)
+    fn write_time_signature(&mut self, beat_count: usize) {
+        self.buffer.push_str("    <time print-object=\"no\">\n");
+        self.buffer.push_str(&format!("      <beats>{}</beats>\n", beat_count));
+        self.buffer.push_str("      <beat-type>4</beat-type>\n");
+        self.buffer.push_str("    </time>\n");
     }
 }
 
@@ -681,11 +693,11 @@ mod tests {
     #[test]
     fn test_attributes_written_once() {
         let mut builder = MusicXmlBuilder::new();
-        builder.start_measure_with_divisions(None, false);
+        builder.start_measure_with_divisions(None, false, 4);
         let first_buffer = builder.buffer.clone();
         builder.end_measure();
 
-        builder.start_measure_with_divisions(None, false);
+        builder.start_measure_with_divisions(None, false, 4);
         let second_buffer = builder.buffer.clone();
 
         // Attributes should only appear once (in first measure)
@@ -693,16 +705,6 @@ mod tests {
         assert_eq!(second_buffer.matches("<attributes>").count(), 1); // Still 1 total
     }
 
-    #[test]
-    fn test_no_time_signature() {
-        let mut builder = MusicXmlBuilder::new();
-        builder.start_measure();
-
-        // Should NOT contain time signature element
-        assert!(!builder.buffer.contains("<time>"));
-        assert!(!builder.buffer.contains("<beats>"));
-        assert!(!builder.buffer.contains("<beat-type>"));
-    }
 
     #[test]
     fn test_finalize_structure() {
@@ -722,7 +724,7 @@ mod tests {
     #[test]
     fn test_new_system_marker() {
         let mut builder = MusicXmlBuilder::new();
-        builder.start_measure_with_divisions(Some(1), true);
+        builder.start_measure_with_divisions(Some(1), true, 4);
 
         // Should have print new-system BEFORE attributes
         let buffer = &builder.buffer;
@@ -739,7 +741,7 @@ mod tests {
 
         // Write grace note using PitchCode for G (pitch 5 in number system = G)
         let grace_pitch_code = PitchCode::N5; // G natural
-        builder.write_grace_note(&grace_pitch_code, 0, true).unwrap();
+        builder.write_grace_note(&grace_pitch_code, 0, true, None).unwrap();
 
         // Should contain grace element with slash
         assert!(builder.buffer.contains("<grace slash=\"yes\"/>"));
@@ -762,7 +764,7 @@ mod tests {
 
         // Write grace note without slash (appoggiatura)
         let grace_pitch_code = PitchCode::N1; // C natural
-        builder.write_grace_note(&grace_pitch_code, 0, false).unwrap();
+        builder.write_grace_note(&grace_pitch_code, 0, false, None).unwrap();
 
         // Should contain grace element without slash
         assert!(builder.buffer.contains("<grace/>"));
@@ -776,10 +778,38 @@ mod tests {
 
         // Write grace note with sharp (F# = pitch 4 with sharp)
         let grace_pitch_code = PitchCode::N4s; // F#
-        builder.write_grace_note(&grace_pitch_code, 0, true).unwrap();
+        builder.write_grace_note(&grace_pitch_code, 0, true, None).unwrap();
 
         // Should contain pitch with alteration
         assert!(builder.buffer.contains("<step>F</step>"));
         assert!(builder.buffer.contains("<alter>1</alter>"));
+    }
+
+    #[test]
+    fn test_hidden_time_signature() {
+        let mut builder = MusicXmlBuilder::new();
+        builder.start_measure_with_divisions(Some(4), false, 4);
+
+        // Should contain hidden time signature
+        assert!(builder.buffer.contains("<time print-object=\"no\">"));
+        assert!(builder.buffer.contains("<beats>4</beats>"));
+        assert!(builder.buffer.contains("<beat-type>4</beat-type>"));
+    }
+
+    #[test]
+    fn test_time_signature_different_beat_counts() {
+        let mut builder = MusicXmlBuilder::new();
+        builder.start_measure_with_divisions(Some(3), false, 3);
+        builder.end_measure();
+
+        builder.start_measure_with_divisions(Some(2), false, 2);
+
+        // First measure should have 3 beats
+        assert!(builder.buffer.contains("<beats>3</beats>"));
+
+        // Second measure should have 2 beats
+        let second_measure_start = builder.buffer.rfind("<measure number=\"2\">").unwrap();
+        let second_measure_section = &builder.buffer[second_measure_start..];
+        assert!(second_measure_section.contains("<beats>2</beats>"));
     }
 }
