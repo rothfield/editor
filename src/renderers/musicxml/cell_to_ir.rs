@@ -19,9 +19,10 @@
 //! 4. Continuation cells never appear as standalone elements
 //! 5. sum(event_divisions) == measure_divisions for each measure
 
-use crate::models::{Cell, ElementKind, PitchCode, OrnamentPositionType};
+use crate::models::{Cell, ElementKind, PitchCode, OrnamentPositionType, SlurIndicator};
 use super::export_ir::{
     ExportLine, ExportMeasure, ExportEvent, NoteData, GraceNoteData, PitchInfo,
+    LyricData, Syllabic, SlurData, SlurPlacement, SlurType,
 };
 
 /// FSM state for cell-to-event grouping
@@ -257,6 +258,111 @@ pub fn group_cells_into_events(beat_cells: &[Cell]) -> Vec<ExportEvent> {
     accum.events
 }
 
+/// Parse lyrics string into syllables with syllabic types
+///
+/// # Examples
+///
+/// - "hel-lo world" → [("hel", Begin), ("lo", End), ("world", Single)]
+/// - "a-" → [("a", Begin)]
+/// - "no-tes" → [("no", Begin), ("tes", End)]
+pub fn parse_lyrics_to_syllables(lyrics: &str) -> Vec<(String, Syllabic)> {
+    if lyrics.trim().is_empty() {
+        return Vec::new();
+    }
+
+    let mut result = Vec::new();
+    let mut current_word = String::new();
+    let mut is_continuing = false;
+
+    for ch in lyrics.chars() {
+        if ch == '-' {
+            // Hyphen indicates continuation
+            if !current_word.is_empty() {
+                let syllabic = if is_continuing {
+                    Syllabic::Middle
+                } else {
+                    Syllabic::Begin
+                };
+                result.push((current_word.clone(), syllabic));
+                current_word.clear();
+                is_continuing = true;
+            }
+        } else if ch.is_whitespace() {
+            // Space separates words (syllables)
+            if !current_word.is_empty() {
+                let syllabic = if is_continuing {
+                    Syllabic::End
+                } else {
+                    Syllabic::Single
+                };
+                result.push((current_word.clone(), syllabic));
+                current_word.clear();
+                is_continuing = false;
+            }
+        } else {
+            current_word.push(ch);
+        }
+    }
+
+    // Handle final syllable
+    if !current_word.is_empty() {
+        let syllabic = if is_continuing {
+            Syllabic::End
+        } else {
+            Syllabic::Single
+        };
+        result.push((current_word, syllabic));
+    }
+
+    result
+}
+
+/// Collect cells at the same column (column-based chords)
+pub fn collect_chord_notes(cells: &[Cell]) -> Vec<Vec<&Cell>> {
+    use std::collections::BTreeMap;
+
+    let mut by_column: BTreeMap<usize, Vec<&Cell>> = BTreeMap::new();
+
+    for cell in cells {
+        by_column.entry(cell.col).or_insert_with(Vec::new).push(cell);
+    }
+
+    by_column.into_values().collect()
+}
+
+/// Wire up slur indicators from cell to note data
+pub fn attach_slur_to_note(note: &mut NoteData, cell: &Cell) {
+    match cell.slur_indicator {
+        SlurIndicator::SlurStart => {
+            note.slur = Some(SlurData {
+                placement: SlurPlacement::Above, // TODO: derive from context
+                type_: SlurType::Start,
+            });
+        }
+        SlurIndicator::SlurEnd => {
+            note.slur = Some(SlurData {
+                placement: SlurPlacement::Above,
+                type_: SlurType::Stop,
+            });
+        }
+        SlurIndicator::None => {
+            // No slur
+        }
+    }
+}
+
+/// Attach the first lyric syllable from the list to a note
+pub fn attach_first_lyric(note: &mut NoteData, syllables: &[(String, Syllabic)], index: usize) {
+    if index < syllables.len() {
+        let (text, syllabic) = &syllables[index];
+        note.lyrics = Some(LyricData {
+            syllable: text.clone(),
+            syllabic: *syllabic,
+            number: 1, // TODO: support multiple verse numbers
+        });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -356,5 +462,188 @@ mod tests {
     fn test_empty_beat() {
         let events = group_cells_into_events(&[]);
         assert_eq!(events.len(), 0);
+    }
+
+    // ===== PHASE 3: LYRICS, SLURS, CHORDS =====
+
+    #[test]
+    fn test_parse_lyrics_single_word() {
+        let lyrics = parse_lyrics_to_syllables("hello");
+        assert_eq!(lyrics.len(), 1);
+        assert_eq!(lyrics[0].0, "hello");
+        assert_eq!(lyrics[0].1, Syllabic::Single);
+    }
+
+    #[test]
+    fn test_parse_lyrics_hyphenated_word() {
+        let lyrics = parse_lyrics_to_syllables("hel-lo");
+        assert_eq!(lyrics.len(), 2);
+        assert_eq!(lyrics[0].0, "hel");
+        assert_eq!(lyrics[0].1, Syllabic::Begin);
+        assert_eq!(lyrics[1].0, "lo");
+        assert_eq!(lyrics[1].1, Syllabic::End);
+    }
+
+    #[test]
+    fn test_parse_lyrics_multiple_words() {
+        let lyrics = parse_lyrics_to_syllables("hel-lo world");
+        assert_eq!(lyrics.len(), 3);
+        assert_eq!(lyrics[0], ("hel".to_string(), Syllabic::Begin));
+        assert_eq!(lyrics[1], ("lo".to_string(), Syllabic::End));
+        assert_eq!(lyrics[2], ("world".to_string(), Syllabic::Single));
+    }
+
+    #[test]
+    fn test_parse_lyrics_three_syllables() {
+        let lyrics = parse_lyrics_to_syllables("no-tes-long");
+        assert_eq!(lyrics.len(), 3);
+        assert_eq!(lyrics[0], ("no".to_string(), Syllabic::Begin));
+        assert_eq!(lyrics[1], ("tes".to_string(), Syllabic::Middle));
+        assert_eq!(lyrics[2], ("long".to_string(), Syllabic::End));
+    }
+
+    #[test]
+    fn test_parse_lyrics_empty() {
+        let lyrics = parse_lyrics_to_syllables("");
+        assert_eq!(lyrics.len(), 0);
+    }
+
+    #[test]
+    fn test_parse_lyrics_whitespace_only() {
+        let lyrics = parse_lyrics_to_syllables("   ");
+        assert_eq!(lyrics.len(), 0);
+    }
+
+    #[test]
+    fn test_collect_chord_notes_single_column() {
+        let cells = vec![
+            make_cell(ElementKind::PitchedElement, "1", Some(PitchCode::N1)),
+        ];
+        let groups = collect_chord_notes(&cells);
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].len(), 1);
+    }
+
+    #[test]
+    fn test_collect_chord_notes_multiple_at_same_col() {
+        let mut cells = vec![
+            make_cell(ElementKind::PitchedElement, "1", Some(PitchCode::N1)),
+            make_cell(ElementKind::PitchedElement, "2", Some(PitchCode::N2)),
+        ];
+        // Set both to same column
+        cells[0].col = 0;
+        cells[1].col = 0;
+
+        let groups = collect_chord_notes(&cells);
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].len(), 2);
+    }
+
+    #[test]
+    fn test_collect_chord_notes_different_columns() {
+        let mut cells = vec![
+            make_cell(ElementKind::PitchedElement, "1", Some(PitchCode::N1)),
+            make_cell(ElementKind::PitchedElement, "2", Some(PitchCode::N2)),
+        ];
+        // Set to different columns
+        cells[0].col = 0;
+        cells[1].col = 1;
+
+        let groups = collect_chord_notes(&cells);
+        assert_eq!(groups.len(), 2);
+        assert_eq!(groups[0].len(), 1);
+        assert_eq!(groups[1].len(), 1);
+    }
+
+    #[test]
+    fn test_attach_slur_start() {
+        let mut note = NoteData {
+            pitch: PitchInfo::new(PitchCode::N1, 4),
+            divisions: 1,
+            grace_notes_before: Vec::new(),
+            grace_notes_after: Vec::new(),
+            lyrics: None,
+            slur: None,
+            articulations: Vec::new(),
+            beam: None,
+            tie: None,
+        };
+
+        let mut cell = make_cell(ElementKind::PitchedElement, "1", Some(PitchCode::N1));
+        cell.slur_indicator = SlurIndicator::SlurStart;
+
+        attach_slur_to_note(&mut note, &cell);
+        assert!(note.slur.is_some());
+        let slur = note.slur.unwrap();
+        assert_eq!(slur.type_, SlurType::Start);
+    }
+
+    #[test]
+    fn test_attach_slur_end() {
+        let mut note = NoteData {
+            pitch: PitchInfo::new(PitchCode::N1, 4),
+            divisions: 1,
+            grace_notes_before: Vec::new(),
+            grace_notes_after: Vec::new(),
+            lyrics: None,
+            slur: None,
+            articulations: Vec::new(),
+            beam: None,
+            tie: None,
+        };
+
+        let mut cell = make_cell(ElementKind::PitchedElement, "1", Some(PitchCode::N1));
+        cell.slur_indicator = SlurIndicator::SlurEnd;
+
+        attach_slur_to_note(&mut note, &cell);
+        assert!(note.slur.is_some());
+        let slur = note.slur.unwrap();
+        assert_eq!(slur.type_, SlurType::Stop);
+    }
+
+    #[test]
+    fn test_attach_first_lyric() {
+        let mut note = NoteData {
+            pitch: PitchInfo::new(PitchCode::N1, 4),
+            divisions: 1,
+            grace_notes_before: Vec::new(),
+            grace_notes_after: Vec::new(),
+            lyrics: None,
+            slur: None,
+            articulations: Vec::new(),
+            beam: None,
+            tie: None,
+        };
+
+        let syllables = vec![
+            ("hel".to_string(), Syllabic::Begin),
+            ("lo".to_string(), Syllabic::End),
+        ];
+
+        attach_first_lyric(&mut note, &syllables, 0);
+        assert!(note.lyrics.is_some());
+        let lyric = note.lyrics.unwrap();
+        assert_eq!(lyric.syllable, "hel");
+        assert_eq!(lyric.syllabic, Syllabic::Begin);
+    }
+
+    #[test]
+    fn test_attach_lyric_out_of_bounds() {
+        let mut note = NoteData {
+            pitch: PitchInfo::new(PitchCode::N1, 4),
+            divisions: 1,
+            grace_notes_before: Vec::new(),
+            grace_notes_after: Vec::new(),
+            lyrics: None,
+            slur: None,
+            articulations: Vec::new(),
+            beam: None,
+            tie: None,
+        };
+
+        let syllables = vec![("hello".to_string(), Syllabic::Single)];
+
+        attach_first_lyric(&mut note, &syllables, 10); // Out of bounds
+        assert!(note.lyrics.is_none());
     }
 }

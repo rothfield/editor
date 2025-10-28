@@ -803,16 +803,28 @@ fn emit_lyric(
 
 **Key Fix**: Consecutive dashes now correctly form a single Rest element with combined divisions (not separate rest elements). This fixes the bug where `--` was producing `r1` instead of `r4`.
 
-### Phase 3: Add Slurs/Lyrics/Chords (4 hours)
+### Phase 3: Add Slurs/Lyrics/Chords (4 hours) ✅ COMPLETED
 **File**: `src/renderers/musicxml/cell_to_ir.rs` (continued)
 
-- [ ] Implement `parse_lyrics_to_syllables()` (handle hyphens)
-- [ ] Implement `attach_lyrics_to_events()`
-- [ ] Implement `collect_chord_notes()` (same col detection)
-- [ ] Wire up slur indicators: `cell.slur_indicator → NoteData.slur_start/end`
-- [ ] Test lyrics parsing: "hel-lo world" → [("hel", Begin), ("lo", End), ("world", Single)]
-- [ ] Test chord detection: cells at same col → `ExportEvent::Chord`
-- [ ] Test slur flags propagation
+- [x] Implement `parse_lyrics_to_syllables()` (handle hyphens + spaces)
+- [x] Implement `attach_slur_to_note()` (wire up slur indicators)
+- [x] Implement `collect_chord_notes()` (same col detection with BTreeMap)
+- [x] Implement `attach_first_lyric()` (attach syllable to note)
+- [x] Test lyrics parsing:
+  - ✅ "hel-lo world" → [("hel", Begin), ("lo", End), ("world", Single)]
+  - ✅ "no-tes-long" → [("no", Begin), ("tes", Middle), ("long", End)]
+  - ✅ Empty and whitespace handling
+- [x] Test chord detection:
+  - ✅ Single column grouping
+  - ✅ Multiple pitches at same col
+  - ✅ Pitches at different columns
+- [x] Test slur flags propagation:
+  - ✅ SlurStart → SlurData with type=Start
+  - ✅ SlurEnd → SlurData with type=Stop
+
+**Unit tests: 18/18 passing**
+- 5 core FSM tests (Phase 2)
+- 13 Phase 3 helper function tests
 
 ### Phase 4: Measure Builder (2 hours)
 **File**: `src/renderers/musicxml/cell_to_ir.rs` (continued)
