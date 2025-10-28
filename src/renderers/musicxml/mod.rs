@@ -512,6 +512,9 @@ fn process_beat(
                     }
                 }
 
+                // Initialize trailing grace note count (will be updated if we have a pitch code)
+                let mut trailing_grace_count = 0;
+
                 // Use normalized slot count from the normalization result
                 if slot_index >= normalized_slots.len() {
                     i += 1 + extension_count;
@@ -541,6 +544,7 @@ fn process_beat(
                     // Collect grace notes that come AFTER this main note (unmeasured fioritura)
                     let mut trailing_grace_notes: Vec<(PitchCode, i8, OrnamentPositionType)> = Vec::new();
                     let mut j = i + 1 + extension_count;
+                    let trailing_grace_start = j; // Track where trailing grace notes start
                     while j < beat_cells.len() {
                         let c = &beat_cells[j];
                         if c.is_rhythm_transparent() && c.kind == ElementKind::PitchedElement && !c.continuation {
@@ -554,6 +558,7 @@ fn process_beat(
                         }
                         j += 1;
                     }
+                    trailing_grace_count = j - trailing_grace_start; // Count trailing grace notes
 
                     // Keep before and after grace notes separate for proper MusicXML output
                     // (before notes go before main note, after notes go after main note with steal-time-following)
@@ -587,8 +592,8 @@ fn process_beat(
                     pending_grace_notes.clear();
                 }
 
-                // Skip the extensions
-                i += 1 + extension_count;
+                // Skip the main note, extensions, and trailing grace notes
+                i += 1 + extension_count + trailing_grace_count;
             }
             ElementKind::UnpitchedElement if cell.char != "-" => {
                 // Standalone unpitched element (rest, not extension)
@@ -737,8 +742,8 @@ fn process_beat(
                             None
                         };
 
-                        // After grace notes: use write_grace_note_full with steal-time-following (50%) and slurring
-                        builder.write_grace_note_full(grace_pitch_code, *grace_octave, true, placement, true, Some(50.0), beam_state, slur_type)?;
+                        // After grace notes: use write_grace_note_full with steal-time-previous (10%) for ornamental flourish
+                        builder.write_grace_note_full(grace_pitch_code, *grace_octave, true, placement, true, Some(10.0), beam_state, slur_type)?;
                     }
                 }
                 BeatElement::Rest { duration_divs, musical_duration } => {

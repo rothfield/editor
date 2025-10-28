@@ -386,7 +386,7 @@ impl MusicXmlBuilder {
     }
 
     /// Full grace note with all attributes
-    pub fn write_grace_note_full(&mut self, pitch_code: &PitchCode, octave: i8, slash: bool, placement: Option<&str>, after_grace: bool, steal_time_pct: Option<f32>, beam_state: Option<&str>, slur_type: Option<&str>) -> Result<(), String> {
+    pub fn write_grace_note_full(&mut self, pitch_code: &PitchCode, octave: i8, slash: bool, placement: Option<&str>, _after_grace: bool, steal_time_pct: Option<f32>, beam_state: Option<&str>, slur_type: Option<&str>) -> Result<(), String> {
         let (step, alter) = pitch_code_to_step_alter(pitch_code);
         let xml_octave = octave + 4; // music-text octave 0 = MIDI octave 4 (middle C)
 
@@ -405,20 +405,11 @@ impl MusicXmlBuilder {
 
         // Add steal-time attributes based on grace note position
         if let Some(steal_pct) = steal_time_pct {
-            if after_grace {
-                // After grace notes steal from the following note (unmeasured fioritura)
-                grace_attrs.push_str(&format!(" steal-time-following=\"{:.0}\"", steal_pct));
-            } else {
-                // Before grace notes steal from the previous note (traditional grace notes)
-                grace_attrs.push_str(&format!(" steal-time-previous=\"{:.0}\"", steal_pct));
-            }
+            // Both before and after grace notes steal from the previous note (the main note they ornament)
+            grace_attrs.push_str(&format!(" steal-time-previous=\"{:.0}\"", steal_pct));
         } else {
-            // Default steal time values
-            if after_grace {
-                grace_attrs.push_str(" steal-time-following=\"50\"");
-            } else {
-                grace_attrs.push_str(" steal-time-previous=\"10\"");
-            }
+            // Default steal time values: both use steal-time-previous
+            grace_attrs.push_str(" steal-time-previous=\"10\"");
         }
 
         if grace_attrs.is_empty() {
