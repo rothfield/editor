@@ -1,0 +1,269 @@
+/**
+ * E2E Test 123: Slur-Tuplet Interaction Bug
+ *
+ * FAILING TEST - Demonstrates the "one off" slur issue with tuplets
+ *
+ * Issue: When a slur spans a tuplet (e.g., triplet), the slur markers
+ * are placed on the wrong notes. The slur should span all notes in the tuplet,
+ * but instead:
+ * - Slur start is on the correct first note
+ * - Slur stop appears on the second note instead of the last note
+ * - The slur is missing from the actual last note of the tuplet
+ *
+ * This test creates:
+ * 1. A triplet pattern: "S--r--g" = 3 notes in space of 2 = triplet
+ * 2. Applies slur over all 3 notes using Alt+S
+ * 3. Verifies MusicXML export shows:
+ *    - First note: <slur type="start">
+ *    - Second note: <slur type="continue"> (or nothing)
+ *    - Third note: <slur type="stop">
+ *
+ * Current behavior (BUG):
+ *    - First note: <slur type="start"> ✓ (correct)
+ *    - Second note: <slur type="stop"> ✗ (wrong - should be "continue" or nothing)
+ *    - Third note: (missing slur) ✗ (should have "stop")
+ */
+
+import { test, expect } from '@playwright/test';
+import { openTab, readPaneText, getDocumentModel } from '../helpers/inspectors.js';
+
+test.describe('Test 123: Slur-Tuplet Interaction (FAILING)', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    const editor = page.locator('#notation-editor');
+    await expect(editor).toBeVisible();
+
+    // Clear any existing content
+    await editor.click();
+    await page.keyboard.press('Control+A');
+    await page.keyboard.press('Backspace');
+    await page.waitForTimeout(200);
+  });
+
+  test('FAILING: Slur over triplet should have start/continue/stop on correct notes', async ({ page }) => {
+    const editor = page.locator('#notation-editor');
+    await editor.click();
+
+    // Create a triplet: 3 notes in the space of 2 beats
+    // Using numeric notation: "123" = 3 notes in one beat
+    // This should auto-detect as a 3:2 triplet
+    //
+    // In spatial notation:
+    // - "123" all in one beat (no spaces) = 3 subdivisions = triplet (3:2)
+
+    await page.keyboard.type('123');
+    await page.waitForTimeout(300);
+
+    // Verify it's in Document Model first
+    const docBefore = await getDocumentModel(page);
+    console.log('Document cells:', docBefore.lines[0].cells.map(c => ({ char: c.char, kind: c.kind })));
+
+    // Now select all three notes for sluring
+    // Cells should be: 1, 2, 3 (3 cells)
+    await page.keyboard.press('Home');
+    for (let i = 0; i < 3; i++) {
+      await page.keyboard.press('Shift+ArrowRight');
+    }
+
+    // Apply slur
+    await page.keyboard.press('Alt+S');
+    await page.waitForTimeout(500);
+
+    // Verify slur indicators in Document Model
+    const docAfter = await getDocumentModel(page);
+    const cells = docAfter.lines[0].cells;
+    console.log('Cells with slur indicators:');
+    cells.forEach((c, idx) => {
+      if (c.slur_indicator && c.slur_indicator.name !== 'none') {
+        console.log(`  Cell ${idx} (${c.char}): ${c.slur_indicator.name}`);
+      }
+    });
+
+    // Find slur markers
+    const slurCells = cells.filter(c =>
+      c.slur_indicator && c.slur_indicator.name && c.slur_indicator.name !== 'none'
+    );
+
+    expect(slurCells.length).toBeGreaterThanOrEqual(2);
+    console.log(`✓ Found ${slurCells.length} cells with slur indicators (expected 2+)`);
+
+    // Open MusicXML and examine slur placement
+    await openTab(page, 'tab-musicxml');
+    const musicxmlText = await readPaneText(page, 'pane-musicxml');
+
+    console.log('\n=== MusicXML OUTPUT ===');
+    console.log(musicxmlText);
+    console.log('=== END MusicXML ===\n');
+
+    // Extract all note elements
+    const noteRegex = /<note>([\s\S]*?)<\/note>/g;
+    const notes = [];
+    let match;
+    while ((match = noteRegex.exec(musicxmlText)) !== null) {
+      notes.push(match[1]);
+    }
+
+    console.log(`\nFound ${notes.length} notes in MusicXML\n`);
+
+    // Analyze each note for tuplet and slur markers
+    notes.forEach((noteContent, idx) => {
+      const hasTimeModification = noteContent.includes('<time-modification>');
+      const tupletMatch = noteContent.match(/<tuplet([^>]*)>/g);
+      const slurMatch = noteContent.match(/<slur([^>]*)>/g);
+
+      console.log(`Note ${idx + 1}:`);
+      if (hasTimeModification) {
+        console.log('  ✓ Has time-modification (tuplet)');
+      }
+      if (tupletMatch) {
+        console.log(`  Tuplet markers: ${tupletMatch.join(', ')}`);
+      }
+      if (slurMatch) {
+        console.log(`  Slur markers: ${slurMatch.join(', ')}`);
+      } else {
+        console.log('  (no slur markers)');
+      }
+    });
+
+    // EXPECTED (correct behavior):
+    // Note 1: <tuplet type="start" ...>, <slur type="start" ...>
+    // Note 2: <tuplet type="continue" ...>, <slur type="continue" ...> OR no slur
+    // Note 3: <tuplet type="stop" ...>, <slur type="stop" ...>
+
+    // ACTUAL (buggy behavior - what this test should fail on):
+    // Note 1: <tuplet type="start" ...>, <slur type="start" ...> ✓
+    // Note 2: <tuplet type="continue" ...>, <slur type="stop" ...> ✗ WRONG
+    // Note 3: <tuplet type="stop" ...>, (no slur) ✗ MISSING
+
+    // Build assertion that currently FAILS to demonstrate the bug
+    const firstNoteHasSlurStart = notes[0]?.includes('<slur type="start"');
+    const lastNoteHasSlurStop = notes[notes.length - 1]?.includes('<slur type="stop"');
+    const allNotesPartOfSlur = notes.every((note, idx) => {
+      // Each note in the slur should have either start, continue, or stop
+      return note.includes('type="start"') ||
+             note.includes('type="continue"') ||
+             note.includes('type="stop"');
+    });
+
+    console.log(`\n=== ASSERTION CHECKS ===`);
+    console.log(`First note has slur start: ${firstNoteHasSlurStart}`);
+    console.log(`Last note has slur stop: ${lastNoteHasSlurStop}`);
+    console.log(`All notes part of slur: ${allNotesPartOfSlur}`);
+
+    // THIS ASSERTION SHOULD PASS (correct behavior)
+    expect(firstNoteHasSlurStart).toBe(true);
+    console.log('✓ First note has slur start');
+
+    // THIS ASSERTION SHOULD FAIL (the core bug: missing slur on last note)
+    // The slur stop is on Note 2 instead of Note 3 (one-off bug)
+    expect(lastNoteHasSlurStop).toBe(true);
+
+    // Verify all notes in triplet have some slur marker
+    notes.forEach((note, idx) => {
+      const hasSlur = note.includes('<slur');
+      expect(hasSlur).toBe(true);
+    });
+  });
+
+  test('FAILING: Slur over longer tuplet (5-note) shows clear off-by-one pattern', async ({ page }) => {
+    const editor = page.locator('#notation-editor');
+    await editor.click();
+
+    // Create a longer pattern to make the off-by-one more visible
+    // Type: "12345" (5 notes in one beat) = 5 subdivisions = 5:4 tuplet
+    // This creates: 5 notes in the space of 4 subdivisions = quintuplet
+
+    await page.keyboard.type('12345');
+    await page.waitForTimeout(300);
+
+    // Select all 5 notes
+    await page.keyboard.press('Home');
+    for (let i = 0; i < 5; i++) {
+      await page.keyboard.press('Shift+ArrowRight');
+    }
+
+    // Apply slur
+    await page.keyboard.press('Alt+S');
+    await page.waitForTimeout(500);
+
+    // Open MusicXML
+    await openTab(page, 'tab-musicxml');
+    const musicxmlText = await readPaneText(page, 'pane-musicxml');
+
+    console.log('\n=== 5-NOTE TUPLET MusicXML OUTPUT ===');
+    console.log(musicxmlText);
+    console.log('=== END ===\n');
+
+    // Extract notes
+    const noteRegex = /<note>([\s\S]*?)<\/note>/g;
+    const notes = [];
+    let match;
+    while ((match = noteRegex.exec(musicxmlText)) !== null) {
+      notes.push(match[1]);
+    }
+
+    console.log(`\nFound ${notes.length} notes in 5-note tuplet\n`);
+
+    // Check slur placement
+    notes.forEach((note, idx) => {
+      const slurTypes = note.match(/type="[^"]*"/g);
+      console.log(`Note ${idx + 1}: ${slurTypes ? slurTypes.join(', ') : '(no slur)'}`);
+    });
+
+    // With 5 notes, the bug should show:
+    // Note 1: slur type="start" ✓
+    // Note 2: slur type="continue" ✓ (actually working in 5-note case)
+    // Note 3: slur type="continue" ✓
+    // Note 4: slur type="stop" ✗ (should be on Note 5 - one off!)
+    // Note 5: (no slur) ✗ (should have stop)
+
+    const slurStarts = (musicxmlText.match(/type="start"/g) || []).length;
+    const slurStops = (musicxmlText.match(/type="stop"/g) || []).length;
+    const slurContinues = (musicxmlText.match(/type="continue"/g) || []).length;
+
+    console.log(`\nSlur marker count in 5-note tuplet:`);
+    console.log(`  Starts: ${slurStarts} (expected: 1)`);
+    console.log(`  Continues: ${slurContinues} (expected: 3, but one goes missing due to 5-note limit)`);
+    console.log(`  Stops: ${slurStops} (expected: 1)`);
+
+    // Even in the 5-note case, the last note is missing the slur marker
+    const lastNoteHasSlur = notes[notes.length - 1]?.includes('<slur');
+    expect(lastNoteHasSlur).toBe(true);
+  });
+
+  test('DIAGNOSTIC: Print raw slur/tuplet data for 3-note triplet', async ({ page }) => {
+    const editor = page.locator('#notation-editor');
+    await editor.click();
+
+    // Simple triplet: 3 notes in one beat = 3:2 triplet
+    await page.keyboard.type('123');
+    await page.waitForTimeout(300);
+
+    // Apply slur
+    await page.keyboard.press('Home');
+    for (let i = 0; i < 3; i++) {
+      await page.keyboard.press('Shift+ArrowRight');
+    }
+    await page.keyboard.press('Alt+S');
+    await page.waitForTimeout(500);
+
+    // Get full MusicXML
+    await openTab(page, 'tab-musicxml');
+    const musicxml = await readPaneText(page, 'pane-musicxml');
+
+    // Also get Display List
+    await openTab(page, 'tab-displaylist');
+    const displayList = await readPaneText(page, 'pane-displaylist');
+
+    console.log('\n=== DIAGNOSTIC DATA ===\n');
+    console.log('DISPLAY LIST (from IR/beat processing):');
+    console.log(displayList);
+    console.log('\n');
+    console.log('MusicXML (final output):');
+    console.log(musicxml);
+    console.log('\n=== END DIAGNOSTIC ===\n');
+
+    // This test just prints diagnostic data and passes
+    expect(true).toBeTruthy();
+  });
+});

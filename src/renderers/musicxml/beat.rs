@@ -441,6 +441,10 @@ pub fn process_beat(
         // Add a whole rest
         builder.write_rest(4, 4.0);
     } else {
+        // Analyze slur patterns and compute correct slur types for tuplets
+        // This fixes the issue where slurs in tuplets were off-by-one
+        let slur_types_per_element = compute_slur_types_for_tuplet(&elements);
+
         for (idx, element) in elements.iter().enumerate() {
             // Tuplet bracket only on first and last elements
             let tuplet_bracket = if tuplet_info.is_some() && element_count > 1 {
@@ -456,7 +460,9 @@ pub fn process_beat(
             };
 
             match element {
-                BeatElement::Note { pitch_code, octave, duration_divs, musical_duration, is_last_note, slur_indicator, grace_notes_before, grace_notes_after, ornament_type } => {
+                BeatElement::Note { pitch_code, octave, duration_divs, musical_duration, is_last_note, slur_indicator: _original_slur_indicator, grace_notes_before, grace_notes_after, ornament_type } => {
+                    // Use computed slur type instead of original indicator (fixes tuplet slur off-by-one)
+                    let slur = slur_types_per_element.get(idx).copied().flatten();
                     // Write grace notes that come BEFORE the main note (traditional grace notes)
                     let before_grace_count = grace_notes_before.len();
                     for (idx, (grace_pitch_code, grace_octave, ornament_position)) in grace_notes_before.iter().enumerate() {
