@@ -1,49 +1,4 @@
 \version "{{version}}"
-\language "english"
-
-{{#source_comment}}
-% Original notation source:
-{{{source_comment}}}
-{{/source_comment}}
-
-\header {
-  {{#title}}
-  title = "{{{title}}}"
-  {{/title}}
-
-  {{#composer}}
-  composer = "{{{composer}}}"
-  {{/composer}}
-
-  % Instead of tagline = ##f, just make it an empty string.
-  tagline = ""
-
-  % Instead of odd/even Header/Footer = ##f, give them empty markups.
-  oddHeaderMarkup = \markup { }
-  evenHeaderMarkup = \markup { }
-  oddFooterMarkup = \markup { }
-  evenFooterMarkup = \markup { }
-
-  % We intentionally do NOT set print-page-number because that
-  % normally wants a Scheme boolean (##f / ##t).
-}
-
-\paper {
-  % Basic page geometry only. All of these are numeric or units,
-  % not Scheme expressions.
-
-  indent = 0\mm
-  top-margin = 0.5\mm
-  bottom-margin = 0.5\mm
-  left-margin = 1\mm
-  right-margin = 1\mm
-
-  % Small "PNG fragment" style page size.
-  paper-height = 50\mm
-  paper-width  = 200\mm
-
-  % Advanced layout options omitted for security validation
-}
 
 \score {
   <<
@@ -55,12 +10,4 @@
     }
     {{/lyrics}}
   >>
-
-  \layout {
-    \context {
-      \Score
-
-      \remove "Bar_number_engraver"
-    }
-  }
 }
