@@ -174,13 +174,14 @@ fn collect_lyrics_content(parts: &[SequentialMusic]) -> Option<String> {
 
         if !lyrics_list.is_empty() {
             let formatted = format_lyrics_for_block(&lyrics_list);
-            // Wrap in \lyricmode for proper LilyPond lyrics parsing
-            Some(format!("\\lyricmode {{\n  {}\n}}", formatted))
+            // When inside \new Lyrics context, we're already in lyric mode implicitly
+            // Just put the lyrics directly without \lyricmode wrapper
+            Some(formatted)
         } else {
             None
         }
     } else {
-        // For multiple parts, create separate \lyricmode blocks with voice references
+        // For multiple parts, create separate lyrics blocks with voice references
         let mut all_lyrics = Vec::new();
         for (i, part) in parts.iter().enumerate() {
             let voice_name = format!("v{}", i + 1);
@@ -190,7 +191,7 @@ fn collect_lyrics_content(parts: &[SequentialMusic]) -> Option<String> {
             if !lyrics_list.is_empty() {
                 let formatted = format_lyrics_for_block(&lyrics_list);
                 all_lyrics.push(format!(
-                    "    \\new Lyrics \\lyricsto \"{}\" {{\n      \\lyricmode {{\n        {}\n      }}\n    }}",
+                    "    \\new Lyrics \\lyricsto \"{}\" {{\n      {}\n    }}",
                     voice_name, formatted
                 ));
             }
@@ -219,7 +220,7 @@ fn collect_lyrics_from_music(music: &Music, lyrics_list: &mut Vec<String>) {
                 use crate::converters::musicxml::musicxml_to_lilypond::types::LyricSyllabic;
                 lyrics_list.push(format_lyric_syllable(&lyric.text, lyric.syllabic));
             } else {
-                lyrics_list.push("_".to_string()); // Placeholder for notes without lyrics
+                lyrics_list.push("__".to_string()); // Placeholder for notes without lyrics
             }
         }
         Music::Chord(chord) => {
@@ -227,11 +228,11 @@ fn collect_lyrics_from_music(music: &Music, lyrics_list: &mut Vec<String>) {
                 use crate::converters::musicxml::musicxml_to_lilypond::types::LyricSyllabic;
                 lyrics_list.push(format_lyric_syllable(&lyric.text, lyric.syllabic));
             } else {
-                lyrics_list.push("_".to_string()); // Placeholder for notes without lyrics
+                lyrics_list.push("__".to_string()); // Placeholder for notes without lyrics
             }
         }
         Music::Rest(_) => {
-            lyrics_list.push("_".to_string()); // Placeholder for rests
+            lyrics_list.push("__".to_string()); // Placeholder for rests
         }
         Music::Sequential(seq) => {
             collect_lyrics_from_sequential(seq, lyrics_list);
