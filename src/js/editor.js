@@ -4205,6 +4205,13 @@ class MusicNotationEditor {
     }
 
     try {
+      // CRITICAL: Ensure WASM document is in sync before copying
+      try {
+        this.wasmModule.loadDocument(this.theDocument);
+      } catch (e) {
+        console.warn('Failed to sync document with WASM before copy:', e);
+      }
+
       const selection = this.theDocument.state.selection;
       // Selection has start/end cell indices (single line for now)
       const currentRow = this.getCurrentStave();
@@ -4270,6 +4277,13 @@ class MusicNotationEditor {
     }
 
     try {
+      // CRITICAL: Ensure WASM document is in sync before pasting
+      try {
+        this.wasmModule.loadDocument(this.theDocument);
+      } catch (e) {
+        console.warn('Failed to sync document with WASM before paste:', e);
+      }
+
       const cursor = this.theDocument.state?.cursor || { row: 0, col: 0 };
       const startRow = cursor.row;
       const startCol = cursor.col;
@@ -4391,6 +4405,13 @@ class MusicNotationEditor {
     if (!this.theDocument || !this.wasmModule) return;
 
     try {
+      // CRITICAL: Ensure WASM document is in sync before deleting
+      try {
+        this.wasmModule.loadDocument(this.theDocument);
+      } catch (e) {
+        console.warn('Failed to sync document with WASM before delete:', e);
+      }
+
       const selection = this.theDocument.state?.selection;
       if (!selection || !selection.active) return;
 

@@ -426,4 +426,42 @@ this.wasmModule = {
 - [ ] JavaScript code calls `this.wasmModule.functionName()`
 - [ ] Tested in browser with hard refresh (Ctrl+Shift+R)
 
+## ⚠️ CRITICAL: Feature Completion Criteria
+
+**DO NOT CLAIM A FEATURE IS COMPLETE UNLESS:**
+
+1. ✅ **E2E tests PASS** - Run the relevant Playwright test and verify it passes
+2. ✅ **NO console errors** - Check browser console in test output for [BROWSER] ERROR or [PAGE ERROR] messages
+3. ✅ **NO compiler warnings** - `npm run build-wasm` should complete with zero warnings
+4. ✅ **Inspector tabs show correct output** - Verify MusicXML, LilyPond, etc. display expected content
+5. ✅ **Manual browser testing** - Open the app at http://localhost:8080 and test the feature manually
+
+**Why This Matters:**
+- Unit tests passing ≠ feature working end-to-end
+- Compiler warnings hide real issues (unused imports can mask broken code paths)
+- Console errors compound and make debugging harder later
+- Silent failures (undefined returns, missing WASM exports) are hardest to debug
+
+**Example Failure Pattern (That Happened):**
+- ✗ Changed `createNewDocument()` return type from `Result<JsValue>` to `Result<()>`
+- ✗ Rust compiled fine (no type errors at call sites)
+- ✓ WASM built successfully
+- ✗ BUT: JavaScript received `undefined`, causing app initialization to fail
+- 🔍 Root cause: Forgot that JavaScript code expects the function to return a value
+
+**Always run:**
+```bash
+# 1. Build WASM and check for warnings
+npm run build-wasm
+
+# 2. Run E2E tests
+npx playwright test tests/e2e-pw/tests/your-feature.spec.js --project=chromium
+
+# 3. Check for console errors in test output
+# Look for: [BROWSER] ERROR or [PAGE ERROR]
+
+# 4. Manual test in browser
+# Visit http://localhost:8080 and test the feature
+```
+
 <!-- MANUAL ADDITIONS END -->
