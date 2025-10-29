@@ -601,36 +601,58 @@ pub fn find_beat_boundaries_refs(cells: &[&Cell]) -> Vec<usize> {
 /// 4. Calculates measure divisions using LCM of beat divisions
 /// 5. Returns Vec<ExportMeasure>
 pub fn build_export_measures_from_line(line: &Line) -> Vec<ExportMeasure> {
+    use super::fsm::*;
+
     let cells = &line.cells;
 
     if cells.is_empty() {
         return Vec::new();
     }
 
-    let barline_indices = find_barlines(cells);
     let mut measures = Vec::new();
+    let mut state = MusicXMLState::MeasureReady;
+    let mut beat_accum = BeatAccumulator::new();
+    let mut measure_tracker = MeasureTracker::new();
 
-    // Process each measure (segment between barlines)
-    for i in 0..barline_indices.len() - 1 {
-        let start = barline_indices[i];
-        let end = barline_indices[i + 1];
+    // Track measure content by splitting cells based on FSM measure boundaries
+    let mut measure_cell_groups: Vec<(u32, Vec<&Cell>)> = Vec::new(); // (measure_number, cells)
+    let mut current_measure_num = 1u32;
+    let mut current_group: Vec<&Cell> = Vec::new();
 
-        if start >= end {
+    // Process cells through FSM to identify measure boundaries
+    for cell in cells {
+        if cell.continuation {
             continue;
         }
 
-        let measure_cells = &cells[start..end];
+        let prev_measure = measure_tracker.measure_number;
+        state = transition(state, cell, &mut beat_accum, &mut measure_tracker);
 
-        // Skip barline cells themselves
-        let measure_cells: Vec<&Cell> = measure_cells
-            .iter()
-            .filter(|cell| !(cell.char == "|" && cell.kind == ElementKind::UnpitchedElement))
-            .collect();
+        // If measure number changed, we crossed a barline
+        if measure_tracker.measure_number != prev_measure {
+            // Save completed measure
+            if !current_group.is_empty() {
+                measure_cell_groups.push((prev_measure, current_group));
+                current_group = Vec::new();
+            }
+            current_measure_num = measure_tracker.measure_number;
+        } else if !cell.kind.is_barline() {
+            // Add non-barline cells to current measure
+            current_group.push(cell);
+        }
+    }
 
+    // End of stave - finalize last measure
+    let _ = handle_end_of_stave(state, &mut beat_accum, &mut measure_tracker);
+    if !current_group.is_empty() {
+        measure_cell_groups.push((current_measure_num, current_group));
+    }
+
+    // Process each measure group using beat boundaries
+    for (_measure_num, measure_cells) in measure_cell_groups {
         if measure_cells.is_empty() {
-            // Empty measure - add single rest
             measures.push(ExportMeasure {
-                divisions: 4, // Default quarter note divisions
+                divisions: 4,
                 events: vec![ExportEvent::Rest { divisions: 4 }],
             });
             continue;
@@ -641,7 +663,7 @@ pub fn build_export_measures_from_line(line: &Line) -> Vec<ExportMeasure> {
 
         let mut all_events = Vec::new();
         let mut beat_divisions_list = Vec::new();
-        let mut beat_event_ranges: Vec<(usize, usize, usize)> = Vec::new(); // (start_idx, end_idx, beat_div)
+        let mut beat_event_ranges: Vec<(usize, usize, usize)> = Vec::new();
 
         // Process each beat
         for j in 0..beat_boundaries.len() - 1 {
@@ -654,7 +676,7 @@ pub fn build_export_measures_from_line(line: &Line) -> Vec<ExportMeasure> {
 
             let beat_cells_refs: Vec<&Cell> = measure_cells[beat_start..beat_end]
                 .iter()
-                .filter(|c| !c.char.trim().is_empty()) // Skip spaces within beat
+                .filter(|c| !c.char.trim().is_empty())
                 .copied()
                 .collect();
 
@@ -662,21 +684,15 @@ pub fn build_export_measures_from_line(line: &Line) -> Vec<ExportMeasure> {
                 continue;
             }
 
-            // Calculate actual rhythmic subdivisions (not just event count)
-            // For "1-3": counts [2,1] → GCD=1 → subdivisions=3
-            // For "1 2 3": counts [1,1,1] → GCD=1 → subdivisions=3
             let beat_div: usize = calculate_beat_subdivisions(&beat_cells_refs);
 
             if beat_div > 0 {
-                // Record where this beat starts in all_events
                 let beat_start_idx = all_events.len();
                 beat_divisions_list.push(beat_div);
 
-                // Convert to events for IR
                 let beat_events = group_cells_into_events(&beat_cells_refs);
                 all_events.extend(beat_events);
 
-                // Record where this beat ends
                 let beat_end_idx = all_events.len();
                 beat_event_ranges.push((beat_start_idx, beat_end_idx, beat_div));
             }
@@ -691,14 +707,14 @@ pub fn build_export_measures_from_line(line: &Line) -> Vec<ExportMeasure> {
             continue;
         }
 
-        // Calculate measure divisions using LCM of all beat divisions
+        // Calculate measure divisions using LCM
         let measure_divisions = if beat_divisions_list.is_empty() {
             4
         } else {
             lcm_multiple(&beat_divisions_list)
         };
 
-        // Assign tuplet information to events within beats that have tuplet subdivisions
+        // Assign tuplet information
         for (beat_start_idx, beat_end_idx, beat_div) in beat_event_ranges {
             if let Some((actual_notes, normal_notes)) = detect_tuplet_ratio(beat_div) {
                 let beat_events = &mut all_events[beat_start_idx..beat_end_idx];
@@ -712,7 +728,7 @@ pub fn build_export_measures_from_line(line: &Line) -> Vec<ExportMeasure> {
         });
     }
 
-    // Ensure at least one measure (required by MusicXML)
+    // Ensure at least one measure
     if measures.is_empty() {
         measures.push(ExportMeasure {
             divisions: 4,
@@ -1145,5 +1161,94 @@ mod tests {
         assert_eq!(boundaries[0], 0); // Start
         assert_eq!(boundaries[1], 2); // After space
         assert_eq!(boundaries[2], 3); // End
+    }
+
+    #[test]
+    fn test_barline_cell_splitting() {
+        // Test that the manual cell grouping logic correctly splits on barlines
+        let mut cells = Vec::new();
+
+        // Add cells for "1 2 3 4 | 5 6 7 8"
+        for ch in &["1", "2", "3", "4"] {
+            cells.push(make_cell(ElementKind::PitchedElement, ch, Some(PitchCode::N1)));
+        }
+        cells.push(make_cell(ElementKind::SingleBarline, "|", None));
+        for ch in &["5", "6", "7", "8"] {
+            cells.push(make_cell(ElementKind::PitchedElement, ch, Some(PitchCode::N1)));
+        }
+
+        // Split by barlines (copied from refactored build_export_measures_from_line)
+        let mut measure_cell_groups: Vec<Vec<&Cell>> = Vec::new();
+        let mut current_group: Vec<&Cell> = Vec::new();
+
+        for cell in &cells {
+            if cell.continuation {
+                continue;
+            }
+
+            if cell.kind.is_barline() {
+                if !current_group.is_empty() {
+                    measure_cell_groups.push(current_group);
+                    current_group = Vec::new();
+                }
+            } else {
+                current_group.push(cell);
+            }
+        }
+
+        if !current_group.is_empty() {
+            measure_cell_groups.push(current_group);
+        }
+
+        assert_eq!(measure_cell_groups.len(), 2, "Expected 2 measure groups, got {}", measure_cell_groups.len());
+        assert_eq!(measure_cell_groups[0].len(), 4, "Measure 1 should have 4 cells, got {}", measure_cell_groups[0].len());
+        assert_eq!(measure_cell_groups[1].len(), 4, "Measure 2 should have 4 cells, got {}", measure_cell_groups[1].len());
+    }
+
+    #[test]
+    fn test_musicxml_two_measures_from_input() {
+        // Test that "1 2 3 4 | 5 6 7 8" produces 2 measures
+        use crate::renderers::musicxml::converter::to_musicxml;
+        use crate::models::{Document, Line};
+
+        let mut cells = Vec::new();
+
+        // Measure 1: 1 2 3 4
+        for pitch_char in &["1", "2", "3", "4"] {
+            let mut cell = make_cell(ElementKind::PitchedElement, pitch_char, Some(PitchCode::N1));
+            cell.col = cells.len();
+            cells.push(cell);
+        }
+
+        // Barline
+        let mut barline = make_cell(ElementKind::SingleBarline, "|", None);
+        barline.col = cells.len();
+        cells.push(barline);
+
+        // Measure 2: 5 6 7 8
+        for pitch_char in &["5", "6", "7", "8"] {
+            let mut cell = make_cell(ElementKind::PitchedElement, pitch_char, Some(PitchCode::N1));
+            cell.col = cells.len();
+            cells.push(cell);
+        }
+
+        let mut line = Line::new();
+        line.cells = cells;
+
+        let mut document = Document::new();
+        document.lines = vec![line];
+
+        // Generate MusicXML
+        let xml = to_musicxml(&document).expect("MusicXML generation failed");
+
+        // Count <measure> tags
+        let measure_count = xml.matches("<measure number=").count();
+
+        println!("Measure count: {}", measure_count);
+        println!("XML snippet:\n{}", &xml.lines().take(50).collect::<Vec<_>>().join("\n"));
+
+        assert_eq!(measure_count, 2, "Expected 2 measures but got {}", measure_count);
+        assert!(xml.contains("<measure number=\"1\""), "Missing measure 1");
+        assert!(xml.contains("<measure number=\"2\""), "Missing measure 2");
     }
 }

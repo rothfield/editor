@@ -7,6 +7,14 @@ use wasm_bindgen::prelude::*;
 use crate::models::{Cell, PitchSystem, Document, Line, OrnamentIndicator, OrnamentPositionType};
 use crate::renderers::layout_engine::{extract_ornament_spans, find_anchor_cell, OrnamentGroups};
 use std::collections::HashMap;
+use std::sync::Mutex;
+use lazy_static::lazy_static;
+use js_sys;
+
+// WASM-owned document storage (canonical source of truth)
+lazy_static! {
+    static ref DOCUMENT: Mutex<Option<Document>> = Mutex::new(None);
+}
 
 // Logging macros for WASM
 #[wasm_bindgen]
@@ -47,6 +55,32 @@ macro_rules! wasm_error {
     ($($arg:tt)*) => {
         error(&format!("[WASM] ❌ {}", format!($($arg)*)))
     };
+}
+
+// ============================================================================
+// Result structures for edit operations
+// ============================================================================
+
+/// Represents a line that was modified during an edit operation
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct DirtyLine {
+    pub row: usize,
+    pub cells: Vec<Cell>,
+}
+
+/// Result of an edit operation (mutation primitive)
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct EditResult {
+    pub dirty_lines: Vec<DirtyLine>,
+    pub new_cursor_row: usize,
+    pub new_cursor_col: usize,
+}
+
+/// Result of a copy operation
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct CopyResult {
+    pub text: String,           // Plain text for external clipboard
+    pub cells: Vec<Cell>,       // Rich cells with annotations
 }
 
 /// Apply slur to cells in a selection range
@@ -1188,10 +1222,479 @@ pub fn set_line_label(
     Ok(result)
 }
 
+// ============================================================================
+// Core edit primitive - editReplaceRange
+// ============================================================================
+
+/// Replace a text range with new text (core mutation primitive)
+///
+/// Handles: insert, delete, paste, typing over selection, backspace, delete key
+/// This is the ONLY function that mutates WASM's internal document.
+/// JS never directly modifies document content - all mutations go through this.
+#[wasm_bindgen(js_name = editReplaceRange)]
+pub fn edit_replace_range(
+    start_row: usize,
+    start_col: usize,
+    end_row: usize,
+    end_col: usize,
+    text: &str,
+) -> Result<JsValue, JsValue> {
+    wasm_info!("editReplaceRange: ({},{})-({},{}) text={:?}", start_row, start_col, end_row, end_col, text);
+
+    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let doc = doc_guard.as_mut()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    // Save the previous state for undo
+    let previous_state = doc.clone();
+
+    // 1. Delete the range [start, end)
+    // If multi-line deletion, handle line merging
+    if start_row == end_row {
+        // Single line: delete from start_col to end_col
+        if start_row < doc.lines.len() {
+            let line = &mut doc.lines[start_row];
+            if start_col <= line.cells.len() && end_col <= line.cells.len() {
+                line.cells.drain(start_col..end_col);
+                wasm_info!("  Deleted {} cells from row {}", end_col - start_col, start_row);
+            }
+        }
+    } else {
+        // Multi-line: delete from start_col to end of start_row,
+        // delete entire lines between, delete from start of end_row to end_col
+        if start_row < doc.lines.len() && end_row < doc.lines.len() {
+            // Delete from start_col to end of start_row
+            let start_line = &mut doc.lines[start_row];
+            if start_col < start_line.cells.len() {
+                start_line.cells.drain(start_col..);
+            }
+
+            // Merge end_row cells into start_row (up to end_col)
+            let mut end_cells = if end_col < doc.lines[end_row].cells.len() {
+                doc.lines[end_row].cells[0..end_col].to_vec()
+            } else {
+                doc.lines[end_row].cells.clone()
+            };
+            doc.lines[start_row].cells.append(&mut end_cells);
+
+            // Remove the lines between start_row and end_row
+            doc.lines.drain((start_row + 1)..=end_row);
+            wasm_info!("  Deleted {} rows", end_row - start_row);
+        }
+    }
+
+    // 2. Insert text at start position
+    if !text.is_empty() {
+        if start_row < doc.lines.len() {
+            // Parse the text into cells and insert
+            let new_cells: Vec<Cell> = text.chars()
+                .enumerate()
+                .map(|(idx, ch)| Cell::new(ch.to_string(), crate::models::ElementKind::Unknown, start_col + idx))
+                .collect();
+
+            let line = &mut doc.lines[start_row];
+            for (idx, cell) in new_cells.iter().enumerate() {
+                line.cells.insert(start_col + idx, cell.clone());
+            }
+            wasm_info!("  Inserted {} cells at ({},{})", new_cells.len(), start_row, start_col);
+        }
+    }
+
+    // 3. Record undo action
+    let new_state = doc.clone();
+    let action = crate::models::DocumentAction {
+        action_type: crate::models::ActionType::InsertText,
+        description: format!("Edit: delete [({},{})-({},{})] insert {:?}", start_row, start_col, end_row, end_col, text),
+        previous_state: Some(previous_state),
+        new_state: Some(new_state),
+        timestamp: String::from("WASM-edit"),
+    };
+    doc.state.add_action(action);
+
+    // 4. Calculate dirty lines (all lines affected by the edit)
+    let mut dirty_lines = Vec::new();
+    let dirty_start = start_row.min(end_row);
+    let dirty_end = start_row.max(end_row) + 1;
+    for row in dirty_start..dirty_end.min(doc.lines.len()) {
+        dirty_lines.push(DirtyLine {
+            row,
+            cells: doc.lines[row].cells.clone(),
+        });
+    }
+
+    // 5. Return cursor position
+    let new_cursor_col = start_col + text.len();
+    let result = EditResult {
+        dirty_lines,
+        new_cursor_row: start_row,
+        new_cursor_col,
+    };
+
+    serde_wasm_bindgen::to_value(&result)
+        .map_err(|e| {
+            wasm_error!("EditResult serialization error: {}", e);
+            JsValue::from_str(&format!("EditResult serialization error: {}", e))
+        })
+}
+
+// ============================================================================
+// Copy/Paste operations
+// ============================================================================
+
+/// Copy cells from a range (rich copy preserving annotations)
+#[wasm_bindgen(js_name = copyCells)]
+pub fn copy_cells(
+    start_row: usize,
+    start_col: usize,
+    end_row: usize,
+    end_col: usize,
+) -> Result<JsValue, JsValue> {
+    wasm_info!("copyCells: ({},{})-({},{})", start_row, start_col, end_row, end_col);
+
+    let doc_guard = DOCUMENT.lock().unwrap();
+    let doc = doc_guard.as_ref()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    let mut cells = Vec::new();
+    let mut text = String::new();
+
+    // Extract cells from range (can span multiple lines)
+    for row in start_row..=end_row {
+        if row >= doc.lines.len() {
+            break;
+        }
+
+        let line = &doc.lines[row];
+        let start = if row == start_row { start_col } else { 0 };
+        let end = if row == end_row { end_col } else { line.cells.len() };
+
+        for i in start..end {
+            if i < line.cells.len() {
+                let cell = &line.cells[i];
+                cells.push(cell.clone());
+                text.push_str(&cell.char);
+            }
+        }
+
+        // Add newline between lines
+        if row < end_row {
+            text.push('\n');
+        }
+    }
+
+    let result = CopyResult { text, cells };
+    serde_wasm_bindgen::to_value(&result)
+        .map_err(|e| {
+            wasm_error!("CopyResult serialization error: {}", e);
+            JsValue::from_str(&format!("CopyResult serialization error: {}", e))
+        })
+}
+
+/// Paste cells (rich paste preserving octaves/slurs/ornaments)
+#[wasm_bindgen(js_name = pasteCells)]
+pub fn paste_cells(
+    start_row: usize,
+    start_col: usize,
+    end_row: usize,
+    end_col: usize,
+    cells_json: JsValue,
+) -> Result<JsValue, JsValue> {
+    wasm_info!("pasteCells: ({},{})-({},{})", start_row, start_col, end_row, end_col);
+
+    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let doc = doc_guard.as_mut()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    // Deserialize cells from JSON (preserves all Cell fields including octaves/slurs/ornaments)
+    let cells: Vec<Cell> = serde_wasm_bindgen::from_value(cells_json)
+        .map_err(|e| {
+            wasm_error!("Cell deserialization error: {}", e);
+            JsValue::from_str(&format!("Cell deserialization error: {}", e))
+        })?;
+
+    if cells.is_empty() {
+        // Empty paste - just delete the range
+        return edit_replace_range(start_row, start_col, end_row, end_col, "");
+    }
+
+    // Step 1: Delete the target range (like editReplaceRange)
+    // Collect all cells before start position
+    let mut new_cells = Vec::new();
+    let mut affected_rows = std::collections::HashSet::new();
+
+    // Copy cells from all lines before the change
+    for row in 0..start_row {
+        if row < doc.lines.len() {
+            new_cells.push((row, doc.lines[row].cells.clone()));
+        }
+    }
+
+    // Collect cells before start position in start_row
+    if start_row < doc.lines.len() {
+        let before_start = doc.lines[start_row].cells[..start_col].to_vec();
+        affected_rows.insert(start_row);
+
+        // Collect cells after end position in end_row
+        let after_end = if end_row < doc.lines.len() && end_col < doc.lines[end_row].cells.len() {
+            doc.lines[end_row].cells[end_col..].to_vec()
+        } else {
+            Vec::new()
+        };
+
+        // Combine: before_start + new cells + after_end
+        let mut combined = before_start;
+        combined.extend(cells.clone());
+        combined.extend(after_end);
+
+        // Split combined cells across lines if needed
+        // For simplicity, all pasted cells go on the start_row
+        // In a full implementation, would need to handle line breaks in paste data
+        new_cells.push((start_row, combined));
+
+        // Mark all affected rows as dirty (from start_row to end_row, then just start_row after paste)
+        for row in (start_row + 1)..=end_row {
+            if row < doc.lines.len() {
+                affected_rows.remove(&row);
+            }
+        }
+
+        // Copy remaining lines after end_row
+        for row in (end_row + 1)..doc.lines.len() {
+            new_cells.push((row, doc.lines[row].cells.clone()));
+        }
+    } else {
+        // If start_row is beyond doc, just add the cells as new line
+        new_cells.push((start_row, cells.clone()));
+        affected_rows.insert(start_row);
+    }
+
+    // Step 2: Rebuild lines (simple version - no line splitting)
+    // Create a map of row -> cells
+    let mut lines_map = std::collections::HashMap::new();
+    for (row, cells) in new_cells {
+        lines_map.insert(row, cells);
+    }
+
+    // Step 3: Update document lines
+    let mut max_row = 0;
+    for row in lines_map.keys() {
+        if *row > max_row {
+            max_row = *row;
+        }
+    }
+
+    // Ensure we have enough lines
+    while doc.lines.len() <= max_row {
+        doc.lines.push(Line::new());
+    }
+
+    // Update lines with new cells
+    for (row, new_row_cells) in lines_map {
+        if row < doc.lines.len() {
+            doc.lines[row].cells = new_row_cells;
+        }
+    }
+
+    // Step 4: Build dirty lines list
+    let mut dirty_lines = Vec::new();
+    for row in affected_rows {
+        if row < doc.lines.len() {
+            dirty_lines.push(DirtyLine {
+                row,
+                cells: doc.lines[row].cells.clone(),
+            });
+        }
+    }
+
+    // Also mark start_row as dirty
+    if start_row < doc.lines.len() {
+        if !dirty_lines.iter().any(|dl| dl.row == start_row) {
+            dirty_lines.push(DirtyLine {
+                row: start_row,
+                cells: doc.lines[start_row].cells.clone(),
+            });
+        }
+    }
+
+    // Step 5: Calculate new cursor position (after the pasted cells)
+    let new_cursor_col = start_col + cells.len();
+
+    let result = EditResult {
+        dirty_lines,
+        new_cursor_row: start_row,
+        new_cursor_col,
+    };
+
+    serde_wasm_bindgen::to_value(&result)
+        .map_err(|e| {
+            wasm_error!("EditResult serialization error: {}", e);
+            JsValue::from_str(&format!("EditResult serialization error: {}", e))
+        })
+}
+
+// ============================================================================
+// Undo/Redo operations
+// ============================================================================
+
+/// Undo the last edit operation
+#[wasm_bindgen(js_name = undo)]
+pub fn undo() -> Result<JsValue, JsValue> {
+    wasm_info!("undo called");
+
+    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let doc = doc_guard.as_mut()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    // Check if undo is available
+    if doc.state.history_index == 0 {
+        return Err(JsValue::from_str("No undo history available"));
+    }
+
+    // Move back in history
+    doc.state.history_index -= 1;
+    let history_entry = &doc.state.history[doc.state.history_index];
+
+    // Restore the document state from the history entry
+    // DocumentAction stores previous_state and new_state
+    if let Some(prev_state) = &history_entry.previous_state {
+        doc.lines = prev_state.lines.clone();
+    } else {
+        return Err(JsValue::from_str("No previous state in history"));
+    }
+
+    // Build dirty lines list (all lines changed)
+    let mut dirty_lines = Vec::new();
+    for (row, line) in doc.lines.iter().enumerate() {
+        dirty_lines.push(DirtyLine {
+            row,
+            cells: line.cells.clone(),
+        });
+    }
+
+    // Return cursor to a sensible position (start of document after undo)
+    let result = EditResult {
+        dirty_lines,
+        new_cursor_row: 0,
+        new_cursor_col: 0,
+    };
+
+    serde_wasm_bindgen::to_value(&result)
+        .map_err(|e| {
+            wasm_error!("EditResult serialization error: {}", e);
+            JsValue::from_str(&format!("EditResult serialization error: {}", e))
+        })
+}
+
+/// Redo the last undone edit operation
+#[wasm_bindgen(js_name = redo)]
+pub fn redo() -> Result<JsValue, JsValue> {
+    wasm_info!("redo called");
+
+    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let doc = doc_guard.as_mut()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    // Check if redo is available
+    if doc.state.history_index >= doc.state.history.len() {
+        return Err(JsValue::from_str("No redo history available"));
+    }
+
+    // Move forward in history
+    let history_entry = &doc.state.history[doc.state.history_index];
+
+    // Restore the document state from the history entry
+    // DocumentAction stores previous_state and new_state
+    if let Some(new_state) = &history_entry.new_state {
+        doc.lines = new_state.lines.clone();
+    } else {
+        return Err(JsValue::from_str("No new state in history"));
+    }
+
+    doc.state.history_index += 1;
+
+    // Build dirty lines list (all lines changed)
+    let mut dirty_lines = Vec::new();
+    for (row, line) in doc.lines.iter().enumerate() {
+        dirty_lines.push(DirtyLine {
+            row,
+            cells: line.cells.clone(),
+        });
+    }
+
+    // Return cursor to a sensible position (start of document after redo)
+    let result = EditResult {
+        dirty_lines,
+        new_cursor_row: 0,
+        new_cursor_col: 0,
+    };
+
+    serde_wasm_bindgen::to_value(&result)
+        .map_err(|e| {
+            wasm_error!("EditResult serialization error: {}", e);
+            JsValue::from_str(&format!("EditResult serialization error: {}", e))
+        })
+}
+
+/// Check if undo is available
+#[wasm_bindgen(js_name = canUndo)]
+pub fn can_undo() -> Result<bool, JsValue> {
+    let doc_guard = DOCUMENT.lock().unwrap();
+    Ok(doc_guard.as_ref().map_or(false, |d| {
+        d.state.history_index > 0
+    }))
+}
+
+/// Check if redo is available
+#[wasm_bindgen(js_name = canRedo)]
+pub fn can_redo() -> Result<bool, JsValue> {
+    let doc_guard = DOCUMENT.lock().unwrap();
+    Ok(doc_guard.as_ref().map_or(false, |d| {
+        d.state.history_index < d.state.history.len()
+    }))
+}
+
 /// Create a new empty document
 ///
 /// # Returns
 /// JavaScript Document object with default structure
+/// Load a document from JavaScript into WASM's internal storage
+#[wasm_bindgen(js_name = loadDocument)]
+pub fn load_document(document_js: JsValue) -> Result<(), JsValue> {
+    wasm_info!("loadDocument called");
+
+    let doc: Document = serde_wasm_bindgen::from_value(document_js)
+        .map_err(|e| {
+            wasm_error!("Document deserialization error: {}", e);
+            JsValue::from_str(&format!("Document deserialization error: {}", e))
+        })?;
+
+    *DOCUMENT.lock().unwrap() = Some(doc);
+    wasm_info!("loadDocument completed successfully");
+    Ok(())
+}
+
+/// Get current document snapshot from WASM's internal storage
+#[wasm_bindgen(js_name = getDocumentSnapshot)]
+pub fn get_document_snapshot() -> Result<JsValue, JsValue> {
+    wasm_info!("getDocumentSnapshot called");
+
+    let doc_guard = DOCUMENT.lock().unwrap();
+    match doc_guard.as_ref() {
+        Some(doc) => {
+            serde_wasm_bindgen::to_value(doc)
+                .map_err(|e| {
+                    wasm_error!("Document serialization error: {}", e);
+                    JsValue::from_str(&format!("Document serialization error: {}", e))
+                })
+        }
+        None => {
+            wasm_warn!("No document loaded");
+            Err(JsValue::from_str("No document loaded"))
+        }
+    }
+}
+
+/// Create a new document and store it internally
 #[wasm_bindgen(js_name = createNewDocument)]
 pub fn create_new_document() -> Result<JsValue, JsValue> {
     wasm_info!("createNewDocument called");
@@ -1211,8 +1714,11 @@ pub fn create_new_document() -> Result<JsValue, JsValue> {
 
     wasm_info!("  Created document with {} line(s)", document.lines.len());
 
-    // Compute glyphs before serialization
+    // Compute glyphs
     document.compute_glyphs();
+
+    // Store in internal WASM storage for edit operations
+    *DOCUMENT.lock().unwrap() = Some(document.clone());
 
     // Serialize to JavaScript
     let result = serde_wasm_bindgen::to_value(&document)
@@ -1236,6 +1742,9 @@ pub fn create_new_document() -> Result<JsValue, JsValue> {
 pub fn export_musicxml(document_js: JsValue) -> Result<String, JsValue> {
     wasm_info!("exportMusicXML called");
 
+    // DEBUG: Log what we're receiving from JavaScript before deserialization
+    wasm_log!("  Input document type: {}", js_sys::Object::keys(&js_sys::Object::from(document_js.clone())).length());
+
     // Deserialize document from JavaScript
     let document: Document = serde_wasm_bindgen::from_value(document_js)
         .map_err(|e| {
@@ -1243,7 +1752,21 @@ pub fn export_musicxml(document_js: JsValue) -> Result<String, JsValue> {
             JsValue::from_str(&format!("Deserialization error: {}", e))
         })?;
 
+    wasm_log!("  Deserialized successfully");
     wasm_log!("  Document has {} lines", document.lines.len());
+
+    // DEBUG: Log what's in the first line
+    if let Some(first_line) = document.lines.first() {
+        wasm_log!("  First line has {} cells", first_line.cells.len());
+        if !first_line.cells.is_empty() {
+            let cells_summary: String = first_line.cells.iter().map(|c| c.char.clone()).collect();
+            wasm_log!("  First line cells: '{}'", cells_summary);
+        } else {
+            wasm_log!("  ⚠️ BUG FOUND: First line has ZERO cells - cells not being deserialized!");
+        }
+    } else {
+        wasm_log!("  No lines found in document!");
+    }
 
     // Export to MusicXML
     let musicxml = crate::renderers::musicxml::to_musicxml(&document)

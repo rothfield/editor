@@ -133,12 +133,19 @@ class UI {
      */
   setupEditMenu() {
     const menuItems = [
+      { id: 'menu-undo', label: 'Undo (Ctrl+Z)', action: 'undo', testid: 'menu-undo' },
+      { id: 'menu-redo', label: 'Redo (Ctrl+Y)', action: 'redo', testid: 'menu-redo' },
+      { id: 'menu-separator-0', label: null, separator: true },
+      { id: 'menu-copy', label: 'Copy (Ctrl+C)', action: 'copy', testid: 'menu-copy' },
+      { id: 'menu-cut', label: 'Cut (Ctrl+X)', action: 'cut', testid: 'menu-cut' },
+      { id: 'menu-paste', label: 'Paste (Ctrl+V)', action: 'paste', testid: 'menu-paste' },
+      { id: 'menu-separator-1', label: null, separator: true },
       { id: 'menu-apply-ornament', label: 'Ornament (Alt+0)', action: 'apply-ornament-after', testid: 'menu-apply-ornament' },
       { id: 'menu-apply-ornament-before', label: 'Ornament Before', action: 'apply-ornament-before', testid: 'menu-apply-ornament-before' },
       { id: 'menu-apply-ornament-top', label: 'Ornament Top', action: 'apply-ornament-top', testid: 'menu-apply-ornament-top' },
       { id: 'menu-apply-slur', label: 'Apply Slur (Alt+S)', action: 'apply-slur' },
       { id: 'menu-edit-ornaments', label: 'Toggle Ornament Edit Mode (Alt+Shift+O)', action: 'edit-ornaments', checkable: true },
-      { id: 'menu-separator-1', label: null, separator: true },
+      { id: 'menu-separator-2', label: null, separator: true },
       { id: 'menu-octave-upper', label: 'Upper Octave (Alt+U)', action: 'octave-upper' },
       { id: 'menu-octave-middle', label: 'Middle Octave (Alt+M)', action: 'octave-middle' },
       { id: 'menu-octave-lower', label: 'Lower Octave (Alt+L)', action: 'octave-lower' }
@@ -351,11 +358,25 @@ class UI {
 
     // Render staff notation if switching to staff notation tab
     if (tabName === 'staff-notation' && this.editor) {
-      await this.editor.renderStaffNotation();
-    }
+      // Clear the OSMD renderer's hash cache to force a fresh render
+      // This ensures that switching back to the tab triggers a re-render even if MusicXML hash is the same
+      if (this.editor.osmdRenderer) {
+        this.editor.osmdRenderer.lastMusicXmlHash = null;
+      }
 
-    // Request focus return to editor
-    this.returnFocusToEditor();
+      // **CRITICAL FIX**: Refocus the editor before rendering
+      // When switching from another tab (like lilypond), the focus is on that tab
+      // If we don't refocus the editor, keyboard input will be ignored
+      this.returnFocusToEditor();
+
+      // Give the focus a moment to settle before rendering
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      await this.editor.renderStaffNotation();
+    } else {
+      // Request focus return to editor for other tabs too
+      this.returnFocusToEditor();
+    }
   }
 
   /**
@@ -453,6 +474,21 @@ class UI {
         break;
       case 'set-key-signature':
         this.setKeySignature();
+        break;
+      case 'undo':
+        this.editor.handleUndo();
+        break;
+      case 'redo':
+        this.editor.handleRedo();
+        break;
+      case 'copy':
+        this.editor.handleCopy();
+        break;
+      case 'cut':
+        this.editor.handleCut();
+        break;
+      case 'paste':
+        this.editor.handlePaste();
         break;
       case 'apply-ornament-after':
         console.log('[UI] apply-ornament-after: calling editor.applyOrnament("after")');

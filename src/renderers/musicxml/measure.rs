@@ -1,7 +1,19 @@
-//! MusicXML measure and segment processing
+//! MusicXML measure and segment processing with FSM
 //!
 //! Handles splitting cells at barlines, calculating measure divisions,
-//! and processing segments (content between barlines).
+//! processing segments (content between barlines), and managing measure state.
+//!
+//! ## Measure FSM States
+//!
+//! ```text
+//! [Ready] --start_measure--> [Open]
+//!   |
+//!   +--> [Open] --add_segment--> [Open]
+//!         |
+//!         +--> [Open] --end_measure--> [Closed]
+//!               |
+//!               +--> [Closed] --finalize--> [Ready]
+//! ```
 
 use crate::models::{Cell, ElementKind};
 use crate::parse::beats::BeatDeriver;

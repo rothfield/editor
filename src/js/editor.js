@@ -30,6 +30,13 @@ class MusicNotationEditor {
     this.isDragging = false;
     this.dragStartPos = null;
     this.dragEndPos = null;
+    this.justDragSelected = false;
+
+    // Clipboard storage (for rich copy/paste)
+    this.clipboard = {
+        text: null,
+        cells: null
+    };
 
     // AutoSave manager
     this.autoSave = new AutoSave(this);
@@ -78,8 +85,21 @@ class MusicNotationEditor {
         // Ornament Edit Mode API
         getOrnamentEditMode: wasmModule.getOrnamentEditMode,
         setOrnamentEditMode: wasmModule.setOrnamentEditMode,
-        // Document API
+        // Document lifecycle API (new - WASM-owned)
         createNewDocument: wasmModule.createNewDocument,
+        loadDocument: wasmModule.loadDocument,
+        getDocumentSnapshot: wasmModule.getDocumentSnapshot,
+        // Core edit primitive (new)
+        editReplaceRange: wasmModule.editReplaceRange,
+        // Copy/Paste API (new)
+        copyCells: wasmModule.copyCells,
+        pasteCells: wasmModule.pasteCells,
+        // Undo/Redo API (new)
+        undo: wasmModule.undo,
+        redo: wasmModule.redo,
+        canUndo: wasmModule.canUndo,
+        canRedo: wasmModule.canRedo,
+        // Document API (old - will migrate)
         setTitle: wasmModule.setTitle,
         setComposer: wasmModule.setComposer,
         setDocumentPitchSystem: wasmModule.setDocumentPitchSystem,
@@ -238,6 +258,7 @@ class MusicNotationEditor {
       return;
     }
 
+
     logger.time('insertText', LOG_CATEGORIES.EDITOR);
     const cursorPos = this.getCursorPosition();
     const pitchSystem = this.getCurrentPitchSystem();
@@ -313,6 +334,7 @@ class MusicNotationEditor {
           });
         }
 
+
         // Update cursor position (character-based position from WASM)
         logger.debug(LOG_CATEGORIES.CURSOR, 'Updating cursor position', {
           from: cursorPos,
@@ -322,6 +344,17 @@ class MusicNotationEditor {
         if (this.theDocument && this.theDocument.state) {
           this.theDocument.state.cursor.column = currentCharPos;
           this.updateCursorPositionDisplay();
+        }
+
+        // CRITICAL: Sync the updated JS document back to WASM for history/undo to work
+        // insertCharacter modifies the JS document but WASM doesn't know about it
+        // We need to update WASM's internal document so undo/redo can access it
+        if (this.theDocument) {
+          try {
+            this.wasmModule.loadDocument(this.theDocument);
+          } catch (e) {
+            console.warn('Failed to sync document with WASM:', e);
+          }
         }
       }
 
@@ -827,8 +860,9 @@ class MusicNotationEditor {
       }
     }
 
-    // Ignore Ctrl key combinations (let browser handle them)
-    if (modifiers.ctrl) {
+    // Handle Ctrl key combinations (copy/paste/undo/redo)
+    if (modifiers.ctrl && !modifiers.alt) {
+      this.handleCtrlCommand(key);
       return;
     }
 
@@ -909,6 +943,34 @@ class MusicNotationEditor {
           important: false,
           details: `Available commands: Alt+Shift+O (toggle ornament edit mode)`
         });
+        return;
+    }
+  }
+
+  /**
+   * Handle Ctrl+key commands (copy/paste/undo/redo)
+   */
+  handleCtrlCommand(key) {
+    this.addToConsoleLog(`Edit command: Ctrl+${key.toUpperCase()}`);
+
+    switch (key.toLowerCase()) {
+      case 'c':
+        this.handleCopy();
+        break;
+      case 'x':
+        this.handleCut();
+        break;
+      case 'v':
+        this.handlePaste();
+        break;
+      case 'z':
+        this.handleUndo();
+        break;
+      case 'y':
+        this.handleRedo();
+        break;
+      default:
+        console.log('Unknown Ctrl command:', key);
         return;
     }
   }
@@ -1398,9 +1460,16 @@ class MusicNotationEditor {
 
     // Fallback: proportional split (if char_positions not available)
     const cellLength = cell.char.length;
+
+    // If cursor is at or past the end of the cell, position it at cell's right edge
+    if (charOffsetInCell >= cellLength) {
+      return cell.cursor_right;
+    }
+
+    // Calculate proportional position within the cell
     const cellWidth = cell.cursor_right - cell.cursor_left;
     const charWidth = cellWidth / cellLength;
-    return cell.x + (charWidth * charOffsetInCell);
+    return cell.cursor_left + (charWidth * charOffsetInCell);
   }
 
 
@@ -1714,20 +1783,29 @@ class MusicNotationEditor {
      * This is a lightweight DOM update, not a full re-render
      */
   renderSelectionVisual(selection) {
-    if (!this.renderer || !this.renderer.element) {
-      console.warn('❌ No renderer or renderer element');
+    if (!selection || selection.start === undefined || selection.end === undefined) {
       return;
     }
 
-    // Find the line element
-    const lineElement = this.renderer.element.querySelector(`[data-line="${this.getCurrentStave()}"]`);
-    if (!lineElement) {
-      console.warn('❌ Line element not found, cannot render selection');
+    // Find all notation-line elements and select the current one
+    const lineElements = document.querySelectorAll('.notation-line');
+    if (lineElements.length === 0) {
       return;
     }
+
+    const currentStave = this.getCurrentStave();
+    if (currentStave >= lineElements.length) {
+      return;
+    }
+
+    const lineElement = lineElements[currentStave];
 
     // Add 'selected' class to all cells in the selection range (inclusive)
-    for (let i = selection.start; i <= selection.end; i++) {
+    // Selection range is from start to end (both are cell indices)
+    const startIdx = Math.min(selection.start, selection.end);
+    const endIdx = Math.max(selection.start, selection.end);
+
+    for (let i = startIdx; i <= endIdx; i++) {
       const cellElement = lineElement.querySelector(`[data-cell-index="${i}"]`);
       if (cellElement) {
         cellElement.classList.add('selected');
@@ -2759,13 +2837,32 @@ class MusicNotationEditor {
 
       // Focus the closest line based on click position
       const rect = this.element.getBoundingClientRect();
+      const x = event.clientX - rect.left;
       const y = event.clientY - rect.top;
       const lineIndex = this.calculateLineFromY(y);
 
       if (lineIndex !== null && this.theDocument && this.theDocument.state) {
-        this.theDocument.state.cursor.stave = lineIndex;
+        // Plain click (no modifiers) while selection is active: clear selection
+        // This matches standard text editor behavior (Leafpad, Notepad, etc.)
+        const hasSelection = this.hasSelection();
+        const noModifiers = !event.shiftKey && !event.ctrlKey && !event.metaKey;
+
+        // Don't clear selections that were just created by drag
+        if (hasSelection && noModifiers && !this.justDragSelected) {
+          // Calculate cursor position BEFORE clearing selection (before re-render)
+          // This ensures we use coordinates from the original cell layout
+          const cursorColumn = this.calculateCellPosition(x, y);
+          this.clearSelection();
+
+          // Now set the cursor position after selection is cleared
+          this.theDocument.state.cursor.stave = lineIndex;
+          if (cursorColumn !== null) {
+            this.theDocument.state.cursor.column = cursorColumn;
+            this.updateCursorVisualPosition();
+          }
+        }
       }
-    });
+    }, true); // Use capture phase to catch clicks earlier
 
     // Also attach click handler to editor-container div for clicks outside notation lines
     const editorContainer = document.getElementById('editor-container');
@@ -2855,6 +2952,7 @@ class MusicNotationEditor {
       if (this.dragStartPos !== this.dragEndPos) {
         this.initializeSelection(this.dragStartPos, this.dragEndPos);
         this.updateSelectionDisplay();
+        this.justDragSelected = true; // Flag to prevent click from clearing drag selection
       }
 
       // Delay clearing the dragging flag to prevent click event from clearing selection
@@ -2862,6 +2960,7 @@ class MusicNotationEditor {
         this.isDragging = false;
         this.dragStartPos = null;
         this.dragEndPos = null;
+        this.justDragSelected = false; // Clear flag after drag is fully complete
       }, 10);
     }
   }
@@ -3119,6 +3218,7 @@ class MusicNotationEditor {
 
     // Find which cell the X coordinate is in by checking which pair of boundaries it falls between
     let cellIndex = 0;
+    let cursorPositionIndex = 0; // Which cursor position (0-N) the cursor should snap to
 
     // Check each navigable cell to see if x falls within it
     for (let i = 0; i < navigableCellElements.length; i++) {
@@ -3129,16 +3229,26 @@ class MusicNotationEditor {
       if (x >= leftBoundary && x < rightBoundary) {
         // Return the actual cellIndex from the data attribute, not the filtered index
         cellIndex = parseInt(navigableCellElements[i].getAttribute('data-cell-index'), 10);
+
+        // Determine if click is in left or right half of the cell
+        const cellMidpoint = (leftBoundary + rightBoundary) / 2;
+        if (x >= cellMidpoint) {
+          // Right half: cursor should be at the right boundary (position i+1)
+          cursorPositionIndex = i + 1;
+        } else {
+          // Left half: cursor should be at the left boundary (position i)
+          cursorPositionIndex = i;
+        }
         break;
       }
     }
 
-    // If x is at or beyond the right edge of the last cell, select the last navigable cell
+    // If x is at or beyond the right edge of the last cell, snap to the last position
     if (x >= cursorPositions[navigableCellElements.length]) {
-      cellIndex = parseInt(navigableCellElements[Math.max(0, navigableCellElements.length - 1)].getAttribute('data-cell-index'), 10);
+      cursorPositionIndex = navigableCellElements.length;
     }
 
-    return cellIndex;
+    return cursorPositionIndex;
   }
 
   /**
@@ -3222,11 +3332,6 @@ class MusicNotationEditor {
             .cursor-indicator.focused {
                 background-color: #004499;
                 box-shadow: 0 0 3px rgba(0, 102, 204, 0.5);
-            }
-
-            .cursor-indicator.selecting {
-                background-color: #ff6b35;
-                box-shadow: 0 0 3px rgba(255, 107, 53, 0.5);
             }
         `;
     document.head.appendChild(style);
@@ -3319,12 +3424,6 @@ class MusicNotationEditor {
     cursor.style.height = `${lineHeight}px`;
 
     // Update cursor appearance based on state
-    if (this.hasSelection()) {
-      cursor.classList.add('selecting');
-    } else {
-      cursor.classList.remove('selecting');
-    }
-
     if (this.eventManager && this.eventManager.editorFocus()) {
       cursor.classList.add('focused');
     } else {
@@ -4043,6 +4142,10 @@ class MusicNotationEditor {
 
     try {
       const startTime = performance.now();
+      // DEBUG: Log what we're sending to WASM
+      const cellCount = this.theDocument.lines?.[0]?.cells?.length || 0;
+      console.log(`[JS] exportMusicXML: first line has ${cellCount} cells`);
+
       const musicxml = this.wasmModule.exportMusicXML(this.theDocument);
       const exportTime = performance.now() - startTime;
 
@@ -4078,6 +4181,242 @@ class MusicNotationEditor {
     } catch (error) {
       console.error('Staff notation rendering failed:', error);
       logger.error(LOG_CATEGORIES.EDITOR, 'Staff notation render error', { error: error.message });
+    }
+  }
+
+  /**
+   * Handle Ctrl+C (Copy) - copy selected cells in rich format
+   */
+  handleCopy() {
+    if (!this.theDocument || !this.wasmModule) {
+      console.warn('Cannot copy: document or WASM not ready');
+      return;
+    }
+
+    // Check if there's a selection
+    const selection = this.theDocument.state?.selection;
+    const hasSelection = selection && selection.active &&
+                       (selection.start !== undefined) && (selection.end !== undefined) &&
+                       !(selection.start === selection.end);
+
+    if (!hasSelection) {
+      console.warn('No selection to copy', selection);
+      return;
+    }
+
+    try {
+      const selection = this.theDocument.state.selection;
+      // Selection has start/end cell indices (single line for now)
+      const currentRow = this.getCurrentStave();
+      const startRow = currentRow;
+      const startCol = Math.min(selection.start, selection.end);
+      const endRow = currentRow;
+      const endCol = Math.max(selection.start, selection.end);
+
+      // Call WASM to copy cells (preserves octaves/slurs/ornaments)
+      const copyResult = this.wasmModule.copyCells(startRow, startCol, endRow, endCol);
+
+      if (copyResult && copyResult.text) {
+        // Store in clipboard (both text for system clipboard, cells for rich paste)
+        this.clipboard.text = copyResult.text;
+        this.clipboard.cells = copyResult.cells || [];
+
+        // Also copy to system clipboard
+        navigator.clipboard.writeText(copyResult.text).catch(err => {
+          console.warn('Failed to copy to system clipboard:', err);
+        });
+
+        this.addToConsoleLog(`Copied ${copyResult.cells?.length || 0} cells`);
+      }
+    } catch (error) {
+      console.error('Copy failed:', error);
+      this.showError('Copy failed', { details: error.message });
+    }
+  }
+
+  /**
+   * Handle Ctrl+X (Cut) - copy and delete selection
+   */
+  handleCut() {
+    if (!this.theDocument) {
+      console.warn('Cannot cut: document not ready');
+      return;
+    }
+
+    // First copy
+    this.handleCopy();
+
+    // Then delete the selection
+    const selection = this.theDocument.state?.selection;
+    const hasSelection = selection && selection.active &&
+                       (selection.start !== undefined) && (selection.end !== undefined) &&
+                       !(selection.start === selection.end);
+
+    if (hasSelection) {
+      // Delete the selected range
+      this.deleteSelection();
+    }
+
+    this.addToConsoleLog('Cut completed');
+  }
+
+  /**
+   * Handle Ctrl+V (Paste) - paste from clipboard with rich format
+   */
+  handlePaste() {
+    if (!this.theDocument || !this.wasmModule) {
+      console.warn('Cannot paste: document or WASM not ready');
+      return;
+    }
+
+    try {
+      const cursor = this.theDocument.state?.cursor || { row: 0, col: 0 };
+      const startRow = cursor.row;
+      const startCol = cursor.col;
+
+      // For now, simple paste at cursor (single cell)
+      const cellsToPaste = this.clipboard.cells || [];
+
+      if (cellsToPaste.length === 0) {
+        console.warn('Nothing to paste (clipboard empty)');
+        return;
+      }
+
+      // Call WASM to paste cells
+      // For single row paste, endRow = startRow
+      const result = this.wasmModule.pasteCells(
+        startRow,
+        startCol,
+        startRow,
+        startCol,
+        cellsToPaste
+      );
+
+      if (result && result.dirty_lines) {
+        // Update document with dirty lines
+        this.updateDocumentFromDirtyLines(result.dirty_lines);
+
+        // Move cursor to after pasted content
+        this.setCursorPosition(result.new_cursor_row, result.new_cursor_col);
+
+        // Clear selection
+        if (this.theDocument.state) {
+          this.theDocument.state.selection = { active: false };
+        }
+
+        this.addToConsoleLog(`Pasted ${cellsToPaste.length} cells`);
+        this.render();
+      }
+    } catch (error) {
+      console.error('Paste failed:', error);
+      this.showError('Paste failed', { details: error.message });
+    }
+  }
+
+  /**
+   * Handle Ctrl+Z (Undo)
+   */
+  handleUndo() {
+    if (!this.wasmModule) {
+      console.warn('Cannot undo: WASM not ready');
+      return;
+    }
+
+    try {
+      const canUndo = this.wasmModule.canUndo();
+      if (!canUndo) {
+        console.log('Nothing to undo');
+        return;
+      }
+
+      const result = this.wasmModule.undo();
+      if (result && result.dirty_lines) {
+        this.updateDocumentFromDirtyLines(result.dirty_lines);
+        this.setCursorPosition(result.new_cursor_row, result.new_cursor_col);
+        this.addToConsoleLog('Undo completed');
+        this.render();
+      }
+    } catch (error) {
+      console.error('Undo failed:', error);
+      this.showError('Undo failed', { details: error.message });
+    }
+  }
+
+  /**
+   * Handle Ctrl+Y (Redo)
+   */
+  handleRedo() {
+    if (!this.wasmModule) {
+      console.warn('Cannot redo: WASM not ready');
+      return;
+    }
+
+    try {
+      const canRedo = this.wasmModule.canRedo();
+      if (!canRedo) {
+        console.log('Nothing to redo');
+        return;
+      }
+
+      const result = this.wasmModule.redo();
+      if (result && result.dirty_lines) {
+        this.updateDocumentFromDirtyLines(result.dirty_lines);
+        this.setCursorPosition(result.new_cursor_row, result.new_cursor_col);
+        this.addToConsoleLog('Redo completed');
+        this.render();
+      }
+    } catch (error) {
+      console.error('Redo failed:', error);
+      this.showError('Redo failed', { details: error.message });
+    }
+  }
+
+  /**
+   * Update document lines from dirty lines returned by WASM
+   */
+  updateDocumentFromDirtyLines(dirtyLines) {
+    if (!this.theDocument) return;
+
+    dirtyLines.forEach(dirtyLine => {
+      if (dirtyLine.row < this.theDocument.lines.length) {
+        this.theDocument.lines[dirtyLine.row].cells = dirtyLine.cells || [];
+      }
+    });
+  }
+
+  /**
+   * Delete the current selection
+   */
+  deleteSelection() {
+    if (!this.theDocument || !this.wasmModule) return;
+
+    try {
+      const selection = this.theDocument.state?.selection;
+      if (!selection || !selection.active) return;
+
+      // Selection has start/end cell indices (single line for now)
+      const currentRow = this.getCurrentStave();
+      const startRow = currentRow;
+      const startCol = Math.min(selection.start, selection.end);
+      const endRow = currentRow;
+      const endCol = Math.max(selection.start, selection.end);
+
+      const result = this.wasmModule.editReplaceRange(
+        startRow,
+        startCol,
+        endRow,
+        endCol,
+        ''
+      );
+
+      if (result && result.dirty_lines) {
+        this.updateDocumentFromDirtyLines(result.dirty_lines);
+        this.setCursorPosition(startRow, startCol);
+        this.theDocument.state.selection = { active: false };
+        this.render();
+      }
+    } catch (error) {
+      console.error('Delete selection failed:', error);
     }
   }
 }
