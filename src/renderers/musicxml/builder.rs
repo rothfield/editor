@@ -4,6 +4,7 @@ use crate::models::pitch::Pitch;
 use crate::models::PitchCode;
 use super::duration::duration_to_note_type;
 use super::pitch::{pitch_to_step_alter, pitch_code_to_step_alter};
+use super::super::super::export_ir::Syllabic;
 
 /// Articulation types supported in MusicXML export
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -492,6 +493,37 @@ impl MusicXmlBuilder {
     /// Indicate new staff/system (for line breaks)
     pub fn new_system(&mut self) {
         self.buffer.push_str("<print new-system=\"yes\"/>\n");
+    }
+
+    /// Write a lyric element to a note
+    /// syllable: The text of the syllable
+    /// syllabic: The syllabic type (Single, Begin, Middle, End)
+    /// verse_number: The verse/lyric number (typically 1 for first verse)
+    pub fn write_lyric(&mut self, syllable: &str, syllabic: Syllabic, verse_number: u32) {
+        self.buffer.push_str(&format!("  <lyric number=\"{}\">\n", verse_number));
+
+        // Write syllabic type if it's not Single (Single is implicit)
+        match syllabic {
+            Syllabic::Single => {
+                // Single syllables don't need explicit syllabic element
+            }
+            Syllabic::Begin => {
+                self.buffer.push_str("    <syllabic>begin</syllabic>\n");
+            }
+            Syllabic::Middle => {
+                self.buffer.push_str("    <syllabic>middle</syllabic>\n");
+            }
+            Syllabic::End => {
+                self.buffer.push_str("    <syllabic>end</syllabic>\n");
+            }
+        }
+
+        // Write the syllable text with XML escaping
+        self.buffer.push_str("    <text>");
+        self.buffer.push_str(&xml_escape(syllable));
+        self.buffer.push_str("</text>\n");
+
+        self.buffer.push_str("  </lyric>\n");
     }
 
     /// Finalize and return complete MusicXML string

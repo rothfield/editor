@@ -29,9 +29,10 @@
 //! ```
 
 use crate::models::{PitchCode, OrnamentPositionType};
+use serde::{Serialize, Deserialize};
 
 /// Intermediate representation of a line (staff/part) for MusicXML export
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExportLine {
     /// Key signature string (e.g., "G major" or "F#m")
     /// Set at part level in MusicXML, shared across all measures
@@ -70,7 +71,7 @@ impl ExportLine {
 }
 
 /// Intermediate representation of a measure for MusicXML export
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExportMeasure {
     /// Beat division count for this measure
     /// Determined by LCM of all beat divisions in the measure
@@ -97,7 +98,7 @@ impl ExportMeasure {
 }
 
 /// An event (note, rest, chord, grace note) in a measure
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ExportEvent {
     /// Rest element
     Rest {
@@ -132,7 +133,7 @@ impl ExportEvent {
 }
 
 /// Complete data for a note
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NoteData {
     /// The pitch of the note
     pub pitch: PitchInfo,
@@ -160,10 +161,13 @@ pub struct NoteData {
 
     /// Tie information (tie start, continue, stop)
     pub tie: Option<TieData>,
+
+    /// Tuplet information (time-modification in MusicXML)
+    pub tuplet: Option<TupletInfo>,
 }
 
 /// Pitch information
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PitchInfo {
     pub pitch_code: PitchCode,
     pub octave: i8,
@@ -176,7 +180,7 @@ impl PitchInfo {
 }
 
 /// Grace note (ornament) data
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GraceNoteData {
     pub pitch: PitchInfo,
     pub position: OrnamentPositionType,
@@ -185,7 +189,7 @@ pub struct GraceNoteData {
 }
 
 /// Lyric data
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LyricData {
     /// The syllable text
     pub syllable: String,
@@ -198,7 +202,7 @@ pub struct LyricData {
 }
 
 /// Syllabic type for lyrics
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Syllabic {
     Single,
     Begin,
@@ -207,19 +211,19 @@ pub enum Syllabic {
 }
 
 /// Slur information
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SlurData {
     pub placement: SlurPlacement,
     pub type_: SlurType,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SlurPlacement {
     Above,
     Below,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SlurType {
     Start,
     Continue,
@@ -227,13 +231,13 @@ pub enum SlurType {
 }
 
 /// Beam grouping data
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BeamData {
     pub state: BeamState,
     pub number: u32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BeamState {
     Begin,
     Continue,
@@ -242,20 +246,33 @@ pub enum BeamState {
 }
 
 /// Tie information
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TieData {
     pub type_: TieType,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TieType {
     Start,
     Continue,
     Stop,
 }
 
+/// Tuplet information (time-modification in MusicXML)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TupletInfo {
+    /// Actual notes in the tuplet (numerator, e.g., 3 for triplet)
+    pub actual_notes: usize,
+    /// Normal notes (denominator, e.g., 2 for triplet)
+    pub normal_notes: usize,
+    /// Whether this is the first note in the tuplet (bracket start)
+    pub bracket_start: bool,
+    /// Whether this is the last note in the tuplet (bracket stop)
+    pub bracket_stop: bool,
+}
+
 /// Articulation types
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ArticulationType {
     Staccato,
     Accent,

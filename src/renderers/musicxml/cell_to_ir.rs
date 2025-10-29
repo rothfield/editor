@@ -22,7 +22,7 @@
 use crate::models::{Cell, ElementKind, PitchCode, OrnamentPositionType, SlurIndicator, Line, Document};
 use super::export_ir::{
     ExportLine, ExportMeasure, ExportEvent, NoteData, GraceNoteData, PitchInfo,
-    LyricData, Syllabic, SlurData, SlurPlacement, SlurType,
+    LyricData, Syllabic, SlurData, SlurPlacement, SlurType, TupletInfo,
 };
 
 /// FSM state for cell-to-event grouping
@@ -122,6 +122,7 @@ impl BeatAccumulator {
                 articulations: Vec::new(),
                 beam: None,
                 tie: None,
+                tuplet: None,
             };
             self.events.push(ExportEvent::Note(note));
             self.pending_grace_notes_before.clear();
@@ -393,6 +394,143 @@ pub fn lcm_multiple(numbers: &[usize]) -> usize {
     numbers.iter().copied().reduce(lcm).unwrap_or(1)
 }
 
+/// Detect if a subdivision count represents a tuplet
+/// Returns Option<(actual_notes, normal_notes)> for tuplet ratio
+pub fn detect_tuplet_ratio(subdivisions: usize) -> Option<(usize, usize)> {
+    // Standard divisions (powers of 2) don't need tuplets
+    if subdivisions.is_power_of_two() && subdivisions <= 128 {
+        return None;
+    }
+
+    // Calculate normal_notes based on standard tuplet ratios
+    let normal_notes = match subdivisions {
+        3 => 2,           // Triplet: 3:2
+        5 => 4,           // Quintuplet: 5:4
+        6 => 4,           // Sextuplet: 6:4
+        7 => 4,           // Septuplet: 7:4
+        9 => 8,           // Nonuplet: 9:8
+        10 => 8,          // 10:8
+        11 => 8,          // 11:8
+        12 => 8,          // 12:8
+        13 => 8,          // 13:8
+        14 => 8,          // 14:8
+        15 => 8,          // 15:8
+        _ if subdivisions <= 32 => 16,  // Larger tuplets: x:16
+        _ if subdivisions <= 64 => 32,  // x:32
+        _ if subdivisions <= 128 => 64, // x:64
+        _ => 128,         // Very large tuplets: x:128
+    };
+
+    Some((subdivisions, normal_notes))
+}
+
+/// Assign tuplet information to events within a beat
+fn assign_tuplet_info_to_beat(events: &mut [ExportEvent], actual_notes: usize, normal_notes: usize) {
+    let event_count = events.len();
+    if event_count == 0 {
+        return;
+    }
+
+    for (idx, event) in events.iter_mut().enumerate() {
+        let is_first = idx == 0;
+        let is_last = idx == event_count - 1;
+
+        match event {
+            ExportEvent::Note(note) => {
+                note.tuplet = Some(TupletInfo {
+                    actual_notes,
+                    normal_notes,
+                    bracket_start: is_first && event_count > 1,
+                    bracket_stop: is_last && event_count > 1,
+                });
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Calculate the actual rhythmic subdivisions in a beat
+///
+/// This counts pitched elements + their dash extensions + standalone dashes,
+/// then normalizes using GCD to get the effective subdivision count.
+///
+/// For "1-3": pitches=[1,3] with extensions=[1,0] → slot_counts=[2,1] → GCD=1 → subdivisions=3
+/// For "1 2 3": pitches=[1,2,3] → slot_counts=[1,1,1] → GCD=1 → subdivisions=3
+pub fn calculate_beat_subdivisions(beat_cells_refs: &[&Cell]) -> usize {
+    if beat_cells_refs.is_empty() {
+        return 0;
+    }
+
+    let mut slot_counts = Vec::new();
+    let mut i = 0;
+    let mut seen_pitched_element = false;
+
+    while i < beat_cells_refs.len() {
+        let cell = beat_cells_refs[i];
+
+        // Skip continuation cells and rhythm-transparent cells
+        if cell.continuation || cell.is_rhythm_transparent() {
+            i += 1;
+            continue;
+        }
+
+        if cell.kind == ElementKind::PitchedElement {
+            seen_pitched_element = true;
+            // Count this note + following dash extensions
+            let mut slot_count = 1;
+            let mut j = i + 1;
+
+            // Skip continuation cells
+            while j < beat_cells_refs.len() && beat_cells_refs[j].continuation {
+                j += 1;
+            }
+
+            // Count dash extensions
+            while j < beat_cells_refs.len() {
+                if beat_cells_refs[j].kind == ElementKind::UnpitchedElement && beat_cells_refs[j].char == "-" {
+                    slot_count += 1;
+                    j += 1;
+                } else if beat_cells_refs[j].is_rhythm_transparent() {
+                    j += 1;
+                } else {
+                    break;
+                }
+            }
+            slot_counts.push(slot_count);
+            i = j;
+        } else if cell.kind == ElementKind::UnpitchedElement {
+            // Standalone dash = rest
+            if cell.char == "-" {
+                if !seen_pitched_element {
+                    // Leading dash before any pitch = rest
+                    slot_counts.push(1);
+                }
+                // else: orphaned dash, skip
+            } else {
+                // Other unpitched = rest
+                slot_counts.push(1);
+            }
+            i += 1;
+        } else {
+            i += 1;
+        }
+    }
+
+    if slot_counts.is_empty() {
+        return 0;
+    }
+
+    // Find GCD of all slot counts and reduce
+    let mut gcd_value = slot_counts[0];
+    for &count in &slot_counts[1..] {
+        gcd_value = gcd(gcd_value, count);
+    }
+
+    // Return effective subdivisions after GCD reduction
+    let normalized: Vec<usize> = slot_counts.iter().map(|&c| c / gcd_value).collect();
+    normalized.iter().sum()
+}
+
 /// Find all barline positions in a line of cells
 /// Returns indices where barlines occur (starting from 1, since 0 is implicit start)
 pub fn find_barlines(cells: &[Cell]) -> Vec<usize> {
@@ -503,6 +641,7 @@ pub fn build_export_measures_from_line(line: &Line) -> Vec<ExportMeasure> {
 
         let mut all_events = Vec::new();
         let mut beat_divisions_list = Vec::new();
+        let mut beat_event_ranges: Vec<(usize, usize, usize)> = Vec::new(); // (start_idx, end_idx, beat_div)
 
         // Process each beat
         for j in 0..beat_boundaries.len() - 1 {
@@ -523,15 +662,23 @@ pub fn build_export_measures_from_line(line: &Line) -> Vec<ExportMeasure> {
                 continue;
             }
 
-            // Convert &Cell references to Cell references for FSM
-            let beat_events = group_cells_into_events(&beat_cells_refs);
+            // Calculate actual rhythmic subdivisions (not just event count)
+            // For "1-3": counts [2,1] → GCD=1 → subdivisions=3
+            // For "1 2 3": counts [1,1,1] → GCD=1 → subdivisions=3
+            let beat_div: usize = calculate_beat_subdivisions(&beat_cells_refs);
 
-            if !beat_events.is_empty() {
-                // Simple approach: beat_div = number of events in beat
-                // Then LCM all beat_divs to get measure_divisions
-                let beat_div: usize = beat_events.len();
+            if beat_div > 0 {
+                // Record where this beat starts in all_events
+                let beat_start_idx = all_events.len();
                 beat_divisions_list.push(beat_div);
+
+                // Convert to events for IR
+                let beat_events = group_cells_into_events(&beat_cells_refs);
                 all_events.extend(beat_events);
+
+                // Record where this beat ends
+                let beat_end_idx = all_events.len();
+                beat_event_ranges.push((beat_start_idx, beat_end_idx, beat_div));
             }
         }
 
@@ -550,6 +697,14 @@ pub fn build_export_measures_from_line(line: &Line) -> Vec<ExportMeasure> {
         } else {
             lcm_multiple(&beat_divisions_list)
         };
+
+        // Assign tuplet information to events within beats that have tuplet subdivisions
+        for (beat_start_idx, beat_end_idx, beat_div) in beat_event_ranges {
+            if let Some((actual_notes, normal_notes)) = detect_tuplet_ratio(beat_div) {
+                let beat_events = &mut all_events[beat_start_idx..beat_end_idx];
+                assign_tuplet_info_to_beat(beat_events, actual_notes, normal_notes);
+            }
+        }
 
         measures.push(ExportMeasure {
             divisions: measure_divisions,
@@ -807,6 +962,7 @@ mod tests {
             articulations: Vec::new(),
             beam: None,
             tie: None,
+                tuplet: None,
         };
 
         let mut cell = make_cell(ElementKind::PitchedElement, "1", Some(PitchCode::N1));
@@ -830,6 +986,7 @@ mod tests {
             articulations: Vec::new(),
             beam: None,
             tie: None,
+                tuplet: None,
         };
 
         let mut cell = make_cell(ElementKind::PitchedElement, "1", Some(PitchCode::N1));
@@ -853,6 +1010,7 @@ mod tests {
             articulations: Vec::new(),
             beam: None,
             tie: None,
+                tuplet: None,
         };
 
         let syllables = vec![
@@ -879,6 +1037,7 @@ mod tests {
             articulations: Vec::new(),
             beam: None,
             tie: None,
+                tuplet: None,
         };
 
         let syllables = vec![("hello".to_string(), Syllabic::Single)];

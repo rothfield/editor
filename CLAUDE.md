@@ -25,6 +25,14 @@ Rust 1.75+ (WASM module), JavaScript ES2022+ (host application), Node.js 18+: Fo
 - 006-music-notation-ornament: Added Rust 1.75+ (WASM module) + JavaScript ES2022+ (host application) + wasm-bindgen 0.2.92, OSMD 1.7.6, serde 1.0.197, quick-xml 0.31, mustache 0.9
 - 002-real-time-staff: Added Rust 1.75+ (WASM module), JavaScript ES2022+ (host application), Node.js 18+ + wasm-bindgen 0.2.92, OSMD (OpenSheetMusicDisplay) 1.7.6, existing Cell-based editor
 
+## Rhythmic Notation Reference
+**For questions about how rhythm works in this codebase, refer to [@RHYTHM.md](RHYTHM.md).** This document explains:
+- How horizontal space represents musical time (spatial rhythmic notation)
+- Beat grouping and subdivision counting
+- Tuplet detection and generation
+- The processing algorithm for converting spatial layout to precise durations
+- LilyPond and MusicXML mapping
+
 <!-- MANUAL ADDITIONS START -->
 
 ## Inspector-First, LilyPond-Fail-Fast Testing (Playwright + Docker)

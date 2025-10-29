@@ -189,10 +189,6 @@ fn emit_note(
     let duration_divs = note.divisions;
     let musical_duration = duration_divs as f64 / measure_divisions as f64;
 
-    // Note: Emitting with low-level builder for now
-    // TODO: Integrate grace notes, slurs, lyrics, articulations, beam, tie
-    let from_pitch = pitch_info_to_pitch(&note.pitch);
-
     let tie = if let Some(ref tie_data) = note.tie {
         match tie_data.type_ {
             TieType::Start => Some("start"),
@@ -213,6 +209,21 @@ fn emit_note(
         None
     };
 
+    // Extract tuplet information if present
+    let time_modification = note.tuplet.map(|tuplet| {
+        (tuplet.actual_notes, tuplet.normal_notes)
+    });
+
+    let tuplet_bracket = note.tuplet.and_then(|tuplet| {
+        if tuplet.bracket_start {
+            Some("start")
+        } else if tuplet.bracket_stop {
+            Some("stop")
+        } else {
+            None
+        }
+    });
+
     // Get lyric if available
     let lyric = if let Some(ref lyric_data) = note.lyrics {
         Some(lyric_data.clone())
@@ -228,7 +239,25 @@ fn emit_note(
         None
     };
 
-    builder.write_note(&from_pitch, duration_divs, musical_duration)?;
+    // Use write_note_with_beam_from_pitch_code which supports tuplet parameters
+    builder.write_note_with_beam_from_pitch_code(
+        &note.pitch.pitch_code,
+        note.pitch.octave,
+        duration_divs,
+        musical_duration,
+        None, // beam
+        time_modification,
+        tuplet_bracket,
+        tie,
+        slur,
+        None, // articulations
+        None, // ornament_type
+    )?;
+
+    // Write lyric if present
+    if let Some(lyric_data) = lyric {
+        builder.write_lyric(&lyric_data.syllable, lyric_data.syllabic, lyric_data.number);
+    }
 
     Ok(())
 }
@@ -249,6 +278,11 @@ fn emit_chord(
     if !pitches.is_empty() {
         let first_pitch = pitch_info_to_pitch(&pitches[0]);
         builder.write_note(&first_pitch, duration_divs, musical_duration)?;
+
+        // Write lyric if present (attached to first note of chord)
+        if let Some(lyric_data) = lyrics {
+            builder.write_lyric(&lyric_data.syllable, lyric_data.syllabic, lyric_data.number);
+        }
 
         // TODO: Emit remaining notes with chord=true
         // This requires extending MusicXmlBuilder to support chord notation
