@@ -15,18 +15,31 @@ pub fn generate_lilypond_document(
     // Generate just the musical content
     let staves_content = generate_staves_content(&parts, settings);
 
+    // Collect lyrics if enabled
+    let lyrics_content = if settings.convert_lyrics {
+        collect_lyrics_content(&parts)
+    } else {
+        None
+    };
+
     // Escape title and composer for LilyPond
     let escaped_title = settings.title.as_ref().map(|s| escape_lilypond_string(s));
     let escaped_composer = settings.composer.as_ref().map(|s| escape_lilypond_string(s));
 
     // Build template context from settings and content
-    let context = TemplateContext::builder(
+    let mut context_builder = TemplateContext::builder(
         settings.target_lilypond_version.clone(),
         staves_content,
     )
     .title(escaped_title)
-    .composer(escaped_composer)
-    .build();
+    .composer(escaped_composer);
+
+    // Add lyrics if present
+    if let Some(lyrics) = lyrics_content {
+        context_builder = context_builder.lyrics(lyrics);
+    }
+
+    let context = context_builder.build();
 
     // Select appropriate template based on part count and metadata
     let template = if parts.len() > 1 {
@@ -144,6 +157,98 @@ fn generate_lilypond_document_fallback(
     output
 }
 
+/// Collect lyrics from music tree and format for \addlyrics block
+fn collect_lyrics_content(parts: &[SequentialMusic]) -> Option<String> {
+    let mut lyrics_parts = Vec::new();
+
+    for part in parts {
+        let mut lyrics_list = Vec::new();
+        collect_lyrics_from_sequential(part, &mut lyrics_list);
+
+        if !lyrics_list.is_empty() {
+            // Format the lyrics for the \addlyrics block
+            let formatted = format_lyrics_for_block(&lyrics_list);
+            lyrics_parts.push(formatted);
+        }
+    }
+
+    if lyrics_parts.is_empty() {
+        None
+    } else {
+        Some(lyrics_parts.join("\n"))
+    }
+}
+
+/// Recursively collect lyrics from Music tree
+fn collect_lyrics_from_sequential(seq: &SequentialMusic, lyrics_list: &mut Vec<String>) {
+    for music in &seq.elements {
+        collect_lyrics_from_music(music, lyrics_list);
+    }
+}
+
+/// Recursively collect lyrics from a Music element
+fn collect_lyrics_from_music(music: &Music, lyrics_list: &mut Vec<String>) {
+    match music {
+        Music::Note(note) => {
+            if let Some(ref lyric) = note.lyric {
+                use crate::converters::musicxml::musicxml_to_lilypond::types::LyricSyllabic;
+                lyrics_list.push(format_lyric_syllable(&lyric.text, lyric.syllabic));
+            } else {
+                lyrics_list.push("_".to_string()); // Placeholder for notes without lyrics
+            }
+        }
+        Music::Chord(chord) => {
+            if let Some(ref lyric) = chord.lyric {
+                use crate::converters::musicxml::musicxml_to_lilypond::types::LyricSyllabic;
+                lyrics_list.push(format_lyric_syllable(&lyric.text, lyric.syllabic));
+            } else {
+                lyrics_list.push("_".to_string()); // Placeholder for notes without lyrics
+            }
+        }
+        Music::Rest(_) => {
+            lyrics_list.push("_".to_string()); // Placeholder for rests
+        }
+        Music::Sequential(seq) => {
+            collect_lyrics_from_sequential(seq, lyrics_list);
+        }
+        Music::Simultaneous(sim) => {
+            // For chords, just collect from first voice
+            if let Some(first) = sim.elements.first() {
+                collect_lyrics_from_music(first, lyrics_list);
+            }
+        }
+        Music::Tuplet(tuplet) => {
+            for music in &tuplet.contents {
+                collect_lyrics_from_music(music, lyrics_list);
+            }
+        }
+        Music::Voice(voice) => {
+            for music in &voice.elements {
+                collect_lyrics_from_music(music, lyrics_list);
+            }
+        }
+        _ => {} // Skip other music types for lyrics
+    }
+}
+
+/// Format a single lyric syllable with proper continuation markers
+fn format_lyric_syllable(text: &str, syllabic: LyricSyllabic) -> String {
+    use crate::converters::musicxml::musicxml_to_lilypond::types::LyricSyllabic;
+
+    let escaped = escape_lilypond_string(text);
+    match syllabic {
+        LyricSyllabic::Begin => format!("{} --", escaped),
+        LyricSyllabic::Middle => format!("{} --", escaped),
+        LyricSyllabic::End => escaped,
+        LyricSyllabic::Single => escaped,
+    }
+}
+
+/// Format lyrics list for \addlyrics block with proper spacing
+fn format_lyrics_for_block(lyrics: &[String]) -> String {
+    lyrics.join(" ")
+}
+
 /// Generate LilyPond code for sequential music
 fn generate_music(seq: &SequentialMusic, settings: &ConversionSettings, indent: usize) -> String {
     let indent_str = " ".repeat(indent);
@@ -254,6 +359,9 @@ fn note_to_lilypond(note: &NoteEvent, settings: &ConversionSettings) -> String {
         result.push_str(&dynamic_to_lilypond(dynamic));
     }
 
+    // Note: Lyrics are now handled separately via \addlyrics block in the template,
+    // not inline with note notation. This avoids invalid LilyPond syntax.
+
     result
 }
 
@@ -272,7 +380,12 @@ fn chord_to_lilypond(chord: &ChordEvent, settings: &ConversionSettings) -> Strin
         .collect::<Vec<_>>()
         .join(" ");
     let duration = chord.duration.to_lilypond_string();
-    format!("< {} >{}", pitches, duration)
+    let result = format!("< {} >{}", pitches, duration);
+
+    // Note: Lyrics are now handled separately via \addlyrics block in the template,
+    // not inline with note notation. This avoids invalid LilyPond syntax.
+
+    result
 }
 
 /// Convert key signature to LilyPond

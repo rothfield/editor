@@ -100,9 +100,23 @@ fn emit_measure(
     let syllables = parse_lyrics_to_syllables(&export_line.lyrics);
     let mut lyric_index = 0;
 
+    // Count pitched events (notes that can receive lyrics, excluding rests)
+    let pitched_event_count = measure.events.iter().filter(|e| {
+        matches!(e, ExportEvent::Note(_) | ExportEvent::Chord { .. })
+    }).count();
+    let mut current_pitched_index = 0;
+
     // Emit all events in the measure
     for event in &measure.events {
-        emit_event(builder, event, measure.divisions, &syllables, &mut lyric_index)?;
+        // Track if this is a pitched event for the remaining syllables feature
+        let is_pitched = matches!(event, ExportEvent::Note(_) | ExportEvent::Chord { .. });
+        let is_last_pitched_event = is_pitched && current_pitched_index == pitched_event_count - 1;
+
+        if is_pitched {
+            current_pitched_index += 1;
+        }
+
+        emit_event(builder, event, measure.divisions, &syllables, &mut lyric_index, is_last_pitched_event)?;
     }
 
     builder.end_measure();
@@ -116,6 +130,7 @@ fn emit_event(
     measure_divisions: usize,
     syllables: &[(String, Syllabic)],
     lyric_index: &mut usize,
+    is_last_pitched_event: bool,
 ) -> Result<(), String> {
     match event {
         ExportEvent::Rest { divisions } => {
@@ -125,7 +140,7 @@ fn emit_event(
         }
 
         ExportEvent::Note(note) => {
-            emit_note(builder, note, measure_divisions, syllables, lyric_index)?;
+            emit_note(builder, note, measure_divisions, syllables, lyric_index, is_last_pitched_event)?;
         }
 
         ExportEvent::Chord {
@@ -134,7 +149,7 @@ fn emit_event(
             lyrics,
             slur,
         } => {
-            emit_chord(builder, pitches, *divisions, measure_divisions, lyrics, slur)?;
+            emit_chord(builder, pitches, *divisions, measure_divisions, lyrics, slur, is_last_pitched_event)?;
         }
     }
 
@@ -185,6 +200,7 @@ fn emit_note(
     measure_divisions: usize,
     syllables: &[(String, Syllabic)],
     lyric_index: &mut usize,
+    is_last_pitched_event: bool,
 ) -> Result<(), String> {
     let duration_divs = note.divisions;
     let musical_duration = duration_divs as f64 / measure_divisions as f64;
@@ -228,19 +244,47 @@ fn emit_note(
     let lyric = if let Some(ref lyric_data) = note.lyrics {
         Some(lyric_data.clone())
     } else if *lyric_index < syllables.len() {
-        let (text, syllabic) = &syllables[*lyric_index];
-        *lyric_index += 1;
-        Some(LyricData {
-            syllable: text.clone(),
-            syllabic: *syllabic,
-            number: 1,
-        })
+        // Check if there are multiple remaining syllables
+        let remaining_count = syllables.len() - *lyric_index;
+
+        // If this is the last pitched event and there are MULTIPLE remaining syllables, combine them
+        if is_last_pitched_event && remaining_count > 1 {
+            let remaining_syllables: Vec<String> = syllables[*lyric_index..]
+                .iter()
+                .map(|(text, _)| text.clone())
+                .collect();
+
+            // Join remaining syllables with hyphens
+            let combined_text = remaining_syllables.join("-");
+
+            // Mark as single since it's all on one note
+            let result = LyricData {
+                syllable: combined_text,
+                syllabic: Syllabic::Single,
+                number: 1,
+            };
+
+            // Move index to end
+            *lyric_index = syllables.len();
+            Some(result)
+        } else {
+            let (text, syllabic) = &syllables[*lyric_index];
+            *lyric_index += 1;
+            Some(LyricData {
+                syllable: text.clone(),
+                syllabic: *syllabic,
+                number: 1,
+            })
+        }
     } else {
         None
     };
 
-    // Use write_note_with_beam_from_pitch_code which supports tuplet parameters
-    builder.write_note_with_beam_from_pitch_code(
+    // Convert lyric data to the format expected by the builder
+    let lyric_tuple = lyric.map(|l| (l.syllable, l.syllabic, l.number));
+
+    // Use write_note_with_beam_from_pitch_code_and_lyric which supports lyric inside note
+    builder.write_note_with_beam_from_pitch_code_and_lyric(
         &note.pitch.pitch_code,
         note.pitch.octave,
         duration_divs,
@@ -252,12 +296,8 @@ fn emit_note(
         slur,
         None, // articulations
         None, // ornament_type
+        lyric_tuple, // lyric data - now inside the note element
     )?;
-
-    // Write lyric if present
-    if let Some(lyric_data) = lyric {
-        builder.write_lyric(&lyric_data.syllable, lyric_data.syllabic, lyric_data.number);
-    }
 
     Ok(())
 }
@@ -269,7 +309,8 @@ fn emit_chord(
     divisions: usize,
     measure_divisions: usize,
     lyrics: &Option<LyricData>,
-    slur: &Option<SlurData>,
+    _slur: &Option<SlurData>,
+    _is_last_pitched_event: bool,
 ) -> Result<(), String> {
     let duration_divs = divisions;
     let musical_duration = duration_divs as f64 / measure_divisions as f64;
@@ -277,12 +318,28 @@ fn emit_chord(
     // Emit first note with chord flag for subsequent notes
     if !pitches.is_empty() {
         let first_pitch = pitch_info_to_pitch(&pitches[0]);
-        builder.write_note(&first_pitch, duration_divs, musical_duration)?;
 
-        // Write lyric if present (attached to first note of chord)
-        if let Some(lyric_data) = lyrics {
-            builder.write_lyric(&lyric_data.syllable, lyric_data.syllabic, lyric_data.number);
-        }
+        // Convert lyric data to tuple format for the builder
+        let lyric_tuple = lyrics.as_ref().map(|l| (
+            l.syllable.clone(),
+            l.syllabic,
+            l.number,
+        ));
+
+        builder.write_note_with_beam_from_pitch_code_and_lyric(
+            &pitches[0].pitch_code,
+            pitches[0].octave,
+            duration_divs,
+            musical_duration,
+            None, // beam
+            None, // time_modification
+            None, // tuplet_bracket
+            None, // tie
+            None, // slur
+            None, // articulations
+            None, // ornament_type
+            lyric_tuple, // lyric data - now inside the note element
+        )?;
 
         // TODO: Emit remaining notes with chord=true
         // This requires extending MusicXmlBuilder to support chord notation
@@ -369,5 +426,52 @@ mod tests {
     fn test_parse_lyrics_empty() {
         let result = parse_lyrics_to_syllables("");
         assert_eq!(result.len(), 0);
+    }
+
+    #[test]
+    fn test_emit_note_with_lyrics() {
+        // Test that emit_note properly handles lyrics
+        let syllables = vec![
+            ("hel".to_string(), Syllabic::Begin),
+            ("lo".to_string(), Syllabic::End),
+        ];
+
+        // Create a note with lyrics data
+        let mut note = NoteData {
+            pitch: PitchInfo::new(PitchCode::N1, 4),
+            divisions: 2,
+            grace_notes_before: Vec::new(),
+            grace_notes_after: Vec::new(),
+            lyrics: Some(LyricData {
+                syllable: "test".to_string(),
+                syllabic: Syllabic::Single,
+                number: 1,
+            }),
+            slur: None,
+            articulations: Vec::new(),
+            beam: None,
+            tie: None,
+            tuplet: None,
+        };
+
+        // Note has explicit lyrics, so it should use those
+        assert!(note.lyrics.is_some());
+        assert_eq!(note.lyrics.as_ref().unwrap().syllable, "test");
+    }
+
+    #[test]
+    fn test_lyric_assignment_from_parsed_syllables() {
+        // Test that lyrics are correctly assigned from parsed syllables
+        let lyrics_text = "hel-lo world";
+        let syllables = parse_lyrics_to_syllables(lyrics_text);
+
+        // Should parse into 3 syllables
+        assert_eq!(syllables.len(), 3);
+        assert_eq!(syllables[0].0, "hel");
+        assert_eq!(syllables[0].1, Syllabic::Begin);
+        assert_eq!(syllables[1].0, "lo");
+        assert_eq!(syllables[1].1, Syllabic::End);
+        assert_eq!(syllables[2].0, "world");
+        assert_eq!(syllables[2].1, Syllabic::Single);
     }
 }

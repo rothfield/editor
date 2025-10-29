@@ -344,6 +344,22 @@ pub enum Music {
     Text(TextMark),
 }
 
+/// Lyric data for a single note
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NoteLyric {
+    pub text: String,
+    pub syllabic: LyricSyllabic,
+}
+
+/// Syllabic type for note lyrics
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LyricSyllabic {
+    Single,
+    Begin,
+    Middle,
+    End,
+}
+
 /// Single note event (T015)
 #[derive(Debug, Clone)]
 pub struct NoteEvent {
@@ -357,6 +373,7 @@ pub struct NoteEvent {
     pub grace_slash: bool,
     pub is_after_grace: bool, // Grace note that comes AFTER the main note (unmeasured fioritura)
     pub steal_time_following: Option<f32>, // Percentage of time stolen from following note for after grace notes
+    pub lyric: Option<NoteLyric>, // Lyric syllable attached to this note
 }
 
 impl NoteEvent {
@@ -372,6 +389,7 @@ impl NoteEvent {
             grace_slash: false,
             is_after_grace: false,
             steal_time_following: None,
+            lyric: None,
         }
     }
 }
@@ -436,6 +454,7 @@ pub struct ChordEvent {
     pub duration: Duration,
     pub slur: Option<Slur>,
     pub articulations: Vec<ArticulationMark>,
+    pub lyric: Option<NoteLyric>, // Lyric syllable attached to this chord
 }
 
 impl ChordEvent {
@@ -448,6 +467,7 @@ impl ChordEvent {
             duration,
             slur: None,
             articulations: Vec::new(),
+            lyric: None,
         })
     }
 }

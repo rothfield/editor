@@ -4,7 +4,7 @@ use crate::models::pitch::Pitch;
 use crate::models::PitchCode;
 use super::duration::duration_to_note_type;
 use super::pitch::{pitch_to_step_alter, pitch_code_to_step_alter};
-use super::super::super::export_ir::Syllabic;
+use super::export_ir::Syllabic;
 
 /// Articulation types supported in MusicXML export
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -212,7 +212,14 @@ impl MusicXmlBuilder {
     /// slur: Option<&str> = "start" or "stop"
     /// articulations: Optional vector of articulation types to write in notations block
     /// ornament_type: Optional ornament type ("trill", "turn", "mordent", etc.)
+    /// lyric_data: Optional lyric to attach to this note (must be inside note element)
     pub fn write_note_with_beam_from_pitch_code(&mut self, pitch_code: &PitchCode, octave: i8, duration_divs: usize, musical_duration: f64, beam: Option<&str>, time_modification: Option<(usize, usize)>, tuplet_bracket: Option<&str>, tie: Option<&str>, slur: Option<&str>, articulations: Option<Vec<ArticulationType>>, ornament_type: Option<&str>) -> Result<(), String> {
+        self.write_note_with_beam_from_pitch_code_and_lyric(pitch_code, octave, duration_divs, musical_duration, beam, time_modification, tuplet_bracket, tie, slur, articulations, ornament_type, None)
+    }
+
+    /// Write note with all options including lyric
+    /// lyric_data: Optional tuple of (syllable text, syllabic type, verse number)
+    pub fn write_note_with_beam_from_pitch_code_and_lyric(&mut self, pitch_code: &PitchCode, octave: i8, duration_divs: usize, musical_duration: f64, beam: Option<&str>, time_modification: Option<(usize, usize)>, tuplet_bracket: Option<&str>, tie: Option<&str>, slur: Option<&str>, articulations: Option<Vec<ArticulationType>>, ornament_type: Option<&str>, lyric_data: Option<(String, Syllabic, u32)>) -> Result<(), String> {
         let (step, alter) = pitch_code_to_step_alter(pitch_code);
         let xml_octave = octave + 4; // music-text octave 0 = MIDI octave 4 (middle C)
 
@@ -303,6 +310,34 @@ impl MusicXmlBuilder {
             }
 
             self.buffer.push_str("  </notations>\n");
+        }
+
+        // Add lyric if present (must be inside note element, after notations)
+        if let Some((syllable, syllabic, number)) = lyric_data {
+            self.buffer.push_str(&format!("  <lyric number=\"{}\">\n", number));
+
+            // Write syllabic type if it's not Single (Single is implicit)
+            match syllabic {
+                Syllabic::Single => {
+                    // Single syllables don't need explicit syllabic element
+                }
+                Syllabic::Begin => {
+                    self.buffer.push_str("    <syllabic>begin</syllabic>\n");
+                }
+                Syllabic::Middle => {
+                    self.buffer.push_str("    <syllabic>middle</syllabic>\n");
+                }
+                Syllabic::End => {
+                    self.buffer.push_str("    <syllabic>end</syllabic>\n");
+                }
+            }
+
+            // Write the syllable text with XML escaping
+            self.buffer.push_str("    <text>");
+            self.buffer.push_str(&xml_escape(&syllable));
+            self.buffer.push_str("</text>\n");
+
+            self.buffer.push_str("  </lyric>\n");
         }
 
         self.buffer.push_str("</note>\n");
@@ -843,5 +878,92 @@ mod tests {
         let second_measure_start = builder.buffer.rfind("<measure number=\"2\">").unwrap();
         let second_measure_section = &builder.buffer[second_measure_start..];
         assert!(second_measure_section.contains("<beats>2</beats>"));
+    }
+
+    #[test]
+    fn test_write_note_with_lyric_single() {
+        let mut builder = MusicXmlBuilder::new();
+        builder.start_measure();
+
+        // Write a note with a single syllable lyric (lyrics are now embedded in notes)
+        builder.write_note_with_beam_from_pitch_code_and_lyric(
+            &PitchCode::N1,
+            4,
+            1,
+            0.25,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(("hello".to_string(), Syllabic::Single, 1)),
+        ).unwrap();
+
+        // Should contain note with lyric element inside it
+        assert!(builder.buffer.contains("<note>"));
+        assert!(builder.buffer.contains("<lyric number=\"1\">"));
+        assert!(builder.buffer.contains("<text>hello</text>"));
+        assert!(builder.buffer.contains("</lyric>"));
+        assert!(builder.buffer.contains("</note>"));
+
+        // Verify order: lyric should be inside note (before </note>)
+        let lyric_end = builder.buffer.find("</lyric>").unwrap();
+        let note_end = builder.buffer.find("</note>").unwrap();
+        assert!(lyric_end < note_end, "Lyric must close before note closes");
+    }
+
+    #[test]
+    fn test_write_note_with_lyric_begin() {
+        let mut builder = MusicXmlBuilder::new();
+        builder.start_measure();
+
+        // Write a note with a begin syllable
+        builder.write_note_with_beam_from_pitch_code_and_lyric(
+            &PitchCode::N1,
+            4,
+            1,
+            0.25,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(("hel".to_string(), Syllabic::Begin, 1)),
+        ).unwrap();
+
+        // Should contain syllabic begin
+        assert!(builder.buffer.contains("<syllabic>begin</syllabic>"));
+        assert!(builder.buffer.contains("<text>hel</text>"));
+    }
+
+    #[test]
+    fn test_write_note_without_lyric() {
+        let mut builder = MusicXmlBuilder::new();
+        builder.start_measure();
+
+        // Write a note without lyric
+        builder.write_note_with_beam_from_pitch_code_and_lyric(
+            &PitchCode::N1,
+            4,
+            1,
+            0.25,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        ).unwrap();
+
+        // Should NOT contain lyric element
+        assert!(builder.buffer.contains("<note>"));
+        assert!(!builder.buffer.contains("<lyric"));
+        assert!(builder.buffer.contains("</note>"));
     }
 }

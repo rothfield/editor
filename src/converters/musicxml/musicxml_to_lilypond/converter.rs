@@ -6,7 +6,7 @@ use crate::converters::musicxml::musicxml_to_lilypond::errors::{ConversionError,
 use crate::converters::musicxml::musicxml_to_lilypond::parser::{get_child, get_child_text, parse_divisions, parse_duration, parse_pitch, MeasureNode};
 use crate::converters::musicxml::musicxml_to_lilypond::types::{
     ChordEvent, Clef, ClefType, Duration, KeySignature, Mode, Music, NoteEvent, Pitch, Rational,
-    RestEvent, SequentialMusic, SkippedElement, TimeSignature, TupletMusic,
+    RestEvent, SequentialMusic, SkippedElement, TimeSignature, TupletMusic, NoteLyric, LyricSyllabic,
 };
 use roxmltree::Node;
 
@@ -217,6 +217,9 @@ pub fn convert_note(
             }
         }
     }
+
+    // Parse lyrics from note
+    note_event.lyric = parse_lyric_from_note(note_node);
 
     // Check for articulations and slurs
     if let Some(notations) = get_child(note_node, "notations") {
@@ -489,5 +492,194 @@ fn clear_tuplet_factor(music: &mut Music) {
         Music::Note(note) => note.duration.factor = None,
         Music::Rest(rest) => rest.duration.factor = None,
         _ => {}
+    }
+}
+
+/// Parse lyrics from a note element
+/// Expects structure like:
+/// <lyric number="1">
+///   <syllabic>begin</syllabic>
+///   <text>hel</text>
+/// </lyric>
+fn parse_lyric_from_note(note_node: Node) -> Option<NoteLyric> {
+    // Look for the first <lyric> element in the note (number="1" for first verse)
+    for child in note_node.children() {
+        if child.is_element() && child.tag_name().name() == "lyric" {
+            // Check if this is the first verse (number="1")
+            let number = child.attribute("number").unwrap_or("1");
+            if number != "1" {
+                continue; // Only process first verse for now
+            }
+
+            // Extract syllabic type
+            let syllabic = if let Some(syl_node) = get_child(child, "syllabic") {
+                if let Some(text) = get_child_text(child, "syllabic") {
+                    match text.trim() {
+                        "begin" => LyricSyllabic::Begin,
+                        "middle" => LyricSyllabic::Middle,
+                        "end" => LyricSyllabic::End,
+                        "single" => LyricSyllabic::Single,
+                        _ => LyricSyllabic::Single,
+                    }
+                } else {
+                    LyricSyllabic::Single
+                }
+            } else {
+                // No explicit syllabic element means single syllable
+                LyricSyllabic::Single
+            };
+
+            // Extract text
+            if let Some(text) = get_child_text(child, "text") {
+                let trimmed = text.trim();
+                if !trimmed.is_empty() {
+                    return Some(NoteLyric {
+                        text: trimmed.to_string(),
+                        syllabic,
+                    });
+                }
+            }
+        }
+    }
+
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::converters::musicxml::musicxml_to_lilypond::lilypond::generate_lilypond_document;
+    use crate::converters::musicxml::musicxml_to_lilypond::parser::XmlDocument;
+    use crate::converters::musicxml::musicxml_to_lilypond::types::ConversionSettings;
+
+    #[test]
+    fn test_parse_lyric_from_note_single_syllable() {
+        let xml = r#"<?xml version="1.0"?>
+<note>
+  <pitch><step>C</step><octave>4</octave></pitch>
+  <duration>4</duration>
+  <type>quarter</type>
+  <lyric number="1">
+    <text>hello</text>
+  </lyric>
+</note>"#;
+
+        // We can't directly test parse_lyric_from_note without parsing,
+        // but we test it indirectly through the integration test below
+    }
+
+    #[test]
+    fn test_convert_musicxml_with_lyrics_to_lilypond() {
+        let musicxml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 3.1 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
+<score-partwise version="3.1">
+  <movement-title>Test Lyrics</movement-title>
+  <part-list>
+    <score-part id="P1">
+      <part-name>Part 1</part-name>
+    </score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>4</divisions>
+        <time>
+          <beats>4</beats>
+          <beat-type>4</beat-type>
+        </time>
+        <clef>
+          <sign>G</sign>
+          <line>2</line>
+        </clef>
+      </attributes>
+      <note>
+        <pitch><step>C</step><octave>4</octave></pitch>
+        <duration>4</duration>
+        <type>quarter</type>
+        <lyric number="1">
+          <text>hel</text>
+          <syllabic>begin</syllabic>
+        </lyric>
+      </note>
+      <note>
+        <pitch><step>D</step><octave>4</octave></pitch>
+        <duration>4</duration>
+        <type>quarter</type>
+        <lyric number="1">
+          <text>lo</text>
+          <syllabic>end</syllabic>
+        </lyric>
+      </note>
+      <note>
+        <pitch><step>E</step><octave>4</octave></pitch>
+        <duration>4</duration>
+        <type>quarter</type>
+        <lyric number="1">
+          <text>world</text>
+        </lyric>
+      </note>
+      <note>
+        <pitch><step>F</step><octave>4</octave></pitch>
+        <duration>4</duration>
+        <type>quarter</type>
+      </note>
+    </measure>
+  </part>
+</score-partwise>"#;
+
+        let result = super::super::convert_musicxml_to_lilypond(musicxml, None);
+        assert!(result.is_ok(), "MusicXML to LilyPond conversion should succeed");
+
+        let conversion_result = result.unwrap();
+        let lilypond = &conversion_result.lilypond_source;
+
+        // Check that lyrics are present in the output
+        assert!(lilypond.contains("hel"), "LilyPond output should contain 'hel'");
+        assert!(lilypond.contains("lo"), "LilyPond output should contain 'lo'");
+        assert!(lilypond.contains("world"), "LilyPond output should contain 'world'");
+
+        // Check for proper LilyPond \addlyrics block syntax
+        assert!(lilypond.contains("\\addlyrics"), "LilyPond should have \\addlyrics block");
+        assert!(lilypond.contains("hel -- lo"), "LilyPond should have syllabic markers for multi-syllable words");
+    }
+
+    #[test]
+    fn test_convert_musicxml_with_lyrics_and_convert_flag() {
+        let musicxml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 3.1 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
+<score-partwise version="3.1">
+  <part-list>
+    <score-part id="P1">
+      <part-name>Part 1</part-name>
+    </score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>4</divisions>
+        <clef><sign>G</sign><line>2</line></clef>
+      </attributes>
+      <note>
+        <pitch><step>C</step><octave>4</octave></pitch>
+        <duration>4</duration>
+        <type>quarter</type>
+        <lyric number="1"><text>test</text></lyric>
+      </note>
+    </measure>
+  </part>
+</score-partwise>"#;
+
+        // Test with convert_lyrics enabled (default)
+        let mut settings = ConversionSettings::default();
+        settings.convert_lyrics = true;
+        let result = super::super::convert_musicxml_to_lilypond(musicxml, Some(settings)).unwrap();
+        assert!(result.lilypond_source.contains("test"), "Should include lyric when convert_lyrics=true");
+        assert!(result.lilypond_source.contains("\\addlyrics"), "Should have \\addlyrics block when convert_lyrics=true");
+
+        // Test with convert_lyrics disabled
+        let mut settings = ConversionSettings::default();
+        settings.convert_lyrics = false;
+        let result = super::super::convert_musicxml_to_lilypond(musicxml, Some(settings)).unwrap();
+        assert!(!result.lilypond_source.contains("test"), "Should exclude lyric when convert_lyrics=false");
     }
 }

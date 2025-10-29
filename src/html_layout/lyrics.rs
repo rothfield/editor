@@ -146,6 +146,13 @@ pub fn merge_syllables(syl1: &str, syl2: &str) -> String {
 ///    - If normal pitch, assign syllable
 /// 4. Track slur depth for nested slurs
 ///
+/// # Remaining Syllables Feature
+/// If there are fewer notes than syllables, the LAST pitched note gets
+/// all remaining syllables combined with hyphens:
+/// - Example: "hel-lo-wor-ld" (4 syllables) with 2 notes
+/// - Note 1: "hel"
+/// - Note 2 (last): "lo-wor-ld" (all remaining combined)
+///
 /// # Arguments
 /// * `lyrics` - Raw lyrics string
 /// * `cells` - Array of Cell objects from the line
@@ -187,15 +194,26 @@ pub fn distribute_lyrics(lyrics: &str, cells: &[Cell]) -> Vec<SyllableAssignment
         return assignments;
     }
 
+    // Count non-whitespace syllables for remaining syllables feature
+    let non_whitespace_syllables: Vec<usize> = syllables.iter()
+        .enumerate()
+        .filter(|(_, syl)| !syl.trim().is_empty())
+        .map(|(idx, _)| idx)
+        .collect();
+
     let mut syllable_index = 0;
     let mut state = LyricsState::SeekingPitch;
     let mut slur_depth: i32 = 0; // Track nested slurs
+    let mut pitched_index = 0; // Track which pitched element we're on
 
     for (cell_index, cell) in cells.iter().enumerate() {
         // Only process pitched elements (kind == 1 / PitchedElement) that are not continuations
         if cell.continuation || !matches!(cell.kind, ElementKind::PitchedElement) {
             continue;
         }
+
+        let is_last_pitched_element = pitched_index == pitched_count - 1;
+        pitched_index += 1;
 
         // Skip whitespace syllables (don't assign them to cells)
         while syllable_index < syllables.len() && syllables[syllable_index].trim().is_empty() {
@@ -206,13 +224,40 @@ pub fn distribute_lyrics(lyrics: &str, cells: &[Cell]) -> Vec<SyllableAssignment
             break; // No more non-whitespace syllables
         }
 
-        // Build syllable text with any following spaces
-        let mut syll_text = syllables[syllable_index].clone();
-        let mut next_idx = syllable_index + 1;
-        while next_idx < syllables.len() && syllables[next_idx].trim().is_empty() {
-            syll_text.push('\u{00A0}'); // Append nbsp
-            next_idx += 1;
-        }
+        // Check if there are multiple remaining syllables for the remaining syllables feature
+        let remaining_non_whitespace = non_whitespace_syllables.iter()
+            .filter(|&&idx| idx >= syllable_index)
+            .count();
+
+        // If this is the last pitched element and there are MULTIPLE remaining syllables, combine them
+        let syll_text = if is_last_pitched_element && remaining_non_whitespace > 1 {
+            // Combine all remaining non-whitespace syllables
+            let remaining: Vec<String> = syllables[syllable_index..]
+                .iter()
+                .filter(|syl| !syl.trim().is_empty())
+                .cloned()
+                .collect();
+
+            // Join remaining syllables by merging them pairwise
+            let mut combined = remaining[0].clone();
+            for syl in &remaining[1..] {
+                combined = merge_syllables(&combined, syl);
+            }
+
+            // Advance to end of syllables
+            syllable_index = syllables.len();
+            combined
+        } else {
+            // Normal case: single syllable assignment
+            let mut syll_text = syllables[syllable_index].clone();
+            let mut next_idx = syllable_index + 1;
+            while next_idx < syllables.len() && syllables[next_idx].trim().is_empty() {
+                syll_text.push('\u{00A0}'); // Append nbsp
+                next_idx += 1;
+            }
+            syllable_index = next_idx;
+            syll_text
+        };
 
         // Track slur state
         let slur_indicator = cell.slur_indicator;
@@ -224,7 +269,6 @@ pub fn distribute_lyrics(lyrics: &str, cells: &[Cell]) -> Vec<SyllableAssignment
                     cell_index,
                     syllable: syll_text,
                 });
-                syllable_index = next_idx;
 
                 slur_depth += 1;
                 state = LyricsState::InMelisma;
@@ -251,7 +295,6 @@ pub fn distribute_lyrics(lyrics: &str, cells: &[Cell]) -> Vec<SyllableAssignment
                     cell_index,
                     syllable: syll_text,
                 });
-                syllable_index = next_idx;
                 state = LyricsState::SyllableAssigned;
             }
         }
@@ -305,5 +348,88 @@ mod tests {
         assert_eq!(assignments[1].syllable, "re");
         assert_eq!(assignments[2].cell_index, 2);
         assert_eq!(assignments[2].syllable, "mi");
+    }
+
+    #[test]
+    fn test_distribute_lyrics_remaining_syllables_two_notes_four_syllables() {
+        // 4 syllables but only 2 notes - last note should get remaining
+        let lyrics = "hel-lo-wor-ld";
+        let cells = vec![
+            Cell::new("S".to_string(), ElementKind::PitchedElement, 0),
+            Cell::new("R".to_string(), ElementKind::PitchedElement, 1),
+        ];
+
+        let assignments = distribute_lyrics(lyrics, &cells);
+        assert_eq!(assignments.len(), 2);
+        assert_eq!(assignments[0].cell_index, 0);
+        assert_eq!(assignments[0].syllable, "hel-");
+        assert_eq!(assignments[1].cell_index, 1);
+        // Last note should get remaining syllables combined
+        assert_eq!(assignments[1].syllable, "lo-wor-ld");
+    }
+
+    #[test]
+    fn test_distribute_lyrics_remaining_syllables_three_notes_four_syllables() {
+        // 4 syllables with 3 notes - last note gets remaining
+        let lyrics = "hel-lo-wor-ld";
+        let cells = vec![
+            Cell::new("S".to_string(), ElementKind::PitchedElement, 0),
+            Cell::new("R".to_string(), ElementKind::PitchedElement, 1),
+            Cell::new("G".to_string(), ElementKind::PitchedElement, 2),
+        ];
+
+        let assignments = distribute_lyrics(lyrics, &cells);
+        assert_eq!(assignments.len(), 3);
+        assert_eq!(assignments[0].syllable, "hel-");
+        assert_eq!(assignments[1].syllable, "lo-");  // Hyphen is attached to syllable
+        // Last note gets remaining syllables
+        assert_eq!(assignments[2].syllable, "wor-ld");
+    }
+
+    #[test]
+    fn test_distribute_lyrics_equal_notes_and_syllables() {
+        // Equal number of notes and syllables - normal behavior
+        let lyrics = "hel-lo";
+        let cells = vec![
+            Cell::new("S".to_string(), ElementKind::PitchedElement, 0),
+            Cell::new("R".to_string(), ElementKind::PitchedElement, 1),
+        ];
+
+        let assignments = distribute_lyrics(lyrics, &cells);
+        assert_eq!(assignments.len(), 2);
+        // Should each get one syllable normally (not combined)
+        assert_eq!(assignments[0].syllable, "hel-");
+        assert_eq!(assignments[1].syllable, "lo");
+    }
+
+    #[test]
+    fn test_distribute_lyrics_more_notes_than_syllables() {
+        // More notes than syllables - extra notes get no lyric
+        let lyrics = "hel-lo";
+        let cells = vec![
+            Cell::new("S".to_string(), ElementKind::PitchedElement, 0),
+            Cell::new("R".to_string(), ElementKind::PitchedElement, 1),
+            Cell::new("G".to_string(), ElementKind::PitchedElement, 2),
+        ];
+
+        let assignments = distribute_lyrics(lyrics, &cells);
+        // Only two assignments (one per syllable)
+        assert_eq!(assignments.len(), 2);
+        assert_eq!(assignments[0].syllable, "hel-");
+        assert_eq!(assignments[1].syllable, "lo");
+    }
+
+    #[test]
+    fn test_distribute_lyrics_single_note_multiple_syllables() {
+        // Single note with multiple syllables - gets all of them
+        let lyrics = "hel-lo-wor-ld";
+        let cells = vec![
+            Cell::new("S".to_string(), ElementKind::PitchedElement, 0),
+        ];
+
+        let assignments = distribute_lyrics(lyrics, &cells);
+        // Single note with multiple syllables gets all of them as-is (no splitting)
+        assert_eq!(assignments.len(), 1);
+        assert_eq!(assignments[0].syllable, "hel-lo-wor-ld");
     }
 }
