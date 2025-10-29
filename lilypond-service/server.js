@@ -186,7 +186,6 @@ async function renderLilyPond(ly, format = 'svg') {
       console.log(`[RENDER] format=${format}, size=${ly.length} bytes`);
 
       // Execute lilypond with timeout and environment variables
-      // Set FONTCONFIG_FILE to skip fontconfig warning messages about cache
       const child = spawn(cmd[0], cmd.slice(1), {
         timeout: RENDER_TIMEOUT,
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -195,8 +194,6 @@ async function renderLilyPond(ly, format = 'svg') {
           ...process.env,
           XDG_CACHE_HOME: FONTCONFIG_CACHE_DIR,
           FONTCONFIG_PATH: '/etc/fonts',
-          // Disable fontconfig warnings by setting to empty config
-          FONTCONFIG_FILE: '/dev/null',
         }
       });
 
