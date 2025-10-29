@@ -848,15 +848,21 @@ impl LayoutEngine {
         &self,
         has_lyrics: bool,
         has_beats: bool,
-        _config: &LayoutConfig,
+        config: &LayoutConfig,
     ) -> f32 {
         if has_lyrics {
-            let lyrics_y = if has_beats { 65.0 } else { 57.0 };
+            // Adjust lyrics positions based on new cell_y_offset
+            let lyrics_y = if has_beats {
+                config.cell_y_offset + config.cell_height + 7.0  // 7px gap
+            } else {
+                config.cell_y_offset + config.cell_height + 7.0  // 7px gap
+            };
             let lyrics_font_size = 14.0; // text-sm
             let lyrics_bottom_padding = 8.0;
             lyrics_y + lyrics_font_size + lyrics_bottom_padding
         } else {
-            80.0 // LINE_CONTAINER_HEIGHT from JS constants
+            // LINE_CONTAINER_HEIGHT = CELL_VERTICAL_PADDING + CELL_HEIGHT + CELL_BOTTOM_PADDING
+            config.cell_y_offset + config.cell_height + config.cell_y_offset
         }
     }
 

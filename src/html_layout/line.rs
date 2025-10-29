@@ -922,10 +922,11 @@ impl<'a> LayoutLineComputer<'a> {
             };
 
             let lyrics_font_size = config.font_size * 0.5;
-            let lyrics_bottom_padding = 2.0 * config.font_size;
+            let lyrics_bottom_padding = config.font_size;  // Reduced from 2x to 1x
             lyrics_y + lyrics_font_size + lyrics_bottom_padding
         } else {
-            80.0 // LINE_CONTAINER_HEIGHT from JS constants
+            // LINE_CONTAINER_HEIGHT = CELL_VERTICAL_PADDING + CELL_HEIGHT + CELL_BOTTOM_PADDING
+            config.cell_y_offset + config.cell_height + config.cell_y_offset
         }
     }
 }

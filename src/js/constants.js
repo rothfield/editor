@@ -38,10 +38,10 @@ export const DEFAULT_CHAR_WIDTH_PX = 12;
  * Cell vertical positioning and spacing
  * These values are typography-based: derived from BASE_FONT_SIZE
  */
-export const CELL_Y_OFFSET = BASE_FONT_SIZE * 2; // Distance from top of line container to cell baseline (2 * BASE_FONT_SIZE)
-export const CELL_HEIGHT = BASE_LINE_HEIGHT;     // Cell height matches base line height
-export const CELL_VERTICAL_PADDING = BASE_FONT_SIZE * 2; // Space above cells in line container (2 * BASE_FONT_SIZE)
-export const CELL_BOTTOM_PADDING = BASE_FONT_SIZE * 2;   // Space below cells in line container (2 * BASE_FONT_SIZE)
+export const CELL_Y_OFFSET = BASE_FONT_SIZE;   // Distance from top of line container to cell top (1 * BASE_FONT_SIZE)
+export const CELL_HEIGHT = BASE_LINE_HEIGHT;    // Cell height matches base line height
+export const CELL_VERTICAL_PADDING = BASE_FONT_SIZE;  // Space above cells in line container (1 * BASE_FONT_SIZE)
+export const CELL_BOTTOM_PADDING = BASE_FONT_SIZE;    // Space below cells in line container (1 * BASE_FONT_SIZE)
 
 /**
  * Line container dimensions

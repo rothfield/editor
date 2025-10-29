@@ -19,7 +19,7 @@
 //! 4. Continuation cells never appear as standalone elements
 //! 5. sum(event_divisions) == measure_divisions for each measure
 
-use crate::models::{Cell, ElementKind, OrnamentPositionType, SlurIndicator, Line, Document};
+use crate::models::{Cell, ElementKind, OrnamentPositionType, SlurIndicator, Line, Document, PitchCode};
 use super::export_ir::{
     ExportLine, ExportMeasure, ExportEvent, NoteData, GraceNoteData, PitchInfo,
     LyricData, Syllabic, SlurData, SlurPlacement, SlurType, TupletInfo,
@@ -50,6 +50,10 @@ pub struct BeatAccumulator {
     pub pending_pitch: Option<PitchInfo>,
     /// Whether we've seen a main element (pitch or rest) in this beat
     pub has_main_element: bool,
+    /// Pending slur indicator from current cell (Start/End/None)
+    pub pending_slur_indicator: SlurIndicator,
+    /// Whether we are currently inside an active slur (started but not ended)
+    pub inside_slur: bool,
 }
 
 impl BeatAccumulator {
@@ -60,7 +64,21 @@ impl BeatAccumulator {
             pending_grace_notes_before: Vec::new(),
             pending_pitch: None,
             has_main_element: false,
+            pending_slur_indicator: SlurIndicator::None,
+            inside_slur: false,
         }
+    }
+
+    /// Set the pending slur indicator from a cell
+    fn set_slur_indicator(&mut self, indicator: SlurIndicator) {
+        self.pending_slur_indicator = indicator;
+    }
+
+    /// Get and clear the pending slur indicator
+    fn take_slur_indicator(&mut self) -> SlurIndicator {
+        let indicator = self.pending_slur_indicator;
+        self.pending_slur_indicator = SlurIndicator::None;
+        indicator
     }
 
     /// Start collecting dashes (rest or note extension)
@@ -112,7 +130,7 @@ impl BeatAccumulator {
     /// Finalize pitch element
     fn finish_pitch(&mut self) {
         if let Some(pitch) = self.pending_pitch.take() {
-            let note = NoteData {
+            let mut note = NoteData {
                 pitch,
                 divisions: self.current_divisions,
                 grace_notes_before: self.pending_grace_notes_before.clone(),
@@ -124,6 +142,46 @@ impl BeatAccumulator {
                 tie: None,
                 tuplet: None,
             };
+
+            // Attach slur indicator if present or if we're inside a slur
+            let slur_indicator = self.take_slur_indicator();
+
+            // Create a temporary cell for the attach_slur_to_note function
+            let temp_cell = Cell {
+                kind: ElementKind::PitchedElement,
+                char: "".to_string(),
+                continuation: false,
+                col: 0,
+                flags: 0,
+                pitch_code: Some(pitch.pitch_code),
+                pitch_system: None,
+                octave: pitch.octave,
+                slur_indicator,
+                ornament_indicator: Default::default(),
+                ornaments: Vec::new(),
+                x: 0.0,
+                y: 0.0,
+                w: 0.0,
+                h: 0.0,
+                bbox: (0.0, 0.0, 0.0, 0.0),
+                hit: (0.0, 0.0, 0.0, 0.0),
+            };
+
+            attach_slur_to_note(&mut note, &temp_cell, self.inside_slur);
+
+            // Update inside_slur state based on indicator
+            match slur_indicator {
+                SlurIndicator::SlurStart => {
+                    self.inside_slur = true;
+                }
+                SlurIndicator::SlurEnd => {
+                    self.inside_slur = false;
+                }
+                SlurIndicator::None => {
+                    // State doesn't change
+                }
+            }
+
             self.events.push(ExportEvent::Note(note));
             self.pending_grace_notes_before.clear();
             self.current_divisions = 0;
@@ -141,6 +199,12 @@ pub fn beat_transition(
     // Skip continuation cells - they're part of previous element
     if cell.continuation {
         return state;
+    }
+
+    // Extract slur indicator from ANY cell, even unpitched elements
+    // This allows slur markers on spaces or other elements to be transferred to the next pitched element
+    if cell.slur_indicator != SlurIndicator::None {
+        accum.set_slur_indicator(cell.slur_indicator);
     }
 
     match (state, cell.kind) {
@@ -161,6 +225,8 @@ pub fn beat_transition(
             if let Some(pitch_code) = cell.pitch_code {
                 let pitch = PitchInfo::new(pitch_code, cell.octave);
                 accum.start_pitch(pitch);
+                // Slur indicator already extracted at top of beat_transition
+                accum.has_main_element = true;
                 CellGroupingState::CollectingPitchInBeat
             } else {
                 CellGroupingState::InBeat
@@ -172,6 +238,7 @@ pub fn beat_transition(
             if let Some(pitch_code) = cell.pitch_code {
                 let pitch = PitchInfo::new(pitch_code, cell.octave);
                 accum.start_pitch(pitch);
+                // Slur indicator already extracted at top of beat_transition
                 accum.has_main_element = true;
                 CellGroupingState::CollectingPitchInBeat
             } else {
@@ -184,6 +251,7 @@ pub fn beat_transition(
             if let Some(pitch_code) = cell.pitch_code {
                 let pitch = PitchInfo::new(pitch_code, cell.octave);
                 accum.start_pitch(pitch);
+                // Slur indicator already extracted at top of beat_transition
                 CellGroupingState::CollectingPitchInBeat
             } else {
                 CellGroupingState::InBeat
@@ -331,8 +399,45 @@ pub fn collect_chord_notes(cells: &[Cell]) -> Vec<Vec<&Cell>> {
     by_column.into_values().collect()
 }
 
+/// Fill in "continue" slur markers for notes between slur start and stop
+///
+/// After processing beats separately, we need to add SlurType::Continue to notes that
+/// fall between a SlurType::Start and SlurType::Stop. The inside_slur state is tracked
+/// at the LINE level to handle slurs that span across measure boundaries.
+fn fill_slur_continue_markers(events: &mut [ExportEvent], line_inside_slur: &mut bool) {
+    for event in events.iter_mut() {
+        if let ExportEvent::Note(ref mut note) = event {
+            if let Some(ref slur_data) = note.slur {
+                match slur_data.type_ {
+                    SlurType::Start => {
+                        *line_inside_slur = true;
+                    }
+                    SlurType::Stop => {
+                        *line_inside_slur = false;
+                    }
+                    SlurType::Continue => {
+                        // Already marked as continue, skip
+                    }
+                }
+            } else if *line_inside_slur {
+                // This note is between a start and stop but has no slur marker
+                // Add a continue marker
+                note.slur = Some(SlurData {
+                    placement: SlurPlacement::Above,
+                    type_: SlurType::Continue,
+                });
+            }
+        }
+    }
+}
+
 /// Wire up slur indicators from cell to note data
-pub fn attach_slur_to_note(note: &mut NoteData, cell: &Cell) {
+///
+/// Handles three cases:
+/// 1. SlurStart indicator → SlurType::Start
+/// 2. SlurEnd indicator → SlurType::Stop
+/// 3. No indicator but inside_slur=true → SlurType::Continue
+pub fn attach_slur_to_note(note: &mut NoteData, cell: &Cell, inside_slur: bool) {
     match cell.slur_indicator {
         SlurIndicator::SlurStart => {
             note.slur = Some(SlurData {
@@ -347,7 +452,13 @@ pub fn attach_slur_to_note(note: &mut NoteData, cell: &Cell) {
             });
         }
         SlurIndicator::None => {
-            // No slur
+            // Check if we're inside an active slur
+            if inside_slur {
+                note.slur = Some(SlurData {
+                    placement: SlurPlacement::Above,
+                    type_: SlurType::Continue,
+                });
+            }
         }
     }
 }
@@ -592,6 +703,69 @@ pub fn find_beat_boundaries_refs(cells: &[&Cell]) -> Vec<usize> {
     boundaries
 }
 
+/// Transfer slur indicators from space/separator cells to pitched cells
+///
+/// The UI sometimes places slur_start/slur_end indicators on space cells rather than
+/// on the pitched cells themselves. This causes an off-by-one bug. This function detects
+/// separator cells with slur indicators and transfers them to the appropriate pitched cell:
+/// - SlurStart on a separator → transfer to the NEXT pitched cell (start of new slur)
+/// - SlurEnd on a separator → transfer to the PREVIOUS pitched cell (end of current slur)
+fn transfer_slur_indicators_from_separators(cells: &mut [&Cell]) {
+    // We need to track which cells need slur transfer
+    let mut slur_transfers: Vec<(usize, SlurIndicator)> = Vec::new();
+
+    // First pass: find separators with slur indicators
+    for i in 0..cells.len() {
+        if cells[i].char.trim().is_empty() && cells[i].slur_indicator != SlurIndicator::None {
+            let slur = cells[i].slur_indicator;
+
+            match slur {
+                SlurIndicator::SlurStart => {
+                    // SlurStart on separator: transfer to PREVIOUS pitched cell (the note that starts the slur)
+                    let mut found_prev = false;
+                    for j in (0..i).rev() {
+                        if !cells[j].char.trim().is_empty() && cells[j].kind == ElementKind::PitchedElement {
+                            slur_transfers.push((j, slur));
+                            found_prev = true;
+                            break;
+                        }
+                    }
+                    if !found_prev {
+                        eprintln!("Warning: SlurStart on separator but no previous pitched cell");
+                    }
+                }
+                SlurIndicator::SlurEnd => {
+                    // SlurEnd on separator: transfer to PREVIOUS pitched cell (the note that ends the slur)
+                    let mut found_prev = false;
+                    for j in (0..i).rev() {
+                        if !cells[j].char.trim().is_empty() && cells[j].kind == ElementKind::PitchedElement {
+                            slur_transfers.push((j, slur));
+                            found_prev = true;
+                            break;
+                        }
+                    }
+                    if !found_prev {
+                        eprintln!("Warning: SlurEnd on separator but no previous pitched cell");
+                    }
+                }
+                SlurIndicator::None => {
+                    // Should not happen since we check for None above
+                }
+            }
+        }
+    }
+
+    // Second pass: apply transfers (mutate the pitched cells)
+    for (target_idx, slur) in slur_transfers {
+        // Use unsafe to mutate through a shared reference
+        // This is safe because we're not creating overlapping mutable references
+        unsafe {
+            let target_cell = cells[target_idx] as *const Cell as *mut Cell;
+            (*target_cell).slur_indicator = slur;
+        }
+    }
+}
+
 /// Build export measures from a single line (staff)
 ///
 /// This is the core orchestrator that:
@@ -648,8 +822,11 @@ pub fn build_export_measures_from_line(line: &Line) -> Vec<ExportMeasure> {
         measure_cell_groups.push((current_measure_num, current_group));
     }
 
+    // Track slur state across all measures in this line
+    let mut line_inside_slur = false;
+
     // Process each measure group using beat boundaries
-    for (_measure_num, measure_cells) in measure_cell_groups {
+    for (_measure_num, mut measure_cells) in measure_cell_groups {
         if measure_cells.is_empty() {
             measures.push(ExportMeasure {
                 divisions: 4,
@@ -657,6 +834,10 @@ pub fn build_export_measures_from_line(line: &Line) -> Vec<ExportMeasure> {
             });
             continue;
         }
+
+        // Transfer slur indicators from space/separator cells to the next pitched cell
+        // This handles cases where the UI places slur indicators on spaces
+        transfer_slur_indicators_from_separators(&mut measure_cells);
 
         // Find beat boundaries within this measure
         let beat_boundaries = find_beat_boundaries_refs(&measure_cells);
@@ -706,6 +887,9 @@ pub fn build_export_measures_from_line(line: &Line) -> Vec<ExportMeasure> {
             });
             continue;
         }
+
+        // Fill in "continue" slurs for notes between slur start and stop, using line-level state
+        fill_slur_continue_markers(&mut all_events, &mut line_inside_slur);
 
         // Calculate measure divisions using LCM
         let measure_divisions = if beat_divisions_list.is_empty() {
@@ -984,7 +1168,7 @@ mod tests {
         let mut cell = make_cell(ElementKind::PitchedElement, "1", Some(PitchCode::N1));
         cell.slur_indicator = SlurIndicator::SlurStart;
 
-        attach_slur_to_note(&mut note, &cell);
+        attach_slur_to_note(&mut note, &cell, false);
         assert!(note.slur.is_some());
         let slur = note.slur.unwrap();
         assert_eq!(slur.type_, SlurType::Start);
@@ -1008,10 +1192,34 @@ mod tests {
         let mut cell = make_cell(ElementKind::PitchedElement, "1", Some(PitchCode::N1));
         cell.slur_indicator = SlurIndicator::SlurEnd;
 
-        attach_slur_to_note(&mut note, &cell);
+        attach_slur_to_note(&mut note, &cell, false);
         assert!(note.slur.is_some());
         let slur = note.slur.unwrap();
         assert_eq!(slur.type_, SlurType::Stop);
+    }
+
+    #[test]
+    fn test_attach_slur_continue() {
+        let mut note = NoteData {
+            pitch: PitchInfo::new(PitchCode::N1, 4),
+            divisions: 1,
+            grace_notes_before: Vec::new(),
+            grace_notes_after: Vec::new(),
+            lyrics: None,
+            slur: None,
+            articulations: Vec::new(),
+            beam: None,
+            tie: None,
+                tuplet: None,
+        };
+
+        let cell = make_cell(ElementKind::PitchedElement, "1", Some(PitchCode::N1));
+        // Note: cell has no slur indicator, but we're inside a slur
+
+        attach_slur_to_note(&mut note, &cell, true);
+        assert!(note.slur.is_some());
+        let slur = note.slur.unwrap();
+        assert_eq!(slur.type_, SlurType::Continue);
     }
 
     #[test]

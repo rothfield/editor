@@ -33,6 +33,58 @@ Rust 1.75+ (WASM module), JavaScript ES2022+ (host application), Node.js 18+: Fo
 - The processing algorithm for converting spatial layout to precise durations
 - LilyPond and MusicXML mapping
 
+## Export Architecture: From Document Model to Multiple Formats
+
+The editor uses a **three-layer export pipeline** to support multiple output formats:
+
+```
+Document (Cell-based)
+    ↓
+IR (Intermediate Representation)
+    ↓
+MusicXML (Standard interchange format)
+    ↓
+    ├→ LilyPond (High-quality engraving)
+    ├→ OSMD (Browser rendering)
+    └→ VexFlow (Alternative browser rendering)
+```
+
+### Why This Architecture?
+
+1. **IR is format-agnostic**: Captures all musical information once (notes, rests, measures, divisions, slurs, articulations, etc.). New export features are added here first.
+2. **MusicXML is the hub**: Standard interchange format that all downstream tools understand. Easier to maintain than exporting directly to each format.
+3. **Multiple renderers**: Same musical data can drive LilyPond, OSMD, VexFlow, or custom renderers without duplicating conversion logic.
+
+### Key Components
+
+**IR (Intermediate Representation):**
+- **Location**: `src/renderers/musicxml/cell_to_ir.rs`, `src/renderers/musicxml/export_ir.rs`
+- **Responsibilities**: Convert Cell-based document to structured musical events
+- **Key types**: `ExportLine`, `ExportMeasure`, `ExportEvent`, `NoteData`, `SlurData`, `TieData`, etc.
+- **Future**: Will move to `src/renderers/ir/` when architecture is fully shared
+
+**Cell-to-IR Conversion (FSM):**
+- **Location**: `src/renderers/musicxml/cell_to_ir.rs`
+- **Process**: Finite State Machine processes cells sequentially, grouping them into beat-level events
+- **Handles**: Grace notes, dashes (rests/extensions), rhythmic grouping, lyrics, slurs, ties
+
+**MusicXML Export:**
+- **Location**: `src/renderers/musicxml/emitter.rs`, `builder.rs`
+- **Process**: Consumes IR and emits valid MusicXML XML
+- **Handles**: Divisions, note elements, slur elements, articulations, tuplets
+
+### Adding New Musical Features
+
+When adding support for a new musical element (e.g., slurs):
+
+1. **Add to Cell model** if it's user-creatable (e.g., `SlurIndicator` on Cell)
+2. **Add to IR types** if it needs to be exported (e.g., `SlurData` in `NoteData`)
+3. **Wire up conversion** in `cell_to_ir.rs` FSM to extract from Cell and populate IR
+4. **Verify emission** in `emitter.rs` / `builder.rs` to ensure MusicXML output is correct
+5. **Test end-to-end**: Document → Cell → IR → MusicXML → Inspector tab
+
+This ensures the feature works across all downstream renderers automatically.
+
 <!-- MANUAL ADDITIONS START -->
 
 ## Inspector-First, LilyPond-Fail-Fast Testing (Playwright + Docker)
