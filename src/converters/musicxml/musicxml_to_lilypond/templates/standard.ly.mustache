@@ -55,12 +55,7 @@
 
   {{#lyrics}}
   \addlyrics {
-    % These overrides do not require Scheme booleans or symbols.
-    % (font-size is numeric, allowed)
     \override LyricText.font-size = -2
-
-    % We intentionally do NOT set font-shape = #'italic,
-    % because #'italic is Scheme syntax.
     {{{lyrics}}}
   }
   {{/lyrics}}
