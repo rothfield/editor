@@ -140,7 +140,7 @@ class DOMRenderer {
         top: ${BASE_FONT_SIZE * 0.75}px;
         transform: translateY(-50%);
         color: #000;
-        font-size: ${BRAVURA_FONT_SIZE}px;
+        font-size: ${BRAVURA_FONT_SIZE * 1.1}px;
         line-height: 1;
         pointer-events: none;
         z-index: 4;
