@@ -219,20 +219,16 @@ fn collect_lyrics_from_music(music: &Music, lyrics_list: &mut Vec<String>) {
             if let Some(ref lyric) = note.lyric {
                 use crate::converters::musicxml::musicxml_to_lilypond::types::LyricSyllabic;
                 lyrics_list.push(format_lyric_syllable(&lyric.text, lyric.syllabic));
-            } else {
-                lyrics_list.push("__".to_string()); // Placeholder for notes without lyrics
             }
         }
         Music::Chord(chord) => {
             if let Some(ref lyric) = chord.lyric {
                 use crate::converters::musicxml::musicxml_to_lilypond::types::LyricSyllabic;
                 lyrics_list.push(format_lyric_syllable(&lyric.text, lyric.syllabic));
-            } else {
-                lyrics_list.push("__".to_string()); // Placeholder for notes without lyrics
             }
         }
         Music::Rest(_) => {
-            lyrics_list.push("__".to_string()); // Placeholder for rests
+            // Skip rests - don't add placeholders
         }
         Music::Sequential(seq) => {
             collect_lyrics_from_sequential(seq, lyrics_list);
