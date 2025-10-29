@@ -15,6 +15,7 @@ import LilyPondTab from './lilypond-tab.js';
 import LilyPondPngTab from './lilypond-png-tab.js';
 import LilyPondRenderer from './lilypond-renderer.js';
 import ExportUI from './export-ui.js';
+import PreferencesUI from './preferences.js';
 
 /**
  * Main application class
@@ -26,6 +27,7 @@ class MusicNotationApp {
     this.fileOperations = null;
     this.ui = null;
     this.exportUI = null;
+    this.preferencesUI = null;
     this.resizeHandle = null;
     this.isInitialized = false;
 
@@ -52,7 +54,8 @@ class MusicNotationApp {
       this.editor = new MusicNotationEditor(editorElement);
       this.fileOperations = new FileOperations(this.editor);
       this.eventManager = new EventManager(this.editor, this.fileOperations);
-      this.ui = new UI(this.editor, this.fileOperations);
+      this.preferencesUI = new PreferencesUI(this.editor);
+      this.ui = new UI(this.editor, this.fileOperations, this.preferencesUI);
       this.exportUI = new ExportUI(this.editor, this.fileOperations);
       this.resizeHandle = new ResizeHandle();
 
@@ -60,6 +63,7 @@ class MusicNotationApp {
       this.editor.ui = this.ui;
       this.editor.exportUI = this.exportUI;
       this.editor.eventManager = this.eventManager;
+      this.editor.preferencesUI = this.preferencesUI;
 
       // Initialize the editor
       await this.editor.initialize();
@@ -70,6 +74,7 @@ class MusicNotationApp {
       // Initialize other components
       this.eventManager.initialize();
       this.fileOperations.initialize();
+      this.preferencesUI.initialize();
       this.ui.initialize();
       this.resizeHandle.initialize();
 

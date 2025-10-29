@@ -2,7 +2,7 @@
 
 use crate::models::pitch::Pitch;
 use crate::models::PitchCode;
-use super::duration::duration_to_note_type;
+use super::duration::duration_to_note_type_fraction;
 use super::pitch::{pitch_to_step_alter, pitch_code_to_step_alter};
 use super::export_ir::Syllabic;
 
@@ -152,9 +152,11 @@ impl MusicXmlBuilder {
         // We need to scale by (actual_notes/normal_notes) to get the display duration
         let (note_type, dots) = if let Some((actual_notes, normal_notes)) = time_modification {
             let display_duration = musical_duration * (actual_notes as f64 / normal_notes as f64);
-            duration_to_note_type(display_duration)
+            let numerator = (display_duration * 1000.0).round() as usize;
+            duration_to_note_type_fraction(numerator, 1000)
         } else {
-            duration_to_note_type(musical_duration)
+            let numerator = (musical_duration * 1000.0).round() as usize;
+            duration_to_note_type_fraction(numerator, 1000)
         };
         self.buffer.push_str(&format!("  <type>{}</type>\n", note_type));
         for _ in 0..dots {
@@ -249,9 +251,11 @@ impl MusicXmlBuilder {
         // For tuplets, calculate note type based on actual duration within tuplet
         let (note_type, dots) = if let Some((actual_notes, normal_notes)) = time_modification {
             let display_duration = musical_duration * (actual_notes as f64 / normal_notes as f64);
-            duration_to_note_type(display_duration)
+            let numerator = (display_duration * 1000.0).round() as usize;
+            duration_to_note_type_fraction(numerator, 1000)
         } else {
-            duration_to_note_type(musical_duration)
+            let numerator = (musical_duration * 1000.0).round() as usize;
+            duration_to_note_type_fraction(numerator, 1000)
         };
         self.buffer.push_str(&format!("  <type>{}</type>\n", note_type));
         for _ in 0..dots {
@@ -373,9 +377,11 @@ impl MusicXmlBuilder {
         // We need to scale by (actual_notes/normal_notes) to get the display duration
         let (note_type, dots) = if let Some((actual_notes, normal_notes)) = time_modification {
             let display_duration = musical_duration * (actual_notes as f64 / normal_notes as f64);
-            duration_to_note_type(display_duration)
+            let numerator = (display_duration * 1000.0).round() as usize;
+            duration_to_note_type_fraction(numerator, 1000)
         } else {
-            duration_to_note_type(musical_duration)
+            let numerator = (musical_duration * 1000.0).round() as usize;
+            duration_to_note_type_fraction(numerator, 1000)
         };
         self.buffer.push_str(&format!("  <type>{}</type>\n", note_type));
         for _ in 0..dots {

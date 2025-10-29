@@ -217,13 +217,11 @@ fn collect_lyrics_from_music(music: &Music, lyrics_list: &mut Vec<String>) {
     match music {
         Music::Note(note) => {
             if let Some(ref lyric) = note.lyric {
-                use crate::converters::musicxml::musicxml_to_lilypond::types::LyricSyllabic;
                 lyrics_list.push(format_lyric_syllable(&lyric.text, lyric.syllabic));
             }
         }
         Music::Chord(chord) => {
             if let Some(ref lyric) = chord.lyric {
-                use crate::converters::musicxml::musicxml_to_lilypond::types::LyricSyllabic;
                 lyrics_list.push(format_lyric_syllable(&lyric.text, lyric.syllabic));
             }
         }

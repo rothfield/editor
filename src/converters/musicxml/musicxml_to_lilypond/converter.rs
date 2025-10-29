@@ -512,7 +512,7 @@ fn parse_lyric_from_note(note_node: Node) -> Option<NoteLyric> {
             }
 
             // Extract syllabic type
-            let syllabic = if let Some(syl_node) = get_child(child, "syllabic") {
+            let syllabic = if let Some(_syl_node) = get_child(child, "syllabic") {
                 if let Some(text) = get_child_text(child, "syllabic") {
                     match text.trim() {
                         "begin" => LyricSyllabic::Begin,

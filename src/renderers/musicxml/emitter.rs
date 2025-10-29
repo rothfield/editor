@@ -90,7 +90,7 @@ fn emit_measure(
 
     // Write key and clef only on first measure
     if is_first_measure {
-        if let Some(ref key_sig) = export_line.key_signature {
+        if let Some(ref _key_sig) = export_line.key_signature {
             // Key signature is handled by builder.set_key_signature() at document level
         }
         // Clef is hardcoded in builder for now
@@ -317,7 +317,7 @@ fn emit_chord(
 
     // Emit first note with chord flag for subsequent notes
     if !pitches.is_empty() {
-        let first_pitch = pitch_info_to_pitch(&pitches[0]);
+        let _first_pitch = pitch_info_to_pitch(&pitches[0]);
 
         // Convert lyric data to tuple format for the builder
         let lyric_tuple = lyrics.as_ref().map(|l| (

@@ -63,7 +63,7 @@ pub fn process_segment(
     let beats = beat_deriver.extract_implicit_beats(cells);
 
     for (i, beat) in beats.iter().enumerate() {
-        let beat_cells = &cells[beat.start..=beat.end];
+        let _beat_cells = &cells[beat.start..=beat.end];
 
         // Check if next beat starts with "-" for tie detection
         let next_beat_starts_with_div = if i + 1 < beats.len() {

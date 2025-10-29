@@ -303,8 +303,8 @@ impl<'a> LayoutLineComputer<'a> {
         &self,
         original_cells: &[Cell],
         render_cells: &[RenderCell],
-        effective_widths: &[f32],
-        config: &LayoutConfig,
+        _effective_widths: &[f32],
+        _config: &LayoutConfig,
         _line_y_offset: f32,
     ) -> Vec<RenderArc> {
         let mut arcs = Vec::new();

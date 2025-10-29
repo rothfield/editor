@@ -23,7 +23,6 @@ pub fn process_beat_with_context(
     // Look backwards to find any preceding ornament start indicators
     // These would indicate grace notes that should be attached to the first note in this beat
     let mut preceding_grace_notes: Vec<(PitchCode, i8, OrnamentPositionType)> = Vec::new();
-    let mut current_ornament_position = OrnamentPositionType::Before;
 
     // Search backwards from beat start for ornament indicators
     if beat.start > 0 {
@@ -33,7 +32,7 @@ pub fn process_beat_with_context(
 
             // If we find an ornament start, collect grace notes between here and beat start
             if cell.is_ornament_start() {
-                current_ornament_position = cell.ornament_indicator.position_type();
+                let current_ornament_position = cell.ornament_indicator.position_type();
                 // Collect pitched elements between this start and the beat start
                 for j in (search_index + 1)..beat.start {
                     let c = &all_cells[j];
@@ -274,11 +273,9 @@ pub fn process_beat(
     // First pass: collect all grace notes that come BEFORE any main note
     // These will be attached to the first main note
     let mut grace_notes_before_main: Vec<(PitchCode, i8, OrnamentPositionType)> = Vec::new();
-    let mut found_main_note = false;
     for j in 0..beat_cells.len() {
         let cell = &beat_cells[j];
         if !cell.continuation && !cell.is_rhythm_transparent() && cell.kind == ElementKind::PitchedElement {
-            found_main_note = true;
             break;
         }
         if cell.is_rhythm_transparent() && cell.kind == ElementKind::PitchedElement && !cell.continuation {

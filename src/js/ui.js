@@ -6,9 +6,10 @@
  */
 
 class UI {
-  constructor(editor, fileOperations = null) {
+  constructor(editor, fileOperations = null, preferencesUI = null) {
     this.editor = editor;
     this.fileOperations = fileOperations;
+    this.preferencesUI = preferencesUI;
     this.activeMenu = null;
     this.activeTab = 'staff-notation';
     this.menuListeners = new Map();
@@ -102,7 +103,9 @@ class UI {
       { id: 'menu-set-composer', label: 'Set Composer...', action: 'set-composer' },
       { id: 'menu-set-tonic', label: 'Set Tonic...', action: 'set-tonic' },
       { id: 'menu-set-pitch-system', label: 'Set Pitch System...', action: 'set-pitch-system' },
-      { id: 'menu-set-key-signature', label: 'Set Key Signature...', action: 'set-key-signature' }
+      { id: 'menu-set-key-signature', label: 'Set Key Signature...', action: 'set-key-signature' },
+      { id: 'menu-separator-3', label: null, separator: true },
+      { id: 'menu-preferences', label: 'Preferences...', action: 'preferences' }
     ];
 
     const fileMenu = document.getElementById('file-menu');
@@ -494,6 +497,9 @@ class UI {
       case 'set-line-key-signature':
         this.setLineKeySignature();
         break;
+      case 'preferences':
+        this.openPreferences();
+        break;
       default:
         console.log('Unknown menu action:', action);
     }
@@ -581,6 +587,17 @@ class UI {
       this.editor.exportUI.open();
     } else {
       console.error('Export UI not available');
+    }
+  }
+
+  /**
+   * Open preferences dialog
+   */
+  openPreferences() {
+    if (this.preferencesUI) {
+      this.preferencesUI.open();
+    } else {
+      console.error('Preferences UI not available');
     }
   }
 

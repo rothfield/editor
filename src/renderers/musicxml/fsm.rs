@@ -192,7 +192,7 @@ pub fn beat_transition(
                 BeatProcessingState::InBeat  // No pitch, skip
             }
         }
-        (BeatProcessingState::InBeat, ElementKind::PitchedElement) => {
+        (BeatProcessingState::InBeat, ElementKind::PitchedElement) if !cell.is_rhythm_transparent() => {
             if let Some(pitch_code) = &cell.pitch_code {
                 accum.start_pitch(*pitch_code, cell.octave);
                 BeatProcessingState::CollectingPitchInBeat
@@ -200,7 +200,7 @@ pub fn beat_transition(
                 BeatProcessingState::InBeat
             }
         }
-        (BeatProcessingState::CollectingPitchInBeat, ElementKind::PitchedElement) => {
+        (BeatProcessingState::CollectingPitchInBeat, ElementKind::PitchedElement) if !cell.is_rhythm_transparent() => {
             // New pitch → finish previous and start new
             accum.finish_pitch();
             if let Some(pitch_code) = &cell.pitch_code {

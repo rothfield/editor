@@ -1,4 +1,44 @@
 \version "{{version}}"
+\language "english"
+
+{{#source_comment}}
+% Original notation source:
+{{{source_comment}}}
+{{/source_comment}}
+
+{{#title}}
+\header {
+  title = "{{{title}}}"
+  {{#composer}}composer = "{{{composer}}}"{{/composer}}
+  tagline = ""
+  oddHeaderMarkup = \markup { }
+  evenHeaderMarkup = \markup { }
+  oddFooterMarkup = \markup { }
+  evenFooterMarkup = \markup { }
+}
+{{/title}}
+{{^title}}
+{{#composer}}
+\header {
+  composer = "{{{composer}}}"
+  tagline = ""
+  oddHeaderMarkup = \markup { }
+  evenHeaderMarkup = \markup { }
+  oddFooterMarkup = \markup { }
+  evenFooterMarkup = \markup { }
+}
+{{/composer}}
+{{/title}}
+
+\paper {
+  indent = 0\mm
+  top-margin = 0\mm
+  bottom-margin = 0\mm
+  left-margin = 0\mm
+  right-margin = 0\mm
+  paper-height = 50\mm
+  paper-width = 200\mm
+}
 
 \score {
   <<
@@ -10,4 +50,6 @@
     }
     {{/lyrics}}
   >>
+
+  \layout { }
 }

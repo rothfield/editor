@@ -1,4 +1,30 @@
 \version "{{version}}"
+\language "english"
+
+{{#source_comment}}
+% Original notation source:
+{{{source_comment}}}
+{{/source_comment}}
+
+\header {
+  {{#title}}title = "{{{title}}}"{{/title}}
+  {{#composer}}composer = "{{{composer}}}"{{/composer}}
+  tagline = ""
+  oddHeaderMarkup = \markup { }
+  evenHeaderMarkup = \markup { }
+  oddFooterMarkup = \markup { }
+  evenFooterMarkup = \markup { }
+}
+
+\paper {
+  indent = 0\mm
+  top-margin = 0.5\mm
+  bottom-margin = 0.5\mm
+  left-margin = 1\mm
+  right-margin = 1\mm
+  paper-height = 100\mm
+  paper-width = 200\mm
+}
 
 \score {
   <<
@@ -10,4 +36,11 @@
     {{{lyrics}}}
     {{/lyrics}}
   >>
+
+  \layout {
+    \context {
+      \Score
+      \remove "Bar_number_engraver"
+    }
+  }
 }

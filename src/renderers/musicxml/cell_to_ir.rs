@@ -19,7 +19,7 @@
 //! 4. Continuation cells never appear as standalone elements
 //! 5. sum(event_divisions) == measure_divisions for each measure
 
-use crate::models::{Cell, ElementKind, PitchCode, OrnamentPositionType, SlurIndicator, Line, Document};
+use crate::models::{Cell, ElementKind, OrnamentPositionType, SlurIndicator, Line, Document};
 use super::export_ir::{
     ExportLine, ExportMeasure, ExportEvent, NoteData, GraceNoteData, PitchInfo,
     LyricData, Syllabic, SlurData, SlurPlacement, SlurType, TupletInfo,
@@ -157,7 +157,7 @@ pub fn beat_transition(
         }
 
         // PITCH → transition from InBeat or CollectingDashes
-        (CellGroupingState::InBeat, ElementKind::PitchedElement) => {
+        (CellGroupingState::InBeat, ElementKind::PitchedElement) if !cell.is_rhythm_transparent() => {
             if let Some(pitch_code) = cell.pitch_code {
                 let pitch = PitchInfo::new(pitch_code, cell.octave);
                 accum.start_pitch(pitch);
@@ -178,7 +178,7 @@ pub fn beat_transition(
                 CellGroupingState::InBeat
             }
         }
-        (CellGroupingState::CollectingPitchInBeat, ElementKind::PitchedElement) => {
+        (CellGroupingState::CollectingPitchInBeat, ElementKind::PitchedElement) if !cell.is_rhythm_transparent() => {
             // New pitch → finish previous and start new
             accum.finish_pitch();
             if let Some(pitch_code) = cell.pitch_code {
