@@ -175,8 +175,8 @@ fn collect_lyrics_content(parts: &[SequentialMusic]) -> Option<String> {
         if !lyrics_list.is_empty() {
             let formatted = format_lyrics_for_block(&lyrics_list);
             // Wrap in \lyricmode for proper LilyPond lyrics parsing
-            // Note: template inserts this with 6 spaces, so relative indent is 2 more for content
-            Some(format!("\\lyricmode {{\n  \\override LyricText.font-size = -2\n  {}\n}}", formatted))
+            // Note: \override must be OUTSIDE \lyricmode, not inside it
+            Some(format!("\\override LyricText.font-size = -2\n\\lyricmode {{\n  {}\n}}", formatted))
         } else {
             None
         }
