@@ -763,17 +763,26 @@ class MusicNotationEditor {
   }
 
   /**
-     * Set cursor position with bounds checking (character offset)
+     * Set cursor position - supports both single position (column) or row/col arguments
+     * @param {number} positionOrRow - Either a character position (column) or row number
+     * @param {number} col - Optional column number (if first param is row)
      */
-  setCursorPosition(position) {
-    if (this.theDocument && this.theDocument.state) {
-      // Validate and clamp cursor position to valid range
-      const validatedPosition = this.validateCursorPosition(position);
+  setCursorPosition(positionOrRow, col) {
+    if (!this.theDocument || !this.theDocument.state) return;
+
+    if (col !== undefined) {
+      // Two-argument form: setCursorPosition(row, col) from WASM results
+      this.theDocument.state.cursor.stave = positionOrRow;
+      this.theDocument.state.cursor.column = col;
+    } else {
+      // Single-argument form: setCursorPosition(position) for navigation
+      const validatedPosition = this.validateCursorPosition(positionOrRow);
       this.theDocument.state.cursor.column = validatedPosition;
-      this.updateCursorPositionDisplay();
-      this.updateCursorVisualPosition();
-      this.showCursor();
     }
+
+    this.updateCursorPositionDisplay();
+    this.updateCursorVisualPosition();
+    this.showCursor();
   }
 
   /**
@@ -4284,9 +4293,9 @@ class MusicNotationEditor {
         console.warn('Failed to sync document with WASM before paste:', e);
       }
 
-      const cursor = this.theDocument.state?.cursor || { row: 0, col: 0 };
-      const startRow = cursor.row;
-      const startCol = cursor.col;
+      const cursor = this.theDocument.state?.cursor || { stave: 0, column: 0 };
+      const startStave = cursor.stave;
+      const startColumn = cursor.column;
 
       // For now, simple paste at cursor (single cell)
       const cellsToPaste = this.clipboard.cells || [];
@@ -4296,31 +4305,26 @@ class MusicNotationEditor {
         return;
       }
 
-      // Call WASM to paste cells
-      // For single row paste, endRow = startRow
-      const result = this.wasmModule.pasteCells(
-        startRow,
-        startCol,
-        startRow,
-        startCol,
-        cellsToPaste
-      );
-
-      if (result && result.dirty_lines) {
-        // Update document with dirty lines
-        this.updateDocumentFromDirtyLines(result.dirty_lines);
-
-        // Move cursor to after pasted content
-        this.setCursorPosition(result.new_cursor_row, result.new_cursor_col);
-
-        // Clear selection
-        if (this.theDocument.state) {
-          this.theDocument.state.selection = { active: false };
-        }
-
-        this.addToConsoleLog(`Pasted ${cellsToPaste.length} cells`);
-        this.render();
+      // Paste into the current line at cursor position
+      const line = this.getCurrentLine();
+      if (!line || !line.cells) {
+        console.warn('No current line to paste into');
+        return;
       }
+
+      // Insert the cells at the cursor position
+      line.cells.splice(startColumn, 0, ...cellsToPaste);
+
+      // Update cursor position to after pasted content
+      this.setCursorPosition(startColumn + cellsToPaste.length);
+
+      // Clear selection
+      if (this.theDocument.state) {
+        this.theDocument.state.selection = { active: false };
+      }
+
+      this.addToConsoleLog(`Pasted ${cellsToPaste.length} cells`);
+      this.render();
     } catch (error) {
       console.error('Paste failed:', error);
       this.showError('Paste failed', { details: error.message });
