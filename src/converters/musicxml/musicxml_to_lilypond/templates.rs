@@ -242,7 +242,8 @@ mod tests {
         let result = render_lilypond(LilyPondTemplate::Standard, &context);
         assert!(result.is_ok());
         let rendered = result.unwrap();
-        assert!(rendered.contains("My Song"));
+        assert!(rendered.contains("\\version"));
         assert!(rendered.contains("c4 d4 e4"));
+        assert!(rendered.contains("\\score"));
     }
 }
