@@ -70,20 +70,25 @@ fn generate_staves_content(parts: &[SequentialMusic], settings: &ConversionSetti
     }
 
     if parts.len() == 1 {
-        // Single part - wrap in named Voice for lyrics binding
-        let music_content = generate_music(&parts[0], settings, 4);
-        format!("    \\new Voice = \"mel\" {{\n{}\n    }}", music_content)
+        // Single part - Staff > Voice > \fixed c' > notes
+        let music_content = generate_music(&parts[0], settings, 8);
+        format!(
+            "    \\new Staff {{\n      \\new Voice = \"mel\" {{\n        % \\fixed c' anchors absolute pitch spelling for note names we emit.\n        \\fixed c' {{\n{}\n        }}\n      }}\n    }}",
+            music_content
+        )
     } else {
-        // Multiple parts - wrap each in \new Staff with named Voice
+        // Multiple parts - each Staff > Voice > \fixed c' > notes
         parts
             .iter()
             .enumerate()
             .map(|(i, part)| {
                 let voice_name = format!("v{}", i + 1);
-                let music_content = generate_music(part, settings, 6);
-                format!("      \\new Voice = \"{}\" {{\n{}\n      }}", voice_name, music_content)
+                let music_content = generate_music(part, settings, 10);
+                format!(
+                    "    \\new Staff {{\n      \\new Voice = \"{}\" {{\n        \\fixed c' {{\n{}\n        }}\n      }}\n    }}",
+                    voice_name, music_content
+                )
             })
-            .map(|voice| format!("    \\new Staff {{\n{}\n    }}", voice))
             .collect::<Vec<_>>()
             .join("\n")
     }
