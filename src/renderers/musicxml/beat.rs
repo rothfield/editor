@@ -265,6 +265,54 @@ pub fn process_beat(
             musical_duration: f64,
         },
     }
+
+    /// Helper: Compute correct slur types for elements in a beat, fixing off-by-one issues with tuplets
+    ///
+    /// This analyzes which notes have slur indicators and assigns the correct
+    /// slur types (start/continue/stop) based on their position in the final element sequence.
+    /// This is necessary because in tuplets, the cell indices don't directly correspond to
+    /// the final note positions.
+    ///
+    /// IMPORTANT: When a slur span is detected, ALL notes from first to last slurred note
+    /// are included in the slur (not just those explicitly marked). This handles cases where
+    /// the first note of a slurred span might not have an explicit SlurStart marker.
+    fn compute_slur_types_for_tuplet(elements: &[BeatElement]) -> Vec<Option<&'static str>> {
+        let mut slur_types: Vec<Option<&'static str>> = vec![None; elements.len()];
+
+        // Find all notes that have ANY slur indicator (start or end)
+        let mut slur_marked_indices = Vec::new();
+
+        for (idx, element) in elements.iter().enumerate() {
+            if let BeatElement::Note { slur_indicator, .. } = element {
+                match slur_indicator {
+                    SlurIndicator::SlurStart | SlurIndicator::SlurEnd => {
+                        slur_marked_indices.push(idx);
+                    }
+                    SlurIndicator::None => {}
+                }
+            }
+        }
+
+        // If we have slur markers, determine the span they cover
+        if !slur_marked_indices.is_empty() {
+            let min_idx = *slur_marked_indices.iter().min().unwrap();
+            let max_idx = *slur_marked_indices.iter().max().unwrap();
+
+            // Mark the first note in the slur span with "start"
+            slur_types[min_idx] = Some("start");
+
+            // Mark all notes between first and last with "continue"
+            for idx in (min_idx + 1)..max_idx {
+                slur_types[idx] = Some("continue");
+            }
+
+            // Mark the last note in the slur span with "stop"
+            slur_types[max_idx] = Some("stop");
+        }
+
+        slur_types
+    }
+
     let mut elements = Vec::new();
 
     // Track ornaments (grace notes) to be attached to next main note
@@ -462,7 +510,7 @@ pub fn process_beat(
             match element {
                 BeatElement::Note { pitch_code, octave, duration_divs, musical_duration, is_last_note, slur_indicator: _original_slur_indicator, grace_notes_before, grace_notes_after, ornament_type } => {
                     // Use computed slur type instead of original indicator (fixes tuplet slur off-by-one)
-                    let slur = slur_types_per_element.get(idx).copied().flatten();
+                    let slur = slur_types_per_element.get(idx).and_then(|&opt| opt);
                     // Write grace notes that come BEFORE the main note (traditional grace notes)
                     let before_grace_count = grace_notes_before.len();
                     for (idx, (grace_pitch_code, grace_octave, ornament_position)) in grace_notes_before.iter().enumerate() {
@@ -508,13 +556,6 @@ pub fn process_beat(
                         Some("start")
                     } else {
                         None
-                    };
-
-                    // Determine slur type based on indicator
-                    let slur = match slur_indicator {
-                        SlurIndicator::SlurStart => Some("start"),
-                        SlurIndicator::SlurEnd => Some("stop"),
-                        SlurIndicator::None => None,
                     };
 
                     builder.write_note_with_beam_from_pitch_code(pitch_code, *octave, *duration_divs, *musical_duration, None, tuplet_info, tuplet_bracket, tie, slur, None, *ornament_type)?;
