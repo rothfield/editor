@@ -46,19 +46,20 @@
 }
 
 \score {
-  \new Staff {
-    % \fixed c' anchors absolute pitch spelling for note names we emit.
-    \fixed c' {
-      {{{staves}}}
+  <<
+    \new Staff {
+      % \fixed c' anchors absolute pitch spelling for note names we emit.
+      \fixed c' {
+        {{{staves}}}
+      }
     }
-  }
 
-  {{#lyrics}}
-  \addlyrics {
-    \override LyricText.font-size = -2
-    {{{lyrics}}}
-  }
-  {{/lyrics}}
+    {{#lyrics}}
+    \new Lyrics \lyricsto "mel" {
+      {{{lyrics}}}
+    }
+    {{/lyrics}}
+  >>
 
   \layout {
     \context {

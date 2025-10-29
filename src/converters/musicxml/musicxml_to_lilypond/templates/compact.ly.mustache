@@ -41,18 +41,19 @@
 }
 
 \score {
-  \new Staff {
-    \fixed c' {
-      {{{staves}}}
+  <<
+    \new Staff {
+      \fixed c' {
+        {{{staves}}}
+      }
     }
-  }
 
-  {{#lyrics}}
-  \addlyrics {
-    \override LyricText.font-size = -2
-    {{{lyrics}}}
-  }
-  {{/lyrics}}
+    {{#lyrics}}
+    \new Lyrics \lyricsto "mel" {
+      {{{lyrics}}}
+    }
+    {{/lyrics}}
+  >>
 
   \layout { }
 }

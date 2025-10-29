@@ -70,16 +70,20 @@ fn generate_staves_content(parts: &[SequentialMusic], settings: &ConversionSetti
     }
 
     if parts.len() == 1 {
-        // Single part - generate music without staff wrapper
-        generate_music(&parts[0], settings, 0)
+        // Single part - wrap in named Voice for lyrics binding
+        let music_content = generate_music(&parts[0], settings, 4);
+        format!("    \\new Voice = \"mel\" {{\n{}\n    }}", music_content)
     } else {
-        // Multiple parts - wrap each in \new Staff
+        // Multiple parts - wrap each in \new Staff with named Voice
         parts
             .iter()
-            .map(|part| {
-                let music_content = generate_music(part, settings, 2);
-                format!("  \\new Staff {{\n{}\n  }}", music_content)
+            .enumerate()
+            .map(|(i, part)| {
+                let voice_name = format!("v{}", i + 1);
+                let music_content = generate_music(part, settings, 6);
+                format!("      \\new Voice = \"{}\" {{\n{}\n      }}", voice_name, music_content)
             })
+            .map(|voice| format!("    \\new Staff {{\n{}\n    }}", voice))
             .collect::<Vec<_>>()
             .join("\n")
     }
@@ -157,25 +161,41 @@ fn generate_lilypond_document_fallback(
     output
 }
 
-/// Collect lyrics from music tree and format for \addlyrics block
+/// Collect lyrics from music tree and format for \lyricmode block
 fn collect_lyrics_content(parts: &[SequentialMusic]) -> Option<String> {
-    let mut lyrics_parts = Vec::new();
-
-    for part in parts {
+    if parts.len() == 1 {
         let mut lyrics_list = Vec::new();
-        collect_lyrics_from_sequential(part, &mut lyrics_list);
+        collect_lyrics_from_sequential(&parts[0], &mut lyrics_list);
 
         if !lyrics_list.is_empty() {
-            // Format the lyrics for the \addlyrics block
             let formatted = format_lyrics_for_block(&lyrics_list);
-            lyrics_parts.push(formatted);
+            // Wrap in \lyricmode for proper LilyPond lyrics parsing
+            Some(format!("\\lyricmode {{\n      \\override LyricText.font-size = -2\n      {}\n    }}", formatted))
+        } else {
+            None
         }
-    }
-
-    if lyrics_parts.is_empty() {
-        None
     } else {
-        Some(lyrics_parts.join("\n"))
+        // For multiple parts, create separate \lyricmode blocks with voice references
+        let mut all_lyrics = Vec::new();
+        for (i, part) in parts.iter().enumerate() {
+            let voice_name = format!("v{}", i + 1);
+            let mut lyrics_list = Vec::new();
+            collect_lyrics_from_sequential(part, &mut lyrics_list);
+
+            if !lyrics_list.is_empty() {
+                let formatted = format_lyrics_for_block(&lyrics_list);
+                all_lyrics.push(format!(
+                    "    \\new Lyrics \\lyricsto \"{}\" {{\n      \\lyricmode {{\n        {}\n      }}\n    }}",
+                    voice_name, formatted
+                ));
+            }
+        }
+
+        if all_lyrics.is_empty() {
+            None
+        } else {
+            Some(all_lyrics.join("\n"))
+        }
     }
 }
 

@@ -638,8 +638,8 @@ mod tests {
         assert!(lilypond.contains("lo"), "LilyPond output should contain 'lo'");
         assert!(lilypond.contains("world"), "LilyPond output should contain 'world'");
 
-        // Check for proper LilyPond \addlyrics block syntax
-        assert!(lilypond.contains("\\addlyrics"), "LilyPond should have \\addlyrics block");
+        // Check for proper LilyPond \lyricsto syntax with voice binding
+        assert!(lilypond.contains("\\lyricsto"), "LilyPond should have \\lyricsto for voice binding");
         assert!(lilypond.contains("hel -- lo"), "LilyPond should have syllabic markers for multi-syllable words");
     }
 
@@ -674,7 +674,7 @@ mod tests {
         settings.convert_lyrics = true;
         let result = super::super::convert_musicxml_to_lilypond(musicxml, Some(settings)).unwrap();
         assert!(result.lilypond_source.contains("test"), "Should include lyric when convert_lyrics=true");
-        assert!(result.lilypond_source.contains("\\addlyrics"), "Should have \\addlyrics block when convert_lyrics=true");
+        assert!(result.lilypond_source.contains("\\lyricsto"), "Should have \\lyricsto binding when convert_lyrics=true");
 
         // Test with convert_lyrics disabled
         let mut settings = ConversionSettings::default();

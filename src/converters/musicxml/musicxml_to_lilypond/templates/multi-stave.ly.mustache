@@ -27,8 +27,14 @@
 }
 
 \score {
-  \new ChoirStaff <<
-    {{{staves}}}
+  <<
+    \new ChoirStaff <<
+      {{{staves}}}
+    >>
+
+    {{#lyrics}}
+    {{{lyrics}}}
+    {{/lyrics}}
   >>
 
   \layout {
