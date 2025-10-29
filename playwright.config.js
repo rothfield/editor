@@ -9,10 +9,10 @@ export default defineConfig({
   testDir: './tests/e2e-pw/tests',
 
   // Test execution
-  fullyParallel: true,
+  fullyParallel: !!process.env.CI,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  workers: process.env.CI ? 1 : 2,
   timeout: 30 * 1000,
   expect: {
     timeout: 5 * 1000,
@@ -20,7 +20,7 @@ export default defineConfig({
 
   // Reporting
   reporter: [
-    ['html'],
+    ['html', { open: 'never' }],
     ['json', { outputFile: 'test-results/results.json' }],
     ['junit', { outputFile: 'test-results/junit.xml' }],
     ['list'],
@@ -29,9 +29,9 @@ export default defineConfig({
   // Global settings
   use: {
     baseURL: 'http://localhost:8080',
-    trace: 'on-first-retry',
-    screenshot: 'only-on-failure',
-    video: 'retain-on-failure',
+    trace: process.env.CI ? 'on-first-retry' : 'off',
+    screenshot: process.env.CI ? 'only-on-failure' : 'off',
+    video: process.env.CI ? 'retain-on-failure' : 'off',
     actionTimeout: 10 * 1000,
   },
 

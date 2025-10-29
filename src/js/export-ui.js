@@ -299,7 +299,14 @@ class ExportUI {
 
       // Step 2: Convert MusicXML to LilyPond using existing template system
       // This uses the proper Rust templates with comprehensive paper directives
-      const resultJson = this.editor.wasmModule.convertMusicXMLToLilyPond(musicxml, null);
+      const settings = JSON.stringify({
+        target_lilypond_version: "2.24.0",
+        language: "English",
+        convert_directions: true,
+        convert_lyrics: true,
+        convert_chord_symbols: true
+      });
+      const resultJson = this.editor.wasmModule.convertMusicXMLToLilyPond(musicxml, settings);
       const result = JSON.parse(resultJson);
 
       if (!result || !result.lilypond_source) {

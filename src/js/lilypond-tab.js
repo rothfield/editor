@@ -92,7 +92,14 @@ class LilyPondTab {
 
       // Convert document to MusicXML, then to LilyPond
       const musicxml = this.editor.wasmModule.exportMusicXML(this.editor.theDocument);
-      const result = this.editor.wasmModule.convertMusicXMLToLilyPond(musicxml, null);
+      const settings = JSON.stringify({
+        target_lilypond_version: "2.24.0",
+        language: "English",
+        convert_directions: true,
+        convert_lyrics: true,
+        convert_chord_symbols: true
+      });
+      const result = this.editor.wasmModule.convertMusicXMLToLilyPond(musicxml, settings);
       const parsed = JSON.parse(result);
 
       if (parsed.lilypond_source) {

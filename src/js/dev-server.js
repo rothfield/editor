@@ -423,6 +423,50 @@ async function injectHotReload(htmlContent) {
         let ws;
         let reconnectTimer;
 
+        // Initialize hotreload enabled state (default to true)
+        const HOTRELOAD_KEY = 'hotreloadEnabled';
+        let localStorageAvailable = true;
+
+        // Check if localStorage is available
+        try {
+          localStorage.setItem('__hotreload_test', '1');
+          localStorage.removeItem('__hotreload_test');
+        } catch (e) {
+          localStorageAvailable = false;
+          console.warn('localStorage not available (incognito mode or disabled), using in-memory state');
+        }
+
+        // In-memory fallback state
+        let hotReloadState = true;
+
+        try {
+          if (localStorageAvailable && !localStorage.hasOwnProperty(HOTRELOAD_KEY)) {
+            localStorage.setItem(HOTRELOAD_KEY, 'true');
+          }
+        } catch (e) {
+          console.warn('Failed to initialize localStorage for hot reload:', e.message);
+        }
+
+        function isHotReloadEnabled() {
+          if (localStorageAvailable) {
+            try {
+              return localStorage.getItem(HOTRELOAD_KEY) === 'true';
+            } catch (e) {
+              console.warn('Failed to read from localStorage:', e.message);
+              return hotReloadState;
+            }
+          }
+          return hotReloadState;
+        }
+
+        // Listen for storage changes (hotreload toggle from other tabs)
+        window.addEventListener('storage', function(e) {
+          if (e.key === HOTRELOAD_KEY) {
+            const enabled = e.newValue === 'true';
+            console.log('Hot reload ' + (enabled ? 'enabled' : 'disabled') + ' (from another tab)');
+          }
+        });
+
         function connectWebSocket() {
           ws = new WebSocket('ws://${HOST}:${PORT}/ws');
 
@@ -437,14 +481,20 @@ async function injectHotReload(htmlContent) {
           ws.onmessage = function(event) {
             const data = JSON.parse(event.data);
             if (data.type === 'reload') {
-              console.log('Hot reload triggered');
-              window.location.reload();
+              if (isHotReloadEnabled()) {
+                console.log('Hot reload triggered');
+                window.location.reload();
+              } else {
+                console.log('Hot reload skipped (disabled by user)');
+              }
             }
           };
 
           ws.onclose = function() {
             console.log('Hot reload disconnected, attempting to reconnect...');
-            reconnectTimer = setTimeout(connectWebSocket, 2000);
+            if (isHotReloadEnabled()) {
+              reconnectTimer = setTimeout(connectWebSocket, 2000);
+            }
           };
 
           ws.onerror = function(error) {
@@ -452,8 +502,12 @@ async function injectHotReload(htmlContent) {
           };
         }
 
-        // Connect WebSocket when page loads
-        connectWebSocket();
+        // Only connect if hot reload is enabled
+        if (isHotReloadEnabled()) {
+          connectWebSocket();
+        } else {
+          console.log('Hot reload is disabled');
+        }
 
         // Cleanup on page unload
         window.addEventListener('beforeunload', function() {
@@ -464,11 +518,66 @@ async function injectHotReload(htmlContent) {
             clearTimeout(reconnectTimer);
           }
         });
+
+        // Expose toggle function for UI control
+        window.toggleHotReload = function() {
+          try {
+            let enabled;
+            if (localStorageAvailable) {
+              try {
+                enabled = localStorage.getItem(HOTRELOAD_KEY) === 'true';
+              } catch (e) {
+                enabled = hotReloadState;
+              }
+            } else {
+              enabled = hotReloadState;
+            }
+
+            const newEnabled = !enabled;
+
+            // Update localStorage if available
+            if (localStorageAvailable) {
+              try {
+                localStorage.setItem(HOTRELOAD_KEY, newEnabled ? 'true' : 'false');
+              } catch (e) {
+                console.warn('Failed to write to localStorage:', e.message);
+              }
+            }
+
+            // Update in-memory state
+            hotReloadState = newEnabled;
+
+            console.log('Hot reload ' + (newEnabled ? 'enabled' : 'disabled'));
+
+            if (newEnabled && !ws) {
+              connectWebSocket();
+            } else if (!newEnabled && ws) {
+              ws.close();
+              ws = null;
+            }
+
+            return newEnabled;
+          } catch (error) {
+            console.error('Error toggling hot reload:', error);
+            return hotReloadState;
+          }
+        };
+
+        // Expose status getter
+        window.isHotReloadEnabled = isHotReloadEnabled;
       })();
     </script>
   `;
 
-  // Insert script before closing body tag
+  // Insert script BEFORE main.js module script to ensure it executes first
+  // This ensures window.toggleHotReload and window.isHotReloadEnabled are defined
+  // before any module scripts try to use them
+  const mainScriptTag = '<script type="module" src="dist/main.js"></script>';
+  if (htmlContent.includes(mainScriptTag)) {
+    return htmlContent.replace(mainScriptTag, `${hotReloadScript}\n    ${mainScriptTag}`);
+  }
+
+  // Fallback: inject at end of body if main.js script not found
   return htmlContent.replace('</body>', `${hotReloadScript}</body>`);
 }
 

@@ -76,6 +76,9 @@ class MusicNotationApp {
       // Setup collapse button
       this.setupPanelCollapseButton();
 
+      // Setup hot reload toggle
+      this.setupHotReloadToggle();
+
       // Initialize LilyPond tabs
       this.initializeLilyPondTabs();
 
@@ -328,6 +331,75 @@ class MusicNotationApp {
     }
 
     console.log('✅ Panel collapse button initialized');
+  }
+
+  /**
+     * Setup hot reload toggle button
+     */
+  setupHotReloadToggle() {
+    const toggleBtn = document.getElementById('hotreload-toggle');
+    const statusSpan = document.getElementById('hotreload-status');
+
+    if (!toggleBtn || !statusSpan) {
+      console.warn('Hot reload toggle button or status not found in DOM');
+      return;
+    }
+
+    // Wait for hot reload functions to be available (injected by dev-server)
+    const waitForHotReload = () => {
+      return new Promise((resolve) => {
+        if (window.toggleHotReload && window.isHotReloadEnabled) {
+          resolve();
+          return;
+        }
+
+        let attempts = 0;
+        const maxAttempts = 40; // 2 seconds at 50ms intervals
+        const checkInterval = setInterval(() => {
+          attempts++;
+          if (window.toggleHotReload && window.isHotReloadEnabled) {
+            clearInterval(checkInterval);
+            resolve();
+          } else if (attempts >= maxAttempts) {
+            clearInterval(checkInterval);
+            console.warn('Hot reload functions not available after 2 seconds (probably not in dev environment)');
+            resolve(); // Continue anyway, with graceful degradation
+          }
+        }, 50);
+      });
+    };
+
+    // Initialize when functions are available
+    waitForHotReload().then(() => {
+      // Update UI based on current state
+      const updateUI = () => {
+        const enabled = window.isHotReloadEnabled?.() ?? true;
+        statusSpan.textContent = enabled ? 'ON' : 'OFF';
+        toggleBtn.style.opacity = enabled ? '1' : '0.6';
+        toggleBtn.style.color = enabled ? 'inherit' : '#9ca3af';
+      };
+
+      // Initial UI update
+      updateUI();
+
+      // Toggle hot reload on button click
+      toggleBtn.addEventListener('click', () => {
+        if (window.toggleHotReload) {
+          try {
+            window.toggleHotReload();
+            updateUI();
+            const enabled = window.isHotReloadEnabled?.() ?? true;
+            console.log(`🔄 Hot reload ${enabled ? 'enabled' : 'disabled'}`);
+          } catch (error) {
+            console.error('❌ Failed to toggle hot reload:', error);
+          }
+        } else {
+          console.warn('Hot reload not available (not in dev environment)');
+        }
+      });
+
+      console.log('✅ Hot reload toggle initialized');
+    });
   }
 
   /**

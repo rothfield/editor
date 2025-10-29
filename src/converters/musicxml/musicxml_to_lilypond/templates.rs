@@ -1,6 +1,54 @@
 //! LilyPond template rendering system
 //!
 //! Provides Mustache-based templates for flexible LilyPond document generation.
+//!
+//! ## Template Variants
+//!
+//! This system maintains two variants of each template to balance rendering quality with security:
+//!
+//! ### Safe Templates (Default)
+//! - `Compact`, `Standard`, `MultiStave`
+//! - **No Scheme expressions** - pass validation in restricted rendering services
+//! - Files: `compact.ly.mustache`, `standard.ly.mustache`, `multi-stave.ly.mustache`
+//! - Use case: Public/untrusted environments, containerized services with strict validation
+//! - Trade-off: Simpler layout, no advanced spacing control
+//!
+//! ### Full Templates (Advanced)
+//! - `CompactFull`, `StandardFull`, `MultiStaveFull`
+//! - **Include Scheme expressions** for advanced layout control
+//! - Files: `compact_less_safe.ly.mustache`, `standard_less_safe.ly.mustache`, `multi-stave_less_safe.ly.mustache`
+//! - Use case: Self-hosted environments with trusted rendering services
+//! - Trade-off: Better visual quality, requires LilyPond with Scheme support
+//!
+//! ## Scheme Expressions Removed from Safe Templates
+//!
+//! The safe variants eliminate:
+//! - Scheme booleans: `##f` → empty string `""` or empty markup `\markup { }`
+//! - Scheme functions: `#ly:one-page-breaking` (page breaking)
+//! - Scheme alists: `#'((basic-distance . 1) ...)` (spacing control)
+//! - Scheme moment functions: `#(ly:make-moment 1/32)` (duration calculations)
+//! - Scheme symbols: `#'italic` (font styling via Scheme)
+//!
+//! ## Migration Guide
+//!
+//! Existing code using `LilyPondTemplate::Compact/Standard/MultiStave` now uses safe templates
+//! by default. This is intentional and improves compatibility with restricted rendering services.
+//!
+//! To use full-featured templates with Scheme:
+//! ```rust,ignore
+//! let template = if parts.len() > 1 {
+//!     LilyPondTemplate::MultiStaveFull
+//! } else if settings.title.is_some() {
+//!     LilyPondTemplate::StandardFull
+//! } else {
+//!     LilyPondTemplate::CompactFull
+//! };
+//! ```
+//!
+//! ## Related Files
+//!
+//! - `lilypond.rs` - Main template selection logic
+//! - `lilypond-service/server.js` - LilyPond rendering service with validation
 
 use serde::Serialize;
 
@@ -9,12 +57,18 @@ use serde::Serialize;
 pub enum LilyPondTemplate {
     /// Minimal template - bare bones, no layout settings (for vanilla LilyPond display)
     Minimal,
-    /// Compact template - minimal dimensions, no branding (for web preview/SVG embedding)
+    /// Compact template (safe) - minimal dimensions, no Scheme expressions (default)
     Compact,
-    /// Standard template - single staff with metadata and compact layout
+    /// Standard template (safe) - single staff with metadata, no Scheme expressions (default)
     Standard,
-    /// Multi-stave template - multiple staves with spacious layout
+    /// Multi-stave template (safe) - multiple staves, no Scheme expressions (default)
     MultiStave,
+    /// Compact template (full) - with advanced Scheme for layout control
+    CompactFull,
+    /// Standard template (full) - with advanced Scheme for layout control
+    StandardFull,
+    /// Multi-stave template (full) - with advanced Scheme for layout control
+    MultiStaveFull,
 }
 
 /// Context data for template rendering
@@ -131,9 +185,14 @@ impl TemplateContextBuilder {
 pub fn get_template_content(template_type: LilyPondTemplate) -> &'static str {
     match template_type {
         LilyPondTemplate::Minimal => include_str!("templates/minimal.ly.mustache"),
+        // Safe templates (default) - pass validation in restricted rendering services
         LilyPondTemplate::Compact => include_str!("templates/compact.ly.mustache"),
         LilyPondTemplate::Standard => include_str!("templates/standard.ly.mustache"),
         LilyPondTemplate::MultiStave => include_str!("templates/multi-stave.ly.mustache"),
+        // Full templates - include advanced Scheme for better layout control
+        LilyPondTemplate::CompactFull => include_str!("templates/compact_less_safe.ly.mustache"),
+        LilyPondTemplate::StandardFull => include_str!("templates/standard_less_safe.ly.mustache"),
+        LilyPondTemplate::MultiStaveFull => include_str!("templates/multi-stave_less_safe.ly.mustache"),
     }
 }
 

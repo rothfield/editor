@@ -182,6 +182,8 @@ No report UI is opened; artifacts & traces go to `./artifacts`.
 ### Overview
 This project uses Playwright for E2E testing, running in Docker containers to ensure consistent cross-browser testing (especially for WebKit/Safari on non-compatible systems).
 
+**⚠️ CRITICAL: Do not open the Playwright HTML report browser window.** Always configure Playwright with `{ open: 'never' }` and rely on test output, logs, and artifacts saved to disk instead. This keeps the CLI experience clean and avoids unexpected browser windows.
+
 ### Core Testing Commands
 
 **Local Development:**
@@ -370,5 +372,50 @@ docker run --rm -v $(pwd):/work -w /work -e CI=1 \
 10. ❌ **Testing visuals** instead of inspector tab content
 11. ❌ **Missing `data-testid` attributes** on interactive elements
 12. ❌ **Ignoring LilyPond/MusicXML output** when verifying features
+
+## IMPORTANT: WASM Function Integration Pattern
+
+**⚠️ DO NOT FORGET THIS - It's a waste of time to debug later**
+
+When adding a new WASM function that needs to be called from JavaScript:
+
+### The Pattern
+1. ✅ Add `#[wasm_bindgen]` to Rust function
+2. ✅ Rebuild WASM: `npm run build-wasm` (generates new `.wasm` + `.js` exports)
+3. ⚠️ **CRITICAL: Add the function to the JavaScript wrapper object in `src/js/editor.js`** (lines ~64-101)
+
+### Example - DO NOT SKIP STEP 3
+```rust
+// src/api/core.rs
+#[wasm_bindgen(js_name = generateIRJson)]
+pub fn generate_ir_json(document_js: JsValue) -> Result<String, JsValue> {
+    // implementation
+}
+```
+
+The function is now **exported from WASM**, but JavaScript code using `this.wasmModule.generateIRJson()` will **FAIL** unless you add it here:
+
+```javascript
+// src/js/editor.js - lines ~64-101
+this.wasmModule = {
+    // ... other functions
+    generateIRJson: wasmModule.generateIRJson  // ⚠️ ADD THIS LINE OR IT WON'T WORK
+};
+```
+
+### Why This Happens
+- `wasm-pack` exports all `#[wasm_bindgen]` functions to the module's public API
+- The Editor class wraps WASM functions in `this.wasmModule` for organized access
+- If you don't add the function to the wrapper, `this.wasmModule.functionName` will be `undefined`
+- JavaScript code checking `typeof this.wasmModule?.functionName === 'function'` will fail silently
+- This wastes debugging time - the function exists in WASM but isn't accessible from JS
+
+### Quick Checklist for New WASM Functions
+- [ ] Function works in Rust tests (`cargo test`)
+- [ ] Added `#[wasm_bindgen]` decorator
+- [ ] Ran `npm run build-wasm` successfully
+- [ ] **Added to `this.wasmModule` object in `src/js/editor.js`** ← REQUIRED
+- [ ] JavaScript code calls `this.wasmModule.functionName()`
+- [ ] Tested in browser with hard refresh (Ctrl+Shift+R)
 
 <!-- MANUAL ADDITIONS END -->

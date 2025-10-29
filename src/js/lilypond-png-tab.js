@@ -180,8 +180,17 @@ class LilyPondPngTab {
       }
 
       console.log('[LilyPondDisplay] Converting MusicXML to LilyPond...');
-      // Convert to LilyPond (uses compact template automatically)
-      const result = this.editor.wasmModule.convertMusicXMLToLilyPond(musicxml, null);
+      // Convert to LilyPond with no title (forces Compact template)
+      const settings = JSON.stringify({
+        target_lilypond_version: "2.24.0",
+        language: "English",
+        convert_directions: true,
+        convert_lyrics: true,
+        convert_chord_symbols: true,
+        title: null,  // Explicitly clear title to use compact template
+        composer: null
+      });
+      const result = this.editor.wasmModule.convertMusicXMLToLilyPond(musicxml, settings);
       const parsed = JSON.parse(result);
 
       if (!parsed.lilypond_source) {

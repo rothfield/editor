@@ -95,7 +95,9 @@ class MusicNotationEditor {
         exportMusicXML: wasmModule.exportMusicXML,
         convertMusicXMLToLilyPond: wasmModule.convertMusicXMLToLilyPond,
         // MIDI export API
-        exportMIDI: wasmModule.exportMIDI
+        exportMIDI: wasmModule.exportMIDI,
+        // IR (Intermediate Representation) export API
+        generateIRJson: wasmModule.generateIRJson
       };
 
       // Initialize OSMD renderer for staff notation
@@ -3388,12 +3390,17 @@ class MusicNotationEditor {
     }
 
     try {
-      // Call WASM function to generate IR (ExportLine → ExportMeasure → ExportEvent)
-      // This will be implemented by adding a public WASM export in cell_to_ir.rs
-      if (typeof this.wasmExports?.generateIR === 'function') {
-        const irData = this.wasmExports.generateIR(this.theDocument);
-        irDisplay.textContent = JSON.stringify(irData, null, 2);
+      // Call WASM function to generate IR as JSON (ExportLine → ExportMeasure → ExportEvent)
+      if (typeof this.wasmModule?.generateIRJson === 'function') {
+        console.log('[IR] Calling generateIRJson...');
+        const irJson = this.wasmModule.generateIRJson(this.theDocument);
+        console.log('[IR] Generated successfully, length:', irJson.length);
+        irDisplay.textContent = irJson;
       } else {
+        // Debug: list available WASM functions
+        console.warn('[IR] generateIRJson not found in wasmModule');
+        console.warn('[IR] Available functions:', Object.keys(this.wasmModule || {}).filter(k => typeof this.wasmModule[k] === 'function').slice(0, 10));
+
         // Fallback if WASM function not yet implemented
         irDisplay.textContent = '# IR (Intermediate Representation) not yet exposed via WASM\n\n' +
           '# To enable IR display:\n' +
@@ -3453,7 +3460,14 @@ class MusicNotationEditor {
       const musicxml = await this.exportMusicXML();
 
       // Convert to LilyPond
-      const resultJson = this.wasmModule.convertMusicXMLToLilyPond(musicxml, null);
+      const settings = JSON.stringify({
+        target_lilypond_version: "2.24.0",
+        language: "English",
+        convert_directions: true,
+        convert_lyrics: true,
+        convert_chord_symbols: true
+      });
+      const resultJson = this.wasmModule.convertMusicXMLToLilyPond(musicxml, settings);
       const result = JSON.parse(resultJson);
 
       // Display the LilyPond source
