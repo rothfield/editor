@@ -2751,10 +2751,37 @@ class MusicNotationEditor {
       this.handleDoubleClick(event);
     });
 
-    // Click events - just focus the editor
+    // Click events - focus the editor and set line focus based on click position
     this.element.addEventListener('click', (event) => {
       this.element.focus();
+
+      // Focus the closest line based on click position
+      const rect = this.element.getBoundingClientRect();
+      const y = event.clientY - rect.top;
+      const lineIndex = this.calculateLineFromY(y);
+
+      if (lineIndex !== null && this.theDocument && this.theDocument.state) {
+        this.theDocument.state.cursor.stave = lineIndex;
+      }
     });
+
+    // Also attach click handler to editor-container div for clicks outside notation lines
+    const editorContainer = document.getElementById('editor-container');
+    if (editorContainer) {
+      editorContainer.addEventListener('click', (event) => {
+        // Ignore clicks on notation lines themselves (let their handlers deal with it)
+        if (event.target.closest('.notation-line')) {
+          return;
+        }
+
+        this.element.focus();
+
+        // Focus the first line by default when clicking the container
+        if (this.theDocument && this.theDocument.state) {
+          this.theDocument.state.cursor.stave = 0;
+        }
+      });
+    }
   }
 
   /**
@@ -2992,9 +3019,11 @@ class MusicNotationEditor {
     const lineContainers = this.element.querySelectorAll('.notation-line');
     const editorRect = this.element.getBoundingClientRect();
 
-    console.log(`📍 calculateLineFromY: clicked at Y=${y} (editor-relative)`);
+    if (lineContainers.length === 0) {
+      return 0;
+    }
 
-    // Check each line container to see which one contains the click
+    // First, check if click is directly within any line
     for (let lineIdx = 0; lineIdx < lineContainers.length; lineIdx++) {
       const lineContainer = lineContainers[lineIdx];
       const lineRect = lineContainer.getBoundingClientRect();
@@ -3003,17 +3032,34 @@ class MusicNotationEditor {
       const lineTop = lineRect.top - editorRect.top;
       const lineBottom = lineRect.bottom - editorRect.top;
 
-      console.log(`  Line ${lineIdx}: Y=${lineTop} to ${lineBottom}`);
-
       // Check if click Y falls within this line
       if (y >= lineTop && y <= lineBottom) {
-        console.log(`  ✓ Click is in line ${lineIdx}`);
         return lineIdx;
       }
     }
 
-    console.log(`  ✗ Click not in any line, defaulting to 0`);
-    return 0; // Default to first line if no match
+    // If not directly in any line, find the closest line
+    let closestLineIdx = 0;
+    let minDistance = Infinity;
+
+    for (let lineIdx = 0; lineIdx < lineContainers.length; lineIdx++) {
+      const lineContainer = lineContainers[lineIdx];
+      const lineRect = lineContainer.getBoundingClientRect();
+
+      const lineTop = lineRect.top - editorRect.top;
+      const lineBottom = lineRect.bottom - editorRect.top;
+      const lineCenterY = (lineTop + lineBottom) / 2;
+
+      // Calculate distance to line center
+      const distance = Math.abs(y - lineCenterY);
+
+      if (distance < minDistance) {
+        minDistance = distance;
+        closestLineIdx = lineIdx;
+      }
+    }
+
+    return closestLineIdx;
   }
 
   /**
