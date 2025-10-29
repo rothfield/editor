@@ -286,7 +286,7 @@ pub fn process_beat(
             if let BeatElement::Note { slur_indicator, .. } = element {
                 match slur_indicator {
                     SlurIndicator::SlurStart | SlurIndicator::SlurEnd => {
-                        slur_marked_indices.push(idx);
+                        slur_marked_indices.push((idx, slur_indicator));
                     }
                     SlurIndicator::None => {}
                 }
@@ -295,8 +295,8 @@ pub fn process_beat(
 
         // If we have slur markers, determine the span they cover
         if !slur_marked_indices.is_empty() {
-            let min_idx = *slur_marked_indices.iter().min().unwrap();
-            let max_idx = *slur_marked_indices.iter().max().unwrap();
+            let min_idx = *slur_marked_indices.iter().map(|(idx, _)| idx).min().unwrap_or(&0);
+            let max_idx = *slur_marked_indices.iter().map(|(idx, _)| idx).max().unwrap_or(&0);
 
             // Mark the first note in the slur span with "start"
             slur_types[min_idx] = Some("start");
