@@ -2668,7 +2668,8 @@ class MusicNotationEditor {
         this.dragStartCol = col;
 
         // Call WASM to handle mouse down (sets cursor, starts selection)
-        const diff = this.wasmModule.mouseDown(lineIndex, col);
+        // Convert to integers since WASM expects usize
+        const diff = this.wasmModule.mouseDown(Math.floor(lineIndex), Math.floor(col));
         this.updateCursorFromWASM(diff);
       }
 
@@ -2701,7 +2702,8 @@ class MusicNotationEditor {
 
       if (lineIndex !== null && col !== null) {
         // Call WASM to handle mouse move (extends selection)
-        const diff = this.wasmModule.mouseMove(lineIndex, col);
+        // Convert to integers since WASM expects usize
+        const diff = this.wasmModule.mouseMove(Math.floor(lineIndex), Math.floor(col));
         this.updateCursorFromWASM(diff);
 
         // Prevent default to avoid text selection behavior
