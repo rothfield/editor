@@ -94,7 +94,7 @@ pub struct SlurSpan {
 #[wasm_bindgen]
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
 pub struct Position {
-    pub stave: usize,
+    pub line: usize,
     pub column: usize,
 }
 
@@ -136,17 +136,17 @@ impl SlurSpan {
 
     /// Get the horizontal span of this slur
     pub fn horizontal_span(&self) -> usize {
-        if self.start.stave == self.end.stave {
+        if self.start.line == self.end.line {
             self.end.column.abs_diff(self.start.column) + 1
         } else {
-            0 // Multi-stave slur (not supported in POC)
+            0 // Multi-line slur (not supported in POC)
         }
     }
 
     /// Check if this slur contains a given position
-    pub fn contains(&self, stave: usize, column: usize) -> bool {
-        // Only check if stave matches
-        if stave != self.start.stave {
+    pub fn contains(&self, line: usize, column: usize) -> bool {
+        // Only check if line matches
+        if line != self.start.line {
             return false;
         }
 
@@ -165,15 +165,15 @@ impl SlurSpan {
     }
 }
 
-/// Position in the document (stave, column)
+/// Position in the document (line, column)
 /// This is the fundamental position type used for cursor and selection
 #[wasm_bindgen]
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Pos {
-    /// Stave index (0-based, line number)
-    pub stave: usize,
+    /// Line index (0-based, line number)
+    pub line: usize,
 
-    /// Column within the stave (0-based, cell index)
+    /// Column within the line (0-based, cell index)
     pub col: usize,
 }
 
@@ -181,27 +181,27 @@ pub struct Pos {
 impl Pos {
     /// Create a new position
     #[wasm_bindgen(constructor)]
-    pub fn new(stave: usize, col: usize) -> Self {
-        Self { stave, col }
+    pub fn new(line: usize, col: usize) -> Self {
+        Self { line, col }
     }
 
     /// Create position at origin
     pub fn origin() -> Self {
-        Self { stave: 0, col: 0 }
+        Self { line: 0, col: 0 }
     }
 }
 
 impl Pos {
     /// Move position relative to current location
-    pub fn move_by(&self, delta_stave: isize, delta_col: isize) -> Self {
-        let stave = self.stave.saturating_add_signed(delta_stave);
+    pub fn move_by(&self, delta_line: isize, delta_col: isize) -> Self {
+        let line = self.line.saturating_add_signed(delta_line);
         let col = self.col.saturating_add_signed(delta_col);
-        Self { stave, col }
+        Self { line, col }
     }
 
     /// Compare two positions
     pub fn compare(&self, other: &Self) -> std::cmp::Ordering {
-        self.stave.cmp(&other.stave)
+        self.line.cmp(&other.line)
             .then(self.col.cmp(&other.col))
     }
 }
@@ -290,8 +290,8 @@ impl Selection {
 
         let (start, end) = self.range();
 
-        // Multi-stave not yet supported - only check same stave
-        if pos.stave != start.stave || pos.stave != end.stave {
+        // Multi-line not yet supported - only check same line
+        if pos.line != start.line || pos.line != end.line {
             return false;
         }
 
@@ -305,10 +305,10 @@ impl Selection {
         }
 
         let (start, end) = self.range();
-        if start.stave == end.stave {
+        if start.line == end.line {
             end.col.saturating_sub(start.col) + 1
         } else {
-            0 // Multi-stave not yet supported
+            0 // Multi-line not yet supported
         }
     }
 }
@@ -616,9 +616,9 @@ impl SelectionInfo {
 /// This tells JavaScript what changed so it can update only the necessary parts
 /// Note: This is serialized to JsValue manually, not using wasm_bindgen directly
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct DocDiff {
-    /// Which staves changed (for multi-line future support)
-    pub changed_staves: Vec<usize>,
+pub struct EditorDiff {
+    /// Which lines changed (for efficient re-rendering)
+    pub dirty_lines: Vec<usize>,
 
     /// New caret information
     pub caret: CaretInfo,
@@ -626,3 +626,6 @@ pub struct DocDiff {
     /// New selection information (if any)
     pub selection: Option<SelectionInfo>,
 }
+
+/// Legacy alias for backward compatibility
+pub type DocDiff = EditorDiff;

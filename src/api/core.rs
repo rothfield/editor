@@ -4,7 +4,7 @@
 //! and token combination using the recursive descent parser.
 
 use wasm_bindgen::prelude::*;
-use crate::models::{Cell, PitchSystem, Document, Line, OrnamentIndicator, OrnamentPositionType};
+use crate::models::{Cell, PitchSystem, Document, Line, OrnamentIndicator, OrnamentPositionType, Pos, EditorDiff, CaretInfo, SelectionInfo};
 use crate::renderers::layout_engine::{extract_ornament_spans, find_anchor_cell, OrnamentGroups};
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -2210,6 +2210,245 @@ pub fn extend_selection() -> Result<(), JsValue> {
     doc.state.selection_manager.extend_selection(&cursor_pos);
 
     Ok(())
+}
+
+// ==================== Cursor Movement Commands ====================
+
+/// Helper to create EditorDiff from current document state
+fn create_editor_diff(doc: &Document, dirty_line: Option<usize>) -> EditorDiff {
+    let dirty_lines = if let Some(line) = dirty_line {
+        vec![line]
+    } else {
+        vec![]
+    };
+
+    let caret = CaretInfo {
+        caret: doc.state.cursor,
+        desired_col: doc.state.selection_manager.desired_col,
+    };
+
+    let selection = doc.state.selection_manager.get_selection()
+        .map(|s| SelectionInfo::from_selection(s));
+
+    EditorDiff {
+        dirty_lines,
+        caret,
+        selection,
+    }
+}
+
+#[wasm_bindgen(js_name = moveLeft)]
+pub fn move_left(extend: bool) -> Result<JsValue, JsValue> {
+    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let doc = doc_guard.as_mut()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    let new_pos = doc.prev_caret(doc.state.cursor);
+
+    if !extend {
+        doc.state.selection_manager.clear_selection();
+    } else if doc.state.selection_manager.current_selection.is_none() {
+        doc.state.selection_manager.start_selection(doc.state.cursor);
+    }
+
+    doc.state.cursor = new_pos;
+    doc.state.selection_manager.desired_col = new_pos.col;
+
+    if extend {
+        doc.state.selection_manager.extend_selection(&new_pos);
+    }
+
+    let diff = create_editor_diff(&doc, Some(new_pos.line));
+    serde_wasm_bindgen::to_value(&diff)
+        .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
+}
+
+#[wasm_bindgen(js_name = moveRight)]
+pub fn move_right(extend: bool) -> Result<JsValue, JsValue> {
+    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let doc = doc_guard.as_mut()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    let new_pos = doc.next_caret(doc.state.cursor);
+
+    if !extend {
+        doc.state.selection_manager.clear_selection();
+    } else if doc.state.selection_manager.current_selection.is_none() {
+        doc.state.selection_manager.start_selection(doc.state.cursor);
+    }
+
+    doc.state.cursor = new_pos;
+    doc.state.selection_manager.desired_col = new_pos.col;
+
+    if extend {
+        doc.state.selection_manager.extend_selection(&new_pos);
+    }
+
+    let diff = create_editor_diff(&doc, Some(new_pos.line));
+    serde_wasm_bindgen::to_value(&diff)
+        .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
+}
+
+#[wasm_bindgen(js_name = moveUp)]
+pub fn move_up(extend: bool) -> Result<JsValue, JsValue> {
+    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let doc = doc_guard.as_mut()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    let desired_col = doc.state.selection_manager.desired_col;
+    let new_pos = doc.caret_up(doc.state.cursor, desired_col);
+
+    if !extend {
+        doc.state.selection_manager.clear_selection();
+    } else if doc.state.selection_manager.current_selection.is_none() {
+        doc.state.selection_manager.start_selection(doc.state.cursor);
+    }
+
+    doc.state.cursor = new_pos;
+
+    if extend {
+        doc.state.selection_manager.extend_selection(&new_pos);
+    }
+
+    let diff = create_editor_diff(&doc, Some(new_pos.line));
+    serde_wasm_bindgen::to_value(&diff)
+        .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
+}
+
+#[wasm_bindgen(js_name = moveDown)]
+pub fn move_down(extend: bool) -> Result<JsValue, JsValue> {
+    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let doc = doc_guard.as_mut()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    let desired_col = doc.state.selection_manager.desired_col;
+    let new_pos = doc.caret_down(doc.state.cursor, desired_col);
+
+    if !extend {
+        doc.state.selection_manager.clear_selection();
+    } else if doc.state.selection_manager.current_selection.is_none() {
+        doc.state.selection_manager.start_selection(doc.state.cursor);
+    }
+
+    doc.state.cursor = new_pos;
+
+    if extend {
+        doc.state.selection_manager.extend_selection(&new_pos);
+    }
+
+    let diff = create_editor_diff(&doc, Some(new_pos.line));
+    serde_wasm_bindgen::to_value(&diff)
+        .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
+}
+
+#[wasm_bindgen(js_name = moveHome)]
+pub fn move_home(extend: bool) -> Result<JsValue, JsValue> {
+    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let doc = doc_guard.as_mut()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    let new_pos = doc.caret_line_start(doc.state.cursor);
+
+    if !extend {
+        doc.state.selection_manager.clear_selection();
+    } else if doc.state.selection_manager.current_selection.is_none() {
+        doc.state.selection_manager.start_selection(doc.state.cursor);
+    }
+
+    doc.state.cursor = new_pos;
+    doc.state.selection_manager.desired_col = 0;
+
+    if extend {
+        doc.state.selection_manager.extend_selection(&new_pos);
+    }
+
+    let diff = create_editor_diff(&doc, Some(new_pos.line));
+    serde_wasm_bindgen::to_value(&diff)
+        .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
+}
+
+#[wasm_bindgen(js_name = moveEnd)]
+pub fn move_end(extend: bool) -> Result<JsValue, JsValue> {
+    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let doc = doc_guard.as_mut()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    let new_pos = doc.caret_line_end(doc.state.cursor);
+
+    if !extend {
+        doc.state.selection_manager.clear_selection();
+    } else if doc.state.selection_manager.current_selection.is_none() {
+        doc.state.selection_manager.start_selection(doc.state.cursor);
+    }
+
+    doc.state.cursor = new_pos;
+    doc.state.selection_manager.desired_col = new_pos.col;
+
+    if extend {
+        doc.state.selection_manager.extend_selection(&new_pos);
+    }
+
+    let diff = create_editor_diff(&doc, Some(new_pos.line));
+    serde_wasm_bindgen::to_value(&diff)
+        .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
+}
+
+#[wasm_bindgen(js_name = mouseDown)]
+pub fn mouse_down(pos_js: JsValue) -> Result<JsValue, JsValue> {
+    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let doc = doc_guard.as_mut()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    let pos: Pos = serde_wasm_bindgen::from_value(pos_js)
+        .map_err(|e| JsValue::from_str(&format!("Invalid position: {}", e)))?;
+
+    let clamped_pos = doc.clamp_pos(pos);
+    doc.state.cursor = clamped_pos;
+    doc.state.selection_manager.clear_selection();
+    doc.state.selection_manager.start_selection(clamped_pos);
+    doc.state.selection_manager.desired_col = clamped_pos.col;
+
+    let diff = create_editor_diff(&doc, Some(clamped_pos.line));
+    serde_wasm_bindgen::to_value(&diff)
+        .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
+}
+
+#[wasm_bindgen(js_name = mouseMove)]
+pub fn mouse_move(pos_js: JsValue) -> Result<JsValue, JsValue> {
+    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let doc = doc_guard.as_mut()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    let pos: Pos = serde_wasm_bindgen::from_value(pos_js)
+        .map_err(|e| JsValue::from_str(&format!("Invalid position: {}", e)))?;
+
+    let clamped_pos = doc.clamp_pos(pos);
+    doc.state.cursor = clamped_pos;
+    doc.state.selection_manager.extend_selection(&clamped_pos);
+    doc.state.selection_manager.desired_col = clamped_pos.col;
+
+    let diff = create_editor_diff(&doc, Some(clamped_pos.line));
+    serde_wasm_bindgen::to_value(&diff)
+        .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
+}
+
+#[wasm_bindgen(js_name = mouseUp)]
+pub fn mouse_up(pos_js: JsValue) -> Result<JsValue, JsValue> {
+    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let doc = doc_guard.as_mut()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    let pos: Pos = serde_wasm_bindgen::from_value(pos_js)
+        .map_err(|e| JsValue::from_str(&format!("Invalid position: {}", e)))?;
+
+    let clamped_pos = doc.clamp_pos(pos);
+    doc.state.cursor = clamped_pos;
+    doc.state.selection_manager.extend_selection(&clamped_pos);
+    doc.state.selection_manager.desired_col = clamped_pos.col;
+
+    let diff = create_editor_diff(&doc, Some(clamped_pos.line));
+    serde_wasm_bindgen::to_value(&diff)
+        .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
 }
 
 #[cfg(test)]

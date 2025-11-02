@@ -128,7 +128,18 @@ class MusicNotationEditor {
         setSelection: wasmModule.setSelection,
         clearSelection: wasmModule.clearSelection,
         startSelection: wasmModule.startSelection,
-        extendSelection: wasmModule.extendSelection
+        extendSelection: wasmModule.extendSelection,
+        // Cursor Movement API
+        moveLeft: wasmModule.moveLeft,
+        moveRight: wasmModule.moveRight,
+        moveUp: wasmModule.moveUp,
+        moveDown: wasmModule.moveDown,
+        moveHome: wasmModule.moveHome,
+        moveEnd: wasmModule.moveEnd,
+        // Mouse API
+        mouseDown: wasmModule.mouseDown,
+        mouseMove: wasmModule.mouseMove,
+        mouseUp: wasmModule.mouseUp
       };
 
       // Initialize OSMD renderer for staff notation
@@ -820,6 +831,52 @@ class MusicNotationEditor {
     return clampedPosition;
   }
 
+  /**
+     * Update cursor and selection from WASM EditorDiff result
+     * @param {EditorDiff} diff - The diff returned from WASM commands
+     */
+  updateCursorFromWASM(diff) {
+    if (!this.theDocument || !this.theDocument.state) {
+      return;
+    }
+
+    // Update cursor position (WASM uses 'line' and 'col', JS uses 'stave' and 'column')
+    if (diff.caret && diff.caret.caret) {
+      this.theDocument.state.cursor.stave = diff.caret.caret.line;
+      this.theDocument.state.cursor.column = diff.caret.caret.col;
+
+      // Store desired_col for debug HUD
+      if (!this.theDocument.state.desired_col) {
+        this.theDocument.state.desired_col = 0;
+      }
+      this.theDocument.state.desired_col = diff.caret.desired_col;
+    }
+
+    // Update selection if present
+    if (diff.selection) {
+      // Map from WASM anchor/head model to JS cell-based selection
+      // For now, we store the WASM selection info directly
+      this.theDocument.state.selection = {
+        anchor: diff.selection.anchor,
+        head: diff.selection.head,
+        start: diff.selection.start,
+        end: diff.selection.end,
+        is_empty: diff.selection.is_empty,
+        is_forward: diff.selection.is_forward,
+        active: !diff.selection.is_empty
+      };
+    } else {
+      // Clear selection if WASM returned null
+      this.theDocument.state.selection = null;
+    }
+
+    // Update visual displays
+    this.updateCursorPositionDisplay();
+    this.updateCursorVisualPosition();
+    this.showCursor();
+    this.updateSelectionDisplay();
+  }
+
 
   /**
      * Get pitch system name from enum value
@@ -999,40 +1056,37 @@ class MusicNotationEditor {
      * Handle Shift+key commands (selection)
      */
   handleShiftCommand(key) {
-    let handled = false;
+    try {
+      let diff;
 
-    switch (key) {
-      case 'ArrowLeft':
-        this.extendSelectionLeft();
-        handled = true;
-        break;
-      case 'ArrowRight':
-        this.extendSelectionRight();
-        handled = true;
-        break;
-      case 'ArrowUp':
-        this.extendSelectionUp();
-        handled = true;
-        break;
-      case 'ArrowDown':
-        this.extendSelectionDown();
-        handled = true;
-        break;
-      case 'Home':
-        this.extendSelectionToStart();
-        handled = true;
-        break;
-      case 'End':
-        this.extendSelectionToEnd();
-        handled = true;
-        break;
-      default:
-        // Ignore non-selection Shift commands (like Shift+#, Shift alone, etc.)
-        return;
-    }
+      switch (key) {
+        case 'ArrowLeft':
+          diff = this.wasmModule.moveLeft(true);
+          break;
+        case 'ArrowRight':
+          diff = this.wasmModule.moveRight(true);
+          break;
+        case 'ArrowUp':
+          diff = this.wasmModule.moveUp(true);
+          break;
+        case 'ArrowDown':
+          diff = this.wasmModule.moveDown(true);
+          break;
+        case 'Home':
+          diff = this.wasmModule.moveHome(true);
+          break;
+        case 'End':
+          diff = this.wasmModule.moveEnd(true);
+          break;
+        default:
+          // Ignore non-selection Shift commands (like Shift+#, Shift alone, etc.)
+          return;
+      }
 
-    if (handled) {
-      this.updateSelectionDisplay();
+      // Update cursor and selection from WASM diff
+      this.updateCursorFromWASM(diff);
+    } catch (error) {
+      console.error('Selection extension error:', error);
     }
   }
 
@@ -1074,203 +1128,38 @@ class MusicNotationEditor {
      * Handle navigation keys with enhanced functionality
      */
   handleNavigation(key) {
-    switch (key) {
-      case 'ArrowLeft':
-        this.navigateLeft();
-        break;
-      case 'ArrowRight':
-        this.navigateRight();
-        break;
-      case 'ArrowUp':
-        this.navigateUp();
-        break;
-      case 'ArrowDown':
-        this.navigateDown();
-        break;
-      case 'Home':
-        this.navigateHome();
-        break;
-      case 'End':
-        this.navigateEnd();
-        break;
-      default:
-        console.log('Unknown navigation key:', key);
-        return;
-    }
-  }
-
-  /**
-     * Navigate left one stop (cell or ornament)
-     */
-  navigateLeft() {
-    logger.debug(LOG_CATEGORIES.CURSOR, 'Navigate left');
-
-    // Get current position and check if we're inside a cell
-    const currentPos = this.getCursorPosition();
-    const { cellIndex, charOffsetInCell } = this.charPosToCellIndex(currentPos);
-
-    // If inside a cell (not at start), move to beginning of current cell
-    if (charOffsetInCell > 0) {
-      // cellIndexToCharPos returns position AFTER a cell, so for start of cell use previous cell's end
-      const charPos = cellIndex === 0 ? 0 : this.cellIndexToCharPos(cellIndex - 1);
-      this.setCursorPosition(charPos);
-      logger.debug(LOG_CATEGORIES.CURSOR, 'Moved to start of current cell', {
-        cellIndex,
-        newCharPos: charPos
-      });
-      return;
-    }
-
-    // At start of a cell, move to previous cell/line
-    const stops = this.getNavigableStops();
-    if (stops.length === 0) return;
-
-    // Find current stop
-    const currentStop = this.getCurrentStop();
-    if (!currentStop) {
-      this.setCursorPosition(0);
-      return;
-    }
-
-    if (currentStop.stopIndex > 0) {
-      // Move to previous stop within current line (to the START of the previous cell)
-      const prevStop = stops[currentStop.stopIndex - 1];
-      const charPos = prevStop.cellIndex === 0 ? 0 : this.cellIndexToCharPos(prevStop.cellIndex - 1);
-      this.setCursorPosition(charPos);
-      logger.debug(LOG_CATEGORIES.CURSOR, 'Moved to previous stop', {
-        stopIndex: prevStop.stopIndex,
-        cellIndex: prevStop.cellIndex
-      });
-    } else if (currentStop.stopIndex === 0 && this.theDocument && this.theDocument.state) {
-      // At beginning of current line - move to end of previous line
-      const currentStave = this.theDocument.state.cursor.stave;
-      if (currentStave > 0) {
-        const prevStave = currentStave - 1;
-        this.theDocument.state.cursor.stave = prevStave;
-
-        // Move to end of previous line
-        const prevLine = this.theDocument.lines[prevStave];
-        if (prevLine) {
-          const prevMaxCharPos = this.calculateMaxCharPosition(prevLine);
-          this.setCursorPosition(prevMaxCharPos);
-          logger.debug(LOG_CATEGORIES.CURSOR, `Navigate left to end of previous line`, {
-            stave: prevStave,
-            charPos: prevMaxCharPos
-          });
-        }
+    try {
+      let diff;
+      switch (key) {
+        case 'ArrowLeft':
+          diff = this.wasmModule.moveLeft(false);
+          break;
+        case 'ArrowRight':
+          diff = this.wasmModule.moveRight(false);
+          break;
+        case 'ArrowUp':
+          diff = this.wasmModule.moveUp(false);
+          break;
+        case 'ArrowDown':
+          diff = this.wasmModule.moveDown(false);
+          break;
+        case 'Home':
+          diff = this.wasmModule.moveHome(false);
+          break;
+        case 'End':
+          diff = this.wasmModule.moveEnd(false);
+          break;
+        default:
+          console.log('Unknown navigation key:', key);
+          return;
       }
+      // Update cursor display from diff
+      this.updateCursorFromWASM(diff);
+    } catch (error) {
+      console.error('Navigation error:', error);
     }
   }
 
-  /**
-     * Navigate right one stop (cell or ornament)
-     */
-  navigateRight() {
-    logger.debug(LOG_CATEGORIES.CURSOR, 'Navigate right');
-
-    // Get current position and check if we're at end of cell
-    const currentPos = this.getCursorPosition();
-    const { cellIndex, charOffsetInCell } = this.charPosToCellIndex(currentPos);
-
-    const currentStave = this.theDocument?.state?.cursor?.stave || 0;
-    const line = this.theDocument?.lines?.[currentStave];
-    const cell = line?.cells?.[cellIndex];
-
-    // If not at end of cell, move to end of current cell
-    if (cell && charOffsetInCell < cell.char.length) {
-      const charPos = this.cellIndexToCharPos(cellIndex);
-      this.setCursorPosition(charPos);
-      logger.debug(LOG_CATEGORIES.CURSOR, 'Moved to end of current cell', {
-        cellIndex,
-        newCharPos: charPos
-      });
-      return;
-    }
-
-    // At end of a cell, move to next cell/line
-    const stops = this.getNavigableStops();
-    if (stops.length === 0) return;
-
-    // Find current stop
-    const currentStop = this.getCurrentStop();
-    if (!currentStop) {
-      this.setCursorPosition(0);
-      return;
-    }
-
-    if (currentStop.stopIndex < stops.length - 1) {
-      // Move to next stop within current line
-      const nextStop = stops[currentStop.stopIndex + 1];
-      const charPos = this.cellIndexToCharPos(nextStop.cellIndex);
-      this.setCursorPosition(charPos);
-      logger.debug(LOG_CATEGORIES.CURSOR, 'Moved to next stop', {
-        stopIndex: nextStop.stopIndex,
-        cellIndex: nextStop.cellIndex
-      });
-    } else if (currentStop.stopIndex === stops.length - 1 && this.theDocument && this.theDocument.state && this.theDocument.lines) {
-      // At end of current line - move to beginning of next line
-      const currentStaveForMove = this.theDocument.state.cursor.stave;
-      if (currentStaveForMove < this.theDocument.lines.length - 1) {
-        this.theDocument.state.cursor.stave = currentStaveForMove + 1;
-        this.setCursorPosition(0);
-        logger.debug(LOG_CATEGORIES.CURSOR, `Navigate right to beginning of next line`, {
-          stave: currentStaveForMove + 1
-        });
-      }
-    }
-  }
-
-  /**
-     * Navigate up to previous line, preserving column position
-     */
-  navigateUp() {
-    if (!this.theDocument || !this.theDocument.state) {
-      return;
-    }
-
-    const currentStave = this.theDocument.state.cursor.stave;
-    if (currentStave > 0) {
-      const currentCharPos = this.getCursorPosition();
-      this.theDocument.state.cursor.stave = currentStave - 1;
-
-      // Preserve column position: clamp to max char pos of previous line
-      const prevLine = this.theDocument.lines[currentStave - 1];
-      if (prevLine) {
-        const prevMaxCharPos = this.calculateMaxCharPosition(prevLine);
-        const targetCharPos = Math.min(currentCharPos, prevMaxCharPos);
-        this.setCursorPosition(targetCharPos);
-        logger.debug(LOG_CATEGORIES.CURSOR, `Navigate up to stave ${currentStave - 1}`, {
-          charPos: targetCharPos
-        });
-      }
-    }
-  }
-
-  /**
-     * Navigate down to next line, preserving column position
-     */
-  navigateDown() {
-    if (!this.theDocument || !this.theDocument.state || !this.theDocument.lines) {
-      return;
-    }
-
-    const currentStave = this.theDocument.state.cursor.stave;
-    if (currentStave < this.theDocument.lines.length - 1) {
-      const currentCharPos = this.getCursorPosition();
-      this.theDocument.state.cursor.stave = currentStave + 1;
-
-      // Preserve column position: clamp to max char pos of next line
-      const nextLine = this.theDocument.lines[currentStave + 1];
-      if (nextLine) {
-        const nextMaxCharPos = this.calculateMaxCharPosition(nextLine);
-        const targetCharPos = Math.min(currentCharPos, nextMaxCharPos);
-        this.setCursorPosition(targetCharPos);
-        logger.debug(LOG_CATEGORIES.CURSOR, `Navigate down to stave ${currentStave + 1}`, {
-          charPos: targetCharPos
-        });
-      }
-    }
-  }
 
   /**
      * Calculate max character position for a specific line
@@ -1289,22 +1178,6 @@ class MusicNotationEditor {
     return maxPos;
   }
 
-  /**
-     * Navigate to beginning of current line
-     */
-  navigateHome() {
-    logger.debug(LOG_CATEGORIES.CURSOR, 'Navigate home');
-    this.setCursorPosition(0);
-  }
-
-  /**
-     * Navigate to end of current line
-     */
-  navigateEnd() {
-    logger.debug(LOG_CATEGORIES.CURSOR, 'Navigate end');
-    const maxCharPos = this.getMaxCharPosition();
-    this.setCursorPosition(maxCharPos);
-  }
 
   /**
      * Get the maximum cell index in the main lane
@@ -1622,158 +1495,6 @@ class MusicNotationEditor {
     );
 
     return selectedCells.map(cell => cell.char || '').join('');
-  }
-
-  /**
-     * Extend selection to the left
-     */
-  extendSelectionLeft() {
-    const currentPos = this.getCursorPosition();
-    if (currentPos <= 0) return; // Can't go further left
-
-    const stops = this.getNavigableStops();
-    if (stops.length === 0) return;
-
-    let selection = this.getSelection();
-
-    if (!selection || selection.startStopIndex === null) {
-      // Start new selection: get the cell immediately to the left of the cursor
-      const { cellIndex } = this.charPosToCellIndex(currentPos);
-
-      // Find the stop for this cell
-      let targetStopIndex = -1;
-      for (const stop of stops) {
-        if (stop.cellIndex === cellIndex) {
-          targetStopIndex = stop.stopIndex;
-          break;
-        }
-      }
-
-      if (targetStopIndex === -1) return;
-      this.initializeSelectionByStops(targetStopIndex, targetStopIndex);
-    } else {
-      // Extend existing selection leftward
-      // Move start one stop to the left, keep end fixed
-      const newStartStopIndex = selection.startStopIndex - 1;
-      if (newStartStopIndex < 0) return; // Can't extend further left
-      this.initializeSelectionByStops(newStartStopIndex, selection.endStopIndex);
-    }
-
-    this.updateSelectionDisplay();
-  }
-
-  /**
-     * Extend selection to the right (stop-based)
-     */
-  extendSelectionRight() {
-    const stops = this.getNavigableStops();
-    if (stops.length === 0) return;
-
-    const currentStop = this.getCurrentStop();
-    if (!currentStop) return;
-
-    let selection = this.getSelection();
-
-    if (!selection || selection.startStopIndex === null) {
-      // Start new selection at current stop
-      this.initializeSelectionByStops(currentStop.stopIndex, currentStop.stopIndex);
-      selection = this.getSelection();
-    }
-
-    // Can we move the cursor right?
-    if (currentStop.stopIndex < stops.length - 1) {
-      const nextStop = stops[currentStop.stopIndex + 1];
-
-      // Determine if we're extending from anchor or head
-      const anchorStopIndex = selection.startStopIndex;
-      const headStopIndex = currentStop.stopIndex;
-
-      if (headStopIndex === selection.startStopIndex) {
-        // Extending right from start (growing)
-        this.initializeSelectionByStops(anchorStopIndex, nextStop.stopIndex);
-      } else {
-        // Extending right from end (shrinking or reversing)
-        this.initializeSelectionByStops(selection.startStopIndex, nextStop.stopIndex);
-      }
-
-      // Move cursor to new position
-      const charPos = this.cellIndexToCharPos(nextStop.cellIndex);
-      this.setCursorPosition(charPos);
-    } else if (currentStop.stopIndex === selection.endStopIndex && selection.startStopIndex < selection.endStopIndex) {
-      // At right edge of selection and can't move right - shrink selection from the left
-      const nextStartStop = stops[selection.startStopIndex + 1];
-      this.initializeSelectionByStops(nextStartStop.stopIndex, selection.endStopIndex);
-
-      // Cursor stays at the same position (right edge of new selection)
-    }
-  }
-
-  /**
-     * Extend selection up (cursor stays on main line)
-     */
-  extendSelectionUp() {
-    // Cursor is always on main line - no lane switching
-    console.log('extendSelectionUp: cursor always stays on main line');
-  }
-
-  /**
-     * Extend selection down (cursor stays on main line)
-     */
-  extendSelectionDown() {
-    // Cursor is always on main line - no lane switching
-    console.log('extendSelectionDown: cursor always stays on main line');
-  }
-
-  /**
-     * Extend selection to start of line (stop-based)
-     */
-  extendSelectionToStart() {
-    const stops = this.getNavigableStops();
-    if (stops.length === 0) return;
-
-    const currentStop = this.getCurrentStop();
-    if (!currentStop) return;
-
-    const firstStop = stops[0];
-    const selection = this.getSelection();
-
-    if (!selection || selection.startStopIndex === null) {
-      // Start new selection from current stop to first stop
-      this.initializeSelectionByStops(firstStop.stopIndex, currentStop.stopIndex);
-    } else {
-      // Extend existing selection to start
-      this.initializeSelectionByStops(firstStop.stopIndex, selection.endStopIndex);
-    }
-
-    // Move cursor to start (to the START of the first cell)
-    const charPos = firstStop.cellIndex === 0 ? 0 : this.cellIndexToCharPos(firstStop.cellIndex - 1);
-    this.setCursorPosition(charPos);
-  }
-
-  /**
-     * Extend selection to end of line (stop-based)
-     */
-  extendSelectionToEnd() {
-    const stops = this.getNavigableStops();
-    if (stops.length === 0) return;
-
-    const currentStop = this.getCurrentStop();
-    if (!currentStop) return;
-
-    const lastStop = stops[stops.length - 1];
-    const selection = this.getSelection();
-
-    if (!selection || selection.startStopIndex === null) {
-      // Start new selection from current stop to last stop
-      this.initializeSelectionByStops(currentStop.stopIndex, lastStop.stopIndex);
-    } else {
-      // Extend existing selection to end
-      this.initializeSelectionByStops(selection.startStopIndex, lastStop.stopIndex);
-    }
-
-    // Move cursor to end
-    const charPos = this.cellIndexToCharPos(lastStop.cellIndex);
-    this.setCursorPosition(charPos);
   }
 
   /**
@@ -2909,33 +2630,31 @@ class MusicNotationEditor {
   handleMouseDown(event) {
     this.element.focus();
 
-    // Calculate cell position from click
-    const rect = this.element.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
+    try {
+      // Calculate cell position from click
+      const rect = this.element.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
 
-    // Determine which line was clicked based on Y coordinate
-    const lineIndex = this.calculateLineFromY(y);
-    if (lineIndex !== null && this.theDocument && this.theDocument.state) {
-      // Switch to the clicked line
-      this.theDocument.state.cursor.stave = lineIndex;
+      // Determine which line was clicked based on Y coordinate
+      const lineIndex = this.calculateLineFromY(y);
+      const col = this.calculateCellPosition(x, y);
+
+      if (lineIndex !== null && col !== null) {
+        // Start drag selection
+        this.isDragging = true;
+        this.dragStartLine = lineIndex;
+        this.dragStartCol = col;
+
+        // Call WASM to handle mouse down (sets cursor, starts selection)
+        const diff = this.wasmModule.mouseDown(lineIndex, col);
+        this.updateCursorFromWASM(diff);
+      }
+
+      event.preventDefault();
+    } catch (error) {
+      console.error('Mouse down error:', error);
     }
-
-    const cellPosition = this.calculateCellPosition(x, y);
-
-    if (cellPosition !== null) {
-      // Start drag selection
-      this.isDragging = true;
-      this.dragStartPos = cellPosition;
-      this.dragEndPos = cellPosition;
-
-      // Initialize selection at click point
-      this.initializeSelection(cellPosition, cellPosition);
-      this.setCursorPosition(cellPosition);
-      this.updateCursorVisualPosition();
-    }
-
-    event.preventDefault();
   }
 
   /**
@@ -2944,22 +2663,24 @@ class MusicNotationEditor {
   handleMouseMove(event) {
     if (!this.isDragging) return;
 
-    const rect = this.element.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
+    try {
+      const rect = this.element.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
 
-    const cellPosition = this.calculateCellPosition(x, y);
+      const lineIndex = this.calculateLineFromY(y);
+      const col = this.calculateCellPosition(x, y);
 
-    if (cellPosition !== null) {
-      this.dragEndPos = cellPosition;
+      if (lineIndex !== null && col !== null) {
+        // Call WASM to handle mouse move (extends selection)
+        const diff = this.wasmModule.mouseMove(lineIndex, col);
+        this.updateCursorFromWASM(diff);
 
-      // Update selection range
-      this.initializeSelection(this.dragStartPos, cellPosition);
-      this.setCursorPosition(cellPosition);
-      this.updateSelectionDisplay();
-
-      // Prevent default to avoid text selection behavior
-      event.preventDefault();
+        // Prevent default to avoid text selection behavior
+        event.preventDefault();
+      }
+    } catch (error) {
+      console.error('Mouse move error:', error);
     }
   }
 
@@ -2968,19 +2689,19 @@ class MusicNotationEditor {
      */
   handleMouseUp(event) {
     if (this.isDragging) {
-      // Finalize selection before clearing isDragging flag
-      if (this.dragStartPos !== this.dragEndPos) {
-        this.initializeSelection(this.dragStartPos, this.dragEndPos);
-        this.updateSelectionDisplay();
-        this.justDragSelected = true; // Flag to prevent click from clearing drag selection
+      try {
+        // Call WASM to finalize mouse interaction
+        const diff = this.wasmModule.mouseUp();
+        this.updateCursorFromWASM(diff);
+      } catch (error) {
+        console.error('Mouse up error:', error);
       }
 
       // Delay clearing the dragging flag to prevent click event from clearing selection
       setTimeout(() => {
         this.isDragging = false;
-        this.dragStartPos = null;
-        this.dragEndPos = null;
-        this.justDragSelected = false; // Clear flag after drag is fully complete
+        this.dragStartLine = null;
+        this.dragStartCol = null;
       }, 10);
     }
   }

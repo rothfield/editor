@@ -87,7 +87,7 @@ test.describe('Debug HUD (Cursor/Selection State)', () => {
     // Verify caretInfo structure
     expect(result.caretInfo).toBeDefined();
     expect(result.caretInfo.caret).toBeDefined();
-    expect(result.caretInfo.caret.stave).toBe(0);
+    expect(result.caretInfo.caret.line).toBe(0);
     expect(result.caretInfo.caret.col).toBeGreaterThanOrEqual(0);
     expect(result.caretInfo.desired_col).toBeGreaterThanOrEqual(0);
 
@@ -108,8 +108,8 @@ test.describe('Debug HUD (Cursor/Selection State)', () => {
       const editor = app?.editor;
 
       // Create position objects
-      const anchor = { stave: 0, col: 0 };
-      const head = { stave: 0, col: 3 };
+      const anchor = { line: 0, col: 0 };
+      const head = { line: 0, col: 3 };
 
       // Set selection via WASM
       editor.wasmModule.setSelection(anchor, head);
@@ -123,10 +123,10 @@ test.describe('Debug HUD (Cursor/Selection State)', () => {
     // Verify selection was set
     expect(result).toBeDefined();
     expect(result.is_empty).toBe(false);
-    expect(result.anchor).toEqual({ stave: 0, col: 0 });
-    expect(result.head).toEqual({ stave: 0, col: 3 });
-    expect(result.start).toEqual({ stave: 0, col: 0 });
-    expect(result.end).toEqual({ stave: 0, col: 3 });
+    expect(result.anchor).toEqual({ line: 0, col: 0 });
+    expect(result.head).toEqual({ line: 0, col: 3 });
+    expect(result.start).toEqual({ line: 0, col: 0 });
+    expect(result.end).toEqual({ line: 0, col: 3 });
     expect(result.is_forward).toBe(true);
   });
 });

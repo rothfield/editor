@@ -124,16 +124,16 @@ export class DebugHUD {
       let html = '<div style="font-weight: bold; margin-bottom: 4px; color: #0ff;">Cursor/Selection State</div>';
 
       // Caret info
-      html += `<div style="color: #fff;">Caret: (${caretInfo.caret.stave}, ${caretInfo.caret.col})</div>`;
+      html += `<div style="color: #fff;">Caret: (${caretInfo.caret.line}, ${caretInfo.caret.col})</div>`;
       html += `<div style="color: #fff;">DesiredCol: ${caretInfo.desired_col}</div>`;
 
       // Selection info (if active)
       if (selectionInfo && !selectionInfo.is_empty) {
         html += '<div style="margin-top: 6px; border-top: 1px solid #0f0; padding-top: 4px;">';
-        html += `<div style="color: #ff0;">Anchor: (${selectionInfo.anchor.stave}, ${selectionInfo.anchor.col})</div>`;
-        html += `<div style="color: #ff0;">Head: (${selectionInfo.head.stave}, ${selectionInfo.head.col})</div>`;
-        html += `<div style="color: #0f0;">Start: (${selectionInfo.start.stave}, ${selectionInfo.start.col})</div>`;
-        html += `<div style="color: #0f0;">End: (${selectionInfo.end.stave}, ${selectionInfo.end.col})</div>`;
+        html += `<div style="color: #ff0;">Anchor: (${selectionInfo.anchor.line}, ${selectionInfo.anchor.col})</div>`;
+        html += `<div style="color: #ff0;">Head: (${selectionInfo.head.line}, ${selectionInfo.head.col})</div>`;
+        html += `<div style="color: #0f0;">Start: (${selectionInfo.start.line}, ${selectionInfo.start.col})</div>`;
+        html += `<div style="color: #0f0;">End: (${selectionInfo.end.line}, ${selectionInfo.end.col})</div>`;
         html += `<div style="color: #888;">Forward: ${selectionInfo.is_forward ? 'yes' : 'no'}</div>`;
         html += '</div>';
       } else {

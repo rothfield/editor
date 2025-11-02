@@ -8,7 +8,7 @@ use std::collections::VecDeque;
 
 // Re-export from other modules
 pub use super::elements::{ElementKind, OrnamentIndicator, OrnamentPositionType, PitchSystem, SlurIndicator};
-pub use super::notation::{BeatSpan, SlurSpan, Position, Selection, Range, CursorPosition, Pos, CaretInfo, SelectionInfo, DocDiff};
+pub use super::notation::{BeatSpan, SlurSpan, Position, Selection, Range, CursorPosition, Pos, CaretInfo, SelectionInfo, EditorDiff, DocDiff};
 pub use super::pitch_code::PitchCode;
 
 /// The fundamental unit representing one character in musical notation
@@ -505,6 +505,113 @@ impl Document {
             }
         }
     }
+
+    // ==================== Cursor Movement Helpers ====================
+
+    /// Clamp position to valid bounds within document
+    pub fn clamp_pos(&self, pos: Pos) -> Pos {
+        if self.lines.is_empty() {
+            return Pos::origin();
+        }
+
+        let line = pos.line.min(self.lines.len() - 1);
+        let line_len = self.lines.get(line)
+            .map(|l| l.cells.len())
+            .unwrap_or(0);
+        let col = pos.col.min(line_len);
+
+        Pos::new(line, col)
+    }
+
+    /// Move cursor left one position (handles line wrapping)
+    pub fn prev_caret(&self, pos: Pos) -> Pos {
+        let clamped = self.clamp_pos(pos);
+
+        if clamped.col > 0 {
+            // Move left within line
+            Pos::new(clamped.line, clamped.col - 1)
+        } else if clamped.line > 0 {
+            // Wrap to end of previous line
+            let prev_line = clamped.line - 1;
+            let prev_line_len = self.lines.get(prev_line)
+                .map(|l| l.cells.len())
+                .unwrap_or(0);
+            Pos::new(prev_line, prev_line_len)
+        } else {
+            // Already at start of document
+            clamped
+        }
+    }
+
+    /// Move cursor right one position (handles line wrapping)
+    pub fn next_caret(&self, pos: Pos) -> Pos {
+        let clamped = self.clamp_pos(pos);
+
+        if let Some(line) = self.lines.get(clamped.line) {
+            if clamped.col < line.cells.len() {
+                // Move right within line
+                Pos::new(clamped.line, clamped.col + 1)
+            } else if clamped.line + 1 < self.lines.len() {
+                // Wrap to start of next line
+                Pos::new(clamped.line + 1, 0)
+            } else {
+                // Already at end of document
+                clamped
+            }
+        } else {
+            clamped
+        }
+    }
+
+    /// Move cursor up one line (preserving desired column)
+    pub fn caret_up(&self, pos: Pos, desired_col: usize) -> Pos {
+        let clamped = self.clamp_pos(pos);
+
+        if clamped.line > 0 {
+            let target_line = clamped.line - 1;
+            let target_line_len = self.lines.get(target_line)
+                .map(|l| l.cells.len())
+                .unwrap_or(0);
+            let target_col = desired_col.min(target_line_len);
+            Pos::new(target_line, target_col)
+        } else {
+            // Already at top
+            clamped
+        }
+    }
+
+    /// Move cursor down one line (preserving desired column)
+    pub fn caret_down(&self, pos: Pos, desired_col: usize) -> Pos {
+        let clamped = self.clamp_pos(pos);
+
+        if clamped.line + 1 < self.lines.len() {
+            let target_line = clamped.line + 1;
+            let target_line_len = self.lines.get(target_line)
+                .map(|l| l.cells.len())
+                .unwrap_or(0);
+            let target_col = desired_col.min(target_line_len);
+            Pos::new(target_line, target_col)
+        } else {
+            // Already at bottom
+            clamped
+        }
+    }
+
+    /// Move cursor to start of current line
+    pub fn caret_line_start(&self, pos: Pos) -> Pos {
+        let clamped = self.clamp_pos(pos);
+        Pos::new(clamped.line, 0)
+    }
+
+    /// Move cursor to end of current line
+    pub fn caret_line_end(&self, pos: Pos) -> Pos {
+        let clamped = self.clamp_pos(pos);
+        if let Some(line) = self.lines.get(clamped.line) {
+            Pos::new(clamped.line, line.cells.len())
+        } else {
+            clamped
+        }
+    }
 }
 
 /// Application state including cursor position, selection, and focus information
@@ -819,14 +926,14 @@ impl SelectionManager {
         if let Some(selection) = &self.current_selection {
             let (start, end) = selection.range();
 
-            // Check bounds for each stave
-            if start.stave >= document.lines.len() || end.stave >= document.lines.len() {
+            // Check bounds for each line
+            if start.line >= document.lines.len() || end.line >= document.lines.len() {
                 return false;
             }
 
-            // For single-stave selection
-            if start.stave == end.stave {
-                if let Some(line) = document.lines.get(start.stave) {
+            // For single-line selection
+            if start.line == end.line {
+                if let Some(line) = document.lines.get(start.line) {
                     let max_col = line.cells.len();
                     if start.col > max_col || end.col > max_col {
                         return false;
@@ -846,9 +953,9 @@ impl SelectionManager {
 
             let (start, end) = selection.range();
 
-            // Single-stave selection
-            if start.stave == end.stave {
-                if let Some(line) = document.lines.get(start.stave) {
+            // Single-line selection
+            if start.line == end.line {
+                if let Some(line) = document.lines.get(start.line) {
                     return line.cells.iter()
                         .filter(|cell| cell.col >= start.col && cell.col < end.col)
                         .map(|cell| cell.char.clone())
@@ -861,8 +968,8 @@ impl SelectionManager {
     }
 
     /// Select all content in the current line
-    pub fn select_all(&mut self, document: &Document, current_stave: usize) {
-        if let Some(line) = document.lines.get(current_stave) {
+    pub fn select_all(&mut self, document: &Document, current_line: usize) {
+        if let Some(line) = document.lines.get(current_line) {
             if line.cells.is_empty() {
                 return;
             }
@@ -870,8 +977,8 @@ impl SelectionManager {
             let start_col = 0;
             let end_col = line.cells.len();
 
-            let anchor = Pos::new(current_stave, start_col);
-            let head = Pos::new(current_stave, end_col);
+            let anchor = Pos::new(current_line, start_col);
+            let head = Pos::new(current_line, end_col);
             self.current_selection = Some(Selection::new(anchor, head));
             self.mode = SelectionMode::All;
         }
@@ -902,8 +1009,8 @@ impl SelectionManager {
                 }
             }
 
-            let anchor = Pos::new(position.stave, start_col);
-            let head = Pos::new(position.stave, end_col);
+            let anchor = Pos::new(position.line, start_col);
+            let head = Pos::new(position.line, end_col);
             self.current_selection = Some(Selection::new(anchor, head));
             self.mode = SelectionMode::Word;
         }
