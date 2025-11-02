@@ -1057,6 +1057,13 @@ class MusicNotationEditor {
      */
   handleShiftCommand(key) {
     try {
+      // Ensure WASM has the latest document state
+      if (!this.theDocument) {
+        console.warn('No document available for selection');
+        return;
+      }
+      this.wasmModule.loadDocument(this.theDocument);
+
       let diff;
 
       switch (key) {
@@ -1129,6 +1136,13 @@ class MusicNotationEditor {
      */
   handleNavigation(key) {
     try {
+      // Ensure WASM has the latest document state
+      if (!this.theDocument) {
+        console.warn('No document available for navigation');
+        return;
+      }
+      this.wasmModule.loadDocument(this.theDocument);
+
       let diff;
       switch (key) {
         case 'ArrowLeft':
@@ -2631,6 +2645,13 @@ class MusicNotationEditor {
     this.element.focus();
 
     try {
+      // Ensure WASM has the latest document state
+      if (!this.theDocument) {
+        console.warn('No document available for mouse interaction');
+        return;
+      }
+      this.wasmModule.loadDocument(this.theDocument);
+
       // Calculate cell position from click
       const rect = this.element.getBoundingClientRect();
       const x = event.clientX - rect.left;
@@ -2664,6 +2685,13 @@ class MusicNotationEditor {
     if (!this.isDragging) return;
 
     try {
+      // Ensure WASM has the latest document state
+      if (!this.theDocument) {
+        console.warn('No document available for mouse interaction');
+        return;
+      }
+      this.wasmModule.loadDocument(this.theDocument);
+
       const rect = this.element.getBoundingClientRect();
       const x = event.clientX - rect.left;
       const y = event.clientY - rect.top;
@@ -2690,6 +2718,13 @@ class MusicNotationEditor {
   handleMouseUp(event) {
     if (this.isDragging) {
       try {
+        // Ensure WASM has the latest document state
+        if (!this.theDocument) {
+          console.warn('No document available for mouse interaction');
+          return;
+        }
+        this.wasmModule.loadDocument(this.theDocument);
+
         // Call WASM to finalize mouse interaction
         const diff = this.wasmModule.mouseUp();
         this.updateCursorFromWASM(diff);
