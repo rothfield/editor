@@ -229,14 +229,14 @@ class MusicNotationEditor {
 
         // Validate and fix cursor position after loading document
         if (this.theDocument && this.theDocument.state && this.theDocument.state.cursor) {
-          const currentCursor = this.theDocument.state.cursor.column;
+          const currentCursor = this.theDocument.state.cursor.col;
           const validatedCursor = this.validateCursorPosition(currentCursor);
           if (validatedCursor !== currentCursor) {
             logger.warn(LOG_CATEGORIES.CURSOR, 'Document loaded with invalid cursor position, correcting', {
               loaded: currentCursor,
               corrected: validatedCursor
             });
-            this.theDocument.state.cursor.column = validatedCursor;
+            this.theDocument.state.cursor.col = validatedCursor;
           }
         }
 
@@ -364,7 +364,7 @@ class MusicNotationEditor {
         });
         // Update cursor column with WASM-provided character position
         if (this.theDocument && this.theDocument.state) {
-          this.theDocument.state.cursor.column = currentCharPos;
+          this.theDocument.state.cursor.col = currentCharPos;
           this.updateCursorPositionDisplay();
         }
 
@@ -630,7 +630,7 @@ class MusicNotationEditor {
    */
   getCurrentStave() {
     if (this.theDocument && this.theDocument.state && this.theDocument.state.cursor) {
-      return this.theDocument.state.cursor.stave;
+      return this.theDocument.state.cursor.line;
     }
     return 0;
   }
@@ -779,7 +779,7 @@ class MusicNotationEditor {
 
   getCursorPosition() {
     if (this.theDocument && this.theDocument.state) {
-      return this.theDocument.state.cursor.column;
+      return this.theDocument.state.cursor.col;
     }
     return 0;
   }
@@ -794,12 +794,12 @@ class MusicNotationEditor {
 
     if (col !== undefined) {
       // Two-argument form: setCursorPosition(row, col) from WASM results
-      this.theDocument.state.cursor.stave = positionOrRow;
-      this.theDocument.state.cursor.column = col;
+      this.theDocument.state.cursor.line = positionOrRow;
+      this.theDocument.state.cursor.col = col;
     } else {
       // Single-argument form: setCursorPosition(position) for navigation
       const validatedPosition = this.validateCursorPosition(positionOrRow);
-      this.theDocument.state.cursor.column = validatedPosition;
+      this.theDocument.state.cursor.col = validatedPosition;
     }
 
     this.updateCursorPositionDisplay();
@@ -842,8 +842,8 @@ class MusicNotationEditor {
 
     // Update cursor position (WASM uses 'line' and 'col', JS uses 'stave' and 'column')
     if (diff.caret && diff.caret.caret) {
-      this.theDocument.state.cursor.stave = diff.caret.caret.line;
-      this.theDocument.state.cursor.column = diff.caret.caret.col;
+      this.theDocument.state.cursor.line = diff.caret.caret.line;
+      this.theDocument.state.cursor.col = diff.caret.caret.col;
 
       // Store desired_col for debug HUD
       if (!this.theDocument.state.desired_col) {
@@ -1216,7 +1216,7 @@ class MusicNotationEditor {
       return 0;
     }
 
-    const currentStave = this.theDocument.state.cursor.stave;
+    const currentStave = this.theDocument.state.cursor.line;
     const line = this.theDocument.lines[currentStave];
     if (!line) {
       return 0;
@@ -1248,7 +1248,7 @@ class MusicNotationEditor {
       return { cellIndex: 0, charOffsetInCell: 0 };
     }
 
-    const currentStave = this.theDocument.state.cursor.stave;
+    const currentStave = this.theDocument.state.cursor.line;
     const line = this.theDocument.lines[currentStave];
     if (!line) {
       return { cellIndex: 0, charOffsetInCell: 0 };
@@ -1295,7 +1295,7 @@ class MusicNotationEditor {
       return 0;
     }
 
-    const currentStave = this.theDocument.state.cursor.stave;
+    const currentStave = this.theDocument.state.cursor.line;
     const line = this.theDocument.lines[currentStave];
     if (!line) {
       return 0;
@@ -1735,8 +1735,8 @@ class MusicNotationEditor {
           this.theDocument.lines.splice(currentStave, 1);
 
           // Update cursor: move to previous line at merge point
-          this.theDocument.state.cursor.stave = currentStave - 1;
-          this.theDocument.state.cursor.column = mergeCharPos;
+          this.theDocument.state.cursor.line = currentStave - 1;
+          this.theDocument.state.cursor.col = mergeCharPos;
 
           logger.debug(LOG_CATEGORIES.EDITOR, 'Lines merged successfully', {
             newLineLength: prevLine.cells.length,
@@ -1882,8 +1882,8 @@ class MusicNotationEditor {
       this.theDocument.state = preservedState;
 
       // Move cursor to beginning of new line
-      this.theDocument.state.cursor.stave = currentStave + 1;
-      this.theDocument.state.cursor.column = 0;
+      this.theDocument.state.cursor.line = currentStave + 1;
+      this.theDocument.state.cursor.col = 0;
 
       logger.debug(LOG_CATEGORIES.CURSOR, 'Cursor moved to new line', {
         newStave: currentStave + 1,
@@ -2610,9 +2610,9 @@ class MusicNotationEditor {
           this.clearSelection();
 
           // Now set the cursor position after selection is cleared
-          this.theDocument.state.cursor.stave = lineIndex;
+          this.theDocument.state.cursor.line = lineIndex;
           if (cursorColumn !== null) {
-            this.theDocument.state.cursor.column = cursorColumn;
+            this.theDocument.state.cursor.col = cursorColumn;
             this.updateCursorVisualPosition();
           }
         }
@@ -2632,7 +2632,7 @@ class MusicNotationEditor {
 
         // Focus the first line by default when clicking the container
         if (this.theDocument && this.theDocument.state) {
-          this.theDocument.state.cursor.stave = 0;
+          this.theDocument.state.cursor.line = 0;
         }
       });
     }
@@ -2887,7 +2887,7 @@ class MusicNotationEditor {
     const lineIndex = this.calculateLineFromY(y);
     if (lineIndex !== null && this.theDocument && this.theDocument.state) {
       // Switch to the clicked line
-      this.theDocument.state.cursor.stave = lineIndex;
+      this.theDocument.state.cursor.line = lineIndex;
     }
 
     // Calculate Cell position from click coordinates
@@ -3233,7 +3233,7 @@ class MusicNotationEditor {
     if (cursorPos) {
       // Get line, lane (row), and column for debugging
       const line = this.theDocument && this.theDocument.state && this.theDocument.state.cursor
-        ? this.theDocument.state.cursor.stave
+        ? this.theDocument.state.cursor.line
         : 0;
       const col = this.getCursorPosition();
 
@@ -4073,8 +4073,8 @@ class MusicNotationEditor {
       }
 
       const cursor = this.theDocument.state?.cursor || { stave: 0, column: 0 };
-      const startStave = cursor.stave;
-      const startColumn = cursor.column;
+      const startStave = cursor.line;
+      const startColumn = cursor.col;
 
       // For now, simple paste at cursor (single cell)
       const cellsToPaste = this.clipboard.cells || [];
