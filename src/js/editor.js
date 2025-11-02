@@ -2668,8 +2668,9 @@ class MusicNotationEditor {
         this.dragStartCol = col;
 
         // Call WASM to handle mouse down (sets cursor, starts selection)
-        // Convert to integers since WASM expects usize
-        const diff = this.wasmModule.mouseDown(Math.floor(lineIndex), Math.floor(col));
+        // Pass Pos object with integer values
+        const pos = { line: Math.floor(lineIndex), col: Math.floor(col) };
+        const diff = this.wasmModule.mouseDown(pos);
         this.updateCursorFromWASM(diff);
       }
 
@@ -2702,8 +2703,9 @@ class MusicNotationEditor {
 
       if (lineIndex !== null && col !== null) {
         // Call WASM to handle mouse move (extends selection)
-        // Convert to integers since WASM expects usize
-        const diff = this.wasmModule.mouseMove(Math.floor(lineIndex), Math.floor(col));
+        // Pass Pos object with integer values
+        const pos = { line: Math.floor(lineIndex), col: Math.floor(col) };
+        const diff = this.wasmModule.mouseMove(pos);
         this.updateCursorFromWASM(diff);
 
         // Prevent default to avoid text selection behavior
@@ -2727,8 +2729,16 @@ class MusicNotationEditor {
         }
         this.wasmModule.loadDocument(this.theDocument);
 
-        // Call WASM to finalize mouse interaction
-        const diff = this.wasmModule.mouseUp();
+        // Calculate final mouse position
+        const rect = this.element.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        const y = event.clientY - rect.top;
+        const lineIndex = this.calculateLineFromY(y);
+        const col = this.calculateCellPosition(x, y);
+
+        // Call WASM to finalize mouse interaction with final position
+        const pos = { line: Math.floor(lineIndex), col: Math.floor(col) };
+        const diff = this.wasmModule.mouseUp(pos);
         this.updateCursorFromWASM(diff);
       } catch (error) {
         console.error('Mouse up error:', error);
