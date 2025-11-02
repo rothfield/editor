@@ -50,7 +50,7 @@ class CursorManager {
   /**
    * Get current cursor position
    *
-   * @returns {Object} Cursor position {stave, column}
+   * @returns {Object} Cursor position {line, col}
    */
   getPosition() {
     if (!this.document || !this.document.state || !this.document.state.cursor) {
@@ -75,8 +75,8 @@ class CursorManager {
     const oldPos = this.getPosition();
 
     // Update position
-    this.document.state.cursor.column = column;
-    if (stave !== null) this.document.state.cursor.stave = stave;
+    this.document.state.cursor.col = column;
+    if (stave !== null) this.document.state.cursor.line = stave;
 
     logger.debug(LOG_CATEGORIES.CURSOR, 'Cursor position updated', {
       from: oldPos,
@@ -95,7 +95,7 @@ class CursorManager {
    */
   move(delta) {
     const pos = this.getPosition();
-    const newColumn = Math.max(0, pos.column + delta);
+    const newColumn = Math.max(0, pos.col + delta);
 
     // Check bounds
     if (this.isValidPosition(newColumn)) {
@@ -148,7 +148,7 @@ class CursorManager {
       return null;
     }
 
-    const staveIndex = this.document.state?.cursor?.stave || 0;
+    const staveIndex = this.document.state?.cursor?.line || 0;
     return this.document.lines[staveIndex] || null;
   }
 
@@ -174,10 +174,10 @@ class CursorManager {
     let cursorX = LEFT_MARGIN_PX;
     let cursorY = 32; // Default cell Y position
 
-    if (pos.column === 0) {
+    if (pos.col === 0) {
       // Start of line
       cursorX = LEFT_MARGIN_PX;
-    } else if (pos.column >= line.cells.length) {
+    } else if (pos.col >= line.cells.length) {
       // End of line - position after last cell
       const lastCell = line.cells[line.cells.length - 1];
       if (lastCell && lastCell.x !== undefined && lastCell.w !== undefined) {
@@ -187,14 +187,14 @@ class CursorManager {
       }
     } else {
       // Middle of line - position before specified cell
-      const cell = line.cells[pos.column];
+      const cell = line.cells[pos.col];
       if (cell && cell.x !== undefined) {
         cursorX = cell.x;
         if (cell.y !== undefined) {
           cursorY = cell.y;
         }
       } else {
-        cursorX = LEFT_MARGIN_PX + (pos.column * 12);
+        cursorX = LEFT_MARGIN_PX + (pos.col * 12);
       }
     }
 
@@ -202,7 +202,7 @@ class CursorManager {
     this.cursorElement.style.top = `${cursorY}px`;
 
     logger.trace(LOG_CATEGORIES.CURSOR, 'Visual cursor position updated', {
-      column: pos.column,
+      column: pos.col,
       x: cursorX,
       y: cursorY
     });
@@ -290,7 +290,7 @@ class CursorManager {
    * Reset cursor to default position
    */
   reset() {
-    this.setPosition(DEFAULT_CURSOR.COLUMN, DEFAULT_CURSOR.STAVE);
+    this.setPosition(DEFAULT_CURSOR.COL, DEFAULT_CURSOR.LINE);
   }
 
   /**

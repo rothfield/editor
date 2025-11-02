@@ -337,8 +337,8 @@ export const DEFAULT_DOCUMENT = {
  * Default cursor position
  */
 export const DEFAULT_CURSOR = {
-  STAVE: 0,
-  COLUMN: 0
+  LINE: 0,
+  COL: 0
 };
 
 /**

@@ -206,7 +206,7 @@ class MusicNotationEditor {
 
     // Add runtime state (not persisted by WASM)
     document.state = {
-      cursor: { stave: 0, column: 0 },
+      cursor: { line: 0, col: 0 },
       selection: null
       // Note: has_focus removed - now queried from EventManager (single source of truth)
     };
@@ -365,6 +365,7 @@ class MusicNotationEditor {
         // Update cursor column with WASM-provided character position
         if (this.theDocument && this.theDocument.state) {
           this.theDocument.state.cursor.col = currentCharPos;
+          console.log(`[insertText] Updated JS cursor.col to ${currentCharPos}, full cursor:`, this.theDocument.state.cursor);
           this.updateCursorPositionDisplay();
         }
 
@@ -373,7 +374,9 @@ class MusicNotationEditor {
         // We need to update WASM's internal document so undo/redo can access it
         if (this.theDocument) {
           try {
+            console.log('[insertText] About to call loadDocument with cursor:', this.theDocument.state.cursor);
             this.wasmModule.loadDocument(this.theDocument);
+            console.log('[insertText] loadDocument completed');
           } catch (e) {
             console.warn('Failed to sync document with WASM:', e);
           }
@@ -4072,7 +4075,7 @@ class MusicNotationEditor {
         console.warn('Failed to sync document with WASM before paste:', e);
       }
 
-      const cursor = this.theDocument.state?.cursor || { stave: 0, column: 0 };
+      const cursor = this.theDocument.state?.cursor || { line: 0, col: 0 };
       const startStave = cursor.line;
       const startColumn = cursor.col;
 

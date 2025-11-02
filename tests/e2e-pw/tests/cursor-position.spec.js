@@ -230,7 +230,7 @@ test.describe('Cursor Position - Visual Rendering', () => {
       const app = window.MusicNotationApp?.app();
       return {
         cursorPos: app?.editor?.getCursorPosition?.(),
-        cursorColumn: app?.editor?.theDocument?.state?.cursor?.column,
+        cursorColumn: app?.editor?.theDocument?.state?.cursor?.col,
         cellCount: app?.editor?.theDocument?.lines?.[0]?.cells?.length
       };
     });

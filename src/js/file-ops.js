@@ -265,7 +265,7 @@ class FileOperations {
 
     // Add runtime state (not persisted by WASM)
     document.state = {
-      cursor: { stave: 0, column: 0 },
+      cursor: { line: 0, col: 0 },
       selection: null,
       has_focus: false
     };

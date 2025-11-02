@@ -46,9 +46,9 @@ test('Debug End key with logging', async ({ page }) => {
   // Now check state
   const state = await page.evaluate(() => {
     const app = window.MusicNotationApp?.app();
-    const cursorPos = app?.editor?.theDocument?.state?.cursor?.column || 0;
+    const cursorPos = app?.editor?.theDocument?.state?.cursor?.col || 0;
     const maxPos = app?.editor?.getMaxCharPosition?.() || 'N/A';
-    console.log(`[JS] cursor.column=${cursorPos}, getMaxCharPosition()=${maxPos}`);
+    console.log(`[JS] cursor.col=${cursorPos}, getMaxCharPosition()=${maxPos}`);
     return { cursorPos, maxPos };
   });
 
