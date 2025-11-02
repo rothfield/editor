@@ -8,7 +8,7 @@ use std::collections::VecDeque;
 
 // Re-export from other modules
 pub use super::elements::{ElementKind, OrnamentIndicator, OrnamentPositionType, PitchSystem, SlurIndicator};
-pub use super::notation::{BeatSpan, SlurSpan, Position, Selection, Range, CursorPosition};
+pub use super::notation::{BeatSpan, SlurSpan, Position, Selection, Range, CursorPosition, Pos, CaretInfo, SelectionInfo, DocDiff};
 pub use super::pitch_code::PitchCode;
 
 /// The fundamental unit representing one character in musical notation
@@ -534,7 +534,7 @@ impl DocumentState {
     /// Create new document state
     pub fn new() -> Self {
         Self {
-            cursor: CursorPosition::new(),
+            cursor: Pos::origin(),
             selection_manager: SelectionManager::new(),
             focused_element: None,
             has_focus: false,
@@ -727,17 +727,14 @@ impl RenderMetrics {
 /// Selection manager for handling text selection operations
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
 pub struct SelectionManager {
-    /// Current selection state
+    /// Current selection state (using anchor/head model)
     pub current_selection: Option<Selection>,
-
-    /// Selection anchor point (where selection started)
-    pub anchor: Option<CursorPosition>,
 
     /// Selection mode (normal, word, line, etc.)
     pub mode: SelectionMode,
 
-    /// Whether selection is active
-    pub active: bool,
+    /// Desired column for vertical movement
+    pub desired_col: usize,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
@@ -758,50 +755,34 @@ impl SelectionManager {
     pub fn new() -> Self {
         Self {
             current_selection: None,
-            anchor: None,
             mode: SelectionMode::Normal,
-            active: false,
+            desired_col: 0,
         }
     }
 
     /// Start a new selection at the given position
-    pub fn start_selection(&mut self, position: CursorPosition) {
-        self.anchor = Some(position.clone());
-        self.current_selection = Some(Selection {
-            start: position.clone(),
-            end: position.clone(),
-            active: true,
-        });
-        self.active = true;
+    pub fn start_selection(&mut self, position: Pos) {
+        self.current_selection = Some(Selection::empty_at(position));
     }
 
-    /// Extend selection to a new position
-    pub fn extend_selection(&mut self, position: &CursorPosition) {
-        if let Some(anchor) = &self.anchor {
-            let start = if position < anchor {
-                position.clone()
-            } else {
-                anchor.clone()
-            };
-            let end = if position < anchor {
-                anchor.clone()
-            } else {
-                position.clone()
-            };
-
-            self.current_selection = Some(Selection {
-                start,
-                end,
-                active: true,
-            });
+    /// Extend selection to a new position (updates head)
+    pub fn extend_selection(&mut self, position: &Pos) {
+        if let Some(selection) = &mut self.current_selection {
+            selection.head = *position;
+        } else {
+            // If no selection exists, create one
+            self.current_selection = Some(Selection::empty_at(*position));
         }
+    }
+
+    /// Set selection with explicit anchor and head
+    pub fn set_selection(&mut self, anchor: Pos, head: Pos) {
+        self.current_selection = Some(Selection::new(anchor, head));
     }
 
     /// Clear current selection
     pub fn clear_selection(&mut self) {
         self.current_selection = None;
-        self.anchor = None;
-        self.active = false;
     }
 
     /// Get current selection
@@ -809,38 +790,47 @@ impl SelectionManager {
         self.current_selection.as_ref()
     }
 
-    /// Check if selection is active
+    /// Check if selection is active (non-empty)
     pub fn is_active(&self) -> bool {
-        self.active && self.current_selection.is_some()
+        self.current_selection
+            .as_ref()
+            .map(|s| !s.is_empty())
+            .unwrap_or(false)
     }
 
-    /// Get selected range
+    /// Get selected range (normalized)
     pub fn get_range(&self) -> Option<Range> {
-        self.current_selection.as_ref().map(|s| Range::from(s.clone()))
+        self.current_selection.as_ref().map(|s| {
+            let (start, end) = s.range();
+            Range::new(start.col, end.col)
+        })
     }
 
     /// Check if a position is within the current selection
-    pub fn contains_position(&self, position: &CursorPosition) -> bool {
-        if let Some(selection) = &self.current_selection {
-            position.column >= selection.start.column &&
-            position.column < selection.end.column
-        } else {
-            false
-        }
+    pub fn contains_position(&self, position: &Pos) -> bool {
+        self.current_selection
+            .as_ref()
+            .map(|s| s.contains(position))
+            .unwrap_or(false)
     }
 
     /// Validate selection against document bounds
     pub fn validate_selection(&self, document: &Document) -> bool {
         if let Some(selection) = &self.current_selection {
-            // Check if selection is within document bounds
-            if let Some(line) = document.active_line() {
-                let max_column = line.cells.iter()
-                    .map(|cell| cell.col + cell.token_length())
-                    .max()
-                    .unwrap_or(0);
+            let (start, end) = selection.range();
 
-                if selection.start.column > max_column || selection.end.column > max_column {
-                    return false;
+            // Check bounds for each stave
+            if start.stave >= document.lines.len() || end.stave >= document.lines.len() {
+                return false;
+            }
+
+            // For single-stave selection
+            if start.stave == end.stave {
+                if let Some(line) = document.lines.get(start.stave) {
+                    let max_col = line.cells.len();
+                    if start.col > max_col || end.col > max_col {
+                        return false;
+                    }
                 }
             }
         }
@@ -850,59 +840,53 @@ impl SelectionManager {
     /// Get selected text from document
     pub fn get_selected_text(&self, document: &Document) -> String {
         if let Some(selection) = &self.current_selection {
-            if let Some(line) = document.active_line() {
-                return line.cells.iter()
-                    .filter(|cell| {
-                        cell.col >= selection.start.column &&
-                        cell.col < selection.end.column
-                    })
-                    .map(|cell| cell.char.clone())
-                    .collect::<Vec<String>>()
-                    .join("");
+            if selection.is_empty() {
+                return String::new();
+            }
+
+            let (start, end) = selection.range();
+
+            // Single-stave selection
+            if start.stave == end.stave {
+                if let Some(line) = document.lines.get(start.stave) {
+                    return line.cells.iter()
+                        .filter(|cell| cell.col >= start.col && cell.col < end.col)
+                        .map(|cell| cell.char.clone())
+                        .collect::<Vec<String>>()
+                        .join("");
+                }
             }
         }
         String::new()
     }
 
     /// Select all content in the current line
-    pub fn select_all(&mut self, document: &Document) {
-        if let Some(line) = document.active_line() {
+    pub fn select_all(&mut self, document: &Document, current_stave: usize) {
+        if let Some(line) = document.lines.get(current_stave) {
             if line.cells.is_empty() {
                 return;
             }
 
-            let start_col = line.cells.first().map(|c| c.col).unwrap_or(0);
-            let end_col = line.cells.last()
-                .map(|c| c.col + c.token_length())
-                .unwrap_or(start_col + 1);
+            let start_col = 0;
+            let end_col = line.cells.len();
 
-            self.current_selection = Some(Selection {
-                start: CursorPosition {
-                    stave: 0,
-                    column: start_col,
-                },
-                end: CursorPosition {
-                    stave: 0,
-                    column: end_col,
-                },
-                active: true,
-            });
-            self.anchor = Some(self.current_selection.as_ref().unwrap().start.clone());
-            self.active = true;
+            let anchor = Pos::new(current_stave, start_col);
+            let head = Pos::new(current_stave, end_col);
+            self.current_selection = Some(Selection::new(anchor, head));
             self.mode = SelectionMode::All;
         }
     }
 
     /// Select word at cursor position
-    pub fn select_word(&mut self, position: &CursorPosition, document: &Document) {
+    pub fn select_word(&mut self, position: &Pos, document: &Document) {
         if let Some(line) = document.active_line() {
             // Find word boundaries around the cursor position
-            let mut start_col = position.column;
-            let mut end_col = position.column;
+            let mut start_col = position.col;
+            let mut end_col = position.col;
 
             // Find start of word (go left until non-temporal character)
             for cell in line.cells.iter().rev() {
-                if cell.col < position.column && cell.is_temporal() {
+                if cell.col < position.col && cell.is_temporal() {
                     start_col = cell.col;
                 } else {
                     break;
@@ -911,26 +895,16 @@ impl SelectionManager {
 
             // Find end of word (go right until non-temporal character)
             for cell in line.cells.iter() {
-                if cell.col >= position.column && cell.is_temporal() {
+                if cell.col >= position.col && cell.is_temporal() {
                     end_col = cell.col + cell.token_length();
-                } else if cell.col > position.column {
+                } else if cell.col > position.col {
                     break;
                 }
             }
 
-            self.current_selection = Some(Selection {
-                start: CursorPosition {
-                    stave: position.stave,
-                    column: start_col,
-                },
-                end: CursorPosition {
-                    stave: position.stave,
-                    column: end_col,
-                },
-                active: true,
-            });
-            self.anchor = Some(self.current_selection.as_ref().unwrap().start.clone());
-            self.active = true;
+            let anchor = Pos::new(position.stave, start_col);
+            let head = Pos::new(position.stave, end_col);
+            self.current_selection = Some(Selection::new(anchor, head));
             self.mode = SelectionMode::Word;
         }
     }
