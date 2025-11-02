@@ -11,6 +11,7 @@ import { OSMDRenderer } from './osmd-renderer.js';
 import { LEFT_MARGIN_PX, ENABLE_AUTOSAVE, BASE_FONT_SIZE } from './constants.js';
 import AutoSave from './autosave.js';
 import StorageManager from './storage-manager.js';
+import { DebugHUD } from './debug-hud.js';
 
 class MusicNotationEditor {
   constructor(editorElement) {
@@ -43,6 +44,9 @@ class MusicNotationEditor {
 
     // Storage manager for explicit save/load
     this.storage = new StorageManager(this);
+
+    // Debug HUD (visual logger for cursor/selection state)
+    this.debugHUD = new DebugHUD(this);
 
   }
 
@@ -117,7 +121,14 @@ class MusicNotationEditor {
         // MIDI export API
         exportMIDI: wasmModule.exportMIDI,
         // IR (Intermediate Representation) export API
-        generateIRJson: wasmModule.generateIRJson
+        generateIRJson: wasmModule.generateIRJson,
+        // Cursor/Selection API (anchor/head model)
+        getCaretInfo: wasmModule.getCaretInfo,
+        getSelectionInfo: wasmModule.getSelectionInfo,
+        setSelection: wasmModule.setSelection,
+        clearSelection: wasmModule.clearSelection,
+        startSelection: wasmModule.startSelection,
+        extendSelection: wasmModule.extendSelection
       };
 
       // Initialize OSMD renderer for staff notation

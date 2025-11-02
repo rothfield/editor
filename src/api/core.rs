@@ -2115,6 +2115,103 @@ pub fn split_line_at_position(
     Ok(result)
 }
 
+// ============================================================================
+// CURSOR AND SELECTION API (Anchor/Head Model)
+// ============================================================================
+
+/// Get current cursor information
+/// Returns CaretInfo with cursor position and desired column for vertical movement
+#[wasm_bindgen(js_name = getCaretInfo)]
+pub fn get_caret_info() -> Result<JsValue, JsValue> {
+    let doc_guard = DOCUMENT.lock().unwrap();
+    let doc = doc_guard.as_ref()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    let caret_info = crate::models::CaretInfo {
+        caret: doc.state.cursor,
+        desired_col: doc.state.selection_manager.desired_col,
+    };
+
+    serde_wasm_bindgen::to_value(&caret_info)
+        .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
+}
+
+/// Get current selection information (if any)
+/// Returns SelectionInfo with anchor, head, start, end, direction, isEmpty
+#[wasm_bindgen(js_name = getSelectionInfo)]
+pub fn get_selection_info() -> Result<JsValue, JsValue> {
+    let doc_guard = DOCUMENT.lock().unwrap();
+    let doc = doc_guard.as_ref()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    if let Some(selection) = doc.state.selection_manager.get_selection() {
+        let selection_info = crate::models::SelectionInfo::from_selection(selection);
+        serde_wasm_bindgen::to_value(&Some(selection_info))
+            .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
+    } else {
+        // Return null for no selection
+        Ok(JsValue::NULL)
+    }
+}
+
+/// Set selection explicitly with anchor and head positions
+/// anchor: {stave, col} - where selection started (fixed point)
+/// head: {stave, col} - current cursor position (moving point)
+#[wasm_bindgen(js_name = setSelection)]
+pub fn set_selection(anchor: JsValue, head: JsValue) -> Result<(), JsValue> {
+    let anchor_pos: crate::models::Pos = serde_wasm_bindgen::from_value(anchor)
+        .map_err(|e| JsValue::from_str(&format!("Invalid anchor position: {}", e)))?;
+
+    let head_pos: crate::models::Pos = serde_wasm_bindgen::from_value(head)
+        .map_err(|e| JsValue::from_str(&format!("Invalid head position: {}", e)))?;
+
+    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let doc = doc_guard.as_mut()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    doc.state.selection_manager.set_selection(anchor_pos, head_pos);
+
+    Ok(())
+}
+
+/// Clear current selection
+#[wasm_bindgen(js_name = clearSelection)]
+pub fn clear_selection() -> Result<(), JsValue> {
+    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let doc = doc_guard.as_mut()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    doc.state.selection_manager.clear_selection();
+
+    Ok(())
+}
+
+/// Start a new selection at the current cursor position
+#[wasm_bindgen(js_name = startSelection)]
+pub fn start_selection() -> Result<(), JsValue> {
+    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let doc = doc_guard.as_mut()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    let cursor_pos = doc.state.cursor;
+    doc.state.selection_manager.start_selection(cursor_pos);
+
+    Ok(())
+}
+
+/// Extend selection to the current cursor position (updates head, keeps anchor)
+#[wasm_bindgen(js_name = extendSelection)]
+pub fn extend_selection() -> Result<(), JsValue> {
+    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let doc = doc_guard.as_mut()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    let cursor_pos = doc.state.cursor;
+    doc.state.selection_manager.extend_selection(&cursor_pos);
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

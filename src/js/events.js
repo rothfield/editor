@@ -113,7 +113,9 @@ class EventManager {
 
       // Debug shortcuts
       F12: () => this.toggleDebugMode(),
-      'Ctrl+Shift+I': () => this.toggleDebugMode()
+      'Ctrl+Shift+I': () => this.toggleDebugMode(),
+      'Ctrl+Shift+D': () => this.toggleDebugHUD(),
+      'Ctrl+Shift+d': () => this.toggleDebugHUD()
     };
 
     // Prevent default behavior for certain keys when editor has focus
@@ -545,6 +547,15 @@ Focus Management:
     const debugPanel = document.querySelector('.debug-panel');
     if (debugPanel) {
       debugPanel.classList.toggle('hidden');
+    }
+  }
+
+  /**
+   * Toggle Debug HUD (cursor/selection state display)
+   */
+  toggleDebugHUD() {
+    if (this.editor && this.editor.debugHUD) {
+      this.editor.debugHUD.toggle();
     }
   }
 

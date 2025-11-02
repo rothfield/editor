@@ -538,6 +538,21 @@ impl Default for TalaVisual {
 
 // ==================== NEW WASM INTERFACE TYPES ====================
 
+/// Direction for cursor movement
+#[wasm_bindgen]
+#[repr(u8)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Direction {
+    Up = 0,
+    Down = 1,
+    Left = 2,
+    Right = 3,
+    LineStart = 4,
+    LineEnd = 5,
+    DocumentStart = 6,
+    DocumentEnd = 7,
+}
+
 /// Cursor information returned from WASM to JavaScript
 #[wasm_bindgen]
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
