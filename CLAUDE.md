@@ -2,6 +2,69 @@
 
 Auto-generated from all feature plans. Last updated: 2025-10-14
 
+---
+
+## ⚠️ **PRIME DIRECTIVE: WASM-FIRST ARCHITECTURE** ⚠️
+
+### ***CRITICAL: BEFORE WRITING ANY JAVASCRIPT CODE***
+
+**STOP AND ASK THE USER:** "Does this code belong in JavaScript or WASM?"
+
+### **Default Answer: WASM (Rust)**
+
+**MOST code should be in Rust/WASM.** Only platform I/O and UI glue belongs in JavaScript.
+
+### **What Goes Where**
+
+**✅ WASM (Rust) - The Core:**
+- **All document model and business logic**
+- **All text/selection operations**: cursor movement, selection management, insert/delete/backspace
+- **State management**: cursor position (anchor/head), selection, desiredCol, undo/redo
+- **Text math**: code points, graphemes, multi-line operations, block selections
+- **Structure-aware operations**: columns, beats, measures, cells
+- **All edit semantics**: join/split, undo batching
+- **Clipboard data preparation**: get_plain_text(), get_structured()
+- **Any deterministic, testable logic**
+
+**✅ JavaScript - The Glue:**
+- **Browser event capture ONLY**: keyboard, mouse, IME (compositionstart/update/end)
+- **Platform APIs**: Clipboard API, focus/blur, File API
+- **DOM/SVG rendering**: taking minimal diffs from WASM and updating display
+- **UI components**: buttons, panels, inspector tabs
+- **Event translation**: converting browser events into simple WASM commands
+
+### **Interface Pattern**
+
+**JS → WASM (commands):**
+```rust
+move_caret(dir: Direction, extend: bool) -> CaretInfo
+set_selection(anchor: Pos, head: Pos) -> SelectionInfo
+insert_text(text: String) -> DocDiff
+backspace() -> DocDiff
+delete() -> DocDiff
+```
+
+**WASM → JS (data):**
+```rust
+CaretInfo { caret: Pos, desiredCol: u32 }
+SelectionInfo { anchor: Pos, head: Pos, ... }
+DocDiff { changed_staves: Vec<u32>, ... }
+```
+
+### **When in Doubt**
+
+If you're about to implement:
+- Selection logic → **WASM**
+- Cursor movement → **WASM**
+- Text operations → **WASM**
+- Undo/redo → **WASM**
+- Document state → **WASM**
+- Business rules → **WASM**
+
+**ASK FIRST. THEN CODE IN RUST.**
+
+---
+
 ## Active Technologies
 - Rust 1.75+ (WASM module), JavaScript ES2022+ (host application), Node.js 18+ + wasm-bindgen 0.2.92, OSMD (OpenSheetMusicDisplay) 1.7.6, existing Cell-based editor (002-real-time-staff)
 - Rust 1.75+ (WASM module) + JavaScript ES2022+ (host application) + wasm-bindgen 0.2.92, OSMD 1.7.6, serde 1.0.197, quick-xml 0.31, mustache 0.9 (006-music-notation-ornament)
