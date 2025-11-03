@@ -257,6 +257,8 @@ impl<'a> LayoutLineComputer<'a> {
     }
 
     /// Compute beat loop arcs from beat spans
+    /// Arc Y coordinates are stored as ABSOLUTE (including line_y_offset),
+    /// which JavaScript will use directly in the SVG overlay
     fn compute_beat_loop_arcs(
         &self,
         beats: &[BeatSpan],
@@ -398,7 +400,7 @@ impl<'a> LayoutLineComputer<'a> {
         end_cell: &RenderCell,
         direction: &str,
         color: &str,
-        _config: &LayoutConfig,
+        config: &LayoutConfig,
     ) -> RenderArc {
         // Anchor points at cell centers
         let is_downward = direction == "down";

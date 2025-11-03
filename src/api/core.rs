@@ -2489,6 +2489,127 @@ pub fn mouse_up(pos_js: JsValue) -> Result<JsValue, JsValue> {
         .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
 }
 
+/// Select beat or character group at the given position (for double-click)
+/// Returns an EditorDiff with the updated selection and cursor state
+#[wasm_bindgen(js_name = selectBeatAtPosition)]
+pub fn select_beat_at_position(pos_js: JsValue) -> Result<JsValue, JsValue> {
+    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let doc = doc_guard.as_mut()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    let pos: Pos = serde_wasm_bindgen::from_value(pos_js)
+        .map_err(|e| JsValue::from_str(&format!("Invalid position: {}", e)))?;
+
+    // Clamp position to document bounds
+    let clamped_pos = doc.clamp_pos(pos);
+
+    // Get the line at the position
+    if clamped_pos.line >= doc.lines.len() {
+        return Err(JsValue::from_str("Line index out of bounds"));
+    }
+
+    let line = &doc.lines[clamped_pos.line];
+    let cells = &line.cells;
+
+    if cells.is_empty() {
+        return Err(JsValue::from_str("Empty line"));
+    }
+
+    // Use BeatDeriver to extract beats
+    let beat_deriver = crate::parse::beats::BeatDeriver::new();
+    let beats = beat_deriver.extract_implicit_beats(cells);
+
+    // Check if the position falls within a beat
+    for beat in &beats {
+        if beat.contains(clamped_pos.col) {
+            // Found a beat containing the position
+            let anchor = Pos::new(clamped_pos.line, beat.start);
+            let head = Pos::new(clamped_pos.line, beat.end + 1); // end is exclusive in Selection
+
+            // Update document state
+            doc.state.cursor = head;
+            doc.state.selection_manager.set_selection(anchor, head);
+            doc.state.selection_manager.desired_col = head.col;
+
+            // Return EditorDiff with updated state
+            let diff = create_editor_diff(&doc, Some(clamped_pos.line));
+            return serde_wasm_bindgen::to_value(&diff)
+                .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)));
+        }
+    }
+
+    // No beat found - fall back to character group selection (cell + continuations)
+    // Find the start of the character group (first cell with continuation=false)
+    let mut start_col = clamped_pos.col;
+    for i in (0..=clamped_pos.col).rev() {
+        if i < cells.len() && !cells[i].continuation {
+            start_col = i;
+            break;
+        }
+    }
+
+    // Find the end of the character group (scan forward while continuation=true)
+    let mut end_col = start_col;
+    for i in (start_col + 1)..cells.len() {
+        if cells[i].continuation {
+            end_col = i;
+        } else {
+            break;
+        }
+    }
+
+    // Create selection for character group
+    let anchor = Pos::new(clamped_pos.line, start_col);
+    let head = Pos::new(clamped_pos.line, end_col + 1); // end is exclusive in Selection
+
+    // Update document state
+    doc.state.cursor = head;
+    doc.state.selection_manager.set_selection(anchor, head);
+    doc.state.selection_manager.desired_col = head.col;
+
+    // Return EditorDiff with updated state
+    let diff = create_editor_diff(&doc, Some(clamped_pos.line));
+    serde_wasm_bindgen::to_value(&diff)
+        .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
+}
+
+/// Select entire line at the given position (for triple-click)
+/// Returns an EditorDiff with the updated selection and cursor state
+#[wasm_bindgen(js_name = selectLineAtPosition)]
+pub fn select_line_at_position(pos_js: JsValue) -> Result<JsValue, JsValue> {
+    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let doc = doc_guard.as_mut()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    let pos: Pos = serde_wasm_bindgen::from_value(pos_js)
+        .map_err(|e| JsValue::from_str(&format!("Invalid position: {}", e)))?;
+
+    // Clamp position to document bounds
+    let clamped_pos = doc.clamp_pos(pos);
+
+    // Get the line at the position
+    if clamped_pos.line >= doc.lines.len() {
+        return Err(JsValue::from_str("Line index out of bounds"));
+    }
+
+    let line = &doc.lines[clamped_pos.line];
+    let line_length = line.cells.len();
+
+    // Select entire line: from column 0 to end of line
+    let anchor = Pos::new(clamped_pos.line, 0);
+    let head = Pos::new(clamped_pos.line, line_length);
+
+    // Update document state
+    doc.state.cursor = head;
+    doc.state.selection_manager.set_selection(anchor, head);
+    doc.state.selection_manager.desired_col = head.col;
+
+    // Return EditorDiff with updated state
+    let diff = create_editor_diff(&doc, Some(clamped_pos.line));
+    serde_wasm_bindgen::to_value(&diff)
+        .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2799,5 +2920,140 @@ mod tests {
         }
 
         result
+    }
+
+    // ==================== Beat Selection Tests ====================
+
+    /// Helper to create a pitched element cell for beat testing
+    fn make_pitched_cell(char: &str, col: usize) -> Cell {
+        Cell::new(char.to_string(), crate::models::ElementKind::PitchedElement, col)
+    }
+
+    /// Helper to create a whitespace cell for beat testing
+    fn make_space_cell(char: &str, col: usize) -> Cell {
+        Cell::new(char.to_string(), crate::models::ElementKind::Unknown, col)
+    }
+
+    #[test]
+    fn test_beat_selection_simple_beat() {
+        // Create a document with a simple beat: "S--r"
+        // Beat should span columns 0-3
+        let mut doc = Document::new();
+        let mut line = Line::new();
+
+        // Add cells for beat: S--r
+        line.cells.push(make_pitched_cell("S", 0));
+        line.cells.push(make_pitched_cell("-", 1));
+        line.cells.push(make_pitched_cell("-", 2));
+        line.cells.push(make_pitched_cell("r", 3));
+
+        doc.lines.push(line);
+
+        // Store document in GLOBAL
+        {
+            let mut guard = DOCUMENT.lock().unwrap();
+            *guard = Some(doc);
+        }
+
+        // Test selecting at different positions within the beat
+        for col in 0..4 {
+            let pos = Pos::new(0, col);
+            let pos_js = serde_wasm_bindgen::to_value(&pos).unwrap();
+            let result = select_beat_at_position(pos_js);
+
+            assert!(result.is_ok(), "Selection should succeed at col {}", col);
+
+            let selection_info: SelectionInfo = serde_wasm_bindgen::from_value(result.unwrap()).unwrap();
+            assert_eq!(selection_info.start.col, 0, "Beat should start at col 0");
+            assert_eq!(selection_info.end.col, 4, "Beat should end at col 4 (exclusive)");
+        }
+    }
+
+    #[test]
+    fn test_beat_selection_multiple_beats() {
+        // Create a document with multiple beats separated by spaces: "S--r  g-m"
+        let mut doc = Document::new();
+        let mut line = Line::new();
+
+        // Beat 1: S--r (columns 0-3)
+        line.cells.push(make_pitched_cell("S", 0));
+        line.cells.push(make_pitched_cell("-", 1));
+        line.cells.push(make_pitched_cell("-", 2));
+        line.cells.push(make_pitched_cell("r", 3));
+
+        // Separator: spaces (columns 4-5)
+        line.cells.push(make_space_cell(" ", 4));
+        line.cells.push(make_space_cell(" ", 5));
+
+        // Beat 2: g-m (columns 6-8)
+        line.cells.push(make_pitched_cell("g", 6));
+        line.cells.push(make_pitched_cell("-", 7));
+        line.cells.push(make_pitched_cell("m", 8));
+
+        doc.lines.push(line);
+
+        {
+            let mut guard = DOCUMENT.lock().unwrap();
+            *guard = Some(doc);
+        }
+
+        // Test selecting first beat (col 0-3)
+        let pos = Pos::new(0, 2);
+        let pos_js = serde_wasm_bindgen::to_value(&pos).unwrap();
+        let result = select_beat_at_position(pos_js).unwrap();
+        let selection_info: SelectionInfo = serde_wasm_bindgen::from_value(result).unwrap();
+        assert_eq!(selection_info.start.col, 0);
+        assert_eq!(selection_info.end.col, 4);
+
+        // Test selecting second beat (col 6-8)
+        let pos = Pos::new(0, 7);
+        let pos_js = serde_wasm_bindgen::to_value(&pos).unwrap();
+        let result = select_beat_at_position(pos_js).unwrap();
+        let selection_info: SelectionInfo = serde_wasm_bindgen::from_value(result).unwrap();
+        assert_eq!(selection_info.start.col, 6);
+        assert_eq!(selection_info.end.col, 9);
+    }
+
+    #[test]
+    fn test_beat_selection_character_group_fallback() {
+        // Create a document with no beats - should fall back to character group selection
+        let mut doc = Document::new();
+        let mut line = Line::new();
+
+        // Add cells with continuation flags (simulating a multi-char glyph)
+        let mut cell1 = make_space_cell("S", 0);
+        cell1.continuation = false;
+        line.cells.push(cell1);
+
+        let mut cell2 = make_space_cell("a", 1);
+        cell2.continuation = true; // continuation of previous
+        line.cells.push(cell2);
+
+        let mut cell3 = make_space_cell("r", 2);
+        cell3.continuation = false; // new character group
+        line.cells.push(cell3);
+
+        doc.lines.push(line);
+
+        {
+            let mut guard = DOCUMENT.lock().unwrap();
+            *guard = Some(doc);
+        }
+
+        // Test selecting first character group (S + continuation)
+        let pos = Pos::new(0, 0);
+        let pos_js = serde_wasm_bindgen::to_value(&pos).unwrap();
+        let result = select_beat_at_position(pos_js).unwrap();
+        let selection_info: SelectionInfo = serde_wasm_bindgen::from_value(result).unwrap();
+        assert_eq!(selection_info.start.col, 0);
+        assert_eq!(selection_info.end.col, 2, "Should select S and its continuation");
+
+        // Test selecting second character group
+        let pos = Pos::new(0, 2);
+        let pos_js = serde_wasm_bindgen::to_value(&pos).unwrap();
+        let result = select_beat_at_position(pos_js).unwrap();
+        let selection_info: SelectionInfo = serde_wasm_bindgen::from_value(result).unwrap();
+        assert_eq!(selection_info.start.col, 2);
+        assert_eq!(selection_info.end.col, 3, "Should select just r");
     }
 }

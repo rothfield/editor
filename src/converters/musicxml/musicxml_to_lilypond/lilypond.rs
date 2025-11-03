@@ -77,13 +77,19 @@ fn generate_staves_content(parts: &[SequentialMusic], settings: &ConversionSetti
             music_content
         )
     } else {
-        // Multiple parts - each Staff > Voice > \fixed c' > notes
+        // Multiple parts - only emit time/key/clef in first staff to avoid duplication
         parts
             .iter()
             .enumerate()
             .map(|(i, part)| {
                 let voice_name = format!("v{}", i + 1);
-                let music_content = generate_music(part, settings, 10);
+                // For staves after the first, filter out initial time/key/clef signatures
+                let filtered_part = if i > 0 {
+                    filter_initial_attributes(part)
+                } else {
+                    part.clone()
+                };
+                let music_content = generate_music(&filtered_part, settings, 10);
                 format!(
                     "    \\new Staff {{\n      \\new Voice = \"{}\" {{\n        \\fixed c' {{\n{}\n        }}\n      }}\n    }}",
                     voice_name, music_content
@@ -92,6 +98,29 @@ fn generate_staves_content(parts: &[SequentialMusic], settings: &ConversionSetti
             .collect::<Vec<_>>()
             .join("\n")
     }
+}
+
+/// Filter out initial time/key/clef signatures from a part (for multi-staff scores)
+/// These should only appear in the first staff to avoid duplication
+fn filter_initial_attributes(part: &SequentialMusic) -> SequentialMusic {
+    let mut filtered_elements = Vec::new();
+    let mut seen_non_attribute = false;
+
+    for music in &part.elements {
+        match music {
+            Music::TimeChange(_) | Music::KeyChange(_) | Music::ClefChange(_)
+                if !seen_non_attribute => {
+                // Skip initial time/key/clef changes (they'll be in the first staff)
+                continue;
+            }
+            _ => {
+                seen_non_attribute = true;
+                filtered_elements.push(music.clone());
+            }
+        }
+    }
+
+    SequentialMusic::new(filtered_elements)
 }
 
 /// Fallback: Generate LilyPond document with hardcoded structure

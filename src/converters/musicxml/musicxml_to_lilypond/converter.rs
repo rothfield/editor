@@ -16,6 +16,10 @@ pub struct ConversionContext {
     pub current_measure: u32,
     pub current_part_id: String,
     pub skipped_elements: Vec<SkippedElement>,
+    // State tracking to avoid duplicate emissions
+    pub current_time_signature: Option<(u8, u8)>,  // (beats, beat_type)
+    pub current_key_signature: Option<(i8, Mode)>,  // (fifths, mode)
+    pub current_clef: Option<ClefType>,
 }
 
 impl ConversionContext {
@@ -25,6 +29,9 @@ impl ConversionContext {
             current_measure: 0,
             current_part_id: part_id,
             skipped_elements: Vec::new(),
+            current_time_signature: None,
+            current_key_signature: None,
+            current_clef: None,
         }
     }
 
@@ -278,13 +285,14 @@ pub fn convert_note(
 }
 
 /// Convert attributes element to Music changes
+/// Only emits changes when the attribute actually changes (prevents duplicates)
 pub fn convert_attributes(
     attributes_node: Node,
-    _context: &mut ConversionContext,
+    context: &mut ConversionContext,
 ) -> Result<Vec<Music>, ConversionError> {
     let mut music = Vec::new();
 
-    // Key signature
+    // Key signature - only emit if changed
     if let Some(key_node) = get_child(attributes_node, "key") {
         if let Some((fifths, mode_str)) = crate::converters::musicxml::musicxml_to_lilypond::parser::parse_key(key_node) {
             let mode = match mode_str.to_lowercase().as_str() {
@@ -292,22 +300,35 @@ pub fn convert_attributes(
                 "minor" => Mode::Minor,
                 _ => Mode::Major,
             };
-            if let Ok(key_sig) = KeySignature::new(fifths, mode) {
-                music.push(Music::KeyChange(key_sig));
+
+            let new_key = (fifths, mode);
+            let has_changed = context.current_key_signature.as_ref() != Some(&new_key);
+
+            if has_changed {
+                if let Ok(key_sig) = KeySignature::new(fifths, mode) {
+                    music.push(Music::KeyChange(key_sig));
+                    context.current_key_signature = Some(new_key);
+                }
             }
         }
     }
 
-    // Time signature
+    // Time signature - only emit if changed
     if let Some(time_node) = get_child(attributes_node, "time") {
         if let Some((beats, beat_type)) = crate::converters::musicxml::musicxml_to_lilypond::parser::parse_time(time_node) {
-            if let Ok(time_sig) = TimeSignature::new(beats, beat_type) {
-                music.push(Music::TimeChange(time_sig));
+            let new_time = (beats, beat_type);
+            let has_changed = context.current_time_signature.as_ref() != Some(&new_time);
+
+            if has_changed {
+                if let Ok(time_sig) = TimeSignature::new(beats, beat_type) {
+                    music.push(Music::TimeChange(time_sig));
+                    context.current_time_signature = Some(new_time);
+                }
             }
         }
     }
 
-    // Clef
+    // Clef - only emit if changed
     if let Some(clef_node) = get_child(attributes_node, "clef") {
         if let Some((sign, _line)) = crate::converters::musicxml::musicxml_to_lilypond::parser::parse_clef(clef_node) {
             let clef_type = match sign.as_str() {
@@ -316,7 +337,13 @@ pub fn convert_attributes(
                 "C" => ClefType::Alto,
                 _ => ClefType::Treble,
             };
-            music.push(Music::ClefChange(Clef { clef_type }));
+
+            let has_changed = context.current_clef.as_ref() != Some(&clef_type);
+
+            if has_changed {
+                music.push(Music::ClefChange(Clef { clef_type }));
+                context.current_clef = Some(clef_type);
+            }
         }
     }
 

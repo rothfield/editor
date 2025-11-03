@@ -13,7 +13,7 @@ test('Beat arc y positions should be consistent', async ({ page }) => {
 
   // Get all beat arc elements from the SVG
   const arcData = await page.evaluate(() => {
-    const svgArcs = document.querySelectorAll('.beat-loop-arc');
+    const svgArcs = document.querySelectorAll('.beat-loop-path');
     if (svgArcs.length === 0) {
       console.log('No beat loop arcs found');
       return { count: 0, arcs: [] };
