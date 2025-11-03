@@ -1007,7 +1007,7 @@ class MusicNotationEditor {
         this.showTalaDialog();
         break;
       case 'o':
-        this.applyOrnamentIndicator(); // Legacy - redirects to applyOrnament('after')
+        this.applyOrnament('after');
         break;
       case '0':
         this.applyOrnament('after'); // Alt+0: Apply ornament (default "after" position)
@@ -2317,14 +2317,6 @@ class MusicNotationEditor {
     } catch (error) {
       console.error('❌ Failed to remove ornament:', error);
     }
-  }
-
-  /**
-   * Legacy method - kept for compatibility, redirects to applyOrnament
-   * @deprecated Use applyOrnament() instead
-   */
-  async applyOrnamentIndicator() {
-    return this.applyOrnament('after');
   }
 
   /**

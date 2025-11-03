@@ -1258,15 +1258,6 @@ class UI {
   }
 
   /**
-   * Apply ornament indicator to current selection
-   */
-  applyOrnamentIndicator() {
-    if (this.editor) {
-      this.editor.applyOrnamentIndicator();
-    }
-  }
-
-  /**
    * Toggle ornament edit mode
    */
   toggleOrnamentEditMode() {
