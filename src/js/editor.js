@@ -543,26 +543,49 @@ class MusicNotationEditor {
     }
 
     try {
-      // Simple deletion for POC - manual array manipulation
-      if (this.theDocument && this.theDocument.lines && this.theDocument.lines.length > 0) {
-        const line = this.getCurrentLine();
-        if (!line) return;
-        const cells = line.cells;
+      // Get current line index
+      const currentLineIndex = this.theDocument?.state?.cursor?.line ?? 0;
+      const line = this.getCurrentLine();
+      if (!line) return;
 
-        // Check if any cell in range has an ornament indicator - if so, prevent deletion
-        for (let i = start; i < end && i < cells.length; i++) {
-          if (cells[i] && cells[i].ornament_indicator && cells[i].ornament_indicator.name !== 'none') {
-            console.log('[DELETE] Protected: cannot delete ornament cell at index', i);
-            this.showWarning('Cannot delete cells with ornaments - ornaments are non-editable');
-            return; // Don't delete anything if any cell has an ornament
-          }
+      // Check if any cell in range has an ornament indicator - if so, prevent deletion
+      // TODO: Move this business rule to WASM (per WASM-first principle)
+      const cells = line.cells;
+      for (let i = start; i < end && i < cells.length; i++) {
+        if (cells[i] && cells[i].ornament_indicator && cells[i].ornament_indicator.name !== 'none') {
+          console.log('[DELETE] Protected: cannot delete ornament cell at index', i);
+          this.showWarning('Cannot delete cells with ornaments - ornaments are non-editable');
+          return; // Don't delete anything if any cell has an ornament
         }
-
-        // Delete cells in range
-        cells.splice(start, end - start);
       }
 
-      this.setCursorPosition(start);
+      // Use WASM editReplaceRange for deletion (delete = replace with empty string)
+      this.wasmModule.loadDocument(this.theDocument);
+      const result = this.wasmModule.editReplaceRange(
+        currentLineIndex,  // start_row
+        start,             // start_col
+        currentLineIndex,  // end_row (same row for single-line delete)
+        end,               // end_col
+        ""                 // empty text = deletion
+      );
+
+      // Update document from WASM result
+      if (result && result.dirty_lines) {
+        // Update the affected lines from WASM
+        for (const dirtyLine of result.dirty_lines) {
+          if (dirtyLine.row < this.theDocument.lines.length) {
+            this.theDocument.lines[dirtyLine.row].cells = dirtyLine.cells;
+          }
+        }
+      }
+
+      // Set cursor position from WASM result
+      if (result && typeof result.new_cursor_col !== 'undefined') {
+        this.setCursorPosition(result.new_cursor_col);
+      } else {
+        this.setCursorPosition(start);
+      }
+
       await this.renderAndUpdate();
 
       // Restore visual selection after deletion
@@ -1448,21 +1471,38 @@ class MusicNotationEditor {
           const prevLine = this.theDocument.lines[currentStave - 1];
           const currLine = this.getCurrentLine();
 
-          // Calculate cursor position: end of previous line
-          const mergeCharPos = this.cellIndexToCharPos(prevLine.cells.length);
+          // Use WASM editReplaceRange for line merging
+          // Delete from end of prev line to end of current line = merge lines
+          this.wasmModule.loadDocument(this.theDocument);
+          const result = this.wasmModule.editReplaceRange(
+            currentStave - 1,           // start_row (previous line)
+            prevLine.cells.length,      // start_col (end of previous line)
+            currentStave,                // end_row (current line)
+            currLine.cells.length,       // end_col (end of current line)
+            ""                           // empty text = merge without insertion
+          );
 
-          // Merge: append current line's cells to previous line
-          prevLine.cells = prevLine.cells.concat(currLine.cells);
+          // Update the merged line from WASM result
+          if (result && result.dirty_lines) {
+            for (const dirtyLine of result.dirty_lines) {
+              if (dirtyLine.row < this.theDocument.lines.length) {
+                this.theDocument.lines[dirtyLine.row].cells = dirtyLine.cells;
+              }
+            }
+          }
 
-          // Remove current line from document
+          // Remove the current line (WASM has already merged it into previous line)
           this.theDocument.lines.splice(currentStave, 1);
+
+          // Calculate cursor position: end of previous line (merge point)
+          const mergeCharPos = this.cellIndexToCharPos(prevLine.cells.length);
 
           // Update cursor: move to previous line at merge point
           this.theDocument.state.cursor.line = currentStave - 1;
           this.theDocument.state.cursor.col = mergeCharPos;
 
-          logger.debug(LOG_CATEGORIES.EDITOR, 'Lines merged successfully', {
-            newLineLength: prevLine.cells.length,
+          logger.debug(LOG_CATEGORIES.EDITOR, 'Lines merged successfully via WASM', {
+            newLineLength: result?.new_cursor_col,
             newCursorStave: currentStave - 1,
             newCursorColumn: mergeCharPos
           });
@@ -3336,25 +3376,45 @@ class MusicNotationEditor {
         return;
       }
 
-      // Paste into the current line at cursor position
+      // Use WASM pasteCells for proper document mutation
       const line = this.getCurrentLine();
       if (!line || !line.cells) {
         console.warn('No current line to paste into');
         return;
       }
 
-      // Insert the cells at the cursor position
-      line.cells.splice(startColumn, 0, ...cellsToPaste);
+      // Call WASM pasteCells (handles document mutation, undo tracking)
+      const result = this.wasmModule.pasteCells(
+        startStave,      // start_row
+        startColumn,     // start_col
+        startStave,      // end_row (same row for simple paste)
+        startColumn,     // end_col (same column, no selection to replace)
+        cellsToPaste     // cells to paste
+      );
 
-      // Update cursor position to after pasted content
-      this.setCursorPosition(startColumn + cellsToPaste.length);
+      // Update document from WASM result
+      if (result && result.dirty_lines) {
+        for (const dirtyLine of result.dirty_lines) {
+          if (dirtyLine.row < this.theDocument.lines.length) {
+            this.theDocument.lines[dirtyLine.row].cells = dirtyLine.cells;
+          }
+        }
+      }
+
+      // Update cursor position from WASM result
+      if (result && typeof result.new_cursor_col !== 'undefined') {
+        this.setCursorPosition(result.new_cursor_col);
+      } else {
+        // Fallback: position after pasted content
+        this.setCursorPosition(startColumn + cellsToPaste.length);
+      }
 
       // Clear selection
       if (this.theDocument.state) {
         this.theDocument.state.selection = { active: false };
       }
 
-      this.addToConsoleLog(`Pasted ${cellsToPaste.length} cells`);
+      this.addToConsoleLog(`Pasted ${cellsToPaste.length} cells via WASM`);
       this.render();
     } catch (error) {
       console.error('Paste failed:', error);
