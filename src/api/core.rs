@@ -1662,11 +1662,20 @@ pub fn can_redo() -> Result<bool, JsValue> {
 pub fn load_document(document_js: JsValue) -> Result<(), JsValue> {
     wasm_info!("loadDocument called");
 
-    let doc: Document = serde_wasm_bindgen::from_value(document_js)
+    let mut doc: Document = serde_wasm_bindgen::from_value(document_js)
         .map_err(|e| {
             wasm_error!("Document deserialization error: {}", e);
             JsValue::from_str(&format!("Document deserialization error: {}", e))
         })?;
+
+    web_sys::console::log_1(&format!("[WASM] loadDocument: cursor position from JS = ({}, {})",
+        doc.state.cursor.line, doc.state.cursor.col).into());
+
+    // Preserve the SelectionManager state from the existing document (if any)
+    // This prevents losing selection state when reloading the document
+    if let Some(existing_doc) = DOCUMENT.lock().unwrap().as_ref() {
+        doc.state.selection_manager = existing_doc.state.selection_manager.clone();
+    }
 
     *DOCUMENT.lock().unwrap() = Some(doc);
     wasm_info!("loadDocument completed successfully");
@@ -2243,11 +2252,17 @@ pub fn move_left(extend: bool) -> Result<JsValue, JsValue> {
     let doc = doc_guard.as_mut()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
+    let old_cursor = doc.state.cursor;
     let new_pos = doc.prev_caret(doc.state.cursor);
+
+    web_sys::console::log_1(&format!("[WASM] moveLeft(extend={}): old_cursor=({},{}), new_pos=({},{})",
+        extend, old_cursor.line, old_cursor.col, new_pos.line, new_pos.col).into());
 
     if !extend {
         doc.state.selection_manager.clear_selection();
     } else if doc.state.selection_manager.current_selection.is_none() {
+        web_sys::console::log_1(&format!("[WASM]   Starting selection at ({},{})",
+            old_cursor.line, old_cursor.col).into());
         doc.state.selection_manager.start_selection(doc.state.cursor);
     }
 
@@ -2256,6 +2271,10 @@ pub fn move_left(extend: bool) -> Result<JsValue, JsValue> {
 
     if extend {
         doc.state.selection_manager.extend_selection(&new_pos);
+        if let Some(sel) = &doc.state.selection_manager.current_selection {
+            web_sys::console::log_1(&format!("[WASM]   Selection: anchor=({},{}), head=({},{})",
+                sel.anchor.line, sel.anchor.col, sel.head.line, sel.head.col).into());
+        }
     }
 
     let diff = create_editor_diff(&doc, Some(new_pos.line));
@@ -2269,11 +2288,17 @@ pub fn move_right(extend: bool) -> Result<JsValue, JsValue> {
     let doc = doc_guard.as_mut()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
+    let old_cursor = doc.state.cursor;
     let new_pos = doc.next_caret(doc.state.cursor);
+
+    web_sys::console::log_1(&format!("[WASM] moveRight(extend={}): old_cursor=({},{}), new_pos=({},{})",
+        extend, old_cursor.line, old_cursor.col, new_pos.line, new_pos.col).into());
 
     if !extend {
         doc.state.selection_manager.clear_selection();
     } else if doc.state.selection_manager.current_selection.is_none() {
+        web_sys::console::log_1(&format!("[WASM]   Starting selection at ({},{})",
+            old_cursor.line, old_cursor.col).into());
         doc.state.selection_manager.start_selection(doc.state.cursor);
     }
 
@@ -2282,6 +2307,10 @@ pub fn move_right(extend: bool) -> Result<JsValue, JsValue> {
 
     if extend {
         doc.state.selection_manager.extend_selection(&new_pos);
+        if let Some(sel) = &doc.state.selection_manager.current_selection {
+            web_sys::console::log_1(&format!("[WASM]   Selection: anchor=({},{}), head=({},{})",
+                sel.anchor.line, sel.anchor.col, sel.head.line, sel.head.col).into());
+        }
     }
 
     let diff = create_editor_diff(&doc, Some(new_pos.line));
@@ -2441,12 +2470,21 @@ pub fn mouse_up(pos_js: JsValue) -> Result<JsValue, JsValue> {
     let pos: Pos = serde_wasm_bindgen::from_value(pos_js)
         .map_err(|e| JsValue::from_str(&format!("Invalid position: {}", e)))?;
 
+    web_sys::console::log_1(&format!("[WASM] mouseUp: pos=({},{})", pos.line, pos.col).into());
+
     let clamped_pos = doc.clamp_pos(pos);
+    web_sys::console::log_1(&format!("[WASM] mouseUp: clamped_pos=({},{})", clamped_pos.line, clamped_pos.col).into());
+
     doc.state.cursor = clamped_pos;
     doc.state.selection_manager.extend_selection(&clamped_pos);
     doc.state.selection_manager.desired_col = clamped_pos.col;
 
+    let selection_after = doc.state.selection_manager.get_selection();
+    web_sys::console::log_1(&format!("[WASM] mouseUp: selection after extend = {:?}", selection_after).into());
+
     let diff = create_editor_diff(&doc, Some(clamped_pos.line));
+    web_sys::console::log_1(&format!("[WASM] mouseUp: diff.selection = {:?}", diff.selection).into());
+
     serde_wasm_bindgen::to_value(&diff)
         .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
 }

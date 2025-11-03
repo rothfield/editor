@@ -289,7 +289,7 @@ test.describe('Copy/Paste/Undo/Redo Operations', () => {
     expect(afterCut).toBeLessThanOrEqual(beforeCut);
   });
 
-  test('Copy preserves cell structure (has octaves/slurs/ornaments fields)', async ({ editorPage: page }) => {
+  test('Copy preserves cell structure (has octaves/slurs/ornament_indicator fields)', async ({ editorPage: page }) => {
     // Type a cell
     await typeInEditor(page, '1');
     await page.waitForTimeout(300);
@@ -317,7 +317,7 @@ test.describe('Copy/Paste/Undo/Redo Operations', () => {
         cellHasChar: !!firstCell.char,
         cellHasOctaveField: 'octave' in firstCell,
         cellHasSlurField: 'slur_indicator' in firstCell,
-        cellHasOrnamentsField: 'ornaments' in firstCell
+        cellHasOrnamentsField: 'ornament_indicator' in firstCell
       };
     });
 

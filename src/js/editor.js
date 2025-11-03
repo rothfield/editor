@@ -788,6 +788,20 @@ class MusicNotationEditor {
   }
 
   /**
+   * Get the full cursor position as a Pos object { line, col }
+   * @returns {{line: number, col: number}} Full cursor position
+   */
+  getCursorPos() {
+    if (this.theDocument && this.theDocument.state) {
+      return {
+        line: this.theDocument.state.cursor.line,
+        col: this.theDocument.state.cursor.col
+      };
+    }
+    return { line: 0, col: 0 };
+  }
+
+  /**
      * Set cursor position - supports both single position (column) or row/col arguments
      * @param {number} positionOrRow - Either a character position (column) or row number
      * @param {number} col - Optional column number (if first param is row)
@@ -925,11 +939,13 @@ class MusicNotationEditor {
      */
   handleKeyboardEvent(event) {
     let key = event.key;
+    console.log(`[JS] handleKeyboardEvent called with key: "${key}"`);
     const modifiers = {
       alt: event.altKey,
       ctrl: event.ctrlKey,
       shift: event.shiftKey
     };
+    console.log('[JS] Modifiers:', modifiers);
 
     // Fix for browsers that return "alt" instead of the actual key when Alt is pressed
     // Use event.code as fallback (e.g., "KeyL" -> "l")
@@ -1060,7 +1076,8 @@ class MusicNotationEditor {
      */
   handleShiftCommand(key) {
     try {
-      // Ensure WASM has the latest document state
+      // Load document to ensure WASM has latest state
+      // (SelectionManager state is now preserved during load)
       if (!this.theDocument) {
         console.warn('No document available for selection');
         return;
@@ -1104,6 +1121,7 @@ class MusicNotationEditor {
      * Handle normal keys (text input) with selection awareness
      */
   handleNormalKey(key) {
+    console.log(`[JS] handleNormalKey called with key: "${key}"`);
     switch (key) {
       case 'ArrowLeft':
       case 'ArrowRight':
@@ -1111,6 +1129,7 @@ class MusicNotationEditor {
       case 'ArrowDown':
       case 'Home':
       case 'End':
+        console.log('[JS] Arrow/navigation key detected, calling handleNavigation');
         // Clear selection when navigating
         if (this.hasSelection()) {
           this.clearSelection();
@@ -1138,18 +1157,23 @@ class MusicNotationEditor {
      * Handle navigation keys with enhanced functionality
      */
   handleNavigation(key) {
+    console.log(`[JS] handleNavigation called with key: ${key}`);
     try {
-      // Ensure WASM has the latest document state
+      // Load document to ensure WASM has latest state
+      // (SelectionManager state is now preserved during load)
       if (!this.theDocument) {
         console.warn('No document available for navigation');
         return;
       }
+      console.log(`[JS] Current cursor before navigation:`, this.theDocument.state.cursor);
       this.wasmModule.loadDocument(this.theDocument);
 
       let diff;
       switch (key) {
         case 'ArrowLeft':
+          console.log('[JS] Calling moveLeft...');
           diff = this.wasmModule.moveLeft(false);
+          console.log('[JS] moveLeft returned:', diff);
           break;
         case 'ArrowRight':
           diff = this.wasmModule.moveRight(false);
@@ -1171,7 +1195,9 @@ class MusicNotationEditor {
           return;
       }
       // Update cursor display from diff
+      console.log('[JS] About to update cursor from diff:', diff);
       this.updateCursorFromWASM(diff);
+      console.log(`[JS] Cursor after updateCursorFromWASM:`, this.theDocument.state.cursor);
     } catch (error) {
       console.error('Navigation error:', error);
     }
@@ -1506,9 +1532,13 @@ class MusicNotationEditor {
       return '';
     }
 
-    // Extract text from selection range (inclusive)
+    // Extract text from selection range (half-open [start, end), exclusive of end)
+    // For single-line selection, filter by column range
+    const startCol = Math.min(selection.start.col, selection.end.col);
+    const endCol = Math.max(selection.start.col, selection.end.col);
+
     const selectedCells = cells.filter((cell, index) =>
-      index >= selection.start && index <= selection.end
+      index >= startCol && index < endCol
     );
 
     return selectedCells.map(cell => cell.char || '').join('');
@@ -1559,11 +1589,14 @@ class MusicNotationEditor {
     const lineElement = lineElements[currentStave];
 
     // Add 'selected' class to all cells in the selection range (inclusive)
-    // Selection range is from start to end (both are cell indices)
-    const startIdx = Math.min(selection.start, selection.end);
-    const endIdx = Math.max(selection.start, selection.end);
+    // Selection range is from start to end (Pos objects with line/col)
+    // Extract column values for single-line selection
+    const startCol = typeof selection.start === 'object' ? selection.start.col : selection.start;
+    const endCol = typeof selection.end === 'object' ? selection.end.col : selection.end;
+    const startIdx = Math.min(startCol, endCol);
+    const endIdx = Math.max(startCol, endCol);
 
-    for (let i = startIdx; i <= endIdx; i++) {
+    for (let i = startIdx; i < endIdx; i++) {
       const cellElement = lineElement.querySelector(`[data-cell-index="${i}"]`);
       if (cellElement) {
         cellElement.classList.add('selected');
@@ -1840,7 +1873,7 @@ class MusicNotationEditor {
     // If there's an actual selection (start != end), do nothing (wait for undo implementation)
     const selection = this.getSelection();
     console.log('🔄 Selection check:', selection);
-    if (selection && selection.start !== selection.end) {
+    if (selection && (selection.start.line !== selection.end.line || selection.start.col !== selection.end.col)) {
       console.log('🔄 Selection active, blocking');
       logger.warn(LOG_CATEGORIES.EDITOR, 'Cannot split line with active selection (undo not yet implemented)');
       this.showWarning('Cannot split line with active selection', {
@@ -1950,18 +1983,36 @@ class MusicNotationEditor {
    * Returns {start, end} or null if no valid selection available
    */
   getEffectiveSelection() {
-    // If there's a user selection, use it
+    // If there's a user selection, use it (returns {start: {line, col}, end: {line, col}})
     if (this.hasSelection()) {
-      return this.getSelection();
+      const sel = this.getSelection();
+      // Convert to simple numeric range for single-line selection
+      if (sel.start.line === sel.end.line) {
+        return {
+          start: Math.min(sel.start.col, sel.end.col),
+          end: Math.max(sel.start.col, sel.end.col)
+        };
+      }
+      // Multi-line not yet supported
+      return null;
     }
 
-    // No selection: try to get element to the left of cursor (or at cursor if at position 0 with cells)
+    // No selection: get cell at cursor position
     const line = this.getCurrentLine();
     if (!line || !line.cells || line.cells.length === 0) {
       return null;
     }
 
     const cursorPos = this.getCursorPosition();
+
+    // Special case: cursor at position 0 with cells present -> target first cell
+    if (cursorPos === 0 && line.cells.length > 0) {
+      return {
+        start: 0,
+        end: 1
+      };
+    }
+
     const { cellIndex, charOffsetInCell } = this.charPosToCellIndex(cursorPos);
 
     // Determine which cell to target
@@ -1973,10 +2024,11 @@ class MusicNotationEditor {
       // Cursor is at start of cell (not first cell), so target is previous cell
       targetCellIndex = cellIndex - 1;
     } else {
-      // Cursor is at start of line (no cell to left), no element available
+      // No valid cell to target
       return null;
     }
 
+    // Return half-open range [start, end)
     return {
       start: targetCellIndex,
       end: targetCellIndex + 1
@@ -1990,7 +2042,7 @@ class MusicNotationEditor {
       return false;
     }
 
-    // Check if selection is empty
+    // Check if selection is empty (half-open range [start, end))
     if (selection.start >= selection.end) {
       console.log('Empty selection for command');
       return false;
@@ -2004,8 +2056,9 @@ class MusicNotationEditor {
     }
 
     const cells = line.cells || [];
+    // Use half-open range [start, end)
     const selectedCells = cells.filter((cell, index) =>
-      index >= selection.start && index <= selection.end
+      index >= selection.start && index < selection.end
     );
     const selectedText = selectedCells.map(cell => cell.char || '').join('');
 
@@ -2059,18 +2112,21 @@ class MusicNotationEditor {
       }
 
       const cells = line.cells;
+      // Use half-open range [start, end) to match WASM convention
+      // selection.start and selection.end are Pos objects {line, col}
       const selectedCells = cells.filter((cell, index) =>
-        index >= selection.start && index <= selection.end
+        index >= selection.start.col && index <= selection.end.col
       );
       const selectedText = selectedCells.map(cell => cell.char || '').join('');
 
       // Apply slur using unified WASM command
       // Note: WASM expects 'end' to be exclusive (one past the last cell)
+      // selection.start and selection.end are Pos objects {line, col}, extract col
       if (this.theDocument && this.theDocument.lines && this.theDocument.lines.length > 0) {
         const updatedCells = this.wasmModule.applyCommand(
           cells,
-          selection.start,
-          selection.end + 1,  // Convert inclusive end to exclusive
+          selection.start.col,
+          selection.end.col + 1,  // Convert inclusive end to exclusive
           'slur'
         );
 
@@ -2167,8 +2223,9 @@ class MusicNotationEditor {
       console.log('🎵 Line found with', line.cells?.length, 'cells');
 
       const cells = line.cells;
+      // Use half-open range [start, end) to match WASM convention
       const selectedCells = cells.filter((cell, index) =>
-        index >= selection.start && index <= selection.end
+        index >= selection.start && index < selection.end
       );
       const selectedText = selectedCells.map(cell => cell.char || '').join('');
 
@@ -2333,8 +2390,9 @@ class MusicNotationEditor {
       }
 
       const cells = line.cells;
+      // Use half-open range [start, end) to match WASM convention
       const selectedCells = cells.filter((cell, index) =>
-        index >= selection.start && index <= selection.end
+        index >= selection.start && index < selection.end
       );
       const selectedText = selectedCells.map(cell => cell.char || '').join('');
 
@@ -2380,7 +2438,7 @@ class MusicNotationEditor {
         const updatedCells = this.wasmModule.applyCommand(
           cells,
           selection.start,
-          selection.end + 1,  // Convert inclusive end to exclusive for WASM
+          selection.end,  // Already exclusive (half-open range)
           command
         );
 
@@ -2723,6 +2781,7 @@ class MusicNotationEditor {
      * Handle mouse up - finish selection
      */
   handleMouseUp(event) {
+    console.log('[JS] handleMouseUp called, isDragging:', this.isDragging);
     if (this.isDragging) {
       try {
         // Ensure WASM has the latest document state
@@ -2730,6 +2789,7 @@ class MusicNotationEditor {
           console.warn('No document available for mouse interaction');
           return;
         }
+        console.log('[JS] Loading document into WASM before mouseUp');
         this.wasmModule.loadDocument(this.theDocument);
 
         // Calculate final mouse position
@@ -2739,20 +2799,27 @@ class MusicNotationEditor {
         const lineIndex = this.calculateLineFromY(y);
         const col = this.calculateCellPosition(x, y);
 
+        console.log(`[JS] Calling WASM mouseUp with pos=(${lineIndex}, ${col})`);
         // Call WASM to finalize mouse interaction with final position
         const pos = { line: Math.floor(lineIndex), col: Math.floor(col) };
         const diff = this.wasmModule.mouseUp(pos);
+        console.log('[JS] mouseUp returned diff:', diff);
         this.updateCursorFromWASM(diff);
+        console.log('[JS] After updateCursorFromWASM, selection:', this.theDocument.state.selection);
       } catch (error) {
         console.error('Mouse up error:', error);
       }
+
+      // Set justDragSelected flag to prevent click handler from clearing the selection
+      this.justDragSelected = true;
 
       // Delay clearing the dragging flag to prevent click event from clearing selection
       setTimeout(() => {
         this.isDragging = false;
         this.dragStartLine = null;
         this.dragStartCol = null;
-      }, 10);
+        this.justDragSelected = false;
+      }, 100); // Increased to 100ms to ensure click handler sees the flag
     }
   }
 
@@ -3256,7 +3323,19 @@ class MusicNotationEditor {
       if (this.hasSelection()) {
         const selection = this.getSelection();
         const selectionText = this.getSelectedText();
-        const cellCount = selection.end - selection.start + 1; // +1 for inclusive range
+
+        // Calculate cell count from selection range (selection has {line, col} objects)
+        // Note: Selection range is half-open [start, end), exclusive of end, matching WASM/Rust convention
+        let cellCount = 0;
+        if (selection.start.line === selection.end.line) {
+          // Single-line selection: count cells from start.col to end.col (exclusive)
+          cellCount = Math.abs(selection.end.col - selection.start.col);
+        } else {
+          // Multi-line selection: would need to count across lines
+          // For now, show line count as a placeholder
+          cellCount = Math.abs(selection.end.line - selection.start.line);
+        }
+
         selectionInfo.textContent = `Selected: ${cellCount} cells (${selectionText})`;
         selectionInfo.className = 'text-xs text-success';
       } else {
@@ -3988,7 +4067,7 @@ class MusicNotationEditor {
     const selection = this.theDocument.state?.selection;
     const hasSelection = selection && selection.active &&
                        (selection.start !== undefined) && (selection.end !== undefined) &&
-                       !(selection.start === selection.end);
+                       !(selection.start.line === selection.end.line && selection.start.col === selection.end.col);
 
     if (!hasSelection) {
       console.warn('No selection to copy', selection);
@@ -4004,12 +4083,11 @@ class MusicNotationEditor {
       }
 
       const selection = this.theDocument.state.selection;
-      // Selection has start/end cell indices (single line for now)
-      const currentRow = this.getCurrentStave();
-      const startRow = currentRow;
-      const startCol = Math.min(selection.start, selection.end);
-      const endRow = currentRow;
-      const endCol = Math.max(selection.start, selection.end);
+      // Selection has start/end as {line, col} objects
+      const startRow = selection.start.line;
+      const startCol = selection.start.col;
+      const endRow = selection.end.line;
+      const endCol = selection.end.col;
 
       // Call WASM to copy cells (preserves octaves/slurs/ornaments)
       const copyResult = this.wasmModule.copyCells(startRow, startCol, endRow, endCol);
@@ -4048,7 +4126,7 @@ class MusicNotationEditor {
     const selection = this.theDocument.state?.selection;
     const hasSelection = selection && selection.active &&
                        (selection.start !== undefined) && (selection.end !== undefined) &&
-                       !(selection.start === selection.end);
+                       !(selection.start.line === selection.end.line && selection.start.col === selection.end.col);
 
     if (hasSelection) {
       // Delete the selected range
@@ -4201,12 +4279,11 @@ class MusicNotationEditor {
       const selection = this.theDocument.state?.selection;
       if (!selection || !selection.active) return;
 
-      // Selection has start/end cell indices (single line for now)
-      const currentRow = this.getCurrentStave();
-      const startRow = currentRow;
-      const startCol = Math.min(selection.start, selection.end);
-      const endRow = currentRow;
-      const endCol = Math.max(selection.start, selection.end);
+      // Selection has start/end as {line, col} objects
+      const startRow = selection.start.line;
+      const startCol = selection.start.col;
+      const endRow = selection.end.line;
+      const endCol = selection.end.col;
 
       const result = this.wasmModule.editReplaceRange(
         startRow,

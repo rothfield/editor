@@ -388,7 +388,6 @@ pub struct Document {
     pub ornament_edit_mode: bool,
 
     /// Application state (cursor position, selection, etc.)
-    #[serde(skip)]
     pub state: DocumentState,
 }
 
@@ -618,22 +617,29 @@ impl Document {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
 pub struct DocumentState {
     /// Current cursor position (line index, column)
+    #[serde(default)]
     pub cursor: CursorPosition,
 
     /// Selection manager for handling selection operations
+    #[serde(default)]
     pub selection_manager: SelectionManager,
 
     /// Currently focused element ID
+    #[serde(default)]
     pub focused_element: Option<String>,
 
     /// Focus state of the editor
+    #[serde(default)]
     pub has_focus: bool,
 
     /// Undo/Redo history
+    #[serde(default)]
     pub history: VecDeque<DocumentAction>,
+    #[serde(default)]
     pub history_index: usize,
 
     /// Performance and rendering state
+    #[serde(default)]
     pub render_state: RenderState,
 }
 

@@ -190,7 +190,9 @@ class EventManager {
     }
 
     // Route to editor if it has focus
+    console.log('[EventManager] Checking if editor has focus...');
     if (this.editorFocus()) {
+      console.log('[EventManager] Editor HAS focus, routing key:', key);
       // Prevent certain default behaviors
       if (this.preventDefaultWhenFocused.includes(key)) {
         event.preventDefault();
@@ -198,10 +200,15 @@ class EventManager {
 
       // Route to editor
       if (this.editor && this.editor.handleKeyboardEvent) {
+        console.log('[EventManager] Calling editor.handleKeyboardEvent');
         this.editor.handleKeyboardEvent(event);
         // Prevent further propagation after editor handles the event
         event.stopPropagation();
+      } else {
+        console.log('[EventManager] ERROR: editor or handleKeyboardEvent not available');
       }
+    } else {
+      console.log('[EventManager] Editor does NOT have focus');
     }
   }
 

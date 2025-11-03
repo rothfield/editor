@@ -19,7 +19,7 @@
 //! 4. Continuation cells never appear as standalone elements
 //! 5. sum(event_divisions) == measure_divisions for each measure
 
-use crate::models::{Cell, ElementKind, OrnamentPositionType, SlurIndicator, Line, Document, PitchCode};
+use crate::models::{Cell, ElementKind, OrnamentPositionType, SlurIndicator, Line, Document};
 use super::export_ir::{
     ExportLine, ExportMeasure, ExportEvent, NoteData, GraceNoteData, PitchInfo,
     LyricData, Syllabic, SlurData, SlurPlacement, SlurType, TupletInfo,
