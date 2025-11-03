@@ -19,6 +19,7 @@ class ResizeHandle {
     this.isCollapsed = false;
     this.savedWidth = 384; // Default width when expanding
     this.saveDebounceTimer = null;
+    this.onResizeEndCallback = null; // Callback to trigger redraw on resize end
 
     // Bind event handlers
     this.handleMouseDown = this.handleMouseDown.bind(this);
@@ -130,13 +131,21 @@ class ResizeHandle {
    */
   handleMouseUp() {
     if (this.isResizing) {
-      console.log('Resize ended');
+      console.log('🔵 [ResizeHandle] Mouse up - resize ended');
       this.isResizing = false;
       document.body.style.userSelect = '';
       document.body.style.cursor = '';
 
+      // Get final panel width for logging
+      const finalWidth = this.tabsPanel.offsetWidth;
+      console.log('🔵 [ResizeHandle] Final panel width:', finalWidth, 'px');
+
       // Save the new width (debounced)
       this.savePanelWidth();
+
+      // Trigger redraw callback
+      console.log('🔵 [ResizeHandle] Triggering redraw callback...');
+      this.triggerRedrawCallback();
     }
   }
 
@@ -154,6 +163,9 @@ class ResizeHandle {
       this.tabsPanel.style.width = constrainedWidth + 'px';
       this.savedWidth = constrainedWidth;
       this.savePanelWidth();
+
+      // Trigger redraw callback
+      this.triggerRedrawCallback();
     }
     e.preventDefault();
   }
@@ -232,6 +244,35 @@ class ResizeHandle {
    */
   getIsCollapsed() {
     return this.isCollapsed;
+  }
+
+  /**
+   * Set callback to be called when resize operations complete
+   * @param {Function} callback - Function to call on resize end
+   */
+  setOnResizeEnd(callback) {
+    this.onResizeEndCallback = callback;
+  }
+
+  /**
+   * Trigger the redraw callback if set
+   */
+  triggerRedrawCallback() {
+    console.log('🔵 [ResizeHandle] triggerRedrawCallback called');
+    console.log('🔵 [ResizeHandle] Callback exists?', !!this.onResizeEndCallback);
+    console.log('🔵 [ResizeHandle] Callback type:', typeof this.onResizeEndCallback);
+
+    if (this.onResizeEndCallback && typeof this.onResizeEndCallback === 'function') {
+      console.log('🔵 [ResizeHandle] Executing callback NOW');
+      try {
+        this.onResizeEndCallback();
+        console.log('🔵 [ResizeHandle] Callback executed successfully');
+      } catch (error) {
+        console.error('🔴 [ResizeHandle] Error in resize redraw callback:', error);
+      }
+    } else {
+      console.warn('🟡 [ResizeHandle] No callback set or callback is not a function');
+    }
   }
 
   /**

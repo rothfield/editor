@@ -78,6 +78,9 @@ class MusicNotationApp {
       this.ui.initialize();
       this.resizeHandle.initialize();
 
+      // Setup resize redraw callback for OSMD/VexFlow renderer
+      this.setupResizeRedraw();
+
       // Setup collapse button
       this.setupPanelCollapseButton();
 
@@ -305,6 +308,109 @@ class MusicNotationApp {
     }
 
     console.log('✅ MIDI controls initialized');
+  }
+
+  /**
+   * Setup resize redraw callback for OSMD/VexFlow renderer
+   * Ensures the staff notation (and other visual tabs) redraw when the inspector pane is resized
+   */
+  setupResizeRedraw() {
+    if (!this.resizeHandle || !this.editor) {
+      console.warn('Resize handle or editor not available for resize redraw setup');
+      return;
+    }
+
+    console.log('🟢 [Main] Setting up resize callback...');
+
+    this.resizeHandle.setOnResizeEnd(() => {
+      try {
+        console.log('🟢 [Main] ===== RESIZE CALLBACK FIRED =====');
+        console.log('🟢 [Main] Panel resized, triggering redraw...');
+
+        // Get the currently active tab
+        const activeTabButton = document.querySelector('[data-tab].active');
+        if (!activeTabButton) {
+          console.log('🟡 [Main] No active tab found');
+          return;
+        }
+
+        const activeTabName = activeTabButton?.dataset?.tab;
+        if (!activeTabName) {
+          console.log('🟡 [Main] Active tab has no data-tab attribute');
+          return;
+        }
+
+        console.log('🟢 [Main] Active tab:', activeTabName);
+
+        // Redraw based on which tab is active
+        if (activeTabName === 'staff-notation') {
+          console.log('🟢 [Main] Staff notation tab is active, will redraw');
+
+          if (!this.editor || !this.editor.osmdRenderer) {
+            console.warn('🔴 [Main] Editor or OSMD renderer not available');
+            console.log('   this.editor:', !!this.editor);
+            console.log('   this.editor.osmdRenderer:', !!this.editor?.osmdRenderer);
+            return;
+          }
+
+          console.log('🟢 [Main] Editor and OSMD renderer available');
+
+          // Wait for DOM to settle after resize, then force complete re-render
+          console.log('🟢 [Main] Setting 50ms timeout for DOM to settle...');
+          setTimeout(() => {
+            try {
+              console.log('🟢 [Main] Timeout fired, starting redraw...');
+
+              // Verify container still exists
+              const container = document.getElementById('staff-notation-container');
+              if (!container) {
+                console.error('🔴 [Main] Staff notation container not found in DOM');
+                return;
+              }
+
+              console.log('🟢 [Main] Container found, width:', container.offsetWidth, 'px');
+              console.log('🟢 [Main] Triggering OSMD re-render with new container dimensions');
+
+              // Force complete re-render by:
+              // 1. Clear IndexedDB cache (cached SVG has wrong width)
+              console.log('🟢 [Main] Clearing OSMD IndexedDB cache...');
+              this.editor.osmdRenderer.clearAllCache().then(() => {
+                console.log('🟢 [Main] Cache cleared');
+              });
+
+              // 2. Clear the hash cache so render() doesn't skip
+              const oldHash = this.editor.osmdRenderer.lastMusicXmlHash;
+              this.editor.osmdRenderer.lastMusicXmlHash = null;
+              console.log('🟢 [Main] Cleared hash cache (was:', oldHash, ')');
+
+              // 3. Reset the OSMD instance to pick up new container dimensions
+              this.editor.osmdRenderer.osmd = null;
+              console.log('🟢 [Main] Reset OSMD instance to null');
+
+              // 4. Trigger full re-render
+              console.log('🟢 [Main] Calling renderStaffNotation()...');
+              this.editor.renderStaffNotation()
+                .then(() => {
+                  console.log('✅ [Main] Staff notation re-rendered successfully!');
+                })
+                .catch(err => {
+                  console.error('🔴 [Main] Failed to redraw staff notation:', err);
+                });
+            } catch (innerErr) {
+              console.error('🔴 [Main] Error in delayed redraw callback:', innerErr);
+            }
+          }, 50); // Small delay to ensure container has new dimensions
+        } else {
+          console.log('🟡 [Main] Active tab is not staff-notation, skipping redraw');
+        }
+        // Add other tab redraw logic here as needed
+        // For example: LilyPond PNG, etc.
+      } catch (err) {
+        console.error('[Resize] Error in resize callback:', err);
+      }
+    });
+
+    console.log('Resize redraw callback setup complete');
   }
 
   /**

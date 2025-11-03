@@ -87,6 +87,34 @@ export class OSMDRenderer {
         }
     }
 
+    // Clear cached render for a specific hash
+    async clearCachedRender(hash) {
+        if (!this.cache) return;
+
+        try {
+            const transaction = this.cache.transaction(['renders'], 'readwrite');
+            const store = transaction.objectStore('renders');
+            store.delete(hash);
+            console.log('[OSMD] Cleared cache for hash:', hash);
+        } catch (e) {
+            console.warn('[OSMD] Cache clear failed', e);
+        }
+    }
+
+    // Clear all cached renders
+    async clearAllCache() {
+        if (!this.cache) return;
+
+        try {
+            const transaction = this.cache.transaction(['renders'], 'readwrite');
+            const store = transaction.objectStore('renders');
+            store.clear();
+            console.log('[OSMD] Cleared all cached renders');
+        } catch (e) {
+            console.warn('[OSMD] Cache clear all failed', e);
+        }
+    }
+
     async init() {
         if (!this.osmd) {
             this.osmd = new opensheetmusicdisplay.OpenSheetMusicDisplay(this.containerId, {
