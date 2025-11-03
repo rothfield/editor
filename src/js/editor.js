@@ -2114,19 +2114,21 @@ class MusicNotationEditor {
       const cells = line.cells;
       // Use half-open range [start, end) to match WASM convention
       // selection.start and selection.end are Pos objects {line, col}
+      // selection.end.col is already EXCLUSIVE (one past the last selected cell)
       const selectedCells = cells.filter((cell, index) =>
-        index >= selection.start.col && index <= selection.end.col
+        index >= selection.start.col && index < selection.end.col
       );
       const selectedText = selectedCells.map(cell => cell.char || '').join('');
 
       // Apply slur using unified WASM command
       // Note: WASM expects 'end' to be exclusive (one past the last cell)
       // selection.start and selection.end are Pos objects {line, col}, extract col
+      // selection.end.col is ALREADY exclusive, so don't add 1
       if (this.theDocument && this.theDocument.lines && this.theDocument.lines.length > 0) {
         const updatedCells = this.wasmModule.applyCommand(
           cells,
           selection.start.col,
-          selection.end.col + 1,  // Convert inclusive end to exclusive
+          selection.end.col,  // Already exclusive!
           'slur'
         );
 
