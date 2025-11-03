@@ -488,7 +488,22 @@ class DOMRenderer {
       min-height: 24px;
     `;
 
-    // Title display disabled - only show composer if present
+    // Render title (centered)
+    if (title && title !== 'Untitled Document') {
+      const titleElement = document.createElement('div');
+      titleElement.className = 'document-title';
+      titleElement.setAttribute('data-testid', 'document-title');
+      titleElement.textContent = title;
+      titleElement.style.cssText = `
+        text-align: center;
+        font-size: ${BASE_FONT_SIZE * 0.8}px;
+        font-weight: bold;
+        color: #1f2937;
+        width: 100%;
+        margin-bottom: 8px;
+      `;
+      headerContainer.appendChild(titleElement);
+    }
 
     // Render composer (flush right)
     if (composer) {
