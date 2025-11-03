@@ -12,6 +12,10 @@ import { LEFT_MARGIN_PX, ENABLE_AUTOSAVE, BASE_FONT_SIZE } from './constants.js'
 import AutoSave from './autosave.js';
 import StorageManager from './storage-manager.js';
 import { DebugHUD } from './debug-hud.js';
+import WASMBridge from './core/WASMBridge.js';
+import KeyboardHandler from './handlers/KeyboardHandler.js';
+import MouseHandler from './handlers/MouseHandler.js';
+import ExportManager from './managers/ExportManager.js';
 
 class MusicNotationEditor {
   constructor(editorElement) {
@@ -48,6 +52,15 @@ class MusicNotationEditor {
     // Debug HUD (visual logger for cursor/selection state)
     this.debugHUD = new DebugHUD(this);
 
+    // Keyboard handler (routes keyboard events to appropriate commands)
+    this.keyboardHandler = new KeyboardHandler(this);
+
+    // Mouse handler (handles mouse interactions and cell position calculations)
+    this.mouseHandler = new MouseHandler(this);
+
+    // Export manager (handles all export operations and inspector updates)
+    this.exportManager = new ExportManager(this);
+
   }
 
   /**
@@ -71,76 +84,11 @@ class MusicNotationEditor {
       // Initialize WASM
       await wasmModule.default();
 
-      // Initialize WASM components
-      this.wasmModule = {
-        // New recursive descent API
-        insertCharacter: wasmModule.insertCharacter,
-        parseText: wasmModule.parseText,
-        deleteCharacter: wasmModule.deleteCharacter,
-        applyOctave: wasmModule.applyOctave,
-        applyCommand: wasmModule.applyCommand,
-        // Slur API
-        applySlur: wasmModule.applySlur,
-        removeSlur: wasmModule.removeSlur,
-        hasSlurInSelection: wasmModule.hasSlurInSelection,
-        // Ornament API
-        applyOrnament: wasmModule.applyOrnament,
-        removeOrnament: wasmModule.removeOrnament,
-        // Ornament Edit Mode API
-        getOrnamentEditMode: wasmModule.getOrnamentEditMode,
-        setOrnamentEditMode: wasmModule.setOrnamentEditMode,
-        // Document lifecycle API (new - WASM-owned)
-        createNewDocument: wasmModule.createNewDocument,
-        loadDocument: wasmModule.loadDocument,
-        getDocumentSnapshot: wasmModule.getDocumentSnapshot,
-        // Core edit primitive (new)
-        editReplaceRange: wasmModule.editReplaceRange,
-        // Copy/Paste API (new)
-        copyCells: wasmModule.copyCells,
-        pasteCells: wasmModule.pasteCells,
-        // Undo/Redo API (new)
-        undo: wasmModule.undo,
-        redo: wasmModule.redo,
-        canUndo: wasmModule.canUndo,
-        canRedo: wasmModule.canRedo,
-        // Document API (old - will migrate)
-        setTitle: wasmModule.setTitle,
-        setComposer: wasmModule.setComposer,
-        setDocumentPitchSystem: wasmModule.setDocumentPitchSystem,
-        setLineLabel: wasmModule.setLineLabel,
-        setLineLyrics: wasmModule.setLineLyrics,
-        setLineTala: wasmModule.setLineTala,
-        setLinePitchSystem: wasmModule.setLinePitchSystem,
-        // Line manipulation API
-        splitLineAtPosition: wasmModule.splitLineAtPosition,
-        // Layout API
-        computeLayout: wasmModule.computeLayout,
-        // MusicXML export API
-        exportMusicXML: wasmModule.exportMusicXML,
-        convertMusicXMLToLilyPond: wasmModule.convertMusicXMLToLilyPond,
-        // MIDI export API
-        exportMIDI: wasmModule.exportMIDI,
-        // IR (Intermediate Representation) export API
-        generateIRJson: wasmModule.generateIRJson,
-        // Cursor/Selection API (anchor/head model)
-        getCaretInfo: wasmModule.getCaretInfo,
-        getSelectionInfo: wasmModule.getSelectionInfo,
-        setSelection: wasmModule.setSelection,
-        clearSelection: wasmModule.clearSelection,
-        startSelection: wasmModule.startSelection,
-        extendSelection: wasmModule.extendSelection,
-        // Cursor Movement API
-        moveLeft: wasmModule.moveLeft,
-        moveRight: wasmModule.moveRight,
-        moveUp: wasmModule.moveUp,
-        moveDown: wasmModule.moveDown,
-        moveHome: wasmModule.moveHome,
-        moveEnd: wasmModule.moveEnd,
-        // Mouse API
-        mouseDown: wasmModule.mouseDown,
-        mouseMove: wasmModule.mouseMove,
-        mouseUp: wasmModule.mouseUp
-      };
+      // Initialize WASM Bridge
+      this.wasmModule = new WASMBridge(wasmModule);
+
+      // Validate required WASM functions are available
+      this.wasmModule.validateRequiredFunctions();
 
       // Initialize OSMD renderer for staff notation
       this.osmdRenderer = new OSMDRenderer('staff-notation-container');
@@ -938,270 +886,9 @@ class MusicNotationEditor {
      * Handle keyboard input
      */
   handleKeyboardEvent(event) {
-    let key = event.key;
-    console.log(`[JS] handleKeyboardEvent called with key: "${key}"`);
-    const modifiers = {
-      alt: event.altKey,
-      ctrl: event.ctrlKey,
-      shift: event.shiftKey
-    };
-    console.log('[JS] Modifiers:', modifiers);
-
-    // Fix for browsers that return "alt" instead of the actual key when Alt is pressed
-    // Use event.code as fallback (e.g., "KeyL" -> "l")
-    if (modifiers.alt && (key === 'alt' || key === 'Alt')) {
-      const code = event.code;
-      if (code && code.startsWith('Key')) {
-        key = code.replace('Key', '').toLowerCase();
-      }
-    }
-
-    // Handle Ctrl key combinations (copy/paste/undo/redo)
-    if (modifiers.ctrl && !modifiers.alt) {
-      this.handleCtrlCommand(key);
-      return;
-    }
-
-    // Route to appropriate handler
-    if (modifiers.alt && modifiers.shift && !modifiers.ctrl) {
-      // T063: Alt+Shift commands
-      this.handleAltShiftCommand(key);
-    } else if (modifiers.alt && !modifiers.ctrl && !modifiers.shift) {
-      this.handleAltCommand(key);
-    } else if (modifiers.shift && !modifiers.alt && !modifiers.ctrl && this.isSelectionKey(key)) {
-      // Only route to selection handler for actual selection keys (arrows, Home, End)
-      this.handleShiftCommand(key);
-    } else {
-      this.handleNormalKey(key);
-    }
+    this.keyboardHandler.handleKeyboardEvent(event);
   }
 
-  /**
-     * Check if key is a selection key (arrow keys, Home, End)
-     */
-  isSelectionKey(key) {
-    return ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(key);
-  }
-
-  /**
-     * Handle Alt+key commands (musical commands) with enhanced validation
-     */
-  handleAltCommand(key) {
-    // Log command for debugging
-    this.addToConsoleLog(`Musical command: Alt+${key.toLowerCase()}`);
-
-    switch (key.toLowerCase()) {
-      case 's':
-        this.applySlur();
-        break;
-      case 'u':
-        this.applyOctave(1); // Upper octave (+1)
-        break;
-      case 'm':
-        this.applyOctave(0); // Middle octave (0, remove octave marking)
-        break;
-      case 'l':
-        this.applyOctave(-1); // Lower octave (-1)
-        break;
-      case 't':
-        this.showTalaDialog();
-        break;
-      case 'o':
-        this.applyOrnament('after');
-        break;
-      case '0':
-        this.applyOrnament('after'); // Alt+0: Apply ornament (default "after" position)
-        break;
-      default:
-        console.log('Unknown Alt command:', key);
-        this.showWarning(`Unknown musical command: Alt+${key}`, {
-          important: false,
-          details: `Available commands: Alt+S (slur), Alt+O (ornament), Alt+U (upper octave), Alt+M (middle octave), Alt+L (lower octave), Alt+T (tala)`
-        });
-        return;
-    }
-  }
-
-  /**
-   * T063: Handle Alt+Shift+key commands (mode toggles)
-   */
-  handleAltShiftCommand(key) {
-    this.addToConsoleLog(`Mode command: Alt+Shift+${key.toUpperCase()}`);
-
-    switch (key.toLowerCase()) {
-      case 'o':
-        // Alt+Shift+O: Toggle ornament edit mode
-        this.toggleOrnamentEditMode();
-        break;
-      default:
-        console.log('Unknown Alt+Shift command:', key);
-        this.showWarning(`Unknown mode command: Alt+Shift+${key.toUpperCase()}`, {
-          important: false,
-          details: `Available commands: Alt+Shift+O (toggle ornament edit mode)`
-        });
-        return;
-    }
-  }
-
-  /**
-   * Handle Ctrl+key commands (copy/paste/undo/redo)
-   */
-  handleCtrlCommand(key) {
-    this.addToConsoleLog(`Edit command: Ctrl+${key.toUpperCase()}`);
-
-    switch (key.toLowerCase()) {
-      case 'c':
-        this.handleCopy();
-        break;
-      case 'x':
-        this.handleCut();
-        break;
-      case 'v':
-        this.handlePaste();
-        break;
-      case 'z':
-        this.handleUndo();
-        break;
-      case 'y':
-        this.handleRedo();
-        break;
-      default:
-        console.log('Unknown Ctrl command:', key);
-        return;
-    }
-  }
-
-  /**
-     * Handle Shift+key commands (selection)
-     */
-  handleShiftCommand(key) {
-    try {
-      // Load document to ensure WASM has latest state
-      // (SelectionManager state is now preserved during load)
-      if (!this.theDocument) {
-        console.warn('No document available for selection');
-        return;
-      }
-      this.wasmModule.loadDocument(this.theDocument);
-
-      let diff;
-
-      switch (key) {
-        case 'ArrowLeft':
-          diff = this.wasmModule.moveLeft(true);
-          break;
-        case 'ArrowRight':
-          diff = this.wasmModule.moveRight(true);
-          break;
-        case 'ArrowUp':
-          diff = this.wasmModule.moveUp(true);
-          break;
-        case 'ArrowDown':
-          diff = this.wasmModule.moveDown(true);
-          break;
-        case 'Home':
-          diff = this.wasmModule.moveHome(true);
-          break;
-        case 'End':
-          diff = this.wasmModule.moveEnd(true);
-          break;
-        default:
-          // Ignore non-selection Shift commands (like Shift+#, Shift alone, etc.)
-          return;
-      }
-
-      // Update cursor and selection from WASM diff
-      this.updateCursorFromWASM(diff);
-    } catch (error) {
-      console.error('Selection extension error:', error);
-    }
-  }
-
-  /**
-     * Handle normal keys (text input) with selection awareness
-     */
-  handleNormalKey(key) {
-    console.log(`[JS] handleNormalKey called with key: "${key}"`);
-    switch (key) {
-      case 'ArrowLeft':
-      case 'ArrowRight':
-      case 'ArrowUp':
-      case 'ArrowDown':
-      case 'Home':
-      case 'End':
-        console.log('[JS] Arrow/navigation key detected, calling handleNavigation');
-        // Clear selection when navigating
-        if (this.hasSelection()) {
-          this.clearSelection();
-        }
-        this.handleNavigation(key);
-        break;
-      case 'Backspace':
-        this.handleBackspace();
-        break;
-      case 'Delete':
-        this.handleDelete();
-        break;
-      case 'Enter':
-        this.handleEnter();
-        break;
-      default:
-        // Insert text character - do NOT replace selection
-        if (key.length === 1 && !key.match(/[Ff][0-9]/)) { // Exclude F-keys
-          this.insertText(key);
-        }
-    }
-  }
-
-  /**
-     * Handle navigation keys with enhanced functionality
-     */
-  handleNavigation(key) {
-    console.log(`[JS] handleNavigation called with key: ${key}`);
-    try {
-      // Load document to ensure WASM has latest state
-      // (SelectionManager state is now preserved during load)
-      if (!this.theDocument) {
-        console.warn('No document available for navigation');
-        return;
-      }
-      console.log(`[JS] Current cursor before navigation:`, this.theDocument.state.cursor);
-      this.wasmModule.loadDocument(this.theDocument);
-
-      let diff;
-      switch (key) {
-        case 'ArrowLeft':
-          console.log('[JS] Calling moveLeft...');
-          diff = this.wasmModule.moveLeft(false);
-          console.log('[JS] moveLeft returned:', diff);
-          break;
-        case 'ArrowRight':
-          diff = this.wasmModule.moveRight(false);
-          break;
-        case 'ArrowUp':
-          diff = this.wasmModule.moveUp(false);
-          break;
-        case 'ArrowDown':
-          diff = this.wasmModule.moveDown(false);
-          break;
-        case 'Home':
-          diff = this.wasmModule.moveHome(false);
-          break;
-        case 'End':
-          diff = this.wasmModule.moveEnd(false);
-          break;
-        default:
-          console.log('Unknown navigation key:', key);
-          return;
-      }
-      // Update cursor display from diff
-      console.log('[JS] About to update cursor from diff:', diff);
-      this.updateCursorFromWASM(diff);
-      console.log(`[JS] Cursor after updateCursorFromWASM:`, this.theDocument.state.cursor);
-    } catch (error) {
-      console.error('Navigation error:', error);
-    }
-  }
 
 
   /**
@@ -2645,11 +2332,29 @@ class MusicNotationEditor {
     this.element.addEventListener('click', (event) => {
       this.element.focus();
 
+      // Check if this is a triple-click (detail === 3)
+      if (event.detail === 3) {
+        console.log('[Editor] Triple-click detected!');
+        // Triple-click detected - select entire line
+        const rect = this.element.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        const y = event.clientY - rect.top;
+        const cellPosition = this.mouseHandler.calculateCellPosition(x, y);
+
+        console.log('[Editor] Cell position for triple-click:', cellPosition);
+
+        if (cellPosition !== null) {
+          this.mouseHandler.selectLine(cellPosition);
+        }
+        event.preventDefault();
+        return;
+      }
+
       // Focus the closest line based on click position
       const rect = this.element.getBoundingClientRect();
       const x = event.clientX - rect.left;
       const y = event.clientY - rect.top;
-      const lineIndex = this.calculateLineFromY(y);
+      const lineIndex = this.mouseHandler.calculateLineFromY(y);
 
       if (lineIndex !== null && this.theDocument && this.theDocument.state) {
         // Plain click (no modifiers) while selection is active: clear selection
@@ -2661,7 +2366,7 @@ class MusicNotationEditor {
         if (hasSelection && noModifiers && !this.justDragSelected) {
           // Calculate cursor position BEFORE clearing selection (before re-render)
           // This ensures we use coordinates from the original cell layout
-          const cursorColumn = this.calculateCellPosition(x, y);
+          const cursorColumn = this.mouseHandler.calculateCellPosition(x, y);
           this.clearSelection();
 
           // Now set the cursor position after selection is cleared
@@ -2697,410 +2402,23 @@ class MusicNotationEditor {
      * Handle mouse down - start selection or positioning
      */
   handleMouseDown(event) {
-    this.element.focus();
-
-    try {
-      // Ensure WASM has the latest document state
-      if (!this.theDocument) {
-        console.warn('No document available for mouse interaction');
-        return;
-      }
-      this.wasmModule.loadDocument(this.theDocument);
-
-      // Calculate cell position from click
-      const rect = this.element.getBoundingClientRect();
-      const x = event.clientX - rect.left;
-      const y = event.clientY - rect.top;
-
-      // Determine which line was clicked based on Y coordinate
-      const lineIndex = this.calculateLineFromY(y);
-      const col = this.calculateCellPosition(x, y);
-
-      if (lineIndex !== null && col !== null) {
-        // Start drag selection
-        this.isDragging = true;
-        this.dragStartLine = lineIndex;
-        this.dragStartCol = col;
-
-        // Call WASM to handle mouse down (sets cursor, starts selection)
-        // Pass Pos object with integer values
-        const pos = { line: Math.floor(lineIndex), col: Math.floor(col) };
-        const diff = this.wasmModule.mouseDown(pos);
-        this.updateCursorFromWASM(diff);
-      }
-
-      event.preventDefault();
-    } catch (error) {
-      console.error('Mouse down error:', error);
-    }
+    this.mouseHandler.handleMouseDown(event);
   }
 
-  /**
-     * Handle mouse move - update selection if dragging
-     */
   handleMouseMove(event) {
-    if (!this.isDragging) return;
-
-    try {
-      // Ensure WASM has the latest document state
-      if (!this.theDocument) {
-        console.warn('No document available for mouse interaction');
-        return;
-      }
-      this.wasmModule.loadDocument(this.theDocument);
-
-      const rect = this.element.getBoundingClientRect();
-      const x = event.clientX - rect.left;
-      const y = event.clientY - rect.top;
-
-      const lineIndex = this.calculateLineFromY(y);
-      const col = this.calculateCellPosition(x, y);
-
-      if (lineIndex !== null && col !== null) {
-        // Call WASM to handle mouse move (extends selection)
-        // Pass Pos object with integer values
-        const pos = { line: Math.floor(lineIndex), col: Math.floor(col) };
-        const diff = this.wasmModule.mouseMove(pos);
-        this.updateCursorFromWASM(diff);
-
-        // Prevent default to avoid text selection behavior
-        event.preventDefault();
-      }
-    } catch (error) {
-      console.error('Mouse move error:', error);
-    }
+    this.mouseHandler.handleMouseMove(event);
   }
 
-  /**
-     * Handle mouse up - finish selection
-     */
   handleMouseUp(event) {
-    console.log('[JS] handleMouseUp called, isDragging:', this.isDragging);
-    if (this.isDragging) {
-      try {
-        // Ensure WASM has the latest document state
-        if (!this.theDocument) {
-          console.warn('No document available for mouse interaction');
-          return;
-        }
-        console.log('[JS] Loading document into WASM before mouseUp');
-        this.wasmModule.loadDocument(this.theDocument);
-
-        // Calculate final mouse position
-        const rect = this.element.getBoundingClientRect();
-        const x = event.clientX - rect.left;
-        const y = event.clientY - rect.top;
-        const lineIndex = this.calculateLineFromY(y);
-        const col = this.calculateCellPosition(x, y);
-
-        console.log(`[JS] Calling WASM mouseUp with pos=(${lineIndex}, ${col})`);
-        // Call WASM to finalize mouse interaction with final position
-        const pos = { line: Math.floor(lineIndex), col: Math.floor(col) };
-        const diff = this.wasmModule.mouseUp(pos);
-        console.log('[JS] mouseUp returned diff:', diff);
-        this.updateCursorFromWASM(diff);
-        console.log('[JS] After updateCursorFromWASM, selection:', this.theDocument.state.selection);
-      } catch (error) {
-        console.error('Mouse up error:', error);
-      }
-
-      // Set justDragSelected flag to prevent click handler from clearing the selection
-      this.justDragSelected = true;
-
-      // Delay clearing the dragging flag to prevent click event from clearing selection
-      setTimeout(() => {
-        this.isDragging = false;
-        this.dragStartLine = null;
-        this.dragStartCol = null;
-        this.justDragSelected = false;
-      }, 100); // Increased to 100ms to ensure click handler sees the flag
-    }
+    this.mouseHandler.handleMouseUp(event);
   }
 
-  /**
-     * Handle double click - select beat or character group
-     */
   handleDoubleClick(event) {
-    const rect = this.element.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
-
-    const cellPosition = this.calculateCellPosition(x, y);
-
-    if (cellPosition !== null) {
-      this.selectBeatOrCharGroup(cellPosition);
-    }
-
-    event.preventDefault();
+    this.mouseHandler.handleDoubleClick(event);
   }
 
-  /**
-     * Select beat or character group at cell index
-     * If cell is part of a beat, select entire beat
-     * Otherwise, select cell and its continuations
-     */
-  selectBeatOrCharGroup(cellIndex) {
-    if (!this.theDocument || !this.theDocument.lines || this.theDocument.lines.length === 0) {
-      return;
-    }
-
-    const line = this.getCurrentLine();
-        if (!line) return;
-    const cells = line.cells || [];
-
-    if (cellIndex < 0 || cellIndex >= cells.length) {
-      return;
-    }
-
-    // Get DOM elements for the line to check CSS classes
-    const lineElements = this.element.querySelectorAll('.notation-line');
-    if (lineElements.length === 0) {
-      return;
-    }
-
-    const lineElement = lineElements[0]; // First line (main line)
-    const cellElements = lineElement.querySelectorAll('.char-cell');
-
-    if (cellIndex >= cellElements.length) {
-      return;
-    }
-
-    const clickedElement = cellElements[cellIndex];
-
-    // Check if cell has beat classes
-    const hasBeatClass = clickedElement.classList.contains('beat-loop-first') ||
-                        clickedElement.classList.contains('beat-loop-middle') ||
-                        clickedElement.classList.contains('beat-loop-last');
-
-    if (hasBeatClass) {
-      // Select entire beat by scanning for beat-loop-first and beat-loop-last
-      let startIndex = cellIndex;
-      let endIndex = cellIndex;
-
-      // Scan backward to beat-loop-first
-      for (let i = cellIndex; i >= 0; i--) {
-        const el = cellElements[i];
-        if (el.classList.contains('beat-loop-first')) {
-          startIndex = i;
-          break;
-        }
-        if (!el.classList.contains('beat-loop-first') &&
-            !el.classList.contains('beat-loop-middle') &&
-            !el.classList.contains('beat-loop-last')) {
-          break;
-        }
-      }
-
-      // Scan forward to beat-loop-last
-      for (let i = cellIndex; i < cellElements.length; i++) {
-        const el = cellElements[i];
-        if (el.classList.contains('beat-loop-last')) {
-          endIndex = i;
-          break;
-        }
-        if (!el.classList.contains('beat-loop-first') &&
-            !el.classList.contains('beat-loop-middle') &&
-            !el.classList.contains('beat-loop-last')) {
-          break;
-        }
-      }
-
-      // selection.end is exclusive, so add 1
-      this.initializeSelection(startIndex, endIndex + 1);
-      this.setCursorPosition(endIndex);
-      this.updateSelectionDisplay();
-    } else {
-      // Select character group (cell + continuations)
-      let startIndex = cellIndex;
-      let endIndex = cellIndex;
-
-      // Scan backward to find first cell with continuation=false
-      for (let i = cellIndex; i >= 0; i--) {
-        const continuation = cells[i].continuation;
-        if (!continuation) {
-          startIndex = i;
-          break;
-        }
-      }
-
-      // Scan forward while continuation=true
-      for (let i = startIndex + 1; i < cells.length; i++) {
-        if (cells[i].continuation) {
-          endIndex = i;
-        } else {
-          break;
-        }
-      }
-
-      // selection.end is exclusive, so add 1
-      this.initializeSelection(startIndex, endIndex + 1);
-      this.setCursorPosition(endIndex);
-      this.updateSelectionDisplay();
-    }
-  }
-
-  /**
-     * Handle canvas click for caret positioning
-     */
   handleCanvasClick(event) {
-    const rect = this.element.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
-
-    // Determine which line was clicked based on Y coordinate
-    const lineIndex = this.calculateLineFromY(y);
-    if (lineIndex !== null && this.theDocument && this.theDocument.state) {
-      // Switch to the clicked line
-      this.theDocument.state.cursor.line = lineIndex;
-    }
-
-    // Calculate Cell position from click coordinates
-    const charCellPosition = this.calculateCellPosition(x, y);
-
-    if (charCellPosition !== null) {
-      this.setCursorPosition(charCellPosition);
-      this.element.focus();
-    }
-  }
-
-  /**
-     * Calculate which line was clicked based on Y coordinate
-     * SIMPLIFIED: Use .notation-line containers directly for Y ranges
-     */
-  calculateLineFromY(y) {
-    // Get all line containers
-    const lineContainers = this.element.querySelectorAll('.notation-line');
-    const editorRect = this.element.getBoundingClientRect();
-
-    if (lineContainers.length === 0) {
-      return 0;
-    }
-
-    // First, check if click is directly within any line
-    for (let lineIdx = 0; lineIdx < lineContainers.length; lineIdx++) {
-      const lineContainer = lineContainers[lineIdx];
-      const lineRect = lineContainer.getBoundingClientRect();
-
-      // Convert line container Y to editor-relative coordinates
-      const lineTop = lineRect.top - editorRect.top;
-      const lineBottom = lineRect.bottom - editorRect.top;
-
-      // Check if click Y falls within this line
-      if (y >= lineTop && y <= lineBottom) {
-        return lineIdx;
-      }
-    }
-
-    // If not directly in any line, find the closest line
-    let closestLineIdx = 0;
-    let minDistance = Infinity;
-
-    for (let lineIdx = 0; lineIdx < lineContainers.length; lineIdx++) {
-      const lineContainer = lineContainers[lineIdx];
-      const lineRect = lineContainer.getBoundingClientRect();
-
-      const lineTop = lineRect.top - editorRect.top;
-      const lineBottom = lineRect.bottom - editorRect.top;
-      const lineCenterY = (lineTop + lineBottom) / 2;
-
-      // Calculate distance to line center
-      const distance = Math.abs(y - lineCenterY);
-
-      if (distance < minDistance) {
-        minDistance = distance;
-        closestLineIdx = lineIdx;
-      }
-    }
-
-    return closestLineIdx;
-  }
-
-  /**
-   * Calculate Cell position from coordinates using DisplayList data
-   */
-  calculateCellPosition(x, y) {
-    // Get the correct line based on Y coordinate
-    const lineIndex = this.calculateLineFromY(y);
-
-    // Get all line containers and find the one that was clicked
-    const lineContainers = this.element.querySelectorAll('.notation-line');
-    if (lineIndex >= lineContainers.length) {
-      return 0;
-    }
-
-    const lineContainer = lineContainers[lineIndex];
-    const allCellElements = lineContainer.querySelectorAll('.char-cell');
-
-    if (allCellElements.length === 0) {
-      return 0;
-    }
-
-    // In normal mode, filter out ornament cells to make them non-interactive
-    const editMode = this.wasmModule.getOrnamentEditMode(this.theDocument);
-    const line = this.getCurrentLine();
-    const navigableCellElements = Array.from(allCellElements).filter(cellElement => {
-      if (editMode || !line) return true; // In edit mode, all cells are navigable
-      const cellIndex = parseInt(cellElement.getAttribute('data-cell-index'), 10);
-      const cell = line.cells[cellIndex];
-      // Skip ornament cells in normal mode
-      if (cell && cell.ornament_indicator && cell.ornament_indicator.name !== 'none') {
-        return false;
-      }
-      return true;
-    });
-
-    if (navigableCellElements.length === 0) {
-      return 0;
-    }
-
-    // Measure actual rendered cell positions from DOM
-    const editorRect = this.element.getBoundingClientRect();
-    const cursorPositions = [];
-
-    // Position 0: left edge of first navigable cell
-    const firstCell = navigableCellElements[0];
-    const firstRect = firstCell.getBoundingClientRect();
-    cursorPositions.push(firstRect.left - editorRect.left);
-
-    // Positions 1..N: right edge of each navigable cell
-    for (const cell of navigableCellElements) {
-      const cellRect = cell.getBoundingClientRect();
-      cursorPositions.push(cellRect.right - editorRect.left);
-    }
-
-    // Find which cell the X coordinate is in by checking which pair of boundaries it falls between
-    let cellIndex = 0;
-    let cursorPositionIndex = 0; // Which cursor position (0-N) the cursor should snap to
-
-    // Check each navigable cell to see if x falls within it
-    for (let i = 0; i < navigableCellElements.length; i++) {
-      const leftBoundary = cursorPositions[i];
-      const rightBoundary = cursorPositions[i + 1];
-
-      // Click is within this cell
-      if (x >= leftBoundary && x < rightBoundary) {
-        // Return the actual cellIndex from the data attribute, not the filtered index
-        cellIndex = parseInt(navigableCellElements[i].getAttribute('data-cell-index'), 10);
-
-        // Determine if click is in left or right half of the cell
-        const cellMidpoint = (leftBoundary + rightBoundary) / 2;
-        if (x >= cellMidpoint) {
-          // Right half: cursor should be at the right boundary (position i+1)
-          cursorPositionIndex = i + 1;
-        } else {
-          // Left half: cursor should be at the left boundary (position i)
-          cursorPositionIndex = i;
-        }
-        break;
-      }
-    }
-
-    // If x is at or beyond the right edge of the last cell, snap to the last position
-    if (x >= cursorPositions[navigableCellElements.length]) {
-      cursorPositionIndex = navigableCellElements.length;
-    }
-
-    return cursorPositionIndex;
+    this.mouseHandler.handleCanvasClick(event);
   }
 
   /**
@@ -3342,111 +2660,16 @@ class MusicNotationEditor {
   /**
      * Update document display in debug panel
      */
-  /**
-   * Update Intermediate Representation (IR) display
-   * Shows ExportLine → ExportMeasure → ExportEvent hierarchy
-   */
   async updateIRDisplay() {
-    const irDisplay = document.getElementById('ir-display');
-    if (!irDisplay || !this.theDocument) {
-      return;
-    }
-
-    try {
-      // Call WASM function to generate IR as JSON (ExportLine → ExportMeasure → ExportEvent)
-      if (typeof this.wasmModule?.generateIRJson === 'function') {
-        console.log('[IR] Calling generateIRJson...');
-        const irJson = this.wasmModule.generateIRJson(this.theDocument);
-        console.log('[IR] Generated successfully, length:', irJson.length);
-        irDisplay.textContent = irJson;
-      } else {
-        // Debug: list available WASM functions
-        console.warn('[IR] generateIRJson not found in wasmModule');
-        console.warn('[IR] Available functions:', Object.keys(this.wasmModule || {}).filter(k => typeof this.wasmModule[k] === 'function').slice(0, 10));
-
-        // Fallback if WASM function not yet implemented
-        irDisplay.textContent = '# IR (Intermediate Representation) not yet exposed via WASM\n\n' +
-          '# To enable IR display:\n' +
-          '# 1. Add public fn to Rust: pub fn generate_ir_json(document: &Document) -> String\n' +
-          '# 2. Add #[wasm_bindgen] decorator\n' +
-          '# 3. Rebuild WASM with: npm run build-wasm\n' +
-          '# 4. IR will then display ExportLine → ExportMeasure → ExportEvent structures\n\n' +
-          '# Current IR pipeline:\n' +
-          '# - build_export_measures_from_document() creates Vec<ExportLine>\n' +
-          '# - Each ExportLine contains measures with FSM-grouped events\n' +
-          '# - Events are: Rest { divisions } | Note { pitch, divisions, grace_notes, slur, lyrics } | Chord\n\n' +
-          '# See: src/renderers/musicxml/export_ir.rs for type definitions';
-      }
-    } catch (error) {
-      console.error('[IR] Error:', error);
-      irDisplay.textContent = `// Error generating IR:\n${error.message}\n${error.stack}`;
-    }
+    return this.exportManager.updateIRDisplay();
   }
 
-  /**
-   * Update MusicXML source display
-   */
   async updateMusicXMLDisplay() {
-    const musicxmlSource = document.getElementById('musicxml-source');
-    if (!musicxmlSource || !this.theDocument) {
-      return;
-    }
-
-    try {
-      // Export to MusicXML
-      const musicxml = await this.exportMusicXML();
-
-      if (!musicxml) {
-        musicxmlSource.textContent = '<!-- Error: MusicXML export failed -->';
-        return;
-      }
-
-      // Display the MusicXML source
-      musicxmlSource.textContent = musicxml;
-    } catch (error) {
-      console.error('[MusicXML] Error:', error);
-      musicxmlSource.textContent = `<!-- Error exporting to MusicXML:\n${error.message}\n${error.stack} -->`;
-    }
+    return this.exportManager.updateMusicXMLDisplay();
   }
 
-  /**
-   * Update LilyPond source display
-   */
   async updateLilyPondDisplay() {
-    const lilypondSource = document.getElementById('lilypond-source');
-    if (!lilypondSource || !this.theDocument) {
-      return;
-    }
-
-    try {
-      // Export to MusicXML first
-      const musicxml = await this.exportMusicXML();
-
-      // Convert to LilyPond
-      const settings = JSON.stringify({
-        target_lilypond_version: "2.24.0",
-        language: "English",
-        convert_directions: true,
-        convert_lyrics: true,
-        convert_chord_symbols: true
-      });
-      const resultJson = this.wasmModule.convertMusicXMLToLilyPond(musicxml, settings);
-      const result = JSON.parse(resultJson);
-
-      // Display the LilyPond source
-      lilypondSource.textContent = result.lilypond_source;
-
-      // If there are skipped elements, add a note
-      if (result.skipped_elements && result.skipped_elements.length > 0) {
-        lilypondSource.textContent += '\n\n% Skipped elements:\n';
-        result.skipped_elements.forEach(elem => {
-          lilypondSource.textContent += `% - ${elem.element_type}: ${elem.reason}\n`;
-        });
-      }
-    } catch (error) {
-      console.error('[LilyPond] Error:', error);
-      lilypondSource.textContent = `% Error converting to LilyPond:\n% ${error.message}\n% ${error.stack}`;
-    }
+    return this.exportManager.updateLilyPondDisplay();
   }
 
   /**
@@ -3994,58 +3217,12 @@ class MusicNotationEditor {
     return str.charAt(0).toUpperCase() + str.slice(1);
   }
 
-  /**
-   * Export document to MusicXML format
-   * @returns {string|null} MusicXML string or null on error
-   */
   async exportMusicXML() {
-    if (!this.wasmModule || !this.theDocument) {
-      console.error('Cannot export MusicXML: WASM module or document not initialized');
-      return null;
-    }
-
-    try {
-      const startTime = performance.now();
-      // DEBUG: Log what we're sending to WASM
-      const cellCount = this.theDocument.lines?.[0]?.cells?.length || 0;
-      console.log(`[JS] exportMusicXML: first line has ${cellCount} cells`);
-
-      const musicxml = this.wasmModule.exportMusicXML(this.theDocument);
-      const exportTime = performance.now() - startTime;
-
-      return musicxml;
-    } catch (error) {
-      console.error('MusicXML export failed:', error);
-      logger.error(LOG_CATEGORIES.EDITOR, 'MusicXML export error', { error: error.message });
-      return null;
-    }
+    return this.exportManager.exportMusicXML();
   }
 
-  /**
-   * Render staff notation using OSMD
-   */
   async renderStaffNotation() {
-    if (!this.osmdRenderer) {
-      console.warn('OSMD renderer not initialized');
-      return;
-    }
-
-    const musicxml = await this.exportMusicXML();
-    if (!musicxml) {
-      console.warn('Cannot render staff notation: MusicXML export failed');
-      return;
-    }
-
-    try {
-      const startTime = performance.now();
-      await this.osmdRenderer.render(musicxml);
-      const renderTime = performance.now() - startTime;
-
-      console.log(`Staff notation rendered in ${renderTime.toFixed(2)}ms`);
-    } catch (error) {
-      console.error('Staff notation rendering failed:', error);
-      logger.error(LOG_CATEGORIES.EDITOR, 'Staff notation render error', { error: error.message });
-    }
+    return this.exportManager.renderStaffNotation();
   }
 
   /**

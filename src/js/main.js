@@ -686,6 +686,16 @@ window.MusicNotationApp = {
 };
 
 /**
+ * Backwards compatibility: expose editor directly
+ * Some tests may still use window.musicEditor
+ */
+Object.defineProperty(window, 'musicEditor', {
+  get() {
+    return appInstance?.editor;
+  }
+});
+
+/**
  * Auto-initialize the application
  */
 setupGlobalErrorHandlers();

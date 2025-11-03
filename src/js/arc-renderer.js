@@ -87,7 +87,6 @@ class ArcRenderer {
 
   /**
    * Render slurs from DisplayList
-   * Uses pre-computed arc data from Rust layout engine
    *
    * @param {Object} displayList - DisplayList from Rust layout engine
    */
@@ -98,23 +97,18 @@ class ArcRenderer {
 
     const slurs = [];
 
-    // Collect all pre-computed slur arcs from DisplayList
     for (const line of displayList.lines) {
       if (line.slurs && Array.isArray(line.slurs)) {
         slurs.push(...line.slurs);
       }
     }
 
-    // Update SVG paths from pre-computed arc data
     this.updateArcPathsFromData(slurs, this.slurPaths, this.slurGroup);
-
-    // Store for comparison on next render
     this.slurData = slurs;
   }
 
   /**
    * Render beat loops from DisplayList
-   * Uses pre-computed arc data from Rust layout engine
    *
    * @param {Object} displayList - DisplayList from Rust layout engine
    */
@@ -125,23 +119,18 @@ class ArcRenderer {
 
     const beatLoops = [];
 
-    // Collect all pre-computed beat loop arcs from DisplayList
     for (const line of displayList.lines) {
       if (line.beat_loops && Array.isArray(line.beat_loops)) {
         beatLoops.push(...line.beat_loops);
       }
     }
 
-    // Update SVG paths from pre-computed arc data
     this.updateArcPathsFromData(beatLoops, this.beatLoopPaths, this.beatLoopGroup);
-
-    // Store for comparison on next render
     this.beatLoopData = beatLoops;
   }
 
   /**
    * Render ornament arcs from DisplayList
-   * Uses pre-computed arc data from Rust layout engine
    *
    * @param {Object} displayList - DisplayList from Rust layout engine
    */
@@ -152,17 +141,13 @@ class ArcRenderer {
 
     const ornamentArcs = [];
 
-    // Collect all pre-computed ornament arcs from DisplayList
     for (const line of displayList.lines) {
       if (line.ornament_arcs && Array.isArray(line.ornament_arcs)) {
         ornamentArcs.push(...line.ornament_arcs);
       }
     }
 
-    // Update SVG paths from pre-computed arc data
     this.updateArcPathsFromData(ornamentArcs, this.ornamentArcPaths, this.ornamentArcGroup);
-
-    // Store for comparison on next render
     this.ornamentArcData = ornamentArcs;
   }
 

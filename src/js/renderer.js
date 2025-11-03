@@ -841,6 +841,16 @@ class DOMRenderer {
    * Handle Cell click
    */
   handleCellClick(charCell, event) {
+    // Check if this is a triple-click (detail === 3)
+    if (event && event.detail === 3) {
+      console.log('[Renderer] Triple-click detected on cell:', charCell.col);
+      // Triple-click: select entire line
+      if (window.musicEditor && window.musicEditor.mouseHandler) {
+        window.musicEditor.mouseHandler.selectLine(charCell.col);
+      }
+      return;
+    }
+
     // Clear any existing selection
     if (window.musicEditor && window.musicEditor.clearSelection) {
       window.musicEditor.clearSelection();

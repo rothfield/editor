@@ -199,6 +199,8 @@ class UI {
      */
   setupLineMenu() {
     const menuItems = [
+      { id: 'menu-select-all', label: 'Select Line (triple-click)', action: 'select-all' },
+      { id: 'menu-separator-0', label: null, separator: true },
       { id: 'menu-set-label', label: 'Set Label...', action: 'set-label' },
       { id: 'menu-set-tonic', label: 'Set Tonic...', action: 'set-line-tonic' },
       { id: 'menu-set-pitch-system', label: 'Set Pitch System...', action: 'set-line-pitch-system' },
@@ -211,13 +213,19 @@ class UI {
     lineMenu.innerHTML = '';
 
     menuItems.forEach(item => {
-      const menuItem = document.createElement('div');
-      menuItem.id = item.id;
-      menuItem.className = 'menu-item';
-      menuItem.dataset.action = item.action;
-      menuItem.textContent = item.label;
-      menuItem.addEventListener('click', this.handleMenuItemClick);
-      lineMenu.appendChild(menuItem);
+      if (item.separator) {
+        const separator = document.createElement('div');
+        separator.className = 'menu-separator';
+        lineMenu.appendChild(separator);
+      } else {
+        const menuItem = document.createElement('div');
+        menuItem.id = item.id;
+        menuItem.className = 'menu-item';
+        menuItem.dataset.action = item.action;
+        menuItem.textContent = item.label;
+        menuItem.addEventListener('click', this.handleMenuItemClick);
+        lineMenu.appendChild(menuItem);
+      }
     });
   }
 
@@ -515,6 +523,9 @@ class UI {
       case 'octave-lower':
         this.applyOctave(-1);
         break;
+      case 'select-all':
+        this.selectAll();
+        break;
       case 'set-label':
         this.setLabel();
         break;
@@ -809,6 +820,37 @@ class UI {
         this.editor.addToConsoleLog(`Document key signature set to: ${newSignature}`);
         await this.editor.renderAndUpdate();
       }
+    }
+  }
+
+  /**
+   * Select all cells in the current line (same as triple-click)
+   * Uses WASM to handle selection logic
+   */
+  selectAll() {
+    if (!this.editor || !this.editor.theDocument) {
+      console.warn('Cannot select all: editor or document not available');
+      return;
+    }
+
+    try {
+      // Ensure WASM has the latest document state
+      this.editor.wasmModule.loadDocument(this.editor.theDocument);
+
+      // Get current cursor position to determine which line
+      const lineIndex = this.editor.theDocument.state.cursor.line || 0;
+      const col = this.editor.theDocument.state.cursor.col || 0;
+
+      // Call WASM to select entire line
+      const pos = { line: lineIndex, col: col };
+      const diff = this.editor.wasmModule.selectLineAtPosition(pos);
+
+      // Update UI from WASM state
+      this.editor.updateCursorFromWASM(diff);
+
+      console.log('[UI] Selected entire line at index:', lineIndex);
+    } catch (error) {
+      console.error('Select all error:', error);
     }
   }
 
