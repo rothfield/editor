@@ -2253,7 +2253,15 @@ pub fn move_left(extend: bool) -> Result<JsValue, JsValue> {
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
     let old_cursor = doc.state.cursor;
-    let new_pos = doc.prev_caret(doc.state.cursor);
+
+    // Standard text editor behavior: collapse selection to start on left arrow
+    let new_pos = if !extend && doc.state.selection_manager.current_selection.is_some() {
+        let selection = doc.state.selection_manager.current_selection.as_ref().unwrap();
+        web_sys::console::log_1(&format!("[WASM] moveLeft: collapsing selection to start").into());
+        selection.start()
+    } else {
+        doc.prev_caret(doc.state.cursor)
+    };
 
     web_sys::console::log_1(&format!("[WASM] moveLeft(extend={}): old_cursor=({},{}), new_pos=({},{})",
         extend, old_cursor.line, old_cursor.col, new_pos.line, new_pos.col).into());
@@ -2289,7 +2297,15 @@ pub fn move_right(extend: bool) -> Result<JsValue, JsValue> {
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
     let old_cursor = doc.state.cursor;
-    let new_pos = doc.next_caret(doc.state.cursor);
+
+    // Standard text editor behavior: collapse selection to end on right arrow
+    let new_pos = if !extend && doc.state.selection_manager.current_selection.is_some() {
+        let selection = doc.state.selection_manager.current_selection.as_ref().unwrap();
+        web_sys::console::log_1(&format!("[WASM] moveRight: collapsing selection to end").into());
+        selection.end()
+    } else {
+        doc.next_caret(doc.state.cursor)
+    };
 
     web_sys::console::log_1(&format!("[WASM] moveRight(extend={}): old_cursor=({},{}), new_pos=({},{})",
         extend, old_cursor.line, old_cursor.col, new_pos.line, new_pos.col).into());
@@ -2325,7 +2341,15 @@ pub fn move_up(extend: bool) -> Result<JsValue, JsValue> {
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
     let desired_col = doc.state.selection_manager.desired_col;
-    let new_pos = doc.caret_up(doc.state.cursor, desired_col);
+
+    // Standard text editor behavior: collapse selection to head on up arrow
+    let new_pos = if !extend && doc.state.selection_manager.current_selection.is_some() {
+        let selection = doc.state.selection_manager.current_selection.as_ref().unwrap();
+        web_sys::console::log_1(&format!("[WASM] moveUp: collapsing selection to head").into());
+        selection.head
+    } else {
+        doc.caret_up(doc.state.cursor, desired_col)
+    };
 
     if !extend {
         doc.state.selection_manager.clear_selection();
@@ -2351,7 +2375,15 @@ pub fn move_down(extend: bool) -> Result<JsValue, JsValue> {
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
     let desired_col = doc.state.selection_manager.desired_col;
-    let new_pos = doc.caret_down(doc.state.cursor, desired_col);
+
+    // Standard text editor behavior: collapse selection to head on down arrow
+    let new_pos = if !extend && doc.state.selection_manager.current_selection.is_some() {
+        let selection = doc.state.selection_manager.current_selection.as_ref().unwrap();
+        web_sys::console::log_1(&format!("[WASM] moveDown: collapsing selection to head").into());
+        selection.head
+    } else {
+        doc.caret_down(doc.state.cursor, desired_col)
+    };
 
     if !extend {
         doc.state.selection_manager.clear_selection();

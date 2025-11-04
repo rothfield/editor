@@ -827,7 +827,7 @@ class UI {
    * Select all cells in the current line (same as triple-click)
    * Uses WASM to handle selection logic
    */
-  selectAll() {
+  async selectAll() {
     if (!this.editor || !this.editor.theDocument) {
       console.warn('Cannot select all: editor or document not available');
       return;
@@ -846,7 +846,7 @@ class UI {
       const diff = this.editor.wasmModule.selectLineAtPosition(pos);
 
       // Update UI from WASM state
-      this.editor.updateCursorFromWASM(diff);
+      await this.editor.updateCursorFromWASM(diff);
 
       console.log('[UI] Selected entire line at index:', lineIndex);
     } catch (error) {

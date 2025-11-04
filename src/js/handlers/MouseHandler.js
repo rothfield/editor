@@ -25,7 +25,7 @@ export class MouseHandler {
    * Handle mouse down - start drag selection
    * @param {MouseEvent} event - Browser mouse event
    */
-  handleMouseDown(event) {
+  async handleMouseDown(event) {
     this.editor.element.focus({ preventScroll: true });
 
     try {
@@ -54,7 +54,7 @@ export class MouseHandler {
         // Call WASM to handle mouse down (sets cursor, starts selection)
         const pos = { line: Math.floor(lineIndex), col: Math.floor(col) };
         const diff = this.editor.wasmModule.mouseDown(pos);
-        this.editor.updateCursorFromWASM(diff);
+        await this.editor.updateCursorFromWASM(diff);
       }
 
       event.preventDefault();
@@ -67,7 +67,7 @@ export class MouseHandler {
    * Handle mouse move - update selection if dragging
    * @param {MouseEvent} event - Browser mouse event
    */
-  handleMouseMove(event) {
+  async handleMouseMove(event) {
     if (!this.editor.isDragging) return;
 
     try {
@@ -89,7 +89,7 @@ export class MouseHandler {
         // Call WASM to handle mouse move (extends selection)
         const pos = { line: Math.floor(lineIndex), col: Math.floor(col) };
         const diff = this.editor.wasmModule.mouseMove(pos);
-        this.editor.updateCursorFromWASM(diff);
+        await this.editor.updateCursorFromWASM(diff);
 
         // Prevent default to avoid text selection behavior
         event.preventDefault();
@@ -103,7 +103,7 @@ export class MouseHandler {
    * Handle mouse up - finish selection
    * @param {MouseEvent} event - Browser mouse event
    */
-  handleMouseUp(event) {
+  async handleMouseUp(event) {
     if (this.editor.isDragging) {
       try {
         // Ensure WASM has the latest document state
@@ -123,7 +123,7 @@ export class MouseHandler {
         // Call WASM to finalize mouse interaction with final position
         const pos = { line: Math.floor(lineIndex), col: Math.floor(col) };
         const diff = this.editor.wasmModule.mouseUp(pos);
-        this.editor.updateCursorFromWASM(diff);
+        await this.editor.updateCursorFromWASM(diff);
       } catch (error) {
         console.error('Mouse up error:', error);
       }
@@ -190,7 +190,7 @@ export class MouseHandler {
    * JavaScript is only responsible for gesture detection, WASM handles all logic
    * @param {number} cellIndex - Cell index to select
    */
-  selectBeatOrCharGroup(cellIndex) {
+  async selectBeatOrCharGroup(cellIndex) {
     if (!this.editor.theDocument) {
       return;
     }
@@ -207,7 +207,7 @@ export class MouseHandler {
       const diff = this.editor.wasmModule.selectBeatAtPosition(pos);
 
       // Update UI from WASM state (same pattern as mouseDown/mouseMove/mouseUp)
-      this.editor.updateCursorFromWASM(diff);
+      await this.editor.updateCursorFromWASM(diff);
     } catch (error) {
       console.error('Beat selection error:', error);
     }
@@ -218,7 +218,7 @@ export class MouseHandler {
    * JavaScript is only responsible for gesture detection, WASM handles all logic
    * @param {number} cellIndex - Cell index to select (used to determine line)
    */
-  selectLine(cellIndex) {
+  async selectLine(cellIndex) {
     if (!this.editor.theDocument) {
       return;
     }
@@ -235,7 +235,7 @@ export class MouseHandler {
       const diff = this.editor.wasmModule.selectLineAtPosition(pos);
 
       // Update UI from WASM state (same pattern as mouseDown/mouseMove/mouseUp)
-      this.editor.updateCursorFromWASM(diff);
+      await this.editor.updateCursorFromWASM(diff);
     } catch (error) {
       console.error('Line selection error:', error);
     }

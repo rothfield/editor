@@ -855,7 +855,7 @@ class MusicNotationEditor {
      * Update cursor and selection from WASM EditorDiff result
      * @param {EditorDiff} diff - The diff returned from WASM commands
      */
-  updateCursorFromWASM(diff) {
+  async updateCursorFromWASM(diff) {
     if (!this.theDocument || !this.theDocument.state) {
       return;
     }
@@ -874,6 +874,9 @@ class MusicNotationEditor {
 
     // Selection is now managed entirely by WASM
     // No need to sync to JS state - use getSelection() to query WASM when needed
+
+    // Render to update current line border and other visual states
+    await this.render();
 
     // Update visual displays
     this.updateCursorPositionDisplay();
@@ -2534,24 +2537,78 @@ class MusicNotationEditor {
       return;
     }
 
-    // Get cursor position relative to document
-    const cursorRect = cursor.getBoundingClientRect();
+    // Find the notation-line that contains the cursor
+    const notationLine = cursor.closest('.notation-line');
+    if (!notationLine) {
+      // Fallback to simple cursor scrolling if no line found
+      cursor.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+      return;
+    }
 
-    // Get scroll container bounds (the actual viewport)
+    // Get the line's declared height (includes beat loops, lyrics, etc.)
+    const lineHeight = parseFloat(notationLine.style.height) || notationLine.getBoundingClientRect().height;
+
+    // Get positions
+    const cursorRect = cursor.getBoundingClientRect();
+    const lineRect = notationLine.getBoundingClientRect();
     const containerRect = scrollContainer.getBoundingClientRect();
 
-    // Calculate if cursor is outside the SCROLL CONTAINER viewport
-    const isAboveViewport = cursorRect.top < containerRect.top;
-    const isBelowViewport = cursorRect.bottom > containerRect.bottom;
+    // Calculate the actual bottom of the line content (line top + full height)
+    const lineContentBottom = lineRect.top + lineHeight;
+
+    // Check if line is outside viewport (vertically)
+    // Line is above viewport if its bottom is above container top
+    const isAboveViewport = lineContentBottom < containerRect.top;
+    // Line is below viewport if its top is below container bottom
+    const isBelowViewport = lineRect.top > containerRect.bottom;
+
+    // Check if cursor is outside viewport (horizontally)
     const isLeftOfViewport = cursorRect.left < containerRect.left;
     const isRightOfViewport = cursorRect.right > containerRect.right;
 
     // Scroll if needed
-    if (isAboveViewport || isBelowViewport || isLeftOfViewport || isRightOfViewport) {
-      cursor.scrollIntoView({
-        behavior: 'smooth',
-        block: 'nearest',
-        inline: 'nearest'
+    if (isAboveViewport || isBelowViewport) {
+      // For vertical scrolling, calculate the target scroll position manually
+      // to ensure the ENTIRE line (including beat loops, lyrics, etc.) is visible
+      const currentScrollTop = scrollContainer.scrollTop;
+
+      let targetScrollTop = currentScrollTop;
+
+      if (isAboveViewport) {
+        // Line is above viewport - scroll UP to show the top of the line
+        // Target: line top aligned with container top
+        const lineTopRelativeToContainer = lineRect.top - containerRect.top;
+        targetScrollTop = currentScrollTop + lineTopRelativeToContainer;
+      } else if (isBelowViewport) {
+        // Line is below viewport - scroll DOWN to show the entire line
+        // Target: line bottom aligned with container bottom
+        const lineBottomRelativeToContainer = lineContentBottom - containerRect.bottom;
+        targetScrollTop = currentScrollTop + lineBottomRelativeToContainer;
+      }
+
+      // Smooth scroll to target position
+      scrollContainer.scrollTo({
+        top: targetScrollTop,
+        behavior: 'smooth'
+      });
+    }
+
+    // Handle horizontal scrolling separately (cursor-based)
+    if (isLeftOfViewport || isRightOfViewport) {
+      const currentScrollLeft = scrollContainer.scrollLeft;
+      let targetScrollLeft = currentScrollLeft;
+
+      if (isLeftOfViewport) {
+        const cursorLeftRelativeToContainer = cursorRect.left - containerRect.left;
+        targetScrollLeft = currentScrollLeft + cursorLeftRelativeToContainer - 20; // 20px padding
+      } else if (isRightOfViewport) {
+        const cursorRightRelativeToContainer = cursorRect.right - containerRect.right;
+        targetScrollLeft = currentScrollLeft + cursorRightRelativeToContainer + 20; // 20px padding
+      }
+
+      scrollContainer.scrollTo({
+        left: targetScrollLeft,
+        behavior: 'smooth'
       });
     }
   }

@@ -142,13 +142,14 @@ impl<'a> LayoutLineComputer<'a> {
         // Position octave dots
         let octave_dots = self.position_octave_dots(&line.cells, &cells, config);
 
-        // Calculate line height based on content
-        let has_beats = beats.iter().any(|b| b.end - b.start >= 1);
-        let has_octave_dots = line.cells.iter().any(|c| c.octave != 0);
-        let height = self.calculate_line_height(!line.lyrics.is_empty(), has_beats, has_octave_dots, config);
-
         // Compute slur arcs from slur indicators in cells
         let slurs = self.compute_slur_arcs(&line.cells, &cells, &ornament_anchors, config);
+
+        // Calculate line height based on content
+        let has_beats = beats.iter().any(|b| b.end - b.start >= 1);
+        let has_slurs = slurs.len() > 0;  // Check if any slurs were computed
+        let has_octave_dots = line.cells.iter().any(|c| c.octave != 0);
+        let height = self.calculate_line_height(!line.lyrics.is_empty(), has_beats, has_slurs, has_octave_dots, config);
 
         // Compute beat loop arcs from beat indicators
         let beat_loops = self.compute_beat_loop_arcs(&beats, &cells, &line.cells, config);
@@ -899,36 +900,56 @@ impl<'a> LayoutLineComputer<'a> {
     }
 
 
-    /// Calculate line height based on content
+    /// Calculate line height based on actual content
+    ///
+    /// Lines should have variable height based on what's actually rendered:
+    /// - Minimal height for simple notes
+    /// - Additional space when decorations (slurs, beat arcs) are present
+    /// - Even more space when lyrics are present
     fn calculate_line_height(
         &self,
         has_lyrics: bool,
         has_beats: bool,
+        has_slurs: bool,
         has_octave_dots: bool,
         config: &LayoutConfig,
     ) -> f32 {
-        if has_lyrics {
-            // Reuse same calculation as position_lyrics
-            const BEAT_LOOP_GAP: f32 = 2.0;
-            const BEAT_LOOP_HEIGHT: f32 = 5.0;
-            const OCTAVE_DOT_OFFSET_EM: f32 = 0.35;
-            const LYRICS_GAP: f32 = 4.0;
+        const SLUR_HEIGHT: f32 = 8.0;
+        const BEAT_LOOP_HEIGHT: f32 = 7.0;
+        const OCTAVE_DOT_HEIGHT: f32 = 4.0;
+        const DECORATION_GAP: f32 = 2.0;
+        const LYRICS_GAP: f32 = 4.0;
 
-            let cell_bottom = config.cell_y_offset + config.cell_height;
-            let lyrics_y = if has_beats {
-                cell_bottom + BEAT_LOOP_GAP + BEAT_LOOP_HEIGHT + LYRICS_GAP
-            } else if has_octave_dots {
-                cell_bottom + (OCTAVE_DOT_OFFSET_EM * config.font_size) + LYRICS_GAP
-            } else {
-                cell_bottom + LYRICS_GAP
-            };
+        let cell_bottom = config.cell_y_offset + config.cell_height;
 
-            let lyrics_font_size = config.font_size * 0.5;
-            let lyrics_bottom_padding = config.font_size;  // Reduced from 2x to 1x
-            lyrics_y + lyrics_font_size + lyrics_bottom_padding
-        } else {
-            // LINE_CONTAINER_HEIGHT = CELL_VERTICAL_PADDING + CELL_HEIGHT + CELL_BOTTOM_PADDING
-            config.cell_y_offset + config.cell_height + config.cell_y_offset
+        // Calculate space needed for decorations
+        let mut decoration_height: f32 = 0.0;
+        if has_slurs {
+            decoration_height = decoration_height.max(SLUR_HEIGHT);
         }
+        if has_beats {
+            decoration_height = decoration_height.max(BEAT_LOOP_HEIGHT);
+        }
+        if has_octave_dots {
+            decoration_height = decoration_height.max(OCTAVE_DOT_HEIGHT);
+        }
+
+        // Start with baseline height (cell + bottom padding)
+        let baseline_bottom_padding = config.cell_y_offset;
+        let mut total_height = cell_bottom + baseline_bottom_padding;
+
+        // Add decoration space if decorations are present
+        if decoration_height > 0.0 {
+            total_height += DECORATION_GAP + decoration_height;
+        }
+
+        // Add lyrics space if lyrics are present
+        if has_lyrics {
+            let lyrics_font_size = config.font_size * 0.5;
+            let lyrics_bottom_padding = config.font_size;
+            total_height += LYRICS_GAP + lyrics_font_size + lyrics_bottom_padding;
+        }
+
+        total_height
     }
 }

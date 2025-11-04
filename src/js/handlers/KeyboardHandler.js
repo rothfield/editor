@@ -162,7 +162,7 @@ export class KeyboardHandler {
    * Handle Shift+key commands (selection extension)
    * @param {string} key - Key name
    */
-  handleShiftCommand(key) {
+  async handleShiftCommand(key) {
     try {
       // Load document to ensure WASM has latest state
       if (!this.editor.theDocument) {
@@ -198,7 +198,7 @@ export class KeyboardHandler {
       }
 
       // Update cursor and selection from WASM diff
-      this.editor.updateCursorFromWASM(diff);
+      await this.editor.updateCursorFromWASM(diff);
     } catch (error) {
       console.error('Selection extension error:', error);
     }
@@ -219,10 +219,7 @@ export class KeyboardHandler {
       case 'Home':
       case 'End':
         console.log('[JS] Arrow/navigation key detected, calling handleNavigation');
-        // Clear selection when navigating
-        if (this.editor.hasSelection()) {
-          this.editor.clearSelection();
-        }
+        // WASM now handles selection collapse logic for standard text editor behavior
         this.handleNavigation(key);
         break;
       case 'Backspace':
@@ -246,7 +243,7 @@ export class KeyboardHandler {
    * Handle navigation keys (arrows, Home, End)
    * @param {string} key - Key name
    */
-  handleNavigation(key) {
+  async handleNavigation(key) {
     console.log(`[JS] handleNavigation called with key: ${key}`);
 
     try {
@@ -288,7 +285,7 @@ export class KeyboardHandler {
 
       // Update cursor display from diff
       console.log('[JS] About to update cursor from diff:', diff);
-      this.editor.updateCursorFromWASM(diff);
+      await this.editor.updateCursorFromWASM(diff);
       console.log(`[JS] Cursor after updateCursorFromWASM:`, this.editor.theDocument.state.cursor);
     } catch (error) {
       console.error('Navigation error:', error);

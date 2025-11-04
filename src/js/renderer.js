@@ -173,6 +173,14 @@ class DOMRenderer {
         width: 100%;
         text-align: center;
       }
+
+      /* Current line border */
+      .notation-line.current-line {
+        outline: 2px solid #3b82f6; /* blue-500 */
+        outline-offset: -2px;
+        border-radius: 4px;
+        background-color: rgba(59, 130, 246, 0.05); /* very subtle blue tint */
+      }
     `;
     document.head.appendChild(style);
   }
@@ -577,7 +585,12 @@ class DOMRenderer {
    */
   renderLineFromDisplayList(renderLine, displayList) {
     const line = document.createElement('div');
-    line.className = 'notation-line';
+
+    // Check if this is the current line (where the cursor is)
+    const currentLineIndex = this.editor?.theDocument?.state?.cursor?.line ?? -1;
+    const isCurrentLine = renderLine.line_index === currentLineIndex;
+
+    line.className = isCurrentLine ? 'notation-line current-line' : 'notation-line';
     line.dataset.line = renderLine.line_index;
     line.style.cssText = `position:relative; height:${renderLine.height}px; width:100%;`;
 
