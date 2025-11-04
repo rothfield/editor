@@ -221,6 +221,7 @@ class MusicNotationEditor {
 
   /**
      * Insert text at current cursor position using recursive descent parser
+     * If there's an active selection, clears it first (standard editor behavior)
      */
   async insertText(text) {
     if (!this.isInitialized || !this.wasmModule) {
@@ -228,6 +229,11 @@ class MusicNotationEditor {
       return;
     }
 
+    // Clear any active selection before inserting (standard text editor behavior)
+    if (this.hasSelection()) {
+      logger.debug(LOG_CATEGORIES.EDITOR, 'Clearing selection before text insert');
+      this.clearSelection();
+    }
 
     logger.time('insertText', LOG_CATEGORIES.EDITOR);
     const cursorPos = this.getCursorPosition();
@@ -840,23 +846,8 @@ class MusicNotationEditor {
       this.theDocument.state.desired_col = diff.caret.desired_col;
     }
 
-    // Update selection if present
-    if (diff.selection) {
-      // Map from WASM anchor/head model to JS cell-based selection
-      // For now, we store the WASM selection info directly
-      this.theDocument.state.selection = {
-        anchor: diff.selection.anchor,
-        head: diff.selection.head,
-        start: diff.selection.start,
-        end: diff.selection.end,
-        is_empty: diff.selection.is_empty,
-        is_forward: diff.selection.is_forward,
-        active: !diff.selection.is_empty
-      };
-    } else {
-      // Clear selection if WASM returned null
-      this.theDocument.state.selection = null;
-    }
+    // Selection is now managed entirely by WASM
+    // No need to sync to JS state - use getSelection() to query WASM when needed
 
     // Update visual displays
     this.updateCursorPositionDisplay();
@@ -1122,103 +1113,64 @@ class MusicNotationEditor {
   // ==================== SELECTION MANAGEMENT ====================
 
   /**
-     * Initialize selection range using cell indices (backward compatibility)
-     * Internally converts to stop indices
-     */
-  initializeSelection(startCellIndex, endCellIndex) {
-    if (!this.theDocument || !this.theDocument.state) {
-      return;
-    }
-
-    const stops = this.getNavigableStops();
-
-    // Find stops corresponding to cell indices
-    const startStop = this.findStopFromCellIndex(stops, Math.min(startCellIndex, endCellIndex));
-    const endStop = this.findStopFromCellIndex(stops, Math.max(startCellIndex, endCellIndex));
-
-    if (!startStop || !endStop) {
-      // Fallback to cell-based selection
-      this.theDocument.state.selection = {
-        start: Math.min(startCellIndex, endCellIndex),
-        end: Math.max(startCellIndex, endCellIndex),
-        active: true,
-        // Stop-based fields
-        startStopIndex: null,
-        endStopIndex: null,
-      };
-      return;
-    }
-
-    this.theDocument.state.selection = {
-      // Cell-based (for backward compatibility)
-      start: startStop.cellIndex,
-      end: endStop.cellIndex,
-      active: true,
-      // Stop-based (for navigation)
-      startStopIndex: startStop.stopIndex,
-      endStopIndex: endStop.stopIndex,
-    };
-  }
-
-  /**
-   * Initialize selection using stop indices directly
-   */
-  initializeSelectionByStops(startStopIndex, endStopIndex) {
-    if (!this.theDocument || !this.theDocument.state) {
-      return;
-    }
-
-    const stops = this.getNavigableStops();
-    const startStop = stops[startStopIndex];
-    const endStop = stops[endStopIndex];
-
-    if (!startStop || !endStop) {
-      return;
-    }
-
-    // Normalize so start <= end
-    const minStopIndex = Math.min(startStopIndex, endStopIndex);
-    const maxStopIndex = Math.max(startStopIndex, endStopIndex);
-    const minCellIndex = Math.min(startStop.cellIndex, endStop.cellIndex);
-    const maxCellIndex = Math.max(startStop.cellIndex, endStop.cellIndex);
-
-    this.theDocument.state.selection = {
-      // Cell-based (for backward compatibility)
-      start: minCellIndex,
-      end: maxCellIndex,
-      active: true,
-      // Stop-based (for navigation)
-      startStopIndex: minStopIndex,
-      endStopIndex: maxStopIndex,
-    };
-  }
-
-  /**
      * Clear current selection
      */
   clearSelection() {
-    if (this.theDocument && this.theDocument.state) {
-      this.theDocument.state.selection = null;
+    // Clear selection in WASM (single source of truth)
+    if (this.wasmModule) {
+      try {
+        this.wasmModule.clearSelection();
+      } catch (error) {
+        console.warn('Failed to clear selection in WASM:', error);
+      }
     }
+
+    // Clear visual selection in UI
     this.clearSelectionVisual();
     this.updateDocumentDisplay();
   }
 
   /**
      * Check if there's an active selection
+     * NOW QUERIES WASM AS SOURCE OF TRUTH
      */
   hasSelection() {
-    return !!(this.theDocument && this.theDocument.state && this.theDocument.state.selection && this.theDocument.state.selection.active);
+    if (!this.wasmModule) return false;
+
+    try {
+      const selectionInfo = this.wasmModule.getSelectionInfo();
+      return selectionInfo && !selectionInfo.is_empty;
+    } catch (error) {
+      console.warn('Failed to get selection info from WASM:', error);
+      return false;
+    }
   }
 
   /**
      * Get current selection range
+     * NOW QUERIES WASM AS SOURCE OF TRUTH
      */
   getSelection() {
-    if (this.hasSelection()) {
-      return this.theDocument.state.selection;
+    if (!this.wasmModule) return null;
+
+    try {
+      const selectionInfo = this.wasmModule.getSelectionInfo();
+      if (!selectionInfo || selectionInfo.is_empty) {
+        return null;
+      }
+
+      // Return selection info in format expected by existing code
+      return {
+        anchor: selectionInfo.anchor,
+        head: selectionInfo.head,
+        start: selectionInfo.start,
+        end: selectionInfo.end,
+        active: true // Compatibility with old code
+      };
+    } catch (error) {
+      console.warn('Failed to get selection from WASM:', error);
+      return null;
     }
-    return null;
   }
 
   /**
@@ -1597,11 +1549,9 @@ class MusicNotationEditor {
     console.log('🔄 handleEnter called');
     logger.time('handleEnter', LOG_CATEGORIES.EDITOR);
 
-    // If there's an actual selection (start != end), do nothing (wait for undo implementation)
-    const selection = this.getSelection();
-    console.log('🔄 Selection check:', selection);
-    if (selection && (selection.start.line !== selection.end.line || selection.start.col !== selection.end.col)) {
-      console.log('🔄 Selection active, blocking');
+    // If there's an actual selection (not just cursor position), do nothing (wait for undo implementation)
+    if (this.hasSelection()) {
+      console.log('🔄 Selection active, blocking split');
       logger.warn(LOG_CATEGORIES.EDITOR, 'Cannot split line with active selection (undo not yet implemented)');
       this.showWarning('Cannot split line with active selection', {
         important: false,
@@ -3274,14 +3224,9 @@ class MusicNotationEditor {
       return;
     }
 
-    // Check if there's a selection
-    const selection = this.theDocument.state?.selection;
-    const hasSelection = selection && selection.active &&
-                       (selection.start !== undefined) && (selection.end !== undefined) &&
-                       !(selection.start.line === selection.end.line && selection.start.col === selection.end.col);
-
-    if (!hasSelection) {
-      console.warn('No selection to copy', selection);
+    // Check if there's a selection (now queries WASM)
+    if (!this.hasSelection()) {
+      console.warn('No selection to copy');
       return;
     }
 
@@ -3293,7 +3238,13 @@ class MusicNotationEditor {
         console.warn('Failed to sync document with WASM before copy:', e);
       }
 
-      const selection = this.theDocument.state.selection;
+      // Get selection from WASM (single source of truth)
+      const selection = this.getSelection();
+      if (!selection) {
+        console.warn('Selection disappeared before copy');
+        return;
+      }
+
       // Selection has start/end as {line, col} objects
       const startRow = selection.start.line;
       const startCol = selection.start.col;
@@ -3333,13 +3284,8 @@ class MusicNotationEditor {
     // First copy
     this.handleCopy();
 
-    // Then delete the selection
-    const selection = this.theDocument.state?.selection;
-    const hasSelection = selection && selection.active &&
-                       (selection.start !== undefined) && (selection.end !== undefined) &&
-                       !(selection.start.line === selection.end.line && selection.start.col === selection.end.col);
-
-    if (hasSelection) {
+    // Then delete the selection (if it still exists after copy)
+    if (this.hasSelection()) {
       // Delete the selected range
       this.deleteSelection();
     }
@@ -3409,10 +3355,8 @@ class MusicNotationEditor {
         this.setCursorPosition(startColumn + cellsToPaste.length);
       }
 
-      // Clear selection
-      if (this.theDocument.state) {
-        this.theDocument.state.selection = { active: false };
-      }
+      // Clear selection (WASM handles this)
+      this.clearSelection();
 
       this.addToConsoleLog(`Pasted ${cellsToPaste.length} cells via WASM`);
       this.render();
@@ -3527,7 +3471,7 @@ class MusicNotationEditor {
       if (result && result.dirty_lines) {
         this.updateDocumentFromDirtyLines(result.dirty_lines);
         this.setCursorPosition(startRow, startCol);
-        this.theDocument.state.selection = { active: false };
+        this.clearSelection();
         this.render();
       }
     } catch (error) {

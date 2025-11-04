@@ -349,7 +349,8 @@ export class MouseHandler {
 
     // In normal mode, filter out ornament cells to make them non-interactive
     const editMode = this.editor.wasmModule.getOrnamentEditMode(this.editor.theDocument);
-    const line = this.editor.getCurrentLine();
+    // BUG FIX: Use the CLICKED line, not the current cursor line!
+    const line = this.editor.theDocument?.lines?.[lineIndex];
     const navigableCellElements = Array.from(allCellElements).filter(cellElement => {
       if (editMode || !line) return true; // In edit mode, all cells are navigable
       const cellIndex = parseInt(cellElement.getAttribute('data-cell-index'), 10);
@@ -382,7 +383,7 @@ export class MouseHandler {
 
     // Find which cell the X coordinate is in by checking which pair of boundaries it falls between
     let cellIndex = 0;
-    let cursorPositionIndex = 0; // Which cursor position (0-N) the cursor should snap to
+    let cursorCol = 0; // Which column position in the document (0 to cells.length)
 
     // Check each navigable cell to see if x falls within it
     for (let i = 0; i < navigableCellElements.length; i++) {
@@ -391,28 +392,39 @@ export class MouseHandler {
 
       // Click is within this cell
       if (x >= leftBoundary && x < rightBoundary) {
-        // Return the actual cellIndex from the data attribute, not the filtered index
+        // Get the actual cellIndex from the data attribute (not the filtered index)
         cellIndex = parseInt(navigableCellElements[i].getAttribute('data-cell-index'), 10);
 
         // Determine if click is in left or right half of the cell
         const cellMidpoint = (leftBoundary + rightBoundary) / 2;
+
+        console.log(`[MouseHandler] Cell ${i}: x=${x.toFixed(2)}, left=${leftBoundary.toFixed(2)}, right=${rightBoundary.toFixed(2)}, mid=${cellMidpoint.toFixed(2)}, cellIndex=${cellIndex}`);
+
         if (x >= cellMidpoint) {
-          // Right half: cursor should be at the right boundary (position i+1)
-          cursorPositionIndex = i + 1;
+          // Right half: cursor should be AFTER this cell (cellIndex + 1)
+          cursorCol = cellIndex + 1;
+          console.log(`[MouseHandler] Right half: cursorCol = ${cursorCol}`);
         } else {
-          // Left half: cursor should be at the left boundary (position i)
-          cursorPositionIndex = i;
+          // Left half: cursor should be BEFORE this cell (at cellIndex position)
+          cursorCol = cellIndex;
+          console.log(`[MouseHandler] Left half: cursorCol = ${cursorCol}`);
         }
         break;
       }
     }
 
-    // If x is at or beyond the right edge of the last cell, snap to the last position
+    console.log(`[MouseHandler] Final cursorCol = ${cursorCol}`);
+
+    // If x is at or beyond the right edge of the last cell, snap to after the last cell
     if (x >= cursorPositions[navigableCellElements.length]) {
-      cursorPositionIndex = navigableCellElements.length;
+      const lastCellIndex = parseInt(
+        navigableCellElements[navigableCellElements.length - 1].getAttribute('data-cell-index'),
+        10
+      );
+      cursorCol = lastCellIndex + 1;
     }
 
-    return cursorPositionIndex;
+    return cursorCol;
   }
 }
 

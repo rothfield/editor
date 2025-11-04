@@ -445,6 +445,9 @@ class DOMRenderer {
    * @param {Object} displayList - DisplayList from Rust computeLayout
    */
   renderFromDisplayList(displayList) {
+    // Clear previous render to avoid duplicate event handlers
+    this.element.innerHTML = '';
+
     // Render header if present
     if (displayList.header) {
       this.renderHeaderFromDisplayList(displayList.header);
@@ -624,11 +627,8 @@ class DOMRenderer {
         }
       }
 
-      // Add event handlers (cellIndex and cell already retrieved at top of loop)
-      cellChar.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this.handleCellClick(cell, e);
-      });
+      // Mouse events are now handled by MouseHandler in editor.js
+      // No need for cell-level click handlers anymore
 
       cellChar.addEventListener('mouseenter', () => {
         this.handleCellHover(cell, true);
@@ -745,11 +745,8 @@ class DOMRenderer {
           z-index: 1;
         `;
 
-        // Add event handlers for editing in edit mode
-        ornamentChar.addEventListener('click', (e) => {
-          e.stopPropagation();
-          this.handleCellClick(cell, e);
-        });
+        // Mouse events are now handled by MouseHandler in editor.js
+        // No need for cell-level click handlers anymore
 
         ornamentChar.addEventListener('mouseenter', () => {
           this.handleCellHover(cell, true);
