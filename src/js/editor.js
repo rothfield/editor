@@ -229,6 +229,12 @@ class MusicNotationEditor {
       return;
     }
 
+    // Check scroll position at the VERY start of insertText
+    const scrollContainer = document.getElementById('editor-container');
+    if (scrollContainer) {
+      console.log(`🔍 [insertText] AT START (key pressed) - scroll: left=${scrollContainer.scrollLeft}, top=${scrollContainer.scrollTop}`);
+    }
+
     // Clear any active selection before inserting (standard text editor behavior)
     if (this.hasSelection()) {
       logger.debug(LOG_CATEGORIES.EDITOR, 'Clearing selection before text insert');
@@ -337,7 +343,18 @@ class MusicNotationEditor {
         }
       }
 
+      // Check scroll BEFORE calling renderAndUpdate
+      const scrollContainer = document.getElementById('editor-container');
+      if (scrollContainer) {
+        console.log(`🔍 [insertText] BEFORE renderAndUpdate - scroll: left=${scrollContainer.scrollLeft}, top=${scrollContainer.scrollTop}`);
+      }
+
       await this.renderAndUpdate();
+
+      // Check scroll AFTER renderAndUpdate
+      if (scrollContainer) {
+        console.log(`🔍 [insertText] AFTER renderAndUpdate - scroll: left=${scrollContainer.scrollLeft}, top=${scrollContainer.scrollTop}`);
+      }
 
       // Ensure hitbox values are properly set on the document cells
       // The WASM insertCharacter may return cells without hitbox fields
@@ -2236,6 +2253,12 @@ class MusicNotationEditor {
     }
 
     try {
+      // Check scroll position at the VERY start of render
+      const scrollContainer = document.getElementById('editor-container');
+      if (scrollContainer) {
+        console.log(`📝 render() called - scroll at START: left=${scrollContainer.scrollLeft}, top=${scrollContainer.scrollTop}`);
+      }
+
       console.log('📝 render() called');
       const state = await this.saveDocument();
       const doc = JSON.parse(state);
@@ -2320,18 +2343,15 @@ class MusicNotationEditor {
 
     // Click events - focus the editor and set line focus based on click position
     this.element.addEventListener('click', (event) => {
-      this.element.focus();
+      this.element.focus({ preventScroll: true });
 
       // Check if this is a triple-click (detail === 3)
       if (event.detail === 3) {
-        console.log('[Editor] Triple-click detected!');
         // Triple-click detected - select entire line
         const rect = this.element.getBoundingClientRect();
         const x = event.clientX - rect.left;
         const y = event.clientY - rect.top;
         const cellPosition = this.mouseHandler.calculateCellPosition(x, y);
-
-        console.log('[Editor] Cell position for triple-click:', cellPosition);
 
         if (cellPosition !== null) {
           this.mouseHandler.selectLine(cellPosition);
@@ -2378,7 +2398,7 @@ class MusicNotationEditor {
           return;
         }
 
-        this.element.focus();
+        this.element.focus({ preventScroll: true });
 
         // Focus the first line by default when clicking the container
         if (this.theDocument && this.theDocument.state) {
@@ -2405,10 +2425,6 @@ class MusicNotationEditor {
 
   handleDoubleClick(event) {
     this.mouseHandler.handleDoubleClick(event);
-  }
-
-  handleCanvasClick(event) {
-    this.mouseHandler.handleCanvasClick(event);
   }
 
   /**

@@ -26,7 +26,7 @@ export class MouseHandler {
    * @param {MouseEvent} event - Browser mouse event
    */
   handleMouseDown(event) {
-    this.editor.element.focus();
+    this.editor.element.focus({ preventScroll: true });
 
     try {
       // Ensure WASM has the latest document state
@@ -104,7 +104,6 @@ export class MouseHandler {
    * @param {MouseEvent} event - Browser mouse event
    */
   handleMouseUp(event) {
-    console.log('[JS] handleMouseUp called, isDragging:', this.editor.isDragging);
     if (this.editor.isDragging) {
       try {
         // Ensure WASM has the latest document state
@@ -112,7 +111,6 @@ export class MouseHandler {
           console.warn('No document available for mouse interaction');
           return;
         }
-        console.log('[JS] Loading document into WASM before mouseUp');
         this.editor.wasmModule.loadDocument(this.editor.theDocument);
 
         // Calculate final mouse position
@@ -122,13 +120,10 @@ export class MouseHandler {
         const lineIndex = this.calculateLineFromY(y);
         const col = this.calculateCellPosition(x, y);
 
-        console.log(`[JS] Calling WASM mouseUp with pos=(${lineIndex}, ${col})`);
         // Call WASM to finalize mouse interaction with final position
         const pos = { line: Math.floor(lineIndex), col: Math.floor(col) };
         const diff = this.editor.wasmModule.mouseUp(pos);
-        console.log('[JS] mouseUp returned diff:', diff);
         this.editor.updateCursorFromWASM(diff);
-        console.log('[JS] After updateCursorFromWASM, selection:', this.editor.theDocument.state.selection);
       } catch (error) {
         console.error('Mouse up error:', error);
       }
@@ -243,31 +238,6 @@ export class MouseHandler {
       this.editor.updateCursorFromWASM(diff);
     } catch (error) {
       console.error('Line selection error:', error);
-    }
-  }
-
-  /**
-   * Handle canvas click for caret positioning
-   * @param {MouseEvent} event - Browser mouse event
-   */
-  handleCanvasClick(event) {
-    const rect = this.editor.element.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
-
-    // Determine which line was clicked based on Y coordinate
-    const lineIndex = this.calculateLineFromY(y);
-    if (lineIndex !== null && this.editor.theDocument && this.editor.theDocument.state) {
-      // Switch to the clicked line
-      this.editor.theDocument.state.cursor.line = lineIndex;
-    }
-
-    // Calculate Cell position from click coordinates
-    const charCellPosition = this.calculateCellPosition(x, y);
-
-    if (charCellPosition !== null) {
-      this.editor.setCursorPosition(charCellPosition);
-      this.editor.element.focus();
     }
   }
 
@@ -398,22 +368,16 @@ export class MouseHandler {
         // Determine if click is in left or right half of the cell
         const cellMidpoint = (leftBoundary + rightBoundary) / 2;
 
-        console.log(`[MouseHandler] Cell ${i}: x=${x.toFixed(2)}, left=${leftBoundary.toFixed(2)}, right=${rightBoundary.toFixed(2)}, mid=${cellMidpoint.toFixed(2)}, cellIndex=${cellIndex}`);
-
         if (x >= cellMidpoint) {
           // Right half: cursor should be AFTER this cell (cellIndex + 1)
           cursorCol = cellIndex + 1;
-          console.log(`[MouseHandler] Right half: cursorCol = ${cursorCol}`);
         } else {
           // Left half: cursor should be BEFORE this cell (at cellIndex position)
           cursorCol = cellIndex;
-          console.log(`[MouseHandler] Left half: cursorCol = ${cursorCol}`);
         }
         break;
       }
     }
-
-    console.log(`[MouseHandler] Final cursorCol = ${cursorCol}`);
 
     // If x is at or beyond the right edge of the last cell, snap to after the last cell
     if (x >= cursorPositions[navigableCellElements.length]) {

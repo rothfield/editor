@@ -185,6 +185,12 @@ class DOMRenderer {
 
     this.theDocument = doc;
 
+    // IMPORTANT: Save scroll position BEFORE clearing element
+    // Clearing the element children can cause the browser to reset parent scroll to 0,0
+    const scrollContainer = document.getElementById('editor-container');
+    const savedScrollLeft = scrollContainer?.scrollLeft ?? 0;
+    const savedScrollTop = scrollContainer?.scrollTop ?? 0;
+
     // Clear previous content
     this.clearElement();
 
@@ -234,7 +240,7 @@ class DOMRenderer {
 
     // STEP 3: Render from DisplayList (fast native JS DOM)
     const renderStart = performance.now();
-    this.renderFromDisplayList(displayList);
+    this.renderFromDisplayList(displayList, savedScrollLeft, savedScrollTop);
     const renderTime = performance.now() - renderStart;
 
     // Ornaments are now rendered from DisplayList in renderFromDisplayList()
@@ -444,7 +450,16 @@ class DOMRenderer {
    *
    * @param {Object} displayList - DisplayList from Rust computeLayout
    */
-  renderFromDisplayList(displayList) {
+  renderFromDisplayList(displayList, savedScrollLeft = 0, savedScrollTop = 0) {
+    // Find the actual scroll container - explicitly get #editor-container
+    const scrollContainer = document.getElementById('editor-container');
+
+    if (!scrollContainer) {
+      console.error('Scroll container #editor-container not found!');
+    }
+
+    console.log(`[Renderer] Using saved scroll position: left=${savedScrollLeft}, top=${savedScrollTop}`);
+
     // Clear previous render to avoid duplicate event handlers
     this.element.innerHTML = '';
 
@@ -464,6 +479,23 @@ class DOMRenderer {
 
     // Update arc counts in stats
     this.renderStats.slursRendered = this.arcRenderer.slurPaths.size;
+
+    // Restore scroll position immediately after rendering
+    if (scrollContainer && (savedScrollLeft !== 0 || savedScrollTop !== 0)) {
+      // Set scroll position synchronously
+      scrollContainer.scrollLeft = savedScrollLeft;
+      scrollContainer.scrollTop = savedScrollTop;
+
+      console.log(`[Renderer] Restored scroll to: left=${scrollContainer.scrollLeft}, top=${scrollContainer.scrollTop}`);
+
+      // Also restore after next frame as backup for browser quirks
+      requestAnimationFrame(() => {
+        if (scrollContainer) {
+          scrollContainer.scrollLeft = savedScrollLeft;
+          scrollContainer.scrollTop = savedScrollTop;
+        }
+      });
+    }
   }
 
   /**
@@ -628,15 +660,7 @@ class DOMRenderer {
       }
 
       // Mouse events are now handled by MouseHandler in editor.js
-      // No need for cell-level click handlers anymore
-
-      cellChar.addEventListener('mouseenter', () => {
-        this.handleCellHover(cell, true);
-      });
-
-      cellChar.addEventListener('mouseleave', () => {
-        this.handleCellHover(cell, false);
-      });
+      // No cell-level handlers needed anymore
 
       // Create cell-content wrapper (groups character + modifiers)
       const cellContent = document.createElement('span');
@@ -746,15 +770,7 @@ class DOMRenderer {
         `;
 
         // Mouse events are now handled by MouseHandler in editor.js
-        // No need for cell-level click handlers anymore
-
-        ornamentChar.addEventListener('mouseenter', () => {
-          this.handleCellHover(cell, true);
-        });
-
-        ornamentChar.addEventListener('mouseleave', () => {
-          this.handleCellHover(cell, false);
-        });
+        // No cell-level handlers needed anymore
       } else {
         // Edit mode OFF: Zero-width floating layout with absolute positioning
         ornamentChar.style.cssText = `
@@ -848,39 +864,6 @@ class DOMRenderer {
   showEmptyState() {
     this.element.innerHTML = '';
   }
-
-  /**
-   * Handle Cell click
-   */
-  handleCellClick(charCell, event) {
-    // Check if this is a triple-click (detail === 3)
-    if (event && event.detail === 3) {
-      console.log('[Renderer] Triple-click detected on cell:', charCell.col);
-      // Triple-click: select entire line
-      if (window.musicEditor && window.musicEditor.mouseHandler) {
-        window.musicEditor.mouseHandler.selectLine(charCell.col);
-      }
-      return;
-    }
-
-    // Clear any existing selection
-    if (window.musicEditor && window.musicEditor.clearSelection) {
-      window.musicEditor.clearSelection();
-    }
-    // Update cursor position
-    if (window.musicEditor) {
-      window.musicEditor.setCursorPosition(charCell.col);
-    }
-  }
-
-  /**
-   * Handle Cell hover
-   */
-  handleCellHover(charCell, isHovering) {
-    // Could add hover effects here
-  }
-
-
 
   /**
    * Clear editor element content
