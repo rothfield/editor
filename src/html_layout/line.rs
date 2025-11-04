@@ -400,7 +400,7 @@ impl<'a> LayoutLineComputer<'a> {
         end_cell: &RenderCell,
         direction: &str,
         color: &str,
-        config: &LayoutConfig,
+        _config: &LayoutConfig,
     ) -> RenderArc {
         // Anchor points at cell centers
         let is_downward = direction == "down";

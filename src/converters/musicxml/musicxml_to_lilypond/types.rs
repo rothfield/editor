@@ -222,13 +222,40 @@ pub struct Duration {
     pub dots: u8,
 
     /// Scaling factor for tuplets (e.g., 2/3 for triplet)
+    /// NOTE: This is automatically reduced by Rational type (e.g., 30/16 becomes 15/8)
     pub factor: Option<Rational>,
+
+    /// Unreduced tuplet ratio: actual notes (numerator)
+    /// Stored separately to preserve original tuplet specification
+    /// Example: for 30:16 tuplet, this is 30
+    pub tuplet_actual: Option<u32>,
+
+    /// Unreduced tuplet ratio: normal notes (denominator)
+    /// Example: for 30:16 tuplet, this is 16
+    pub tuplet_normal: Option<u32>,
 }
 
 impl Duration {
     /// Create a new duration
     pub fn new(log: u8, dots: u8, factor: Option<Rational>) -> Self {
-        Self { log, dots, factor }
+        Self {
+            log,
+            dots,
+            factor,
+            tuplet_actual: None,
+            tuplet_normal: None,
+        }
+    }
+
+    /// Create a new duration with tuplet information
+    pub fn new_with_tuplet(log: u8, dots: u8, factor: Rational, actual: u32, normal: u32) -> Self {
+        Self {
+            log,
+            dots,
+            factor: Some(factor),
+            tuplet_actual: Some(actual),
+            tuplet_normal: Some(normal),
+        }
     }
 
     /// Convert duration to LilyPond notation (e.g., "4", "8.", "16*2/3")
@@ -290,6 +317,8 @@ impl Duration {
             log,
             dots,
             factor: None,
+            tuplet_actual: None,
+            tuplet_normal: None,
         })
     }
 }

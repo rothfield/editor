@@ -474,10 +474,13 @@ fn group_tuplets(music_elements: Vec<Music>) -> Result<Vec<Music>, ConversionErr
 
             // Create tuplet if we have multiple elements OR a single element with non-1:1 ratio
             if tuplet_contents.len() > 1 || factor != Rational::new(1, 1) {
-                // Extract the tuplet ratio from the factor
-                // factor is normal_notes/actual_notes
-                let actual_notes = *factor.denom() as u32;
-                let normal_notes = *factor.numer() as u32;
+                // Extract the UNREDUCED tuplet ratio from the first element's duration
+                // This preserves the original tuplet specification (e.g., 30:16 instead of 15:8)
+                let (actual_notes, normal_notes) = get_unreduced_tuplet_ratio(&tuplet_contents[0])
+                    .unwrap_or_else(|| {
+                        // Fallback to reduced ratio if unreduced not available
+                        (*factor.denom() as u32, *factor.numer() as u32)
+                    });
 
                 // Clear the tuplet factor from individual notes/rests
                 let cleaned_contents = tuplet_contents.into_iter().map(|mut music| {
@@ -513,11 +516,41 @@ fn get_tuplet_factor(music: &Music) -> Option<Rational> {
     }
 }
 
+/// Get the unreduced tuplet ratio from a Music element
+/// Returns Option<(actual_notes, normal_notes)>
+fn get_unreduced_tuplet_ratio(music: &Music) -> Option<(u32, u32)> {
+    match music {
+        Music::Note(note) => {
+            if let (Some(actual), Some(normal)) = (note.duration.tuplet_actual, note.duration.tuplet_normal) {
+                Some((actual, normal))
+            } else {
+                None
+            }
+        }
+        Music::Rest(rest) => {
+            if let (Some(actual), Some(normal)) = (rest.duration.tuplet_actual, rest.duration.tuplet_normal) {
+                Some((actual, normal))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
 /// Clear the tuplet factor from a Music element
 fn clear_tuplet_factor(music: &mut Music) {
     match music {
-        Music::Note(note) => note.duration.factor = None,
-        Music::Rest(rest) => rest.duration.factor = None,
+        Music::Note(note) => {
+            note.duration.factor = None;
+            note.duration.tuplet_actual = None;
+            note.duration.tuplet_normal = None;
+        }
+        Music::Rest(rest) => {
+            rest.duration.factor = None;
+            rest.duration.tuplet_actual = None;
+            rest.duration.tuplet_normal = None;
+        }
         _ => {}
     }
 }

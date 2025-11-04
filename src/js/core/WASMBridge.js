@@ -113,6 +113,12 @@ export class WASMBridge {
     this.mouseUp = wasm.mouseUp;
     this.selectBeatAtPosition = wasm.selectBeatAtPosition;
     this.selectLineAtPosition = wasm.selectLineAtPosition;
+
+    // Position Conversion API (WASM-first refactoring)
+    this.getMaxCharPosition = wasm.getMaxCharPosition;
+    this.charPosToCellIndex = wasm.charPosToCellIndex;
+    this.cellIndexToCharPos = wasm.cellIndexToCharPos;
+    this.charPosToPixel = wasm.charPosToPixel;
   }
 
   /**

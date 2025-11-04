@@ -229,12 +229,6 @@ class MusicNotationEditor {
       return;
     }
 
-    // Check scroll position at the VERY start of insertText
-    const scrollContainer = document.getElementById('editor-container');
-    if (scrollContainer) {
-      console.log(`🔍 [insertText] AT START (key pressed) - scroll: left=${scrollContainer.scrollLeft}, top=${scrollContainer.scrollTop}`);
-    }
-
     // Clear any active selection before inserting (standard text editor behavior)
     if (this.hasSelection()) {
       logger.debug(LOG_CATEGORIES.EDITOR, 'Clearing selection before text insert');
@@ -275,19 +269,42 @@ class MusicNotationEditor {
           const lengthBefore = cells.length;
 
           // Convert character position to cell index for WASM API
-          const { cellIndex, charOffsetInCell } = this.charPosToCellIndex(currentCharPos);
+          const posResult = this.charPosToCellIndex(currentCharPos);
+          logger.debug(LOG_CATEGORIES.PARSER, 'charPosToCellIndex result', {
+            currentCharPos,
+            posResult
+          });
+          const { cell_index, char_offset_in_cell } = posResult;
 
           // If we're past the start of a cell, insert after it
           // (WASM API inserts between cells, not within cells)
-          const insertCellIndex = charOffsetInCell > 0 ? cellIndex + 1 : cellIndex;
+          const insertCellIndex = char_offset_in_cell > 0 ? cell_index + 1 : cell_index;
 
           logger.debug(LOG_CATEGORIES.PARSER, `Inserting char '${char}'`, {
             charPos: currentCharPos,
-            cellIndex,
-            charOffsetInCell,
+            cell_index,
+            char_offset_in_cell,
             insertCellIndex,
             cellCountBefore: lengthBefore
           });
+
+          // Validate parameters before WASM call
+          if (typeof insertCellIndex !== 'number' || insertCellIndex === undefined || isNaN(insertCellIndex)) {
+            logger.error(LOG_CATEGORIES.PARSER, 'Invalid insertCellIndex', {
+              insertCellIndex,
+              type: typeof insertCellIndex,
+              cell_index,
+              char_offset_in_cell
+            });
+            throw new Error(`Invalid insertCellIndex: ${insertCellIndex} (type: ${typeof insertCellIndex})`);
+          }
+          if (typeof pitchSystem !== 'number' || pitchSystem === undefined || isNaN(pitchSystem)) {
+            logger.error(LOG_CATEGORIES.PARSER, 'Invalid pitchSystem', {
+              pitchSystem,
+              type: typeof pitchSystem
+            });
+            throw new Error(`Invalid pitchSystem: ${pitchSystem} (type: ${typeof pitchSystem})`);
+          }
 
           // Call WASM recursive descent API with CELL index
           // WASM returns { cells, newCursorPos }
@@ -326,7 +343,6 @@ class MusicNotationEditor {
         if (this.theDocument && this.theDocument.state) {
           this.theDocument.state.cursor.col = currentCharPos;
           console.log(`[insertText] Updated JS cursor.col to ${currentCharPos}, full cursor:`, this.theDocument.state.cursor);
-          this.updateCursorPositionDisplay();
         }
 
         // CRITICAL: Sync the updated JS document back to WASM for history/undo to work
@@ -343,22 +359,15 @@ class MusicNotationEditor {
         }
       }
 
-      // Check scroll BEFORE calling renderAndUpdate
-      const scrollContainer = document.getElementById('editor-container');
-      if (scrollContainer) {
-        console.log(`🔍 [insertText] BEFORE renderAndUpdate - scroll: left=${scrollContainer.scrollLeft}, top=${scrollContainer.scrollTop}`);
-      }
-
+      // CRITICAL: Render FIRST to update DisplayList before positioning cursor
       await this.renderAndUpdate();
-
-      // Check scroll AFTER renderAndUpdate
-      if (scrollContainer) {
-        console.log(`🔍 [insertText] AFTER renderAndUpdate - scroll: left=${scrollContainer.scrollLeft}, top=${scrollContainer.scrollTop}`);
-      }
 
       // Ensure hitbox values are properly set on the document cells
       // The WASM insertCharacter may return cells without hitbox fields
       this.ensureHitboxesAreSet();
+
+      // NOW update cursor visual position with the fresh DisplayList
+      this.updateCursorPositionDisplay();
 
       // Force hitboxes display update after render
       setTimeout(() => {
@@ -368,7 +377,7 @@ class MusicNotationEditor {
       const endTime = performance.now();
       const duration = endTime - startTime;
 
-      // Show cursor after typing
+      // Show cursor after typing (cursor positioning already done above)
       this.showCursor();
 
       logger.timeEnd('insertText', LOG_CATEGORIES.EDITOR, { duration: `${duration.toFixed(2)}ms` });
@@ -752,7 +761,7 @@ class MusicNotationEditor {
     if (stops.length === 0) return null;
 
     const charPos = this.getCursorPosition();
-    const { cellIndex } = this.charPosToCellIndex(charPos);
+    const { cell_index: cellIndex } = this.charPosToCellIndex(charPos);
 
     // Try to find exact match
     const exactMatch = this.findStopFromCellIndex(stops, cellIndex);
@@ -899,9 +908,8 @@ class MusicNotationEditor {
       // Check if we have lines and if the first line has pitch_system set
       if (this.theDocument.lines && this.theDocument.lines.length > 0) {
         const line = this.getCurrentLine();
-        if (!line) return;
         // If line has pitch_system set (non-zero), use it
-        if (line.pitch_system && line.pitch_system !== 0) {
+        if (line && line.pitch_system && line.pitch_system !== 0) {
           return line.pitch_system;
         }
       }
@@ -949,7 +957,7 @@ class MusicNotationEditor {
     }
 
     const line = this.getCurrentLine();
-        if (!line) return;
+    if (!line) return 0;
     const cells = line.cells || [];
 
     return cells.length; // Position after last cell
@@ -959,30 +967,16 @@ class MusicNotationEditor {
      * Get the maximum character position in the line
      */
   getMaxCharPosition() {
-    if (!this.theDocument || !this.theDocument.state || !this.theDocument.lines || this.theDocument.lines.length === 0) {
+    // WASM-first: Position conversion now handled by WASM
+    if (!this.theDocument) {
       return 0;
     }
-
-    const currentStave = this.theDocument.state.cursor.line;
-    const line = this.theDocument.lines[currentStave];
-    if (!line) {
+    try {
+      return this.wasmModule.getMaxCharPosition(this.theDocument);
+    } catch (error) {
+      console.error('Error getting max char position from WASM:', error);
       return 0;
     }
-
-    const cells = line.cells || [];
-    const editMode = this.wasmModule.getOrnamentEditMode(this.theDocument);
-
-    // Sum up lengths of all navigable cell glyphs (skip ornaments in normal mode)
-    let totalChars = 0;
-    for (const cell of cells) {
-      // In normal mode, skip ornament cells (they're out of the flow)
-      if (!editMode && cell.ornament_indicator && cell.ornament_indicator.name !== 'none') {
-        continue;
-      }
-      totalChars += cell.char.length;
-    }
-
-    return totalChars;
   }
 
   /**
@@ -991,45 +985,16 @@ class MusicNotationEditor {
      * @returns {Object} {cellIndex, charOffsetInCell}
      */
   charPosToCellIndex(charPos) {
-    if (!this.theDocument || !this.theDocument.state || !this.theDocument.lines || this.theDocument.lines.length === 0) {
+    // WASM-first: Position conversion now handled by WASM
+    if (!this.theDocument) {
       return { cellIndex: 0, charOffsetInCell: 0 };
     }
-
-    const currentStave = this.theDocument.state.cursor.line;
-    const line = this.theDocument.lines[currentStave];
-    if (!line) {
+    try {
+      return this.wasmModule.charPosToCellIndex(this.theDocument, charPos);
+    } catch (error) {
+      console.error('Error converting char pos to cell index from WASM:', error);
       return { cellIndex: 0, charOffsetInCell: 0 };
     }
-
-    const cells = line.cells || [];
-    const editMode = this.wasmModule.getOrnamentEditMode(this.theDocument);
-
-    let accumulatedChars = 0;
-    for (let cellIndex = 0; cellIndex < cells.length; cellIndex++) {
-      const cell = cells[cellIndex];
-
-      // In normal mode, skip ornament cells (they're out of the flow)
-      if (!editMode && cell.ornament_indicator && cell.ornament_indicator.name !== 'none') {
-        continue;
-      }
-
-      const cellLength = cell.char.length;
-
-      if (charPos <= accumulatedChars + cellLength) {
-        return {
-          cellIndex,
-          charOffsetInCell: charPos - accumulatedChars
-        };
-      }
-
-      accumulatedChars += cellLength;
-    }
-
-    // Position after last cell
-    return {
-      cellIndex: cells.length,
-      charOffsetInCell: 0
-    };
   }
 
   /**
@@ -1038,33 +1003,16 @@ class MusicNotationEditor {
      * @returns {number} Character position at the start of this cell
      */
   cellIndexToCharPos(cellIndex) {
-    if (!this.theDocument || !this.theDocument.state || !this.theDocument.lines || this.theDocument.lines.length === 0) {
+    // WASM-first: Position conversion now handled by WASM
+    if (!this.theDocument) {
       return 0;
     }
-
-    const currentStave = this.theDocument.state.cursor.line;
-    const line = this.theDocument.lines[currentStave];
-    if (!line) {
+    try {
+      return this.wasmModule.cellIndexToCharPos(this.theDocument, cellIndex);
+    } catch (error) {
+      console.error('Error converting cell index to char pos from WASM:', error);
       return 0;
     }
-
-    const cells = line.cells || [];
-    const editMode = this.wasmModule.getOrnamentEditMode(this.theDocument);
-
-    let charPos = 0;
-    // Sum up lengths of all navigable cells UP TO AND INCLUDING the target cell
-    for (let i = 0; i <= cellIndex && i < cells.length; i++) {
-      const cell = cells[i];
-
-      // In normal mode, skip ornament cells (they're out of the flow)
-      if (!editMode && cell.ornament_indicator && cell.ornament_indicator.name !== 'none') {
-        continue;
-      }
-
-      charPos += cell.char.length;
-    }
-
-    return charPos;
   }
 
   /**
@@ -1073,57 +1021,16 @@ class MusicNotationEditor {
      * @returns {number} Pixel X position
      */
   charPosToPixel(charPos) {
-    if (!this.renderer || !this.renderer.displayList) {
+    // WASM-first: Position conversion now handled by WASM
+    if (!this.theDocument || !this.renderer || !this.renderer.displayList) {
       return LEFT_MARGIN_PX;
     }
-
-    const displayList = this.renderer.displayList;
-    const currentStave = this.getCurrentStave();
-    const currentLine = displayList.lines && displayList.lines[currentStave];
-
-    if (!currentLine || !currentLine.cells || currentLine.cells.length === 0) {
+    try {
+      return this.wasmModule.charPosToPixel(this.theDocument, this.renderer.displayList, charPos);
+    } catch (error) {
+      console.error('Error converting char pos to pixel from WASM:', error);
       return LEFT_MARGIN_PX;
     }
-
-    // Convert char position to cell + offset
-    const { cellIndex, charOffsetInCell } = this.charPosToCellIndex(charPos);
-
-    // If before first cell
-    if (cellIndex === 0 && charOffsetInCell === 0) {
-      return currentLine.cells[0].cursor_left;
-    }
-
-    // If after all cells
-    if (cellIndex >= currentLine.cells.length) {
-      const lastCell = currentLine.cells[currentLine.cells.length - 1];
-      return lastCell.cursor_right;
-    }
-
-    // Get cell from DisplayList
-    const cell = currentLine.cells[cellIndex];
-
-    // If at start of cell
-    if (charOffsetInCell === 0) {
-      return cell.cursor_left;
-    }
-
-    // Use pre-calculated character positions from Rust DisplayList
-    if (cell.char_positions && charOffsetInCell < cell.char_positions.length) {
-      return cell.char_positions[charOffsetInCell];
-    }
-
-    // Fallback: proportional split (if char_positions not available)
-    const cellLength = cell.char.length;
-
-    // If cursor is at or past the end of the cell, position it at cell's right edge
-    if (charOffsetInCell >= cellLength) {
-      return cell.cursor_right;
-    }
-
-    // Calculate proportional position within the cell
-    const cellWidth = cell.cursor_right - cell.cursor_left;
-    const charWidth = cellWidth / cellLength;
-    return cell.cursor_left + (charWidth * charOffsetInCell);
   }
 
 
@@ -1204,7 +1111,7 @@ class MusicNotationEditor {
     }
 
     const line = this.getCurrentLine();
-        if (!line) return;
+    if (!line) return '';
     const cells = line.cells || [];
 
     if (cells.length === 0) {
@@ -1362,7 +1269,7 @@ class MusicNotationEditor {
       await this.recalculateBeats();
     } else if (charPos > 0) {
       // Convert character position to cell index
-      const { cellIndex, charOffsetInCell } = this.charPosToCellIndex(charPos);
+      const { cell_index: cellIndex, char_offset_in_cell: charOffsetInCell } = this.charPosToCellIndex(charPos);
 
       // Use WASM API to delete character (cell-based operation)
       if (this.theDocument && this.theDocument.lines && this.theDocument.lines.length > 0) {
@@ -1514,7 +1421,7 @@ class MusicNotationEditor {
 
       if (charPos < maxCharPos) {
         // Convert character position to cell index
-        const { cellIndex } = this.charPosToCellIndex(charPos);
+        const { cell_index: cellIndex } = this.charPosToCellIndex(charPos);
 
         // Use WASM API to delete character (cell-based operation)
         if (this.theDocument && this.theDocument.lines && this.theDocument.lines.length > 0) {
@@ -1663,7 +1570,7 @@ class MusicNotationEditor {
     }
 
     const line = this.getCurrentLine();
-        if (!line) return;
+    if (!line) return '';
     const cells = line.cells;
 
     return cells.map(cell => cell.char || '').join('');
@@ -1707,7 +1614,7 @@ class MusicNotationEditor {
       };
     }
 
-    const { cellIndex, charOffsetInCell } = this.charPosToCellIndex(cursorPos);
+    const { cell_index: cellIndex, char_offset_in_cell: charOffsetInCell } = this.charPosToCellIndex(cursorPos);
 
     // Determine which cell to target
     let targetCellIndex;
@@ -1848,7 +1755,7 @@ class MusicNotationEditor {
     }
 
     const line = this.getCurrentLine();
-        if (!line) return;
+    if (!line) return false;
     const cells = line.cells;
 
     // Call WASM API to check for slur indicators
@@ -2253,12 +2160,6 @@ class MusicNotationEditor {
     }
 
     try {
-      // Check scroll position at the VERY start of render
-      const scrollContainer = document.getElementById('editor-container');
-      if (scrollContainer) {
-        console.log(`📝 render() called - scroll at START: left=${scrollContainer.scrollLeft}, top=${scrollContainer.scrollTop}`);
-      }
-
       console.log('📝 render() called');
       const state = await this.saveDocument();
       const doc = JSON.parse(state);
@@ -2590,6 +2491,7 @@ class MusicNotationEditor {
 
     // Calculate pixel position using character-level positioning
     const pixelPos = this.charPosToPixel(charPos);
+    console.log(`📍 charPosToPixel(${charPos}) returned: ${pixelPos}px`);
 
     console.log(`📍 Setting cursor: left=${pixelPos}px, top=${yOffset}px`);
 
@@ -2609,6 +2511,48 @@ class MusicNotationEditor {
     // Ensure cursor is visible when focused
     if (this.eventManager && this.eventManager.editorFocus()) {
       cursor.style.opacity = '1';
+    }
+
+    // CRITICAL: Scroll cursor into view so typed characters are always visible
+    // Wait for browser to paint the new cursor position before scrolling
+    requestAnimationFrame(() => {
+      this.scrollCursorIntoView();
+    });
+  }
+
+  /**
+   * Scroll the viewport to ensure the cursor is visible
+   */
+  scrollCursorIntoView() {
+    const cursor = this.getCursorElement();
+    if (!cursor) return;
+
+    // Get the ACTUAL scroll container (not this.element which is #editor-root)
+    const scrollContainer = document.getElementById('editor-container');
+    if (!scrollContainer) {
+      console.warn('Scroll container #editor-container not found');
+      return;
+    }
+
+    // Get cursor position relative to document
+    const cursorRect = cursor.getBoundingClientRect();
+
+    // Get scroll container bounds (the actual viewport)
+    const containerRect = scrollContainer.getBoundingClientRect();
+
+    // Calculate if cursor is outside the SCROLL CONTAINER viewport
+    const isAboveViewport = cursorRect.top < containerRect.top;
+    const isBelowViewport = cursorRect.bottom > containerRect.bottom;
+    const isLeftOfViewport = cursorRect.left < containerRect.left;
+    const isRightOfViewport = cursorRect.right > containerRect.right;
+
+    // Scroll if needed
+    if (isAboveViewport || isBelowViewport || isLeftOfViewport || isRightOfViewport) {
+      cursor.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest',
+        inline: 'nearest'
+      });
     }
   }
 

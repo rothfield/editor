@@ -461,7 +461,14 @@ class DOMRenderer {
     console.log(`[Renderer] Using saved scroll position: left=${savedScrollLeft}, top=${savedScrollTop}`);
 
     // Clear previous render to avoid duplicate event handlers
+    // IMPORTANT: Preserve the arc overlay SVG when clearing
+    const arcOverlaySvg = this.arcRenderer?.svgOverlay;
     this.element.innerHTML = '';
+
+    // Re-append the arc overlay SVG after clearing
+    if (arcOverlaySvg && arcOverlaySvg.parentNode !== this.element) {
+      this.element.appendChild(arcOverlaySvg);
+    }
 
     // Render header if present
     if (displayList.header) {
