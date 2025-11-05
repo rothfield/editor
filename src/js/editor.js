@@ -1305,6 +1305,25 @@ class MusicNotationEditor {
             return; // Early return - don't delete
           }
 
+          // Check if cell has a slur indicator - if so, act as left arrow instead of deleting
+          if (cellToDelete && cellToDelete.slur_indicator && cellToDelete.slur_indicator.name !== 'none') {
+            console.log('[BACKSPACE] Protected: slur cell cannot be deleted, acting as left arrow');
+            logger.info(LOG_CATEGORIES.EDITOR, 'Backspace on slur cell - acting as left arrow', {
+              cellIndexToDelete,
+              currentCharPos: charPos,
+              slurIndicator: cellToDelete.slur_indicator
+            });
+
+            // Move cursor left instead of deleting
+            const newCharPos = Math.max(0, charPos - 1);
+            this.setCursorPosition(newCharPos);
+            this.showCursor();
+            this.updateSelectionDisplay();
+
+            logger.timeEnd('handleBackspace', LOG_CATEGORIES.EDITOR);
+            return; // Early return - don't delete
+          }
+
           logger.debug(LOG_CATEGORIES.EDITOR, 'Calling WASM deleteCharacter', {
             cellIndexToDelete,
             cellCount: cells.length
@@ -1350,6 +1369,10 @@ class MusicNotationEditor {
           const prevLine = this.theDocument.lines[currentStave - 1];
           const currLine = this.getCurrentLine();
 
+          // Save the length of prevLine BEFORE the merge
+          // (WASM will update prevLine.cells, so we need to save this now)
+          const prevLineCellsBeforeMerge = [...prevLine.cells];
+
           // Use WASM editReplaceRange for line merging
           // Delete from end of prev line to end of current line = merge lines
           this.wasmModule.loadDocument(this.theDocument);
@@ -1374,7 +1397,21 @@ class MusicNotationEditor {
           this.theDocument.lines.splice(currentStave, 1);
 
           // Calculate cursor position: end of previous line (merge point)
-          const mergeCharPos = this.cellIndexToCharPos(prevLine.cells.length);
+          // We calculate this manually instead of using cellIndexToCharPos() because:
+          // 1. cellIndexToCharPos() reads doc.state.cursor.line which is still set to currentStave
+          // 2. We need the position based on prevLine's cells BEFORE the merge
+          // 3. WASM has already updated prevLine.cells to include the merged content
+          let mergeCharPos = 0;
+          for (let i = 0; i < prevLineCellsBeforeMerge.length; i++) {
+            const cell = prevLineCellsBeforeMerge[i];
+            // Skip ornament cells if not in ornament edit mode
+            if (this.theDocument.ornament_edit_mode === false &&
+                cell.ornament_indicator &&
+                cell.ornament_indicator.name !== 'none') {
+              continue;
+            }
+            mergeCharPos += (cell.char ? cell.char.length : 1);
+          }
 
           // Update cursor: move to previous line at merge point
           this.theDocument.state.cursor.line = currentStave - 1;
@@ -1452,7 +1489,23 @@ class MusicNotationEditor {
               return; // Early return - don't delete
             }
 
-            console.log('[DELETE] No ornament protection - proceeding with deletion');
+            // Check if cell has a slur indicator - if so, prevent deletion
+            if (cellToDelete && cellToDelete.slur_indicator && cellToDelete.slur_indicator.name !== 'none') {
+              console.log('[DELETE] Protected: slur cell cannot be deleted, moving cursor right');
+              logger.info(LOG_CATEGORIES.EDITOR, 'Delete on slur cell - moving cursor right instead', {
+                cellIndexToDelete: cellIndex,
+                currentCharPos: charPos,
+                slurIndicator: cellToDelete.slur_indicator
+              });
+              // Move cursor right instead of deleting
+              const newCharPos = Math.min(maxCharPos, charPos + 1);
+              this.setCursorPosition(newCharPos);
+              this.showCursor();
+              this.updateSelectionDisplay();
+              return; // Early return - don't delete
+            }
+
+            console.log('[DELETE] No ornament/slur protection - proceeding with deletion');
             const updatedCells = this.wasmModule.deleteCharacter(cells, cellIndex);
             line.cells = updatedCells;
           }

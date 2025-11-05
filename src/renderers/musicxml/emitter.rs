@@ -41,6 +41,18 @@ pub fn emit_musicxml(
 
     // Process each line (staff/part)
     for (line_index, export_line) in export_lines.iter().enumerate() {
+        // Start a new part for each line
+        let part_name = if export_line.label.is_empty() {
+            if line_index == 0 {
+                String::new()
+            } else {
+                format!("Part {}", line_index + 1)
+            }
+        } else {
+            export_line.label.clone()
+        };
+        builder.start_part(&part_name);
+
         emit_line(&mut builder, export_line, line_index == 0)?;
     }
 

@@ -41,14 +41,14 @@ pub fn generate_lilypond_document(
 
     let context = context_builder.build();
 
-    // Select appropriate template based on part count and metadata
-    let template = if parts.len() > 1 {
-        LilyPondTemplate::MultiStave
-    } else if settings.title.is_some() {
+    // Select appropriate template based on metadata
+    // Note: We now use \break for multiple lines instead of separate staves,
+    // so we always use single-staff templates
+    let template = if settings.title.is_some() {
+        // Use Standard when title is present
         LilyPondTemplate::Standard
     } else {
-        // Use Compact for minimal layouts (no title, single staff)
-        // Compact has proper paper sizing and no branding
+        // Use Compact when no title (minimal formatting for tab rendering)
         LilyPondTemplate::Compact
     };
 
@@ -70,33 +70,41 @@ fn generate_staves_content(parts: &[SequentialMusic], settings: &ConversionSetti
     }
 
     if parts.len() == 1 {
-        // Single part - Staff > Voice > \fixed c' > notes
+        // Single part - Staff > Voice > \fixed c > notes
         let music_content = generate_music(&parts[0], settings, 8);
         format!(
-            "    \\new Staff {{\n      \\new Voice = \"mel\" {{\n        % \\fixed c' anchors absolute pitch spelling for note names we emit.\n        \\fixed c' {{\n{}\n        }}\n      }}\n    }}",
+            "    \\new Staff {{\n      \\new Voice = \"mel\" {{\n        % \\fixed c anchors absolute pitch spelling for note names we emit.\n        \\fixed c {{\n{}\n        }}\n      }}\n    }}",
             music_content
         )
     } else {
-        // Multiple parts - only emit time/key/clef in first staff to avoid duplication
-        parts
+        // Multiple parts - use \break between lines instead of creating new staves
+        let combined_music = parts
             .iter()
             .enumerate()
             .map(|(i, part)| {
-                let voice_name = format!("v{}", i + 1);
-                // For staves after the first, filter out initial time/key/clef signatures
+                // For parts after the first, filter out initial time/key/clef signatures
                 let filtered_part = if i > 0 {
                     filter_initial_attributes(part)
                 } else {
                     part.clone()
                 };
                 let music_content = generate_music(&filtered_part, settings, 10);
-                format!(
-                    "    \\new Staff {{\n      \\new Voice = \"{}\" {{\n        \\fixed c' {{\n{}\n        }}\n      }}\n    }}",
-                    voice_name, music_content
-                )
+
+                // Add \break before each part except the first
+                if i > 0 {
+                    format!("          \\break\n{}", music_content)
+                } else {
+                    music_content
+                }
             })
             .collect::<Vec<_>>()
-            .join("\n")
+            .join("\n");
+
+        // Create a single staff with all parts and breaks
+        format!(
+            "    \\new Staff {{\n      \\new Voice = \"mel\" {{\n        \\fixed c {{\n{}\n        }}\n      }}\n    }}",
+            combined_music
+        )
     }
 }
 
@@ -197,40 +205,20 @@ fn generate_lilypond_document_fallback(
 
 /// Collect lyrics from music tree and format for \lyricmode block
 fn collect_lyrics_content(parts: &[SequentialMusic]) -> Option<String> {
-    if parts.len() == 1 {
-        let mut lyrics_list = Vec::new();
-        collect_lyrics_from_sequential(&parts[0], &mut lyrics_list);
+    // Collect all lyrics from all parts into a single list
+    let mut lyrics_list = Vec::new();
 
-        if !lyrics_list.is_empty() {
-            let formatted = format_lyrics_for_block(&lyrics_list);
-            // When inside \new Lyrics context, we're already in lyric mode implicitly
-            // Just put the lyrics directly without \lyricmode wrapper
-            Some(formatted)
-        } else {
-            None
-        }
+    for part in parts {
+        collect_lyrics_from_sequential(part, &mut lyrics_list);
+    }
+
+    if !lyrics_list.is_empty() {
+        let formatted = format_lyrics_for_block(&lyrics_list);
+        // When inside \new Lyrics context, we're already in lyric mode implicitly
+        // Just put the lyrics directly without \lyricmode wrapper
+        Some(formatted)
     } else {
-        // For multiple parts, create separate lyrics blocks with voice references
-        let mut all_lyrics = Vec::new();
-        for (i, part) in parts.iter().enumerate() {
-            let voice_name = format!("v{}", i + 1);
-            let mut lyrics_list = Vec::new();
-            collect_lyrics_from_sequential(part, &mut lyrics_list);
-
-            if !lyrics_list.is_empty() {
-                let formatted = format_lyrics_for_block(&lyrics_list);
-                all_lyrics.push(format!(
-                    "    \\new Lyrics \\lyricsto \"{}\" {{\n      {}\n    }}",
-                    voice_name, formatted
-                ));
-            }
-        }
-
-        if all_lyrics.is_empty() {
-            None
-        } else {
-            Some(all_lyrics.join("\n"))
-        }
+        None
     }
 }
 

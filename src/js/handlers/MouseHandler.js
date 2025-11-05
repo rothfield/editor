@@ -14,11 +14,14 @@ export class MouseHandler {
   constructor(editor) {
     this.editor = editor;
 
-    // Click tracking for detecting triple-click
+    // Click tracking for detecting triple-click and double-click
     this.clickCount = 0;
     this.lastClickTime = 0;
     this.clickTimeout = null;
     this.CLICK_DELAY = 500; // ms between clicks to count as multi-click
+    this.lastMouseDownTime = 0; // Track mousedown for double/triple-click detection
+    this.consecutiveClicks = 0; // Track consecutive clicks for triple-click
+    this.multiClickHandled = false; // Prevents further counting after handling a multi-click
   }
 
   /**
@@ -46,7 +49,89 @@ export class MouseHandler {
       const col = this.calculateCellPosition(x, y);
 
       if (lineIndex !== null && col !== null) {
-        // Start drag selection
+        // Detect double/triple-click manually using click count tracking
+        const now = Date.now();
+        const timeSinceLastMouseDown = now - this.lastMouseDownTime;
+
+        // If we already handled a multi-click in this sequence, ignore further clicks
+        if (this.multiClickHandled && timeSinceLastMouseDown < this.CLICK_DELAY) {
+          console.log('[MouseHandler] Ignoring extra click - multi-click already handled');
+          event.preventDefault();
+          return;
+        }
+
+        // Track click count
+        if (timeSinceLastMouseDown < this.CLICK_DELAY) {
+          this.consecutiveClicks++;
+        } else {
+          this.consecutiveClicks = 1; // This is the first click in a new sequence
+          this.multiClickHandled = false; // Reset flag for new sequence
+        }
+        this.lastMouseDownTime = now;
+
+        // Clear any pending timeout
+        if (this.clickTimeout) {
+          clearTimeout(this.clickTimeout);
+        }
+
+        // Reset click count and flag after delay
+        this.clickTimeout = setTimeout(() => {
+          this.consecutiveClicks = 0;
+          this.multiClickHandled = false;
+        }, this.CLICK_DELAY);
+
+        console.log('[MouseHandler] Click detected, count:', this.consecutiveClicks);
+
+        if (this.consecutiveClicks >= 3) {
+          // Triple-click (3rd click) - select entire line
+          console.log('[MouseHandler] Triple-click detected, selecting whole line');
+
+          // CRITICAL: Prevent further click counting and clear dragging flag
+          this.multiClickHandled = true;
+          this.editor.isDragging = false;
+
+          // Select entire line directly (without calling mouseDown first)
+          const pos = { line: Math.floor(lineIndex), col: Math.floor(col) };
+          console.log('[MouseHandler] Calling selectLineAtPosition with pos:', pos);
+
+          // Don't call loadDocument here - it might interfere with the selection
+          // WASM already has the document from the previous clicks
+          const selectDiff = await this.editor.wasmModule.selectLineAtPosition(pos);
+          console.log('[MouseHandler] selectLineAtPosition returned:', selectDiff);
+          console.log('[MouseHandler] Selection info:', selectDiff?.selection);
+          console.log('[MouseHandler] Selection anchor:', selectDiff?.selection?.anchor);
+          console.log('[MouseHandler] Selection head:', selectDiff?.selection?.head);
+
+          // Apply the selection to the document
+          await this.editor.updateCursorFromWASM(selectDiff);
+
+          // Debug: Check what selection JS thinks is active
+          const jsSelection = this.editor.getSelection();
+          console.log('[MouseHandler] JS selection after triple-click:', jsSelection);
+          console.log('[MouseHandler] JS selection start:', jsSelection?.start);
+          console.log('[MouseHandler] JS selection end:', jsSelection?.end);
+
+          event.preventDefault();
+          return;
+        } else if (this.consecutiveClicks === 2) {
+          // Double-click (2nd click) - select beat/char group
+          console.log('[MouseHandler] Double-click detected, selecting beat/group');
+
+          // CRITICAL: Prevent further click counting and clear dragging flag
+          this.multiClickHandled = true;
+          this.editor.isDragging = false;
+
+          // Select beat directly (without calling mouseDown first)
+          const pos = { line: Math.floor(lineIndex), col: Math.floor(col) };
+
+          // Don't call loadDocument here - WASM already has the document from first click
+          const selectDiff = await this.editor.wasmModule.selectBeatAtPosition(pos);
+          await this.editor.updateCursorFromWASM(selectDiff);
+          event.preventDefault();
+          return;
+        }
+
+        // Single click - start drag selection
         this.editor.isDragging = true;
         this.editor.dragStartLine = lineIndex;
         this.editor.dragStartCol = col;
@@ -57,10 +142,23 @@ export class MouseHandler {
         await this.editor.updateCursorFromWASM(diff);
       }
 
-      event.preventDefault();
+      event.preventDefault(); // Needed for keyboard input to work
     } catch (error) {
       console.error('Mouse down error:', error);
     }
+  }
+
+  /**
+   * Handle double-click detected manually via mousedown timing
+   * @param {MouseEvent} event - Browser mouse event
+   * @param {number} lineIndex - Line index
+   * @param {number} col - Column position
+   */
+  async handleDoubleClickManual(event, lineIndex, col) {
+    console.log('[MouseHandler] handleDoubleClickManual called');
+
+    // Reuse the existing double-click selection logic
+    await this.selectBeatOrCharGroup(col);
   }
 
   /**
@@ -146,6 +244,7 @@ export class MouseHandler {
    * @param {MouseEvent} event - Browser mouse event
    */
   handleDoubleClick(event) {
+    console.log('[MouseHandler] handleDoubleClick called');
     const now = Date.now();
 
     // Track click count for triple-click detection
@@ -204,7 +303,7 @@ export class MouseHandler {
 
       // Call WASM - it handles all selection logic and returns EditorDiff
       const pos = { line: lineIndex, col: cellIndex };
-      const diff = this.editor.wasmModule.selectBeatAtPosition(pos);
+      const diff = await this.editor.wasmModule.selectBeatAtPosition(pos);
 
       // Update UI from WASM state (same pattern as mouseDown/mouseMove/mouseUp)
       await this.editor.updateCursorFromWASM(diff);
@@ -232,7 +331,7 @@ export class MouseHandler {
 
       // Call WASM - it handles all selection logic and returns EditorDiff
       const pos = { line: lineIndex, col: cellIndex };
-      const diff = this.editor.wasmModule.selectLineAtPosition(pos);
+      const diff = await this.editor.wasmModule.selectLineAtPosition(pos);
 
       // Update UI from WASM state (same pattern as mouseDown/mouseMove/mouseUp)
       await this.editor.updateCursorFromWASM(diff);

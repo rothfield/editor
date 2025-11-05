@@ -37,6 +37,13 @@ impl ArticulationType {
     }
 }
 
+/// Represents a single part (staff/instrument) in the score
+struct Part {
+    id: String,
+    name: String,
+    measures: String,
+}
+
 /// State machine for building MusicXML documents
 pub struct MusicXmlBuilder {
     buffer: String,
@@ -47,6 +54,9 @@ pub struct MusicXmlBuilder {
     attributes_written: bool,
     title: Option<String>,
     key_signature: Option<i8>, // Circle of fifths position (-7 to +7)
+    parts: Vec<Part>, // Completed parts
+    current_part_id: usize, // ID counter for parts (P1, P2, P3, ...)
+    current_part_name: String, // Name of the current part being built
 }
 
 impl MusicXmlBuilder {
@@ -61,7 +71,49 @@ impl MusicXmlBuilder {
             attributes_written: false,
             title: None,
             key_signature: None,
+            parts: Vec::new(),
+            current_part_id: 0,
+            current_part_name: String::new(),
         }
+    }
+
+    /// Start a new part (staff/instrument)
+    /// Returns the part ID (e.g., "P1", "P2", ...)
+    pub fn start_part(&mut self, part_name: &str) -> String {
+        // End current part if one is in progress
+        if self.current_part_id > 0 {
+            self.end_part();
+        }
+
+        // Create new part
+        self.current_part_id += 1;
+        self.current_part_name = part_name.to_string();
+        let part_id = format!("P{}", self.current_part_id);
+
+        // Reset state for new part
+        self.buffer.clear();
+        self.measure_number = 1;
+        self.last_note = None;
+        self.last_note_legacy = None;
+        self.measure_started = false;
+        self.attributes_written = false;
+
+        part_id
+    }
+
+    /// End the current part and save it
+    fn end_part(&mut self) {
+        if self.current_part_id == 0 {
+            return; // No part to end
+        }
+
+        let part = Part {
+            id: format!("P{}", self.current_part_id),
+            name: self.current_part_name.clone(),
+            measures: self.buffer.clone(),
+        };
+
+        self.parts.push(part);
     }
 
     /// Set the document title
@@ -568,7 +620,22 @@ impl MusicXmlBuilder {
     }
 
     /// Finalize and return complete MusicXML string
-    pub fn finalize(self) -> String {
+    pub fn finalize(mut self) -> String {
+        // End the current part if one is in progress
+        if self.current_part_id > 0 && !self.buffer.is_empty() {
+            self.end_part();
+        }
+
+        // If no parts were created, create a default empty part
+        if self.parts.is_empty() {
+            self.current_part_id = 1;
+            self.parts.push(Part {
+                id: "P1".to_string(),
+                name: "".to_string(),
+                measures: self.buffer.clone(),
+            });
+        }
+
         let mut xml = String::new();
         xml.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
         xml.push_str("<!DOCTYPE score-partwise PUBLIC \"-//Recordare//DTD MusicXML 3.1 Partwise//EN\" \"http://www.musicxml.org/dtds/partwise.dtd\">\n");
@@ -583,14 +650,22 @@ impl MusicXmlBuilder {
             }
         }
 
+        // Emit part-list with all parts
         xml.push_str("  <part-list>\n");
-        xml.push_str("    <score-part id=\"P1\">\n");
-        xml.push_str("      <part-name></part-name>\n");
-        xml.push_str("    </score-part>\n");
+        for part in &self.parts {
+            xml.push_str(&format!("    <score-part id=\"{}\">\n", part.id));
+            xml.push_str(&format!("      <part-name>{}</part-name>\n", xml_escape(&part.name)));
+            xml.push_str("    </score-part>\n");
+        }
         xml.push_str("  </part-list>\n");
-        xml.push_str("  <part id=\"P1\">\n");
-        xml.push_str(&self.buffer);
-        xml.push_str("  </part>\n");
+
+        // Emit all parts
+        for part in &self.parts {
+            xml.push_str(&format!("  <part id=\"{}\">\n", part.id));
+            xml.push_str(&part.measures);
+            xml.push_str("  </part>\n");
+        }
+
         xml.push_str("</score-partwise>\n");
         xml
     }

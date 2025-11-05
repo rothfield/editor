@@ -103,6 +103,10 @@ pub struct TemplateContext {
     /// Lyrics content (optional)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lyrics: Option<String>,
+
+    /// Paper height in millimeters (optional, defaults handled by templates)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub paper_height: Option<usize>,
 }
 
 impl TemplateContext {
@@ -117,6 +121,7 @@ impl TemplateContext {
             time_signature: None,
             key_signature: None,
             lyrics: None,
+            paper_height: None,
         }
     }
 
@@ -172,6 +177,12 @@ impl TemplateContextBuilder {
     /// Set lyrics
     pub fn lyrics<S: Into<String>>(mut self, lyrics: S) -> Self {
         self.context.lyrics = Some(lyrics.into());
+        self
+    }
+
+    /// Set paper height in millimeters
+    pub fn paper_height(mut self, height: usize) -> Self {
+        self.context.paper_height = Some(height);
         self
     }
 

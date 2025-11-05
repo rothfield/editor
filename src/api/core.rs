@@ -1711,8 +1711,8 @@ pub fn create_new_document() -> Result<JsValue, JsValue> {
     // Create new document with default structure
     let mut document = Document::new();
 
-    // Set default title
-    document.title = Some("Untitled Document".to_string());
+    // Leave title blank (None) - user will set it if needed
+    document.title = None;
 
     // Set default pitch system
     document.pitch_system = Some(PitchSystem::Number);

@@ -1,38 +1,16 @@
-\version "{{version}}"
+\version "2.24.0"
 \language "english"
 
-{{#source_comment}}
-% Original notation source:
-{{{source_comment}}}
-{{/source_comment}}
 
-{{#title}}
-\header {
-  title = "{{{title}}}"
-  {{#composer}}composer = "{{{composer}}}"{{/composer}}
-  tagline = ""
-  oddHeaderMarkup = \markup { }
-  evenHeaderMarkup = \markup { }
-  oddFooterMarkup = \markup { }
-  evenFooterMarkup = \markup { }
-}
-{{/title}}
-{{^title}}
-{{#composer}}
-\header {
-  composer = "{{{composer}}}"
-  tagline = ""
-  oddHeaderMarkup = \markup { }
-  evenHeaderMarkup = \markup { }
-  oddFooterMarkup = \markup { }
-  evenFooterMarkup = \markup { }
-}
-{{/composer}}
-{{/title}}
+
+
 
 \paper {
   % Enable automatic page breaking
   page-breaking = #ly:optimal-breaking
+
+  % Use A4 paper size explicitly (297mm x 210mm landscape, or 210mm x 297mm portrait)
+  #(set-paper-size "a4")
 
   % Minimal margins for clean output
   indent = 0\mm
@@ -57,13 +35,19 @@
 
 \score {
   <<
-    {{{staves}}}
+        \new Staff {
+      \new Voice = "mel" {
+        % \fixed c anchors absolute pitch spelling for note names we emit.
+        \fixed c {
+        \key c \major
+        \time 4/4
+        \clef treble
+        \tuplet 3/2 { c'8 d'8 d'8 }
 
-    {{#lyrics}}
-    \new Lyrics \lyricsto "mel" {
-      {{{lyrics}}}
+        }
+      }
     }
-    {{/lyrics}}
+
   >>
 
   \layout { }

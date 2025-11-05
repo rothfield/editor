@@ -944,6 +944,7 @@ pub fn build_export_measures_from_document(document: &Document) -> Vec<ExportLin
                 Some(line.time_signature.clone())
             },
             clef: "treble".to_string(), // TODO: derive from line metadata
+            label: line.label.clone(),
             lyrics: line.lyrics.clone(),
             measures,
         };

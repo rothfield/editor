@@ -45,6 +45,10 @@ pub struct ExportLine {
     /// Clef (e.g., "treble", "bass") - typically constant per line
     pub clef: String,
 
+    /// Label for this line/staff (e.g., "Violin I", "Bass")
+    #[serde(default)]
+    pub label: String,
+
     /// Measures in this line
     pub measures: Vec<ExportMeasure>,
 
@@ -58,12 +62,14 @@ impl ExportLine {
         key_signature: Option<String>,
         time_signature: Option<String>,
         clef: String,
+        label: String,
         lyrics: String,
     ) -> Self {
         ExportLine {
             key_signature,
             time_signature,
             clef,
+            label,
             measures: Vec::new(),
             lyrics,
         }

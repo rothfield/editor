@@ -29,20 +29,22 @@
 }
 
 \paper {
-  % Basic page geometry only. All of these are numeric or units,
-  % not Scheme expressions.
+  % Enable automatic page breaking
+  page-breaking = #ly:optimal-breaking
 
+  % Use default A4 page size (no paper-height/paper-width constraints)
+  % Minimal margins for clean output
   indent = 0\mm
-  top-margin = 0.5\mm
-  bottom-margin = 0.5\mm
-  left-margin = 1\mm
-  right-margin = 1\mm
+  left-margin = 10\mm
+  right-margin = 10\mm
+  top-margin = 10\mm
+  bottom-margin = 10\mm
 
-  % Small "PNG fragment" style page size.
-  paper-height = 50\mm
-  paper-width  = 200\mm
-
-  % Advanced layout options omitted for security validation
+  % System spacing to encourage natural page breaks
+  system-system-spacing.basic-distance = #12
+  system-system-spacing.minimum-distance = #8
+  system-system-spacing.padding = #1
+  ragged-last-bottom = ##t
 }
 
 \score {
