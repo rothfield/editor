@@ -385,6 +385,12 @@ class UI {
       // Request focus return to editor for other tabs too
       this.returnFocusToEditor();
     }
+
+    // Update inspector tab content when switching tabs
+    // This ensures the newly visible tab shows the latest document state
+    if (this.editor) {
+      this.editor.updateDocumentDisplay();
+    }
   }
 
   /**

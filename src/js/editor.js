@@ -236,149 +236,63 @@ class MusicNotationEditor {
     }
 
     logger.time('insertText', LOG_CATEGORIES.EDITOR);
-    const cursorPos = this.getCursorPosition();
-    const pitchSystem = this.getCurrentPitchSystem();
 
-    logger.info(LOG_CATEGORIES.EDITOR, 'Inserting text', {
-      text,
-      cursorPos,
-      pitchSystem: this.getPitchSystemName(pitchSystem)
-    });
+    logger.info(LOG_CATEGORIES.EDITOR, 'Inserting text (WASM-first)', { text });
 
     const startTime = performance.now();
+    let t1, t2, t3, t4, t5, t6;
 
     try {
-      if (this.theDocument && this.theDocument.lines && this.theDocument.lines.length > 0) {
-        const line = this.getCurrentLine();
-        if (!line) {
-          logger.error(LOG_CATEGORIES.PARSER, 'Current line not available');
-          return;
-        }
-        let cells = line.cells;
+      // NEW WASM-FIRST APPROACH: Call insertText which uses internal DOCUMENT state
+      const result = this.wasmModule.insertText(text);
+      t1 = performance.now();
+      console.log(`⏱️ WASM insertText: ${(t1 - startTime).toFixed(2)}ms`);
 
-        logger.debug(LOG_CATEGORIES.PARSER, 'Processing characters', {
-          charCount: text.length,
-          initialCellCount: cells.length
-        });
+      logger.debug(LOG_CATEGORIES.EDITOR, 'insertText result from WASM', result);
 
-        // Insert each character using recursive descent parser
-        // cursorPos is a CHARACTER position, but WASM insertCharacter expects a CELL index
-        let currentCharPos = cursorPos;
-
-        for (const char of text) {
-          const lengthBefore = cells.length;
-
-          // Convert character position to cell index for WASM API
-          const posResult = this.charPosToCellIndex(currentCharPos);
-          logger.debug(LOG_CATEGORIES.PARSER, 'charPosToCellIndex result', {
-            currentCharPos,
-            posResult
-          });
-          const { cell_index, char_offset_in_cell } = posResult;
-
-          // If we're past the start of a cell, insert after it
-          // (WASM API inserts between cells, not within cells)
-          const insertCellIndex = char_offset_in_cell > 0 ? cell_index + 1 : cell_index;
-
-          logger.debug(LOG_CATEGORIES.PARSER, `Inserting char '${char}'`, {
-            charPos: currentCharPos,
-            cell_index,
-            char_offset_in_cell,
-            insertCellIndex,
-            cellCountBefore: lengthBefore
-          });
-
-          // Validate parameters before WASM call
-          if (typeof insertCellIndex !== 'number' || insertCellIndex === undefined || isNaN(insertCellIndex)) {
-            logger.error(LOG_CATEGORIES.PARSER, 'Invalid insertCellIndex', {
-              insertCellIndex,
-              type: typeof insertCellIndex,
-              cell_index,
-              char_offset_in_cell
-            });
-            throw new Error(`Invalid insertCellIndex: ${insertCellIndex} (type: ${typeof insertCellIndex})`);
-          }
-          if (typeof pitchSystem !== 'number' || pitchSystem === undefined || isNaN(pitchSystem)) {
-            logger.error(LOG_CATEGORIES.PARSER, 'Invalid pitchSystem', {
-              pitchSystem,
-              type: typeof pitchSystem
-            });
-            throw new Error(`Invalid pitchSystem: ${pitchSystem} (type: ${typeof pitchSystem})`);
-          }
-
-          // Call WASM recursive descent API with CELL index
-          // WASM returns { cells, newCursorPos }
-          const result = this.wasmModule.insertCharacter(
-            cells,
-            char,
-            insertCellIndex,
-            pitchSystem
-          );
-
-          // Extract cells and new cursor position from WASM result
-          const updatedCells = result.cells;
-          currentCharPos = result.newCursorPos;
-
-          const lengthAfter = updatedCells.length;
-
-          // Update main line with combined cells
-          line.cells = updatedCells;
-          cells = updatedCells;
-
-          const cellDelta = lengthAfter - lengthBefore;
-
-          logger.trace(LOG_CATEGORIES.PARSER, `Cell delta: ${cellDelta}, WASM cursor pos: ${currentCharPos}`, {
-            lengthBefore,
-            lengthAfter
-          });
-        }
-
-
-        // Update cursor position (character-based position from WASM)
-        logger.debug(LOG_CATEGORIES.CURSOR, 'Updating cursor position', {
-          from: cursorPos,
-          to: currentCharPos
-        });
-        // Update cursor column with WASM-provided character position
-        if (this.theDocument && this.theDocument.state) {
-          this.theDocument.state.cursor.col = currentCharPos;
-          console.log(`[insertText] Updated JS cursor.col to ${currentCharPos}, full cursor:`, this.theDocument.state.cursor);
-        }
-
-        // CRITICAL: Sync the updated JS document back to WASM for history/undo to work
-        // insertCharacter modifies the JS document but WASM doesn't know about it
-        // We need to update WASM's internal document so undo/redo can access it
-        if (this.theDocument) {
-          try {
-            console.log('[insertText] About to call loadDocument with cursor:', this.theDocument.state.cursor);
-            this.wasmModule.loadDocument(this.theDocument);
-            console.log('[insertText] loadDocument completed');
-          } catch (e) {
-            console.warn('Failed to sync document with WASM:', e);
-          }
+      // Apply dirty lines to JavaScript document (for rendering only)
+      for (const dirtyLine of result.dirty_lines) {
+        if (dirtyLine.row < this.theDocument.lines.length) {
+          this.theDocument.lines[dirtyLine.row].cells = dirtyLine.cells;
         }
       }
 
-      // CRITICAL: Render FIRST to update DisplayList before positioning cursor
-      await this.renderAndUpdate();
+      // Update cursor position in JavaScript document (for display only)
+      if (this.theDocument && this.theDocument.state) {
+        this.theDocument.state.cursor.line = result.new_cursor_row;
+        this.theDocument.state.cursor.col = result.new_cursor_col;
+      }
 
-      // Ensure hitbox values are properly set on the document cells
-      // The WASM insertCharacter may return cells without hitbox fields
+      t2 = performance.now();
+      console.log(`⏱️ Apply dirty lines: ${(t2 - t1).toFixed(2)}ms`);
+
+      // Extract dirty line indices for incremental rendering
+      const dirtyLineIndices = result.dirty_lines.map(dl => dl.row);
+
+      // Render and update UI (incremental)
+      await this.renderAndUpdate(dirtyLineIndices);
+      t3 = performance.now();
+      console.log(`⏱️ renderAndUpdate: ${(t3 - t2).toFixed(2)}ms`);
+
       this.ensureHitboxesAreSet();
+      t4 = performance.now();
+      console.log(`⏱️ ensureHitboxesAreSet: ${(t4 - t3).toFixed(2)}ms`);
 
-      // NOW update cursor visual position with the fresh DisplayList
       this.updateCursorPositionDisplay();
+      t5 = performance.now();
+      console.log(`⏱️ updateCursorPositionDisplay: ${(t5 - t4).toFixed(2)}ms`);
 
-      // Force hitboxes display update after render
-      setTimeout(() => {
-        this.updateHitboxesDisplay();
-      }, 100);
+      // Schedule hitboxes display update (debounced to prevent leak)
+      this.scheduleHitboxesUpdate();
+
+      // Show cursor after typing
+      this.showCursor();
+      t6 = performance.now();
+      console.log(`⏱️ showCursor + scheduleHitboxes: ${(t6 - t5).toFixed(2)}ms`);
 
       const endTime = performance.now();
       const duration = endTime - startTime;
-
-      // Show cursor after typing (cursor positioning already done above)
-      this.showCursor();
+      console.log(`⏱️ TOTAL insertText: ${duration.toFixed(2)}ms`);
 
       logger.timeEnd('insertText', LOG_CATEGORIES.EDITOR, { duration: `${duration.toFixed(2)}ms` });
     } catch (error) {
@@ -1255,13 +1169,12 @@ class MusicNotationEditor {
 
   /**
      * Handle backspace key with selection awareness and beat recalculation
+     * Uses WASM-first approach for consistency with insertText
      */
   async handleBackspace() {
     logger.time('handleBackspace', LOG_CATEGORIES.EDITOR);
-    const charPos = this.getCursorPosition();
 
     logger.info(LOG_CATEGORIES.EDITOR, 'Backspace pressed', {
-      charPos,
       hasSelection: this.hasSelection()
     });
 
@@ -1270,178 +1183,54 @@ class MusicNotationEditor {
       logger.debug(LOG_CATEGORIES.EDITOR, 'Deleting selection via backspace');
       await this.deleteSelection();
       await this.recalculateBeats();
-    } else if (charPos > 0) {
-      // Convert character position to cell index
-      const { cell_index: cellIndex, char_offset_in_cell: charOffsetInCell } = this.charPosToCellIndex(charPos);
+      logger.timeEnd('handleBackspace', LOG_CATEGORIES.EDITOR);
+      return;
+    }
 
-      // Use WASM API to delete character (cell-based operation)
-      if (this.theDocument && this.theDocument.lines && this.theDocument.lines.length > 0) {
-        const line = this.getCurrentLine();
-        if (!line) return;
-        const cells = line.cells;
+    // WASM-first approach: Use deleteAtCursor which operates on internal DOCUMENT
+    try {
+      const result = this.wasmModule.deleteAtCursor();
 
-        // Determine which cell to delete: if at cell boundary, delete previous cell
-        const cellIndexToDelete = charOffsetInCell === 0 ? cellIndex - 1 : cellIndex;
+      logger.debug(LOG_CATEGORIES.EDITOR, 'deleteAtCursor result from WASM', result);
 
-        if (cellIndexToDelete >= 0 && cellIndexToDelete < cells.length) {
-          const cellToDelete = cells[cellIndexToDelete];
-
-          // Check if cell has an ornament indicator - if so, act as left arrow instead of deleting
-          if (cellToDelete && cellToDelete.ornament_indicator && cellToDelete.ornament_indicator.name !== 'none') {
-            console.log('[BACKSPACE] Protected: ornament cell cannot be deleted, acting as left arrow');
-            logger.info(LOG_CATEGORIES.EDITOR, 'Backspace on ornament cell - acting as left arrow', {
-              cellIndexToDelete,
-              currentCharPos: charPos,
-              ornamentIndicator: cellToDelete.ornament_indicator
-            });
-
-            // Move cursor left instead of deleting
-            const newCharPos = Math.max(0, charPos - 1);
-            this.setCursorPosition(newCharPos);
-            this.showCursor();
-            this.updateSelectionDisplay();
-
-            logger.timeEnd('handleBackspace', LOG_CATEGORIES.EDITOR);
-            return; // Early return - don't delete
-          }
-
-          // Check if cell has a slur indicator - if so, act as left arrow instead of deleting
-          if (cellToDelete && cellToDelete.slur_indicator && cellToDelete.slur_indicator.name !== 'none') {
-            console.log('[BACKSPACE] Protected: slur cell cannot be deleted, acting as left arrow');
-            logger.info(LOG_CATEGORIES.EDITOR, 'Backspace on slur cell - acting as left arrow', {
-              cellIndexToDelete,
-              currentCharPos: charPos,
-              slurIndicator: cellToDelete.slur_indicator
-            });
-
-            // Move cursor left instead of deleting
-            const newCharPos = Math.max(0, charPos - 1);
-            this.setCursorPosition(newCharPos);
-            this.showCursor();
-            this.updateSelectionDisplay();
-
-            logger.timeEnd('handleBackspace', LOG_CATEGORIES.EDITOR);
-            return; // Early return - don't delete
-          }
-
-          logger.debug(LOG_CATEGORIES.EDITOR, 'Calling WASM deleteCharacter', {
-            cellIndexToDelete,
-            cellCount: cells.length
-          });
-
-          const updatedCells = this.wasmModule.deleteCharacter(cells, cellIndexToDelete);
-          line.cells = updatedCells;
-
-          // Move cursor to start of deleted cell
-          const newCharPos = this.cellIndexToCharPos(cellIndexToDelete);
-          this.setCursorPosition(newCharPos);
-
-          logger.info(LOG_CATEGORIES.EDITOR, 'Cell deleted, cursor moved back', {
-            newCellCount: updatedCells.length,
-            newCharPos
-          });
+      // Apply dirty lines to JavaScript document (for rendering only)
+      for (const dirtyLine of result.dirty_lines) {
+        if (dirtyLine.row < this.theDocument.lines.length) {
+          this.theDocument.lines[dirtyLine.row].cells = dirtyLine.cells;
         }
       }
+
+      // Update cursor position in JavaScript document (for display only)
+      this.theDocument.state.cursor.line = result.new_cursor_row;
+      this.theDocument.state.cursor.col = result.new_cursor_col;
 
       // Recalculate beats after deletion
       await this.recalculateBeats();
 
       await this.renderAndUpdate();
 
-      // Show cursor (showCursor will call updateCursorVisualPosition internally)
+      // Show cursor
       this.showCursor();
 
       // Restore visual selection after backspace
       this.updateSelectionDisplay();
-    } else if (charPos === 0) {
-      // Backspace at beginning of line - merge with previous line
-      const currentStave = this.getCurrentStave();
 
-      if (currentStave > 0) {
-        // There is a previous line to merge with
-        logger.info(LOG_CATEGORIES.EDITOR, 'Merging line with previous line', {
-          currentStave,
-          currentLineLength: this.getCurrentLine().cells.length,
-          previousLineLength: this.theDocument.lines[currentStave - 1].cells.length
-        });
-
-        try {
-          const prevLine = this.theDocument.lines[currentStave - 1];
-          const currLine = this.getCurrentLine();
-
-          // Save the length of prevLine BEFORE the merge
-          // (WASM will update prevLine.cells, so we need to save this now)
-          const prevLineCellsBeforeMerge = [...prevLine.cells];
-
-          // Use WASM editReplaceRange for line merging
-          // Delete from end of prev line to end of current line = merge lines
-          this.wasmModule.loadDocument(this.theDocument);
-          const result = this.wasmModule.editReplaceRange(
-            currentStave - 1,           // start_row (previous line)
-            prevLine.cells.length,      // start_col (end of previous line)
-            currentStave,                // end_row (current line)
-            currLine.cells.length,       // end_col (end of current line)
-            ""                           // empty text = merge without insertion
-          );
-
-          // Update the merged line from WASM result
-          if (result && result.dirty_lines) {
-            for (const dirtyLine of result.dirty_lines) {
-              if (dirtyLine.row < this.theDocument.lines.length) {
-                this.theDocument.lines[dirtyLine.row].cells = dirtyLine.cells;
-              }
-            }
-          }
-
-          // Remove the current line (WASM has already merged it into previous line)
-          this.theDocument.lines.splice(currentStave, 1);
-
-          // Calculate cursor position: end of previous line (merge point)
-          // We calculate this manually instead of using cellIndexToCharPos() because:
-          // 1. cellIndexToCharPos() reads doc.state.cursor.line which is still set to currentStave
-          // 2. We need the position based on prevLine's cells BEFORE the merge
-          // 3. WASM has already updated prevLine.cells to include the merged content
-          let mergeCharPos = 0;
-          for (let i = 0; i < prevLineCellsBeforeMerge.length; i++) {
-            const cell = prevLineCellsBeforeMerge[i];
-            // Skip ornament cells if not in ornament edit mode
-            if (this.theDocument.ornament_edit_mode === false &&
-                cell.ornament_indicator &&
-                cell.ornament_indicator.name !== 'none') {
-              continue;
-            }
-            mergeCharPos += (cell.char ? cell.char.length : 1);
-          }
-
-          // Update cursor: move to previous line at merge point
-          this.theDocument.state.cursor.line = currentStave - 1;
-          this.theDocument.state.cursor.col = mergeCharPos;
-
-          logger.debug(LOG_CATEGORIES.EDITOR, 'Lines merged successfully via WASM', {
-            newLineLength: result?.new_cursor_col,
-            newCursorStave: currentStave - 1,
-            newCursorColumn: mergeCharPos
-          });
-
-          await this.renderAndUpdate();
-          this.showCursor();
-
-          logger.info(LOG_CATEGORIES.EDITOR, 'Backspace merge complete', {
-            totalLines: this.theDocument.lines.length
-          });
-        } catch (error) {
-          logger.error(LOG_CATEGORIES.EDITOR, 'Failed to merge lines', {
-            error: error.message,
-            stack: error.stack
-          });
-          console.error('Failed to merge lines:', error);
-          this.showError('Failed to merge lines: ' + error.message);
-        }
+      logger.info(LOG_CATEGORIES.EDITOR, 'Backspace completed successfully', {
+        newCursorRow: result.new_cursor_row,
+        newCursorCol: result.new_cursor_col
+      });
+    } catch (error) {
+      // Handle "at start of document" case gracefully
+      if (error && error.toString().includes('Cannot delete at start of document')) {
+        logger.debug(LOG_CATEGORIES.EDITOR, 'Backspace at start of document, no action');
       } else {
-        logger.debug(LOG_CATEGORIES.EDITOR, 'Backspace at start of first line, no action');
+        logger.error(LOG_CATEGORIES.EDITOR, 'Backspace failed', {
+          error: error.message || error,
+          stack: error.stack
+        });
+        console.error('Backspace failed:', error);
+        this.showError('Backspace failed: ' + (error.message || error));
       }
-    } else {
-      logger.debug(LOG_CATEGORIES.EDITOR, 'Backspace at start of document, no action');
     }
 
     logger.timeEnd('handleBackspace', LOG_CATEGORIES.EDITOR);
@@ -1526,64 +1315,67 @@ class MusicNotationEditor {
      * Handle Return/Enter key - split line at cursor position
      */
   async handleEnter() {
-    console.log('🔄 handleEnter called');
+    console.log('🔄 handleEnter called (WASM-first)');
     logger.time('handleEnter', LOG_CATEGORIES.EDITOR);
 
-    // If there's an actual selection (not just cursor position), do nothing (wait for undo implementation)
+    // If there's an actual selection (not just cursor position), clear it first
     if (this.hasSelection()) {
-      console.log('🔄 Selection active, blocking split');
-      logger.warn(LOG_CATEGORIES.EDITOR, 'Cannot split line with active selection (undo not yet implemented)');
-      this.showWarning('Cannot split line with active selection', {
-        important: false,
-        details: 'Undo functionality not yet implemented'
-      });
-      return;
+      console.log('🔄 Clearing selection before newline');
+      this.clearSelection();
     }
 
     try {
-      console.log('🔄 Proceeding with split');
       if (!this.theDocument || !this.theDocument.lines || this.theDocument.lines.length === 0) {
         console.error('🔄 No document');
         logger.error(LOG_CATEGORIES.EDITOR, 'No document or lines available');
         return;
       }
 
-      const currentStave = this.getCurrentStave();
-      const charPos = this.getCursorPosition();
+      logger.info(LOG_CATEGORIES.EDITOR, 'Inserting newline (WASM-first)');
 
-      console.log('🔄 Calling WASM splitLineAtPosition:', {stave: currentStave, charPos});
-      logger.info(LOG_CATEGORIES.EDITOR, 'Splitting line', {
-        stave: currentStave,
-        charPos
-      });
+      // NEW WASM-FIRST APPROACH: Call insertNewline which uses internal DOCUMENT state
+      const result = this.wasmModule.insertNewline();
 
-      // Call WASM function to split line
-      const updatedDoc = this.wasmModule.splitLineAtPosition(
-        this.theDocument,
-        currentStave,
-        charPos
-      );
-      console.log('🔄 WASM returned:', updatedDoc);
+      console.log('🔄 WASM insertNewline returned:', result);
 
-      // Preserve state from the old document before updating
-      const preservedState = this.theDocument.state;
+      // Apply dirty lines to JavaScript document (for rendering only)
+      for (const dirtyLine of result.dirty_lines) {
+        if (dirtyLine.row < this.theDocument.lines.length) {
+          this.theDocument.lines[dirtyLine.row].cells = dirtyLine.cells;
+        } else {
+          // New line was created, add it to JavaScript document
+          const newLine = {
+            cells: dirtyLine.cells,
+            label: '',
+            tala: '',
+            lyrics: '',
+            tonic: '',
+            pitch_system: null,
+            key_signature: '',
+            tempo: '',
+            time_signature: '',
+            beats: [],
+            slurs: []
+          };
+          this.theDocument.lines.push(newLine);
+        }
+      }
 
-      // Update document with new line structure
-      this.theDocument = updatedDoc;
-
-      // Restore the state object (WASM doesn't know about JavaScript-only state)
-      this.theDocument.state = preservedState;
-
-      // Move cursor to beginning of new line
-      this.theDocument.state.cursor.line = currentStave + 1;
-      this.theDocument.state.cursor.col = 0;
+      // Update cursor position in JavaScript document (for display only)
+      if (this.theDocument && this.theDocument.state) {
+        this.theDocument.state.cursor.line = result.new_cursor_row;
+        this.theDocument.state.cursor.col = result.new_cursor_col;
+      }
 
       logger.debug(LOG_CATEGORIES.CURSOR, 'Cursor moved to new line', {
-        newStave: currentStave + 1,
-        newColumn: 0
+        newLine: result.new_cursor_row,
+        newColumn: result.new_cursor_col
       });
 
-      await this.renderAndUpdate();
+      // Extract dirty line indices for incremental rendering
+      const dirtyLineIndices = result.dirty_lines.map(dl => dl.row);
+
+      await this.renderAndUpdate(dirtyLineIndices);
       this.showCursor();
 
       logger.info(LOG_CATEGORIES.EDITOR, 'Line split successfully', {
@@ -1740,7 +1532,7 @@ class MusicNotationEditor {
      * Apply slur to current selection with toggle behavior
      */
   async applySlur() {
-    console.log('🎵 applySlur called');
+    console.log('🎵 applySlur called (Phase 1 WASM-first)');
 
     if (!this.isInitialized || !this.wasmModule) {
       console.log('❌ Not initialized or no WASM module');
@@ -1753,7 +1545,7 @@ class MusicNotationEditor {
       selectedText: this.getSelectedText()
     });
 
-    // Validate selection (requires explicit selection, not element to left of cursor)
+    // Validate selection (requires explicit selection)
     if (!this.hasSelection()) {
       console.log('Slur requires an explicit selection');
       return;
@@ -1761,44 +1553,34 @@ class MusicNotationEditor {
 
     try {
       const selection = this.getSelection();
-      const line = this.getCurrentLine();
+      const selectedText = this.getSelectedText();
 
-      if (!line) {
-        console.log('❌ No line found for applySlur');
-        return;
+      // NEW WASM-FIRST APPROACH: Call applySlur() which uses internal DOCUMENT
+      const result = this.wasmModule.applySlur();
+
+      console.log('✅ WASM applySlur result:', result);
+
+      // Apply dirty lines to JS document (rendering only)
+      for (const dirtyLine of result.dirty_lines) {
+        if (dirtyLine.row < this.theDocument.lines.length) {
+          this.theDocument.lines[dirtyLine.row].cells = dirtyLine.cells;
+        }
       }
 
-      const cells = line.cells;
-      // Use half-open range [start, end) to match WASM convention
-      // selection.start and selection.end are Pos objects {line, col}
-      // selection.end.col is already EXCLUSIVE (one past the last selected cell)
-      const selectedCells = cells.filter((cell, index) =>
-        index >= selection.start.col && index < selection.end.col
-      );
-      const selectedText = selectedCells.map(cell => cell.char || '').join('');
+      this.addToConsoleLog(`Toggled slur on "${selectedText}"`);
 
-      // Apply slur using unified WASM command
-      // Note: WASM expects 'end' to be exclusive (one past the last cell)
-      // selection.start and selection.end are Pos objects {line, col}, extract col
-      // selection.end.col is ALREADY exclusive, so don't add 1
-      if (this.theDocument && this.theDocument.lines && this.theDocument.lines.length > 0) {
-        const updatedCells = this.wasmModule.applyCommand(
-          cells,
-          selection.start.col,
-          selection.end.col,  // Already exclusive!
-          'slur'
-        );
+      // Render only the affected lines
+      const dirtyLineIndices = result.dirty_lines.map(dl => dl.row);
+      await this.renderAndUpdate(dirtyLineIndices);
 
-        line.cells = updatedCells;
-        this.addToConsoleLog(`Toggled slur on "${selectedText}"`);
-      }
-
-      await this.renderAndUpdate();
-
-      // Restore visual selection after applying slur (slurs now render via CSS)
+      // Restore visual selection after applying slur
       this.updateSelectionDisplay();
     } catch (error) {
       console.error('❌ Failed to apply slur:', error);
+      // If it's an error from WASM, it might be a string - show it to user
+      if (typeof error === 'string') {
+        console.error('WASM error message:', error);
+      }
     }
   }
 
@@ -2207,20 +1989,33 @@ class MusicNotationEditor {
     }, 100);
   }
 
+  scheduleHitboxesUpdate() {
+    // Clear any pending update to prevent memory leak
+    if (this.hitboxesTimer) {
+      clearTimeout(this.hitboxesTimer);
+    }
+
+    // Schedule new update with 100ms debounce
+    this.hitboxesTimer = setTimeout(() => {
+      this.updateHitboxesDisplay();
+    }, 100);
+  }
+
   /**
      * Render the current document
+     * @param {number[]} dirtyLineIndices - Optional array of line indices to render (incremental)
      */
-  async render() {
+  async render(dirtyLineIndices = null) {
     if (!this.renderer) {
       return;
     }
 
     try {
-      console.log('📝 render() called');
+      console.log('📝 render() called', { dirtyLineIndices });
       const state = await this.saveDocument();
       const doc = JSON.parse(state);
       console.log('📝 calling renderer.renderDocument()');
-      this.renderer.renderDocument(doc);
+      this.renderer.renderDocument(doc, dirtyLineIndices);
       console.log('📝 renderer.renderDocument() completed');
 
       // Y positions are now correctly set by Rust layout engine based on line index
@@ -2241,9 +2036,10 @@ class MusicNotationEditor {
   /**
    * Render and update inspector tabs (DRY helper)
    * Combines render() + updateDocumentDisplay() which are almost always called together
+   * @param {number[]} dirtyLineIndices - Optional array of line indices to render (incremental)
    */
-  async renderAndUpdate() {
-    await this.render();
+  async renderAndUpdate(dirtyLineIndices = null) {
+    await this.render(dirtyLineIndices);
     this.updateDocumentDisplay();
   }
 
@@ -2792,49 +2588,65 @@ class MusicNotationEditor {
   }
 
   updateDocumentDisplay() {
+    // PERFORMANCE FIX: Only update inspector tabs if they're actually visible
+    // All of these operations process the entire document and should not run on every keystroke
+
     // Update display list tab (pre-computed render commands from WASM)
-    const displayListDisplay = document.getElementById('displaylist-display');
-    if (displayListDisplay && this.displayList) {
-      displayListDisplay.textContent = JSON.stringify(this.displayList, null, 2);
+    if (this.ui && this.ui.activeTab === 'displaylist') {
+      const displayListDisplay = document.getElementById('displaylist-display');
+      if (displayListDisplay && this.displayList) {
+        displayListDisplay.textContent = JSON.stringify(this.displayList, null, 2);
+      }
     }
 
     // Update persistent model (saveable content only, no state)
-    const persistentJson = document.getElementById('persistent-json');
-    if (persistentJson && this.theDocument) {
-      // Rust handles field exclusion via #[serde(skip)] on ephemeral fields (state, x, y, w, h, etc.)
-      // Just exclude the runtime state field - WASM serialization handles the rest
-      const { state, ...persistentDoc } = this.theDocument;
+    if (this.ui && this.ui.activeTab === 'persistent') {
+      const persistentJson = document.getElementById('persistent-json');
+      if (persistentJson && this.theDocument) {
+        // Rust handles field exclusion via #[serde(skip)] on ephemeral fields (state, x, y, w, h, etc.)
+        // Just exclude the runtime state field - WASM serialization handles the rest
+        const { state, ...persistentDoc } = this.theDocument;
 
-      // DEBUG: Log what fields are actually present
-      console.log('Document keys:', Object.keys(persistentDoc));
-      if (persistentDoc.lines && persistentDoc.lines[0]) {
-        console.log('Line[0] keys:', Object.keys(persistentDoc.lines[0]));
+        // DEBUG: Log what fields are actually present
+        console.log('Document keys:', Object.keys(persistentDoc));
+        if (persistentDoc.lines && persistentDoc.lines[0]) {
+          console.log('Line[0] keys:', Object.keys(persistentDoc.lines[0]));
+        }
+
+        const displayDoc = this.createDisplayDocument(persistentDoc);
+        persistentJson.textContent = this.toYAML(displayDoc);
       }
-
-      const displayDoc = this.createDisplayDocument(persistentDoc);
-      persistentJson.textContent = this.toYAML(displayDoc);
     }
 
-    // Update IR (Intermediate Representation) display
-    this.updateIRDisplay().catch(err => {
-      console.error('Failed to update IR display:', err);
-    });
+    // PERFORMANCE FIX: Only update expensive inspector tabs if they're visible
+    // These are heavy WASM operations that should not run on every keystroke
+    if (this.ui && this.ui.activeTab === 'ir') {
+      this.updateIRDisplay().catch(err => {
+        console.error('Failed to update IR display:', err);
+      });
+    }
 
-    // Update MusicXML source (async, non-blocking)
-    this.updateMusicXMLDisplay().catch(err => {
-      console.error('Failed to update MusicXML display:', err);
-    });
+    if (this.ui && this.ui.activeTab === 'musicxml') {
+      this.updateMusicXMLDisplay().catch(err => {
+        console.error('Failed to update MusicXML display:', err);
+      });
+    }
 
-    // Update LilyPond source (async, non-blocking)
-    this.updateLilyPondDisplay().catch(err => {
-      console.error('Failed to update LilyPond display:', err);
-    });
+    if (this.ui && this.ui.activeTab === 'lilypond') {
+      this.updateLilyPondDisplay().catch(err => {
+        console.error('Failed to update LilyPond display:', err);
+      });
+    }
 
-    // Update HTML display
-    this.updateHTMLDisplay();
+    // Update HTML display only if visible
+    if (this.ui && this.ui.activeTab === 'html') {
+      this.updateHTMLDisplay();
+    }
 
-    // Update hitboxes display
-    this.updateHitboxesDisplay();
+    // Update hitboxes display only if visible
+    if (this.ui && this.ui.activeTab === 'hitboxes') {
+      this.updateHitboxesDisplay();
+    }
   }
 
   /**

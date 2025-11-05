@@ -958,6 +958,7 @@ pub fn build_export_measures_from_document(document: &Document) -> Vec<ExportLin
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::pitch_code::PitchCode;
 
     /// Helper to create a Cell
     fn make_cell(kind: ElementKind, char: &str, pitch_code: Option<PitchCode>) -> Cell {

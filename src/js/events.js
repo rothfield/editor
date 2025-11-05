@@ -460,6 +460,12 @@ class EventManager {
       tabElement.classList.add('active');
     }
 
+    // Update inspector tab content when switching tabs
+    // This ensures the newly visible tab shows the latest document state
+    if (this.editor) {
+      this.editor.updateDocumentDisplay();
+    }
+
     // Request focus return to editor
     this.scheduleFocusReturn();
   }

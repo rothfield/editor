@@ -4,9 +4,13 @@
 //! and token combination using the recursive descent parser.
 
 use wasm_bindgen::prelude::*;
-use crate::models::{Cell, PitchSystem, Document, Line, OrnamentIndicator, OrnamentPositionType, Pos, EditorDiff, CaretInfo, SelectionInfo};
+use crate::models::{Cell, PitchSystem, Document, Line, OrnamentIndicator, OrnamentPositionType, Pos, EditorDiff, CaretInfo, SelectionInfo, ElementKind};
 use crate::renderers::layout_engine::{extract_ornament_spans, find_anchor_cell, OrnamentGroups};
+use crate::parse::grammar::{parse_single, mark_continuations};
 use std::collections::HashMap;
+
+#[cfg(test)]
+use crate::parse::grammar::parse;
 use std::sync::Mutex;
 use lazy_static::lazy_static;
 use js_sys;
@@ -83,7 +87,8 @@ pub struct CopyResult {
     pub cells: Vec<Cell>,       // Rich cells with annotations
 }
 
-/// Apply slur to cells in a selection range
+/// Apply slur to cells in a selection range (LEGACY - Phase 0 API)
+/// DEPRECATED: Use the new applySlur() which uses internal DOCUMENT
 ///
 /// # Parameters
 /// - `cells_js`: JavaScript array of Cell objects
@@ -92,13 +97,14 @@ pub struct CopyResult {
 ///
 /// # Returns
 /// Updated JavaScript array of Cell objects with slur applied
-#[wasm_bindgen(js_name = applySlur)]
-pub fn apply_slur(
+#[wasm_bindgen(js_name = applySlurLegacy)]
+pub fn apply_slur_legacy(
     cells_js: JsValue,
     start: usize,
     end: usize,
 ) -> Result<js_sys::Array, JsValue> {
-    wasm_info!("applySlur called: start={}, end={}", start, end);
+    wasm_warn!("⚠️  applySlurLegacy called - DEPRECATED, use applySlur() instead");
+    wasm_info!("applySlurLegacy called: start={}, end={}", start, end);
 
     // Deserialize cells from JavaScript
     let mut cells: Vec<Cell> = serde_wasm_bindgen::from_value(cells_js)
@@ -150,11 +156,12 @@ pub fn apply_slur(
         result.push(&cell_js);
     }
 
-    wasm_info!("applySlur completed successfully");
+    wasm_info!("applySlurLegacy completed successfully");
     Ok(result)
 }
 
-/// Remove slur from cells in a selection range
+/// Remove slur from cells in a selection range (LEGACY - Phase 0 API)
+/// DEPRECATED: Use the new removeSlur() which uses internal DOCUMENT
 ///
 /// # Parameters
 /// - `cells_js`: JavaScript array of Cell objects
@@ -163,13 +170,14 @@ pub fn apply_slur(
 ///
 /// # Returns
 /// Updated JavaScript array of Cell objects with slur removed
-#[wasm_bindgen(js_name = removeSlur)]
-pub fn remove_slur(
+#[wasm_bindgen(js_name = removeSlurLegacy)]
+pub fn remove_slur_legacy(
     cells_js: JsValue,
     start: usize,
     end: usize,
 ) -> Result<js_sys::Array, JsValue> {
-    wasm_info!("removeSlur called: start={}, end={}", start, end);
+    wasm_warn!("⚠️  removeSlurLegacy called - DEPRECATED, use removeSlur() instead");
+    wasm_info!("removeSlurLegacy called: start={}, end={}", start, end);
 
     // Deserialize cells from JavaScript
     let mut cells: Vec<Cell> = serde_wasm_bindgen::from_value(cells_js)
@@ -216,7 +224,7 @@ pub fn remove_slur(
         result.push(&cell_js);
     }
 
-    wasm_info!("removeSlur completed successfully");
+    wasm_info!("removeSlurLegacy completed successfully");
     Ok(result)
 }
 
@@ -697,7 +705,8 @@ pub fn compute_ornament_layout(
     Ok(json_result)
 }
 
-/// Set the document title
+/// Set the document title (LEGACY - Phase 0 API)
+/// DEPRECATED: Use the new setTitle() which uses internal DOCUMENT
 ///
 /// # Parameters
 /// - `document_js`: JavaScript Document object
@@ -705,12 +714,13 @@ pub fn compute_ornament_layout(
 ///
 /// # Returns
 /// Updated JavaScript Document object with the title set
-#[wasm_bindgen(js_name = setTitle)]
-pub fn set_title(
+#[wasm_bindgen(js_name = setTitleLegacy)]
+pub fn set_title_legacy(
     document_js: JsValue,
     title: &str,
 ) -> Result<JsValue, JsValue> {
-    wasm_info!("setTitle called: title='{}'", title);
+    wasm_warn!("⚠️  setTitleLegacy called - DEPRECATED, use setTitle() instead");
+    wasm_info!("setTitleLegacy called: title='{}'", title);
 
     // Deserialize document from JavaScript
     let mut document: Document = serde_wasm_bindgen::from_value(document_js)
@@ -733,11 +743,31 @@ pub fn set_title(
             JsValue::from_str(&format!("Serialization error: {}", e))
         })?;
 
-    wasm_info!("setTitle completed successfully");
+    wasm_info!("setTitleLegacy completed successfully");
     Ok(result)
 }
 
-/// Set the document composer
+/// Set the document title (Phase 1 - uses internal DOCUMENT)
+#[wasm_bindgen(js_name = setTitle)]
+pub fn set_title(title: &str) -> Result<(), JsValue> {
+    wasm_info!("setTitle called (Phase 1): title='{}'", title);
+
+    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let doc = doc_guard.as_mut()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    doc.title = Some(title.to_string());
+    wasm_info!("  Document title set to: '{}'", title);
+
+    // Compute glyphs after metadata change
+    doc.compute_glyphs();
+
+    wasm_info!("setTitle completed successfully");
+    Ok(())
+}
+
+/// Set the document composer (LEGACY - Phase 0 API)
+/// DEPRECATED: Use the new setComposer() which uses internal DOCUMENT
 ///
 /// # Parameters
 /// - `document_js`: JavaScript Document object
@@ -745,12 +775,13 @@ pub fn set_title(
 ///
 /// # Returns
 /// Updated JavaScript Document object with the composer set
-#[wasm_bindgen(js_name = setComposer)]
-pub fn set_composer(
+#[wasm_bindgen(js_name = setComposerLegacy)]
+pub fn set_composer_legacy(
     document_js: JsValue,
     composer: &str,
 ) -> Result<JsValue, JsValue> {
-    wasm_info!("setComposer called: composer='{}'", composer);
+    wasm_warn!("⚠️  setComposerLegacy called - DEPRECATED, use setComposer() instead");
+    wasm_info!("setComposerLegacy called: composer='{}'", composer);
 
     // Deserialize document from JavaScript
     let mut document: Document = serde_wasm_bindgen::from_value(document_js)
@@ -773,11 +804,31 @@ pub fn set_composer(
             JsValue::from_str(&format!("Serialization error: {}", e))
         })?;
 
-    wasm_info!("setComposer completed successfully");
+    wasm_info!("setComposerLegacy completed successfully");
     Ok(result)
 }
 
-/// Set the document pitch system
+/// Set the document composer (Phase 1 - uses internal DOCUMENT)
+#[wasm_bindgen(js_name = setComposer)]
+pub fn set_composer(composer: &str) -> Result<(), JsValue> {
+    wasm_info!("setComposer called (Phase 1): composer='{}'", composer);
+
+    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let doc = doc_guard.as_mut()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    doc.composer = Some(composer.to_string());
+    wasm_info!("  Document composer set to: '{}'", composer);
+
+    // Compute glyphs after metadata change
+    doc.compute_glyphs();
+
+    wasm_info!("setComposer completed successfully");
+    Ok(())
+}
+
+/// Set the document pitch system (LEGACY - Phase 0 API)
+/// DEPRECATED: Use the new setDocumentPitchSystem() which uses internal DOCUMENT
 ///
 /// # Parameters
 /// - `document_js`: JavaScript Document object
@@ -785,12 +836,13 @@ pub fn set_composer(
 ///
 /// # Returns
 /// Updated JavaScript Document object with the pitch system set
-#[wasm_bindgen(js_name = setDocumentPitchSystem)]
-pub fn set_document_pitch_system(
+#[wasm_bindgen(js_name = setDocumentPitchSystemLegacy)]
+pub fn set_document_pitch_system_legacy(
     document_js: JsValue,
     pitch_system: u8,
 ) -> Result<JsValue, JsValue> {
-    wasm_info!("setDocumentPitchSystem called: pitch_system={}", pitch_system);
+    wasm_warn!("⚠️  setDocumentPitchSystemLegacy called - DEPRECATED, use setDocumentPitchSystem() instead");
+    wasm_info!("setDocumentPitchSystemLegacy called: pitch_system={}", pitch_system);
 
     // Deserialize document from JavaScript
     let mut document: Document = serde_wasm_bindgen::from_value(document_js)
@@ -826,8 +878,41 @@ pub fn set_document_pitch_system(
             JsValue::from_str(&format!("Serialization error: {}", e))
         })?;
 
-    wasm_info!("setDocumentPitchSystem completed successfully");
+    wasm_info!("setDocumentPitchSystemLegacy completed successfully");
     Ok(result)
+}
+
+/// Set the document pitch system (Phase 1 - uses internal DOCUMENT)
+#[wasm_bindgen(js_name = setDocumentPitchSystem)]
+pub fn set_document_pitch_system(pitch_system: u8) -> Result<(), JsValue> {
+    wasm_info!("setDocumentPitchSystem called (Phase 1): pitch_system={}", pitch_system);
+
+    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let doc = doc_guard.as_mut()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    // Validate and set the pitch system
+    let system = match pitch_system {
+        0 => PitchSystem::Unknown,
+        1 => PitchSystem::Number,
+        2 => PitchSystem::Western,
+        3 => PitchSystem::Sargam,
+        4 => PitchSystem::Bhatkhande,
+        5 => PitchSystem::Tabla,
+        _ => {
+            wasm_error!("Invalid pitch system value: {}", pitch_system);
+            return Err(JsValue::from_str(&format!("Invalid pitch system: {}", pitch_system)));
+        }
+    };
+
+    doc.pitch_system = Some(system);
+    wasm_info!("  Document pitch system set to: {:?}", system);
+
+    // Compute glyphs after metadata change
+    doc.compute_glyphs();
+
+    wasm_info!("setDocumentPitchSystem completed successfully");
+    Ok(())
 }
 
 /// Expand ornaments from cell.ornaments into the cells vector
@@ -1257,6 +1342,9 @@ pub fn edit_replace_range(
             if start_col <= line.cells.len() && end_col <= line.cells.len() {
                 line.cells.drain(start_col..end_col);
                 wasm_info!("  Deleted {} cells from row {}", end_col - start_col, start_row);
+
+                // Re-mark continuations after deletion to fix continuation flags
+                mark_continuations(&mut line.cells);
             }
         }
     } else {
@@ -1280,6 +1368,9 @@ pub fn edit_replace_range(
             // Remove the lines between start_row and end_row
             doc.lines.drain((start_row + 1)..=end_row);
             wasm_info!("  Deleted {} rows", end_row - start_row);
+
+            // Re-mark continuations after multi-line deletion
+            mark_continuations(&mut doc.lines[start_row].cells);
         }
     }
 
@@ -1297,6 +1388,9 @@ pub fn edit_replace_range(
                 line.cells.insert(start_col + idx, cell.clone());
             }
             wasm_info!("  Inserted {} cells at ({},{})", new_cells.len(), start_row, start_col);
+
+            // Re-mark continuations after insertion
+            mark_continuations(&mut doc.lines[start_row].cells);
         }
     }
 
@@ -1328,6 +1422,635 @@ pub fn edit_replace_range(
         dirty_lines,
         new_cursor_row: start_row,
         new_cursor_col,
+    };
+
+    serde_wasm_bindgen::to_value(&result)
+        .map_err(|e| {
+            wasm_error!("EditResult serialization error: {}", e);
+            JsValue::from_str(&format!("EditResult serialization error: {}", e))
+        })
+}
+
+// ============================================================================
+// WASM-First Text Editing Operations
+// ============================================================================
+
+/// Insert text at the current cursor position (WASM-owned state)
+///
+/// This function uses the internal DOCUMENT state and records undo history.
+/// It replaces the old insertCharacter() which took cell arrays.
+#[wasm_bindgen(js_name = insertText)]
+pub fn insert_text(text: &str) -> Result<JsValue, JsValue> {
+    wasm_info!("insertText called: text={:?}", text);
+
+    if text.is_empty() {
+        return Err(JsValue::from_str("Cannot insert empty text"));
+    }
+
+    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let doc = doc_guard.as_mut()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    // Get current cursor position
+    let cursor_line = doc.state.cursor.line;
+    let cursor_col = doc.state.cursor.col;
+
+    wasm_info!("  Cursor at ({}, {})", cursor_line, cursor_col);
+
+    // Validate cursor position
+    if cursor_line >= doc.lines.len() {
+        return Err(JsValue::from_str(&format!(
+            "Invalid cursor line: {} (document has {} lines)",
+            cursor_line,
+            doc.lines.len()
+        )));
+    }
+
+    // Get the pitch system before mutably borrowing
+    let pitch_system = {
+        let line = &doc.lines[cursor_line];
+        doc.effective_pitch_system(line)
+    };
+
+    // TODO: Implement efficient undo (batching or incremental)
+    // Temporarily disabled to fix performance issue (was cloning entire document on every keystroke!)
+    // let previous_state = doc.clone();
+
+    // Parse each character into cells
+    let mut new_cells: Vec<Cell> = Vec::new();
+    for (i, ch) in text.chars().enumerate() {
+        let column = cursor_col + i;
+        let cell = parse_single(ch, pitch_system, column);
+        new_cells.push(cell);
+    }
+
+    wasm_info!("  Parsed {} characters into {} cells", text.len(), new_cells.len());
+
+    // Get the line mutably for modification
+    let line = &mut doc.lines[cursor_line];
+
+    // Insert new cells at cursor position
+    let insert_pos = cursor_col.min(line.cells.len());
+    for (i, cell) in new_cells.iter().enumerate() {
+        line.cells.insert(insert_pos + i, cell.clone());
+    }
+
+    // Update column indices for cells after insertion
+    let cells_inserted = new_cells.len();
+    for i in (insert_pos + cells_inserted)..line.cells.len() {
+        line.cells[i].col += cells_inserted;
+    }
+
+    // Mark continuations (handle multi-char elements)
+    mark_continuations(&mut line.cells);
+
+    // Update cursor position (move to after inserted text)
+    let new_cursor_col = cursor_col + cells_inserted;
+    doc.state.cursor.col = new_cursor_col;
+
+    wasm_info!("  Cursor moved to ({}, {})", cursor_line, new_cursor_col);
+
+    // Capture dirty line cells before recording undo
+    let dirty_line_cells = doc.lines[cursor_line].cells.clone();
+
+    // TODO: Implement efficient undo
+    // Temporarily disabled undo recording to fix performance issue
+    // let new_state = doc.clone();
+    // let action = crate::models::DocumentAction {
+    //     action_type: crate::models::ActionType::InsertText,
+    //     description: format!("Insert text: {:?} at ({}, {})", text, cursor_line, cursor_col),
+    //     previous_state: Some(previous_state),
+    //     new_state: Some(new_state),
+    //     timestamp: String::from("WASM-insertText"),
+    // };
+    // doc.state.add_action(action);
+
+    // Return EditResult with dirty line
+    let result = EditResult {
+        dirty_lines: vec![DirtyLine {
+            row: cursor_line,
+            cells: dirty_line_cells,
+        }],
+        new_cursor_row: cursor_line,
+        new_cursor_col,
+    };
+
+    serde_wasm_bindgen::to_value(&result)
+        .map_err(|e| {
+            wasm_error!("EditResult serialization error: {}", e);
+            JsValue::from_str(&format!("EditResult serialization error: {}", e))
+        })
+}
+
+/// Delete character at cursor (backspace behavior)
+#[wasm_bindgen(js_name = deleteAtCursor)]
+pub fn delete_at_cursor() -> Result<JsValue, JsValue> {
+    wasm_info!("deleteAtCursor called (backspace behavior)");
+
+    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let doc = doc_guard.as_mut()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    let cursor_line = doc.state.cursor.line;
+    let cursor_col = doc.state.cursor.col;
+
+    wasm_info!("  Cursor at ({}, {})", cursor_line, cursor_col);
+
+    // Can't delete if at start of document
+    if cursor_line == 0 && cursor_col == 0 {
+        wasm_info!("  At start of document, nothing to delete");
+        return Err(JsValue::from_str("Cannot delete at start of document"));
+    }
+
+    // Save previous state for undo
+    let previous_state = doc.clone();
+
+    let mut new_cursor_row = cursor_line;
+    let mut new_cursor_col = cursor_col;
+    let mut dirty_lines = Vec::new();
+
+    if cursor_col > 0 {
+        // Delete character before cursor on same line
+        let line = &mut doc.lines[cursor_line];
+
+        if cursor_col <= line.cells.len() {
+            line.cells.remove(cursor_col - 1);
+
+            // Update column indices for remaining cells
+            for i in (cursor_col - 1)..line.cells.len() {
+                line.cells[i].col = i;
+            }
+
+            new_cursor_col = cursor_col - 1;
+
+            dirty_lines.push(DirtyLine {
+                row: cursor_line,
+                cells: line.cells.clone(),
+            });
+
+            wasm_info!("  Deleted cell at column {}", cursor_col - 1);
+        }
+    } else {
+        // Cursor at start of line - join with previous line
+        if cursor_line > 0 {
+            let prev_line = &doc.lines[cursor_line - 1];
+            let join_position = prev_line.cells.len();
+
+            // Get cells from current line
+            let mut current_cells = doc.lines[cursor_line].cells.clone();
+
+            // Update column indices for cells being moved
+            for cell in &mut current_cells {
+                cell.col += join_position;
+            }
+
+            // Append to previous line
+            doc.lines[cursor_line - 1].cells.extend(current_cells);
+
+            // Remove current line
+            doc.lines.remove(cursor_line);
+
+            new_cursor_row = cursor_line - 1;
+            new_cursor_col = join_position;
+
+            dirty_lines.push(DirtyLine {
+                row: cursor_line - 1,
+                cells: doc.lines[cursor_line - 1].cells.clone(),
+            });
+
+            wasm_info!("  Joined line {} with line {}", cursor_line, cursor_line - 1);
+        }
+    }
+
+    // Update cursor position
+    doc.state.cursor.line = new_cursor_row;
+    doc.state.cursor.col = new_cursor_col;
+
+    // Record undo action
+    let new_state = doc.clone();
+    let action = crate::models::DocumentAction {
+        action_type: crate::models::ActionType::DeleteText,
+        description: format!("Delete at ({}, {})", cursor_line, cursor_col),
+        previous_state: Some(previous_state),
+        new_state: Some(new_state),
+        timestamp: String::from("WASM-deleteAtCursor"),
+    };
+    doc.state.add_action(action);
+
+    // Return EditResult
+    let result = EditResult {
+        dirty_lines,
+        new_cursor_row,
+        new_cursor_col,
+    };
+
+    serde_wasm_bindgen::to_value(&result)
+        .map_err(|e| {
+            wasm_error!("EditResult serialization error: {}", e);
+            JsValue::from_str(&format!("EditResult serialization error: {}", e))
+        })
+}
+
+/// Insert newline at cursor position
+#[wasm_bindgen(js_name = insertNewline)]
+pub fn insert_newline() -> Result<JsValue, JsValue> {
+    wasm_info!("insertNewline called");
+
+    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let doc = doc_guard.as_mut()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    let cursor_line = doc.state.cursor.line;
+    let cursor_col = doc.state.cursor.col;
+
+    wasm_info!("  Cursor at ({}, {})", cursor_line, cursor_col);
+
+    // Validate cursor position
+    if cursor_line >= doc.lines.len() {
+        return Err(JsValue::from_str(&format!(
+            "Invalid cursor line: {} (document has {} lines)",
+            cursor_line,
+            doc.lines.len()
+        )));
+    }
+
+    // TODO: Implement efficient undo
+    // Temporarily disabled to fix performance issue
+    // let previous_state = doc.clone();
+
+    // Split current line at cursor position
+    let current_line = &mut doc.lines[cursor_line];
+
+    // Cells after cursor move to new line
+    let cells_after: Vec<Cell> = current_line.cells.drain(cursor_col..).collect();
+
+    // Update column indices for cells that moved
+    let new_line_cells: Vec<Cell> = cells_after
+        .into_iter()
+        .enumerate()
+        .map(|(i, mut cell)| {
+            cell.col = i;
+            cell
+        })
+        .collect();
+
+    // Create new line
+    let new_line = Line {
+        cells: new_line_cells,
+        tonic: current_line.tonic.clone(),
+        lyrics: current_line.lyrics.clone(),
+        tala: current_line.tala.clone(),
+        label: String::new(),
+        pitch_system: current_line.pitch_system,
+        key_signature: current_line.key_signature.clone(),
+        tempo: current_line.tempo.clone(),
+        time_signature: current_line.time_signature.clone(),
+        beats: Vec::new(),
+        slurs: Vec::new(),
+    };
+
+    // Insert new line after current line
+    doc.lines.insert(cursor_line + 1, new_line);
+
+    // Move cursor to start of new line
+    let new_cursor_row = cursor_line + 1;
+    let new_cursor_col = 0;
+
+    doc.state.cursor.line = new_cursor_row;
+    doc.state.cursor.col = new_cursor_col;
+
+    wasm_info!("  Created new line {}, cursor at ({}, {})", cursor_line + 1, new_cursor_row, new_cursor_col);
+
+    // TODO: Implement efficient undo
+    // Temporarily disabled to fix performance issue
+    // let new_state = doc.clone();
+    // let action = crate::models::DocumentAction {
+    //     action_type: crate::models::ActionType::InsertText,
+    //     description: format!("Insert newline at ({}, {})", cursor_line, cursor_col),
+    //     previous_state: Some(previous_state),
+    //     new_state: Some(new_state),
+    //     timestamp: String::from("WASM-insertNewline"),
+    // };
+    // doc.state.add_action(action);
+
+    // Return EditResult with both affected lines
+    let result = EditResult {
+        dirty_lines: vec![
+            DirtyLine {
+                row: cursor_line,
+                cells: doc.lines[cursor_line].cells.clone(),
+            },
+            DirtyLine {
+                row: cursor_line + 1,
+                cells: doc.lines[cursor_line + 1].cells.clone(),
+            },
+        ],
+        new_cursor_row,
+        new_cursor_col,
+    };
+
+    serde_wasm_bindgen::to_value(&result)
+        .map_err(|e| {
+            wasm_error!("EditResult serialization error: {}", e);
+            JsValue::from_str(&format!("EditResult serialization error: {}", e))
+        })
+}
+
+// ============================================================================
+// Octave operations (Phase 2 - WASM-first pattern)
+// ============================================================================
+
+/// Apply octave to current selection (toggle behavior for -1, 0, 1)
+/// Uses internal DOCUMENT mutex - no cell-based parameters needed
+#[wasm_bindgen(js_name = applyOctave)]
+pub fn apply_octave(octave: i8) -> Result<JsValue, JsValue> {
+    wasm_info!("applyOctave called (Phase 1): octave={}", octave);
+
+    // Validate octave value
+    if ![-1, 0, 1].contains(&octave) {
+        wasm_error!("Invalid octave value: {}", octave);
+        return Err(JsValue::from_str(&format!("Invalid octave value: {}", octave)));
+    }
+
+    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let doc = doc_guard.as_mut()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    // Get current selection from document state
+    let selection = doc.state.selection_manager.current_selection.clone()
+        .ok_or_else(|| JsValue::from_str("No selection active"))?;
+
+    // Validate selection is not empty
+    if selection.is_empty() {
+        return Err(JsValue::from_str("Selection is empty"));
+    }
+
+    // Normalize selection (handle both forward and backward selections)
+    let (start_pos, end_pos) = if selection.anchor <= selection.head {
+        (selection.anchor, selection.head)
+    } else {
+        (selection.head, selection.anchor)
+    };
+
+    wasm_info!("  Selection: ({},{}) to ({},{})",
+              start_pos.line, start_pos.col, end_pos.line, end_pos.col);
+
+    // For now, only support single-line octave changes
+    if start_pos.line != end_pos.line {
+        return Err(JsValue::from_str("Multi-line octave changes not yet supported"));
+    }
+
+    let line_idx = start_pos.line;
+    if line_idx >= doc.lines.len() {
+        return Err(JsValue::from_str("Invalid line index"));
+    }
+
+    let start_col = start_pos.col;
+    let end_col = end_pos.col;
+
+    // Validate range
+    let line = &mut doc.lines[line_idx];
+    if start_col >= line.cells.len() || end_col > line.cells.len() {
+        return Err(JsValue::from_str("Invalid column range"));
+    }
+
+    // Apply octave to pitched elements in range
+    let mut modified_count = 0;
+
+    // Check if all pitched elements already have the target octave (for toggle behavior)
+    let mut all_have_target = true;
+    for i in start_col..end_col {
+        if line.cells[i].kind == crate::models::ElementKind::PitchedElement {
+            if line.cells[i].octave != octave {
+                all_have_target = false;
+                break;
+            }
+        }
+    }
+
+    if all_have_target && octave != 0 {
+        // Toggle off: set all to 0 (middle octave)
+        wasm_info!("  Toggling octave off (all have target octave {})", octave);
+        for i in start_col..end_col {
+            if line.cells[i].kind == crate::models::ElementKind::PitchedElement {
+                line.cells[i].octave = 0;
+                modified_count += 1;
+            }
+        }
+    } else {
+        // Apply target octave
+        wasm_info!("  Applying octave {} to range {}..{}", octave, start_col, end_col);
+        for i in start_col..end_col {
+            if line.cells[i].kind == crate::models::ElementKind::PitchedElement {
+                line.cells[i].octave = octave;
+                modified_count += 1;
+            }
+        }
+    }
+
+    wasm_info!("  Modified {} pitched cells", modified_count);
+
+    // Return EditResult with dirty line
+    let result = EditResult {
+        dirty_lines: vec![
+            DirtyLine {
+                row: line_idx,
+                cells: doc.lines[line_idx].cells.clone(),
+            }
+        ],
+        new_cursor_row: doc.state.cursor.line,
+        new_cursor_col: doc.state.cursor.col,
+    };
+
+    serde_wasm_bindgen::to_value(&result)
+        .map_err(|e| {
+            wasm_error!("EditResult serialization error: {}", e);
+            JsValue::from_str(&format!("EditResult serialization error: {}", e))
+        })
+}
+
+// ============================================================================
+// Slur operations (Phase 2 - WASM-first pattern)
+// ============================================================================
+
+/// Apply slur to current selection (toggle behavior)
+/// Uses internal DOCUMENT mutex - no cell-based parameters needed
+#[wasm_bindgen(js_name = applySlur)]
+pub fn apply_slur() -> Result<JsValue, JsValue> {
+    wasm_info!("applySlur called");
+
+    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let doc = doc_guard.as_mut()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    // Get current selection from document state
+    let selection = doc.state.selection_manager.current_selection.clone()
+        .ok_or_else(|| JsValue::from_str("No selection active"))?;
+
+    // Validate selection is not empty
+    if selection.is_empty() {
+        return Err(JsValue::from_str("Selection is empty"));
+    }
+
+    // Normalize selection (handle both forward and backward selections)
+    let (start_pos, end_pos) = if selection.anchor <= selection.head {
+        (selection.anchor, selection.head)
+    } else {
+        (selection.head, selection.anchor)
+    };
+
+    wasm_info!("  Selection: ({},{}) to ({},{})",
+              start_pos.line, start_pos.col, end_pos.line, end_pos.col);
+
+    // For now, only support single-line slurs
+    // Multi-line slurs would require different rendering approach
+    if start_pos.line != end_pos.line {
+        return Err(JsValue::from_str("Multi-line slurs not yet supported"));
+    }
+
+    let line_idx = start_pos.line;
+    if line_idx >= doc.lines.len() {
+        return Err(JsValue::from_str("Invalid line index"));
+    }
+
+    let start_col = start_pos.col;
+    let end_col = end_pos.col;
+
+    // Validate range
+    let line = &mut doc.lines[line_idx];
+    if start_col >= line.cells.len() || end_col > line.cells.len() {
+        return Err(JsValue::from_str("Invalid column range"));
+    }
+
+    // Need at least 2 cells for a slur
+    if end_col - start_col < 2 {
+        return Err(JsValue::from_str("Selection too short for slur (need at least 2 cells)"));
+    }
+
+    // Check if slur already exists (toggle behavior)
+    let has_slur = line.cells.get(start_col)
+        .map(|c| c.has_slur())
+        .unwrap_or(false);
+
+    let mut modified_count = 0;
+
+    if has_slur {
+        // Remove existing slur - clear all slur indicators in range
+        wasm_info!("  Removing existing slur from range {}..{}", start_col, end_col);
+        for i in start_col..end_col {
+            if line.cells[i].has_slur() {
+                line.cells[i].clear_slur();
+                modified_count += 1;
+            }
+        }
+    } else {
+        // Apply new slur
+        wasm_info!("  Applying new slur to range {}..{}", start_col, end_col);
+
+        // Clear any existing slur indicators in range first
+        for i in start_col..end_col {
+            line.cells[i].clear_slur();
+        }
+
+        // Set SlurStart on first cell, SlurEnd on last cell
+        line.cells[start_col].set_slur_start();
+        line.cells[end_col - 1].set_slur_end();
+        modified_count = end_col - start_col;
+
+        wasm_info!("  Applied slur: cell[{}] = SlurStart, cell[{}] = SlurEnd",
+                  start_col, end_col - 1);
+    }
+
+    wasm_info!("  Modified {} cells", modified_count);
+
+    // Return EditResult with dirty line
+    let result = EditResult {
+        dirty_lines: vec![
+            DirtyLine {
+                row: line_idx,
+                cells: doc.lines[line_idx].cells.clone(),
+            }
+        ],
+        new_cursor_row: doc.state.cursor.line,
+        new_cursor_col: doc.state.cursor.col,
+    };
+
+    serde_wasm_bindgen::to_value(&result)
+        .map_err(|e| {
+            wasm_error!("EditResult serialization error: {}", e);
+            JsValue::from_str(&format!("EditResult serialization error: {}", e))
+        })
+}
+
+/// Remove slur from current selection (explicit removal, no toggle)
+/// Uses internal DOCUMENT mutex - no cell-based parameters needed
+#[wasm_bindgen(js_name = removeSlur)]
+pub fn remove_slur() -> Result<JsValue, JsValue> {
+    wasm_info!("removeSlur called");
+
+    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let doc = doc_guard.as_mut()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    // Get current selection from document state
+    let selection = doc.state.selection_manager.current_selection.clone()
+        .ok_or_else(|| JsValue::from_str("No selection active"))?;
+
+    // Validate selection is not empty
+    if selection.is_empty() {
+        return Err(JsValue::from_str("Selection is empty"));
+    }
+
+    // Normalize selection
+    let (start_pos, end_pos) = if selection.anchor <= selection.head {
+        (selection.anchor, selection.head)
+    } else {
+        (selection.head, selection.anchor)
+    };
+
+    wasm_info!("  Selection: ({},{}) to ({},{})",
+              start_pos.line, start_pos.col, end_pos.line, end_pos.col);
+
+    // For now, only support single-line slurs
+    if start_pos.line != end_pos.line {
+        return Err(JsValue::from_str("Multi-line slurs not yet supported"));
+    }
+
+    let line_idx = start_pos.line;
+    if line_idx >= doc.lines.len() {
+        return Err(JsValue::from_str("Invalid line index"));
+    }
+
+    let start_col = start_pos.col;
+    let end_col = end_pos.col;
+
+    // Validate range
+    let line = &mut doc.lines[line_idx];
+    if start_col >= line.cells.len() || end_col > line.cells.len() {
+        return Err(JsValue::from_str("Invalid column range"));
+    }
+
+    // Remove slur indicators from all cells in range
+    let mut modified_count = 0;
+    for i in start_col..end_col {
+        if line.cells[i].has_slur() {
+            line.cells[i].clear_slur();
+            modified_count += 1;
+        }
+    }
+
+    wasm_info!("  Removed slur indicators from {} cells", modified_count);
+
+    // Return EditResult with dirty line
+    let result = EditResult {
+        dirty_lines: vec![
+            DirtyLine {
+                row: line_idx,
+                cells: doc.lines[line_idx].cells.clone(),
+            }
+        ],
+        new_cursor_row: doc.state.cursor.line,
+        new_cursor_col: doc.state.cursor.col,
     };
 
     serde_wasm_bindgen::to_value(&result)
@@ -2570,7 +3293,48 @@ pub fn select_beat_at_position(pos_js: JsValue) -> Result<JsValue, JsValue> {
         }
     }
 
-    // No beat found - fall back to character group selection (cell + continuations)
+    // No beat found - check if this is a text token
+    let clicked_cell_idx = clamped_pos.col.min(cells.len() - 1);
+    let clicked_cell = &cells[clicked_cell_idx];
+
+    if clicked_cell.kind == ElementKind::Text {
+        // Text token selection: select all consecutive Text cells
+        // Scan backward to find the start of the text token
+        let mut start_col = clicked_cell_idx;
+        for i in (0..clicked_cell_idx).rev() {
+            if cells[i].kind == ElementKind::Text {
+                start_col = i;
+            } else {
+                break; // Stop at first non-text cell
+            }
+        }
+
+        // Scan forward to find the end of the text token
+        let mut end_col = start_col;
+        for i in (start_col + 1)..cells.len() {
+            if cells[i].kind == ElementKind::Text && cells[i].continuation {
+                end_col = i;
+            } else {
+                break; // Stop at first non-continuation or non-text cell
+            }
+        }
+
+        // Create selection for text token
+        let anchor = Pos::new(clamped_pos.line, start_col);
+        let head = Pos::new(clamped_pos.line, end_col + 1); // end is exclusive in Selection
+
+        // Update document state
+        doc.state.cursor = head;
+        doc.state.selection_manager.set_selection(anchor, head);
+        doc.state.selection_manager.desired_col = head.col;
+
+        // Return EditorDiff with updated state
+        let diff = create_editor_diff(&doc, Some(clamped_pos.line));
+        return serde_wasm_bindgen::to_value(&diff)
+            .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)));
+    }
+
+    // No beat or text token - fall back to character group selection (cell + continuations)
     // Find the start of the character group (first cell with continuation=false)
     let mut start_col = clamped_pos.col;
     for i in (0..=clamped_pos.col).rev() {
@@ -3087,5 +3851,173 @@ mod tests {
         let selection_info: SelectionInfo = serde_wasm_bindgen::from_value(result).unwrap();
         assert_eq!(selection_info.start.col, 2);
         assert_eq!(selection_info.end.col, 3, "Should select just r");
+    }
+
+    #[test]
+    fn test_double_click_selects_barline_character_group() {
+        // Test that double-clicking on multi-char barline ":|" selects entire barline
+        // This tests the character group fallback (not beat, not text token)
+        // Create document: "S--r :|  g-m-"
+        let mut doc = Document::new();
+        let mut line = Line::new();
+
+        // Beat 1: "S--r" (cols 0-3)
+        line.cells.push(Cell::new("S".to_string(), ElementKind::PitchedElement, 0));
+        line.cells.push(Cell::new("-".to_string(), ElementKind::UnpitchedElement, 1));
+        line.cells.push(Cell::new("-".to_string(), ElementKind::UnpitchedElement, 2));
+        line.cells.push(Cell::new("r".to_string(), ElementKind::PitchedElement, 3));
+
+        // Whitespace (col 4)
+        line.cells.push(Cell::new(" ".to_string(), ElementKind::Whitespace, 4));
+
+        // Multi-char barline: ":|" (cols 5-6)
+        // First cell is ":" (Symbol), but gets forced to RepeatRightBarline by mark_continuations
+        let mut cell_colon = Cell::new(":".to_string(), ElementKind::RepeatRightBarline, 5);
+        cell_colon.continuation = false; // Root of character group
+        line.cells.push(cell_colon);
+
+        let mut cell_pipe = Cell::new("|".to_string(), ElementKind::RepeatRightBarline, 6);
+        cell_pipe.continuation = true; // Continuation
+        line.cells.push(cell_pipe);
+
+        // Whitespace (cols 7-8)
+        line.cells.push(Cell::new(" ".to_string(), ElementKind::Whitespace, 7));
+        line.cells.push(Cell::new(" ".to_string(), ElementKind::Whitespace, 8));
+
+        // Beat 2: "g-m-" (cols 9-12)
+        line.cells.push(Cell::new("g".to_string(), ElementKind::PitchedElement, 9));
+        line.cells.push(Cell::new("-".to_string(), ElementKind::UnpitchedElement, 10));
+        line.cells.push(Cell::new("m".to_string(), ElementKind::PitchedElement, 11));
+        line.cells.push(Cell::new("-".to_string(), ElementKind::UnpitchedElement, 12));
+
+        doc.lines.push(line);
+
+        {
+            let mut guard = DOCUMENT.lock().unwrap();
+            *guard = Some(doc);
+        }
+
+        // Test clicking on first char of barline (col 5, ":")
+        let pos = Pos::new(0, 5);
+        let pos_js = serde_wasm_bindgen::to_value(&pos).unwrap();
+        let result = select_beat_at_position(pos_js).unwrap();
+        let selection_info: SelectionInfo = serde_wasm_bindgen::from_value(result).unwrap();
+        assert_eq!(selection_info.start.col, 5, "Should start at ':'");
+        assert_eq!(selection_info.end.col, 7, "Should select entire ':|' barline (exclusive end)");
+
+        // Test clicking on second char of barline (col 6, "|")
+        let pos = Pos::new(0, 6);
+        let pos_js = serde_wasm_bindgen::to_value(&pos).unwrap();
+        let result = select_beat_at_position(pos_js).unwrap();
+        let selection_info: SelectionInfo = serde_wasm_bindgen::from_value(result).unwrap();
+        assert_eq!(selection_info.start.col, 5, "Should start at ':'");
+        assert_eq!(selection_info.end.col, 7, "Should select entire ':|' barline (exclusive end)");
+    }
+
+    #[test]
+    fn test_double_click_selects_text_token() {
+        // Test that double-clicking on text like "zxz" selects the entire text token
+        // Create document: "S--r  zxz  g-m-"
+        // Beats at cols 0-3 and 11-14, Text token at cols 6-8
+        let mut doc = Document::new();
+        let mut line = Line::new();
+
+        // Beat 1: "S--r" (cols 0-3)
+        line.cells.push(Cell::new("S".to_string(), ElementKind::PitchedElement, 0));
+        line.cells.push(Cell::new("-".to_string(), ElementKind::UnpitchedElement, 1));
+        line.cells.push(Cell::new("-".to_string(), ElementKind::UnpitchedElement, 2));
+        line.cells.push(Cell::new("r".to_string(), ElementKind::PitchedElement, 3));
+
+        // Whitespace (cols 4-5)
+        line.cells.push(Cell::new(" ".to_string(), ElementKind::Whitespace, 4));
+        line.cells.push(Cell::new(" ".to_string(), ElementKind::Whitespace, 5));
+
+        // Text token: "zxz" (cols 6-8)
+        let mut cell_z1 = Cell::new("z".to_string(), ElementKind::Text, 6);
+        cell_z1.continuation = false; // Root of text token
+        line.cells.push(cell_z1);
+
+        let mut cell_x = Cell::new("x".to_string(), ElementKind::Text, 7);
+        cell_x.continuation = true; // Continuation
+        line.cells.push(cell_x);
+
+        let mut cell_z2 = Cell::new("z".to_string(), ElementKind::Text, 8);
+        cell_z2.continuation = true; // Continuation
+        line.cells.push(cell_z2);
+
+        // Whitespace (cols 9-10)
+        line.cells.push(Cell::new(" ".to_string(), ElementKind::Whitespace, 9));
+        line.cells.push(Cell::new(" ".to_string(), ElementKind::Whitespace, 10));
+
+        // Beat 2: "g-m-" (cols 11-14)
+        line.cells.push(Cell::new("g".to_string(), ElementKind::PitchedElement, 11));
+        line.cells.push(Cell::new("-".to_string(), ElementKind::UnpitchedElement, 12));
+        line.cells.push(Cell::new("m".to_string(), ElementKind::PitchedElement, 13));
+        line.cells.push(Cell::new("-".to_string(), ElementKind::UnpitchedElement, 14));
+
+        doc.lines.push(line);
+
+        {
+            let mut guard = DOCUMENT.lock().unwrap();
+            *guard = Some(doc);
+        }
+
+        // Test clicking on first char of text token (col 6)
+        let pos = Pos::new(0, 6);
+        let pos_js = serde_wasm_bindgen::to_value(&pos).unwrap();
+        let result = select_beat_at_position(pos_js).unwrap();
+        let selection_info: SelectionInfo = serde_wasm_bindgen::from_value(result).unwrap();
+        assert_eq!(selection_info.start.col, 6, "Should start at 'z'");
+        assert_eq!(selection_info.end.col, 9, "Should select entire 'zxz' token (exclusive end)");
+
+        // Test clicking on middle char of text token (col 7)
+        let pos = Pos::new(0, 7);
+        let pos_js = serde_wasm_bindgen::to_value(&pos).unwrap();
+        let result = select_beat_at_position(pos_js).unwrap();
+        let selection_info: SelectionInfo = serde_wasm_bindgen::from_value(result).unwrap();
+        assert_eq!(selection_info.start.col, 6, "Should start at 'z'");
+        assert_eq!(selection_info.end.col, 9, "Should select entire 'zxz' token (exclusive end)");
+
+        // Test clicking on last char of text token (col 8)
+        let pos = Pos::new(0, 8);
+        let pos_js = serde_wasm_bindgen::to_value(&pos).unwrap();
+        let result = select_beat_at_position(pos_js).unwrap();
+        let selection_info: SelectionInfo = serde_wasm_bindgen::from_value(result).unwrap();
+        assert_eq!(selection_info.start.col, 6, "Should start at 'z'");
+        assert_eq!(selection_info.end.col, 9, "Should select entire 'zxz' token (exclusive end)");
+    }
+
+    #[test]
+    fn test_edit_replace_range_deletes_multichar_token() {
+        // Test scenario: Type ":|", select both chars (Shift+Left ×2), backspace
+        // Expected: All cells deleted, line is empty
+        // This tests that selection deletion properly handles multi-char tokens
+        let mut doc = Document::new();
+        let mut line = Line::new();
+
+        // Multi-char barline ":|" (cols 0-1)
+        let mut cell_colon = Cell::new(":".to_string(), ElementKind::RepeatRightBarline, 0);
+        cell_colon.continuation = false; // Root of character group
+        line.cells.push(cell_colon);
+
+        let mut cell_pipe = Cell::new("|".to_string(), ElementKind::RepeatRightBarline, 1);
+        cell_pipe.continuation = true; // Continuation
+        line.cells.push(cell_pipe);
+
+        doc.lines.push(line);
+
+        {
+            let mut guard = DOCUMENT.lock().unwrap();
+            *guard = Some(doc);
+        }
+
+        // Delete selection (0,0)-(0,2) with empty replacement (backspace on selection)
+        let result = edit_replace_range(0, 0, 0, 2, "");
+        assert!(result.is_ok(), "edit_replace_range should succeed");
+
+        // Check that line is now empty
+        let doc_guard = DOCUMENT.lock().unwrap();
+        let doc = doc_guard.as_ref().unwrap();
+        assert_eq!(doc.lines[0].cells.len(), 0, "Should delete entire ':|' token, leaving 0 cells");
     }
 }

@@ -60,6 +60,11 @@ export class WASMBridge {
     // Core edit primitive
     this.editReplaceRange = wasm.editReplaceRange;
 
+    // NEW WASM-First Text Editing Operations (Phase 1 migration)
+    this.insertText = wasm.insertText;
+    this.deleteAtCursor = wasm.deleteAtCursor;
+    this.insertNewline = wasm.insertNewline;
+
     // Copy/Paste API
     this.copyCells = wasm.copyCells;
     this.pasteCells = wasm.pasteCells;

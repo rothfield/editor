@@ -364,7 +364,8 @@ pub fn delete_character(
     Ok(result)
 }
 
-/// Apply octave to cells in a selection range
+/// Apply octave to cells in a selection range (LEGACY - Phase 0 API)
+/// DEPRECATED: Use the new applyOctave() which uses internal DOCUMENT
 ///
 /// # Parameters
 /// - `cells_js`: JavaScript array of Cell objects
@@ -374,14 +375,15 @@ pub fn delete_character(
 ///
 /// # Returns
 /// Updated JavaScript array of Cell objects with octave applied
-#[wasm_bindgen(js_name = applyOctave)]
-pub fn apply_octave(
+#[wasm_bindgen(js_name = applyOctaveLegacy)]
+pub fn apply_octave_legacy(
     cells_js: JsValue,
     start: usize,
     end: usize,
     octave: i8,
 ) -> Result<js_sys::Array, JsValue> {
-    wasm_info!("applyOctave called: start={}, end={}, octave={}", start, end, octave);
+    wasm_warn!("⚠️  applyOctaveLegacy called - DEPRECATED, use applyOctave() instead");
+    wasm_info!("applyOctaveLegacy called: start={}, end={}, octave={}", start, end, octave);
 
     // Deserialize cells from JavaScript
     let mut cells: Vec<Cell> = serde_wasm_bindgen::from_value(cells_js)
@@ -422,7 +424,7 @@ pub fn apply_octave(
         result.push(&cell_js);
     }
 
-    wasm_info!("applyOctave completed successfully");
+    wasm_info!("applyOctaveLegacy completed successfully");
     Ok(result)
 }
 

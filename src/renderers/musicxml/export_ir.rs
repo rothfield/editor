@@ -329,6 +329,7 @@ mod tests {
             Some("4/4".to_string()),
             "treble".to_string(),
             String::new(),
+            String::new(),
         );
         assert_eq!(line.key_signature, Some("G major".to_string()));
         assert_eq!(line.clef, "treble");

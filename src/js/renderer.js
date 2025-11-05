@@ -26,6 +26,11 @@ class DOMRenderer {
     this.theDocument = null;
     this.renderCache = new Map();
 
+    // Measurement caching
+    this.cachedCellWidths = [];
+    this.cachedCharWidths = [];
+    this.lastDocumentCellCount = 0;
+
     // Configuration options
     this.options = {
       skipBeatLoops: options.skipBeatLoops || false,
@@ -187,9 +192,13 @@ class DOMRenderer {
 
   /**
    * Render entire document using Rust layout engine + thin JS DOM layer
+   * @param {Object} doc - The document to render
+   * @param {number[]} dirtyLineIndices - Optional array of line indices to render (incremental update)
    */
-  renderDocument(doc) {
+  renderDocument(doc, dirtyLineIndices = null) {
     const startTime = performance.now();
+
+    console.warn(`🚀 renderDocument called with ${doc.lines?.length || 0} lines, dirty: ${dirtyLineIndices}`);
 
     this.theDocument = doc;
 
@@ -199,12 +208,15 @@ class DOMRenderer {
     const savedScrollLeft = scrollContainer?.scrollLeft ?? 0;
     const savedScrollTop = scrollContainer?.scrollTop ?? 0;
 
-    // Clear previous content
-    this.clearElement();
+    // Only clear if doing full render (no dirty lines specified)
+    if (dirtyLineIndices === null) {
+      // Clear previous content
+      this.clearElement();
 
-    if (!doc.lines || doc.lines.length === 0) {
-      this.showEmptyState();
-      return;
+      if (!doc.lines || doc.lines.length === 0) {
+        this.showEmptyState();
+        return;
+      }
     }
 
     // STEP 1: Measure all widths (JS-only, native DOM)
@@ -215,6 +227,7 @@ class DOMRenderer {
     this.characterWidthData = this.measureCharacterWidths(doc);
 
     const measureTime = performance.now() - measureStart;
+    console.log(`⏱️ Measurement time: ${measureTime.toFixed(2)}ms`);
 
     // Flatten character widths for Rust
     const flattenedCharWidths = [];
@@ -241,6 +254,7 @@ class DOMRenderer {
 
     const displayList = this.editor.wasmModule.computeLayout(doc, config);
     const layoutTime = performance.now() - layoutStart;
+    console.log(`⏱️ Layout time: ${layoutTime.toFixed(2)}ms`);
 
     // Cache DisplayList for cursor positioning
     this.displayList = displayList;
@@ -248,8 +262,9 @@ class DOMRenderer {
 
     // STEP 3: Render from DisplayList (fast native JS DOM)
     const renderStart = performance.now();
-    this.renderFromDisplayList(displayList, savedScrollLeft, savedScrollTop);
+    this.renderFromDisplayList(displayList, savedScrollLeft, savedScrollTop, dirtyLineIndices);
     const renderTime = performance.now() - renderStart;
+    console.log(`⏱️ DOM render time: ${renderTime.toFixed(2)}ms`);
 
     // Ornaments are now rendered from DisplayList in renderFromDisplayList()
 
@@ -261,6 +276,7 @@ class DOMRenderer {
   /**
    * Measure all cell widths and syllable widths for the document
    * This is done in JavaScript using temporary DOM elements
+   * Uses caching to avoid re-measuring unchanged cells
    *
    * @param {Object} doc - The document to measure
    * @returns {Object} {cellWidths: number[], syllableWidths: number[]}
@@ -269,27 +285,58 @@ class DOMRenderer {
     const cellWidths = [];
     const syllableWidths = [];
 
+    // Calculate total cell count
+    let totalCells = 0;
+    for (const line of doc.lines) {
+      totalCells += line.cells.length;
+    }
+
+    // Check if we can reuse cached measurements
+    const canUseCache = (
+      this.cachedCellWidths.length === totalCells &&
+      this.lastDocumentCellCount === totalCells
+    );
+
+    if (canUseCache) {
+      console.log(`✨ Using cached cell widths (${totalCells} cells)`);
+      return {
+        cellWidths: [...this.cachedCellWidths], // Return copy
+        syllableWidths: [] // Syllables are rarely used, skip for now
+      };
+    }
+
+    console.log(`📏 Measuring ${totalCells} cells (cache miss)`);
+
     // Create temporary invisible container for measurements
     const temp = document.createElement('div');
     temp.style.cssText = 'position:absolute; left:-9999px; visibility:hidden; pointer-events:none;';
     document.body.appendChild(temp);
 
+    // OPTIMIZATION: Batch DOM operations to avoid forced layouts
+    // First pass: Create all spans and add to DOM
+    const spans = [];
     for (const line of doc.lines) {
-      // Measure each cell
       for (const cell of line.cells) {
-        // Continuation cells that are NOT text should use minimal width (for accidentals)
-        // Text continuation cells should use actual measured width (each char is separate)
         if (cell.continuation && cell.kind.name !== 'text') {
-          // Use 1/10th of font width for non-text continuation cells (accidentals, etc)
+          // Continuation cells: use computed width, no need to measure
           cellWidths.push(BASE_FONT_SIZE * 0.1);
+          spans.push(null); // Placeholder
         } else {
           const span = document.createElement('span');
           span.className = 'char-cell';
           span.textContent = cell.char === ' ' ? '\u00A0' : cell.char;
           temp.appendChild(span);
-          cellWidths.push(span.getBoundingClientRect().width);
-          temp.removeChild(span);
+          spans.push(span);
+          cellWidths.push(0); // Placeholder, will measure next
         }
+      }
+    }
+
+    // Second pass: Measure all at once (single layout pass)
+    let widthIndex = 0;
+    for (let i = 0; i < spans.length; i++) {
+      if (spans[i] !== null) {
+        cellWidths[i] = spans[i].getBoundingClientRect().width;
       }
     }
 
@@ -328,6 +375,10 @@ class DOMRenderer {
     }
 
     document.body.removeChild(temp);
+
+    // Cache the measurements
+    this.cachedCellWidths = [...cellWidths];
+    this.lastDocumentCellCount = totalCells;
 
     return { cellWidths, syllableWidths };
   }
@@ -411,40 +462,62 @@ class DOMRenderer {
     temp.style.cssText = 'position:absolute; left:-9999px; visibility:hidden; pointer-events:none;';
     document.body.appendChild(temp);
 
+    // OPTIMIZATION: Batch all spans first, then measure
+    const allSpans = [];
+    const cellMetadata = [];
+
     let cellIndex = 0;
     for (const line of doc.lines) {
       for (const cell of line.cells) {
         const charWidths = [];
+        const spans = [];
 
         // Measure each character in the cell's glyph
-        // For text continuations, measure actual widths (each char is separate)
-        // For non-text continuations (accidentals), use minimal width
         if (cell.continuation && cell.kind.name !== 'text') {
           // Continuation cells with minimal width (for accidentals like #, b)
           for (const char of cell.char) {
             charWidths.push(BASE_FONT_SIZE * 0.1);
+            spans.push(null);
           }
         } else {
-          // Normal cells or text continuations: measure actual character widths
+          // Normal cells: create spans for measurement
           for (const char of cell.char) {
             const span = document.createElement('span');
             span.className = 'char-cell';
             span.textContent = char === ' ' ? '\u00A0' : char;
             temp.appendChild(span);
-            charWidths.push(span.getBoundingClientRect().width);
-            temp.removeChild(span);
+            spans.push(span);
+            charWidths.push(0); // Placeholder
           }
         }
 
-        characterData.push({
+        cellMetadata.push({
           cellIndex,
           cellCol: cell.col,
           glyph: cell.char,
-          charWidths
+          charWidths,
+          spans
         });
 
         cellIndex++;
       }
+    }
+
+    // Measure all spans at once (single layout pass)
+    for (const meta of cellMetadata) {
+      for (let i = 0; i < meta.spans.length; i++) {
+        if (meta.spans[i] !== null) {
+          meta.charWidths[i] = meta.spans[i].getBoundingClientRect().width;
+        }
+      }
+
+      // Add to final result (without spans)
+      characterData.push({
+        cellIndex: meta.cellIndex,
+        cellCol: meta.cellCol,
+        glyph: meta.glyph,
+        charWidths: meta.charWidths
+      });
     }
 
     document.body.removeChild(temp);
@@ -457,8 +530,11 @@ class DOMRenderer {
    * Pure DOM rendering with no layout calculations
    *
    * @param {Object} displayList - DisplayList from Rust computeLayout
+   * @param {number} savedScrollLeft - Saved scroll left position
+   * @param {number} savedScrollTop - Saved scroll top position
+   * @param {number[]} dirtyLineIndices - Optional array of line indices to render (incremental)
    */
-  renderFromDisplayList(displayList, savedScrollLeft = 0, savedScrollTop = 0) {
+  renderFromDisplayList(displayList, savedScrollLeft = 0, savedScrollTop = 0, dirtyLineIndices = null) {
     // Find the actual scroll container - explicitly get #editor-container
     const scrollContainer = document.getElementById('editor-container');
 
@@ -467,7 +543,38 @@ class DOMRenderer {
     }
 
     console.log(`[Renderer] Using saved scroll position: left=${savedScrollLeft}, top=${savedScrollTop}`);
+    console.log(`[Renderer] Incremental render:`, dirtyLineIndices);
 
+    // INCREMENTAL RENDERING: Only update dirty lines
+    if (dirtyLineIndices !== null && dirtyLineIndices.length > 0) {
+      // Incremental update - replace only dirty lines
+      dirtyLineIndices.forEach(lineIndex => {
+        if (lineIndex >= displayList.lines.length) {
+          console.warn(`[Renderer] Line index ${lineIndex} out of bounds`);
+          return;
+        }
+
+        const renderLine = displayList.lines[lineIndex];
+        const newLineElement = this.renderLineFromDisplayList(renderLine, displayList);
+
+        // Find and replace existing line element
+        const existingLineElement = this.element.querySelector(`.notation-line[data-line="${lineIndex}"]`);
+        if (existingLineElement) {
+          existingLineElement.replaceWith(newLineElement);
+        } else {
+          // Line doesn't exist yet (new line created), append it
+          this.element.appendChild(newLineElement);
+        }
+      });
+
+      // Update arcs (slurs and beat loops) - full re-render for now
+      this.arcRenderer.render(displayList);
+      this.renderStats.slursRendered = this.arcRenderer.slurPaths.size;
+
+      return; // Skip full render
+    }
+
+    // FULL RENDERING: Destroy and rebuild everything
     // Clear previous render to avoid duplicate event handlers
     // IMPORTANT: Preserve the arc overlay SVG when clearing
     const arcOverlaySvg = this.arcRenderer?.svgOverlay;
