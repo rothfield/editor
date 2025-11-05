@@ -1457,6 +1457,13 @@ pub fn insert_text(text: &str) -> Result<JsValue, JsValue> {
 
     wasm_info!("  Cursor at ({}, {})", cursor_line, cursor_col);
 
+    // Clear any existing selection when typing
+    // TODO: In the future, replace selected text instead of just clearing
+    if doc.state.selection_manager.current_selection.is_some() {
+        wasm_info!("  Clearing existing selection");
+        doc.state.selection_manager.clear_selection();
+    }
+
     // Validate cursor position
     if cursor_line >= doc.lines.len() {
         return Err(JsValue::from_str(&format!(
@@ -2994,7 +3001,8 @@ pub fn move_left(extend: bool) -> Result<JsValue, JsValue> {
     } else if doc.state.selection_manager.current_selection.is_none() {
         web_sys::console::log_1(&format!("[WASM]   Starting selection at ({},{})",
             old_cursor.line, old_cursor.col).into());
-        doc.state.selection_manager.start_selection(doc.state.cursor);
+        // Start selection at OLD cursor position (anchor), not current cursor
+        doc.state.selection_manager.start_selection(old_cursor);
     }
 
     doc.state.cursor = new_pos;
@@ -3038,7 +3046,8 @@ pub fn move_right(extend: bool) -> Result<JsValue, JsValue> {
     } else if doc.state.selection_manager.current_selection.is_none() {
         web_sys::console::log_1(&format!("[WASM]   Starting selection at ({},{})",
             old_cursor.line, old_cursor.col).into());
-        doc.state.selection_manager.start_selection(doc.state.cursor);
+        // Start selection at OLD cursor position (anchor), not current cursor
+        doc.state.selection_manager.start_selection(old_cursor);
     }
 
     doc.state.cursor = new_pos;

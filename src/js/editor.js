@@ -497,7 +497,7 @@ class MusicNotationEditor {
       // Check if any cell in range has an ornament indicator - if so, prevent deletion
       // TODO: Move this business rule to WASM (per WASM-first principle)
       const cells = line.cells;
-      for (let i = start; i < end && i < cells.length; i++) {
+      for (let i = start.col; i < end.col && i < cells.length; i++) {
         if (cells[i] && cells[i].ornament_indicator && cells[i].ornament_indicator.name !== 'none') {
           console.log('[DELETE] Protected: cannot delete ornament cell at index', i);
           this.showWarning('Cannot delete cells with ornaments - ornaments are non-editable');
@@ -507,13 +507,20 @@ class MusicNotationEditor {
 
       // Use WASM editReplaceRange for deletion (delete = replace with empty string)
       this.wasmModule.loadDocument(this.theDocument);
+      console.log('[deleteRange] Calling editReplaceRange with:', {
+        start_row: start.line,
+        start_col: start.col,
+        end_row: end.line,
+        end_col: end.col
+      });
       const result = this.wasmModule.editReplaceRange(
-        currentLineIndex,  // start_row
-        start,             // start_col
-        currentLineIndex,  // end_row (same row for single-line delete)
-        end,               // end_col
-        ""                 // empty text = deletion
+        start.line,   // start_row - extract from Pos object
+        start.col,    // start_col - extract from Pos object
+        end.line,     // end_row - extract from Pos object
+        end.col,      // end_col - extract from Pos object
+        ""            // empty text = deletion
       );
+      console.log('[deleteRange] WASM result:', result);
 
       // Update document from WASM result
       if (result && result.dirty_lines) {
@@ -529,7 +536,8 @@ class MusicNotationEditor {
       if (result && typeof result.new_cursor_col !== 'undefined') {
         this.setCursorPosition(result.new_cursor_col);
       } else {
-        this.setCursorPosition(start);
+        // Fallback: set cursor to start column (start is a Pos object with {line, col})
+        this.setCursorPosition(start.col);
       }
 
       await this.renderAndUpdate();
@@ -1135,9 +1143,9 @@ class MusicNotationEditor {
     try {
       // Delete selected range
       await this.deleteRange(selection.start, selection.end);
+      // Note: deleteRange already sets cursor position, no need to set again
 
-      // Insert new text at selection start position
-      this.setCursorPosition(selection.start);
+      // Insert new text at cursor (which is already at selection.start after deletion)
       await this.insertText(newText);
 
       // Clear selection
@@ -1152,17 +1160,24 @@ class MusicNotationEditor {
      * Delete selected content
      */
   async deleteSelection() {
+    logger.info(LOG_CATEGORIES.EDITOR, 'deleteSelection called');
     const selection = this.getSelection();
+    logger.info(LOG_CATEGORIES.EDITOR, 'deleteSelection got selection', selection);
     if (!selection) {
+      logger.warn(LOG_CATEGORIES.EDITOR, 'deleteSelection: No selection, returning early');
       return;
     }
 
     try {
+      logger.info(LOG_CATEGORIES.EDITOR, 'deleteSelection calling deleteRange', {
+        start: selection.start,
+        end: selection.end
+      });
       await this.deleteRange(selection.start, selection.end);
-      this.setCursorPosition(selection.start);
+      // Note: deleteRange already sets cursor position from WASM result, no need to set again
       this.clearSelection();
     } catch (error) {
-      console.error('Failed to delete selection:', error);
+      logger.error(LOG_CATEGORIES.EDITOR, 'Failed to delete selection', error);
       this.showError('Failed to delete selection');
     }
   }
@@ -1174,6 +1189,7 @@ class MusicNotationEditor {
   async handleBackspace() {
     logger.time('handleBackspace', LOG_CATEGORIES.EDITOR);
 
+    console.log('[handleBackspace] Called, hasSelection:', this.hasSelection());
     logger.info(LOG_CATEGORIES.EDITOR, 'Backspace pressed', {
       hasSelection: this.hasSelection()
     });
@@ -1186,6 +1202,7 @@ class MusicNotationEditor {
       logger.timeEnd('handleBackspace', LOG_CATEGORIES.EDITOR);
       return;
     }
+    console.log('[handleBackspace] No selection, using deleteAtCursor');
 
     // WASM-first approach: Use deleteAtCursor which operates on internal DOCUMENT
     try {
@@ -3319,47 +3336,8 @@ class MusicNotationEditor {
     });
   }
 
-  /**
-   * Delete the current selection
-   */
-  deleteSelection() {
-    if (!this.theDocument || !this.wasmModule) return;
-
-    try {
-      // CRITICAL: Ensure WASM document is in sync before deleting
-      try {
-        this.wasmModule.loadDocument(this.theDocument);
-      } catch (e) {
-        console.warn('Failed to sync document with WASM before delete:', e);
-      }
-
-      const selection = this.theDocument.state?.selection;
-      if (!selection || !selection.active) return;
-
-      // Selection has start/end as {line, col} objects
-      const startRow = selection.start.line;
-      const startCol = selection.start.col;
-      const endRow = selection.end.line;
-      const endCol = selection.end.col;
-
-      const result = this.wasmModule.editReplaceRange(
-        startRow,
-        startCol,
-        endRow,
-        endCol,
-        ''
-      );
-
-      if (result && result.dirty_lines) {
-        this.updateDocumentFromDirtyLines(result.dirty_lines);
-        this.setCursorPosition(startRow, startCol);
-        this.clearSelection();
-        this.render();
-      }
-    } catch (error) {
-      console.error('Delete selection failed:', error);
-    }
-  }
+  // NOTE: deleteSelection() method is defined earlier in this class (line ~1161)
+  // The WASM-first version queries selection from WASM, not from JS document state
 }
 
 export default MusicNotationEditor;
