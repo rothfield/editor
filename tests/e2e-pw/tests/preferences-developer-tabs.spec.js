@@ -126,7 +126,7 @@ test.describe('Preferences: Developer Tabs Visibility', () => {
     });
 
     // Wait for preferences modal to appear
-    await expect(page.locator('text=Preferences')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Preferences' })).toBeVisible();
 
     // Uncheck "Show Developer Tabs"
     const showDevTabsCheckbox = page.locator('#showDeveloperTabs');
@@ -137,7 +137,7 @@ test.describe('Preferences: Developer Tabs Visibility', () => {
     await page.locator('button:has-text("Save")').click();
 
     // Wait for modal to close
-    await expect(page.locator('text=Preferences')).toBeHidden();
+    await expect(page.getByRole('heading', { name: 'Preferences' })).toBeHidden();
 
     // Developer tabs should now be HIDDEN
     await expect(page.locator('#tab-musicxml')).toBeHidden();

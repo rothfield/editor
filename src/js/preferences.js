@@ -110,7 +110,7 @@ class PreferencesUI {
     const devTabsGroup = this.createCheckboxGroup(
       'showDeveloperTabs',
       'Show Developer Tabs',
-      'Display source tabs like MusicXML, LilyPond, Display List, Persistent Model, and IR',
+      'Display developer tabs: MusicXML, Display List, Persistent Model, IR, and HTML',
       this.preferences.showDeveloperTabs
     );
     body.appendChild(devTabsGroup);
@@ -296,14 +296,13 @@ class PreferencesUI {
    */
   applyPreferences() {
     // Hide/show developer source tabs
+    // NOTE: tab-lilypond-src and tab-lilypond-png are user-facing and remain visible
     const developerTabIds = [
-      'tab-musicxml',
-      'tab-lilypond-src',
-      'tab-lilypond-png',
-      'tab-displaylist',
-      'tab-persistent',
-      'tab-ir',
-      'tab-html'
+      'tab-musicxml',      // Developer-only: internal XML format
+      'tab-displaylist',   // Developer-only: WASM render commands
+      'tab-persistent',    // Developer-only: internal document model
+      'tab-ir',            // Developer-only: IR structures
+      'tab-html'           // Developer-only: DOM debugging
     ];
 
     developerTabIds.forEach(tabId => {
