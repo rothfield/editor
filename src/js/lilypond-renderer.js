@@ -87,28 +87,49 @@ class LilyPondRenderer {
         throw new Error(errorData.error || `HTTP ${response.status}`);
       }
 
-      // lilypond-service returns binary data with appropriate Content-Type
-      // We need to handle this differently than a JSON response
+      // lilypond-service returns either JSON (multi-page SVG) or binary data
       const contentType = response.headers.get('content-type');
 
       if (contentType && contentType.includes('application/json')) {
-        // Error response
+        // Multi-page SVG response or error
         const data = await response.json();
-        throw new Error(data.error || 'Unknown rendering error');
-      }
 
-      // Binary response (SVG or PDF) - convert to base64
-      const arrayBuffer = await response.arrayBuffer();
-      const base64Data = this._arrayBufferToBase64(arrayBuffer);
+        if (data.error) {
+          throw new Error(data.error || 'Unknown rendering error');
+        }
 
-      console.log(`[LilyPond] Rendered successfully (${format.toUpperCase()})`);
-      if (onSuccess) {
-        const fieldName = format === 'pdf' ? 'pdf_base64' : 'svg_base64';
-        onSuccess({
-          [fieldName]: base64Data,
-          format: format,
-          success: true
-        });
+        if (data.multiPage && data.pages) {
+          // Multi-page SVG response
+          console.log(`[LilyPond] Rendered ${data.pageCount} page(s) successfully`);
+          if (onSuccess) {
+            onSuccess({
+              pages: data.pages, // Array of base64-encoded SVG strings
+              pageCount: data.pageCount,
+              multiPage: true,
+              format: format,
+              success: true
+            });
+          }
+        } else {
+          throw new Error('Invalid response format');
+        }
+      } else {
+        // Binary response (single SVG or PDF) - convert to base64
+        const arrayBuffer = await response.arrayBuffer();
+        const base64Data = this._arrayBufferToBase64(arrayBuffer);
+
+        console.log(`[LilyPond] Rendered successfully (${format.toUpperCase()})`);
+        if (onSuccess) {
+          const fieldName = format === 'pdf' ? 'pdf_base64' : 'svg_base64';
+          onSuccess({
+            [fieldName]: base64Data,
+            pages: [base64Data], // Backwards compatibility
+            pageCount: 1,
+            multiPage: false,
+            format: format,
+            success: true
+          });
+        }
       }
     } catch (error) {
       console.error('[LilyPond] Render failed:', error);

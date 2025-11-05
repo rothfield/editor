@@ -6,9 +6,10 @@
  */
 
 class UI {
-  constructor(editor, fileOperations = null) {
+  constructor(editor, fileOperations = null, preferencesUI = null) {
     this.editor = editor;
     this.fileOperations = fileOperations;
+    this.preferencesUI = preferencesUI;
     this.activeMenu = null;
     this.activeTab = 'staff-notation';
     this.menuListeners = new Map();
@@ -102,7 +103,9 @@ class UI {
       { id: 'menu-set-composer', label: 'Set Composer...', action: 'set-composer' },
       { id: 'menu-set-tonic', label: 'Set Tonic...', action: 'set-tonic' },
       { id: 'menu-set-pitch-system', label: 'Set Pitch System...', action: 'set-pitch-system' },
-      { id: 'menu-set-key-signature', label: 'Set Key Signature...', action: 'set-key-signature' }
+      { id: 'menu-set-key-signature', label: 'Set Key Signature...', action: 'set-key-signature' },
+      { id: 'menu-separator-3', label: null, separator: true },
+      { id: 'menu-preferences', label: 'Preferences...', action: 'preferences' }
     ];
 
     const fileMenu = document.getElementById('file-menu');
@@ -130,10 +133,19 @@ class UI {
      */
   setupEditMenu() {
     const menuItems = [
-      { id: 'menu-ornament', label: 'Ornament...', action: 'ornament' },
-      { id: 'menu-apply-slur', label: 'Apply Slur (Alt+S)', action: 'apply-slur' },
-      { id: 'menu-edit-ornaments', label: 'Edit Ornaments (Alt+Shift+O)', action: 'edit-ornaments', checkable: true },
+      { id: 'menu-undo', label: 'Undo (Ctrl+Z)', action: 'undo', testid: 'menu-undo' },
+      { id: 'menu-redo', label: 'Redo (Ctrl+Y)', action: 'redo', testid: 'menu-redo' },
+      { id: 'menu-separator-0', label: null, separator: true },
+      { id: 'menu-copy', label: 'Copy (Ctrl+C)', action: 'copy', testid: 'menu-copy' },
+      { id: 'menu-cut', label: 'Cut (Ctrl+X)', action: 'cut', testid: 'menu-cut' },
+      { id: 'menu-paste', label: 'Paste (Ctrl+V)', action: 'paste', testid: 'menu-paste' },
       { id: 'menu-separator-1', label: null, separator: true },
+      { id: 'menu-apply-ornament', label: 'Ornament (Alt+0)', action: 'apply-ornament-after', testid: 'menu-apply-ornament' },
+      { id: 'menu-apply-ornament-before', label: 'Ornament Before', action: 'apply-ornament-before', testid: 'menu-apply-ornament-before' },
+      { id: 'menu-apply-ornament-top', label: 'Ornament Top', action: 'apply-ornament-top', testid: 'menu-apply-ornament-top' },
+      { id: 'menu-apply-slur', label: 'Apply Slur (Alt+S)', action: 'apply-slur' },
+      { id: 'menu-edit-ornaments', label: 'Toggle Ornament Edit Mode (Alt+Shift+O)', action: 'edit-ornaments', checkable: true },
+      { id: 'menu-separator-2', label: null, separator: true },
       { id: 'menu-octave-upper', label: 'Upper Octave (Alt+U)', action: 'octave-upper' },
       { id: 'menu-octave-middle', label: 'Middle Octave (Alt+M)', action: 'octave-middle' },
       { id: 'menu-octave-lower', label: 'Lower Octave (Alt+L)', action: 'octave-lower' }
@@ -152,6 +164,14 @@ class UI {
         menuItem.id = item.id;
         menuItem.className = 'menu-item';
         menuItem.dataset.action = item.action;
+
+        // Add data-testid attributes (for E2E tests)
+        if (item.testid) {
+          menuItem.dataset.testid = item.testid;
+        }
+        if (item.id === 'menu-edit-ornaments') {
+          menuItem.dataset.testid = 'btn-toggle-ornament-edit-mode';
+        }
 
         if (item.checkable) {
           // Add checkbox indicator for checkable items
@@ -179,6 +199,8 @@ class UI {
      */
   setupLineMenu() {
     const menuItems = [
+      { id: 'menu-select-all', label: 'Select Line (triple-click)', action: 'select-all' },
+      { id: 'menu-separator-0', label: null, separator: true },
       { id: 'menu-set-label', label: 'Set Label...', action: 'set-label' },
       { id: 'menu-set-tonic', label: 'Set Tonic...', action: 'set-line-tonic' },
       { id: 'menu-set-pitch-system', label: 'Set Pitch System...', action: 'set-line-pitch-system' },
@@ -191,13 +213,19 @@ class UI {
     lineMenu.innerHTML = '';
 
     menuItems.forEach(item => {
-      const menuItem = document.createElement('div');
-      menuItem.id = item.id;
-      menuItem.className = 'menu-item';
-      menuItem.dataset.action = item.action;
-      menuItem.textContent = item.label;
-      menuItem.addEventListener('click', this.handleMenuItemClick);
-      lineMenu.appendChild(menuItem);
+      if (item.separator) {
+        const separator = document.createElement('div');
+        separator.className = 'menu-separator';
+        lineMenu.appendChild(separator);
+      } else {
+        const menuItem = document.createElement('div');
+        menuItem.id = item.id;
+        menuItem.className = 'menu-item';
+        menuItem.dataset.action = item.action;
+        menuItem.textContent = item.label;
+        menuItem.addEventListener('click', this.handleMenuItemClick);
+        lineMenu.appendChild(menuItem);
+      }
     });
   }
 
@@ -267,11 +295,19 @@ class UI {
      * Handle menu item clicks
      */
   handleMenuItemClick(event) {
+    console.log('[UI] handleMenuItemClick event received');
     const menuItem = event.target.closest('.menu-item');
-    if (!menuItem) return;
+    if (!menuItem) {
+      console.log('[UI] No menu item found in event target');
+      return;
+    }
 
     const action = menuItem.dataset.action;
-    if (!action) return;
+    console.log('[UI] Menu item action:', action);
+    if (!action) {
+      console.log('[UI] No action found on menu item');
+      return;
+    }
 
     // Prevent event from propagating and interfering with editor events
     event.preventDefault();
@@ -330,11 +366,31 @@ class UI {
 
     // Render staff notation if switching to staff notation tab
     if (tabName === 'staff-notation' && this.editor) {
+      // Clear the OSMD renderer's hash cache to force a fresh render
+      // This ensures that switching back to the tab triggers a re-render even if MusicXML hash is the same
+      if (this.editor.osmdRenderer) {
+        this.editor.osmdRenderer.lastMusicXmlHash = null;
+      }
+
+      // **CRITICAL FIX**: Refocus the editor before rendering
+      // When switching from another tab (like lilypond), the focus is on that tab
+      // If we don't refocus the editor, keyboard input will be ignored
+      this.returnFocusToEditor();
+
+      // Give the focus a moment to settle before rendering
+      await new Promise(resolve => setTimeout(resolve, 50));
+
       await this.editor.renderStaffNotation();
+    } else {
+      // Request focus return to editor for other tabs too
+      this.returnFocusToEditor();
     }
 
-    // Request focus return to editor
-    this.returnFocusToEditor();
+    // Update inspector tab content when switching tabs
+    // This ensures the newly visible tab shows the latest document state
+    if (this.editor) {
+      this.editor.updateDocumentDisplay();
+    }
   }
 
   /**
@@ -392,6 +448,7 @@ class UI {
      * Execute menu action
      */
   executeMenuAction(action) {
+    console.log('[UI] executeMenuAction called with action:', action);
     switch (action) {
       case 'new-document':
         this.newDocument();
@@ -432,8 +489,30 @@ class UI {
       case 'set-key-signature':
         this.setKeySignature();
         break;
-      case 'ornament':
-        this.openOrnamentEditor();
+      case 'undo':
+        this.editor.handleUndo();
+        break;
+      case 'redo':
+        this.editor.handleRedo();
+        break;
+      case 'copy':
+        this.editor.handleCopy();
+        break;
+      case 'cut':
+        this.editor.handleCut();
+        break;
+      case 'paste':
+        this.editor.handlePaste();
+        break;
+      case 'apply-ornament-after':
+        console.log('[UI] apply-ornament-after: calling editor.applyOrnament("after")');
+        this.editor.applyOrnament('after');
+        break;
+      case 'apply-ornament-before':
+        this.editor.applyOrnament('before');
+        break;
+      case 'apply-ornament-top':
+        this.editor.applyOrnament('top');
         break;
       case 'edit-ornaments':
         this.toggleOrnamentEditMode();
@@ -449,6 +528,9 @@ class UI {
         break;
       case 'octave-lower':
         this.applyOctave(-1);
+        break;
+      case 'select-all':
+        this.selectAll();
         break;
       case 'set-label':
         this.setLabel();
@@ -467,6 +549,9 @@ class UI {
         break;
       case 'set-line-key-signature':
         this.setLineKeySignature();
+        break;
+      case 'preferences':
+        this.openPreferences();
         break;
       default:
         console.log('Unknown menu action:', action);
@@ -559,6 +644,17 @@ class UI {
   }
 
   /**
+   * Open preferences dialog
+   */
+  openPreferences() {
+    if (this.preferencesUI) {
+      this.preferencesUI.open();
+    } else {
+      console.error('Preferences UI not available');
+    }
+  }
+
+  /**
      * Show stub message
      */
   showStubMessage(feature) {
@@ -578,17 +674,13 @@ class UI {
       if (this.editor && this.editor.theDocument && this.editor.wasmModule) {
         // Call WASM setTitle function
         try {
-          // Preserve the state field and beats array before WASM call
+          // Preserve the state field before WASM call
           const preservedState = this.editor.theDocument.state;
-          const preservedBeats = this.editor.theDocument.lines.map(line => line.beats);
 
           const updatedDocument = await this.editor.wasmModule.setTitle(this.editor.theDocument, newTitle);
 
-          // Restore the state field and beats array after WASM call
+          // Restore the state field after WASM call
           updatedDocument.state = preservedState;
-          updatedDocument.lines.forEach((line, index) => {
-            line.beats = preservedBeats[index];
-          });
 
           this.editor.theDocument = updatedDocument;
           this.editor.addToConsoleLog(`Document title set to: ${newTitle}`);
@@ -612,17 +704,13 @@ class UI {
       if (this.editor && this.editor.theDocument && this.editor.wasmModule) {
         // Call WASM setComposer function
         try {
-          // Preserve the state field and beats array before WASM call
+          // Preserve the state field before WASM call
           const preservedState = this.editor.theDocument.state;
-          const preservedBeats = this.editor.theDocument.lines.map(line => line.beats);
 
           const updatedDocument = await this.editor.wasmModule.setComposer(this.editor.theDocument, newComposer);
 
-          // Restore the state field and beats array after WASM call
+          // Restore the state field after WASM call
           updatedDocument.state = preservedState;
-          updatedDocument.lines.forEach((line, index) => {
-            line.beats = preservedBeats[index];
-          });
 
           this.editor.theDocument = updatedDocument;
           this.editor.addToConsoleLog(`Composer set to: ${newComposer}`);
@@ -667,9 +755,8 @@ class UI {
       console.log('🎵 Updating pitch system...');
       if (this.editor && this.editor.theDocument && this.editor.wasmModule) {
         try {
-          // Preserve the state field and beats array before WASM call
+          // Preserve the state field before WASM call
           const preservedState = this.editor.theDocument.state;
-          const preservedBeats = this.editor.theDocument.lines.map(line => line.beats);
 
           // Call WASM function to set pitch system
           console.log('🎵 Calling WASM setDocumentPitchSystem with system:', newSystem);
@@ -679,11 +766,8 @@ class UI {
           );
           console.log('🎵 WASM returned updated document:', updatedDocument?.pitch_system);
 
-          // Restore the state field and beats array after WASM call
+          // Restore the state field after WASM call
           updatedDocument.state = preservedState;
-          updatedDocument.lines.forEach((line, index) => {
-            line.beats = preservedBeats[index];
-          });
 
           // Update the editor's document reference
           this.editor.theDocument = updatedDocument;
@@ -746,6 +830,37 @@ class UI {
   }
 
   /**
+   * Select all cells in the current line (same as triple-click)
+   * Uses WASM to handle selection logic
+   */
+  async selectAll() {
+    if (!this.editor || !this.editor.theDocument) {
+      console.warn('Cannot select all: editor or document not available');
+      return;
+    }
+
+    try {
+      // Ensure WASM has the latest document state
+      this.editor.wasmModule.loadDocument(this.editor.theDocument);
+
+      // Get current cursor position to determine which line
+      const lineIndex = this.editor.theDocument.state.cursor.line || 0;
+      const col = this.editor.theDocument.state.cursor.col || 0;
+
+      // Call WASM to select entire line
+      const pos = { line: lineIndex, col: col };
+      const diff = this.editor.wasmModule.selectLineAtPosition(pos);
+
+      // Update UI from WASM state
+      await this.editor.updateCursorFromWASM(diff);
+
+      console.log('[UI] Selected entire line at index:', lineIndex);
+    } catch (error) {
+      console.error('Select all error:', error);
+    }
+  }
+
+  /**
      * Set line label
      */
   async setLabel() {
@@ -758,18 +873,14 @@ class UI {
       if (this.editor && this.editor.theDocument && this.editor.theDocument.lines.length > 0 && this.editor.wasmModule) {
         // Call WASM setStaveLabel function
         try {
-          // Preserve the state field and beats array before WASM call
+          // Preserve the state field before WASM call
           const preservedState = this.editor.theDocument.state;
-          const preservedBeats = this.editor.theDocument.lines.map(line => line.beats);
 
           const lineIdx = this.getCurrentLineIndex();
           const updatedDocument = await this.editor.wasmModule.setLineLabel(this.editor.theDocument, lineIdx, newLabel);
 
-          // Restore the state field and beats array after WASM call
+          // Restore the state field after WASM call
           updatedDocument.state = preservedState;
-          updatedDocument.lines.forEach((line, index) => {
-            line.beats = preservedBeats[index];
-          });
 
           this.editor.theDocument = updatedDocument;
           this.editor.addToConsoleLog(`Line label set to: ${newLabel}`);
@@ -817,9 +928,8 @@ class UI {
     if (newSystem !== null && newSystem !== currentSystem) {
       if (this.editor && this.editor.theDocument && this.editor.wasmModule) {
         try {
-          // Preserve the state field and beats array before WASM call
+          // Preserve the state field before WASM call
           const preservedState = this.editor.theDocument.state;
-          const preservedBeats = this.editor.theDocument.lines.map(line => line.beats);
 
           // Call WASM function to set line pitch system
           const lineIdx = this.getCurrentLineIndex();
@@ -829,11 +939,8 @@ class UI {
             newSystem
           );
 
-          // Restore the state field and beats array after WASM call
+          // Restore the state field after WASM call
           updatedDocument.state = preservedState;
-          updatedDocument.lines.forEach((line, index) => {
-            line.beats = preservedBeats[index];
-          });
 
           // Update the editor's document reference
           this.editor.theDocument = updatedDocument;
@@ -863,18 +970,14 @@ class UI {
       if (this.editor && this.editor.theDocument && this.editor.theDocument.lines.length > 0 && this.editor.wasmModule) {
         // Call WASM setLineLyrics function (handles empty string to clear)
         try {
-          // Preserve the state field and beats array before WASM call
+          // Preserve the state field before WASM call
           const preservedState = this.editor.theDocument.state;
-          const preservedBeats = this.editor.theDocument.lines.map(line => line.beats);
 
           const lineIdx = this.getCurrentLineIndex();
           const updatedDocument = await this.editor.wasmModule.setLineLyrics(this.editor.theDocument, lineIdx, newLyrics);
 
-          // Restore the state field and beats array after WASM call
+          // Restore the state field after WASM call
           updatedDocument.state = preservedState;
-          updatedDocument.lines.forEach((line, index) => {
-            line.beats = preservedBeats[index];
-          });
 
           this.editor.theDocument = updatedDocument;
           const displayMsg = newLyrics === '' ? 'Lyrics cleared' : `Lyrics set to: ${newLyrics}`;
@@ -1203,15 +1306,6 @@ class UI {
   }
 
   /**
-   * Apply ornament indicator to current selection
-   */
-  applyOrnamentIndicator() {
-    if (this.editor) {
-      this.editor.applyOrnamentIndicator();
-    }
-  }
-
-  /**
    * Toggle ornament edit mode
    */
   toggleOrnamentEditMode() {
@@ -1240,15 +1334,6 @@ class UI {
   applyOctave(octave) {
     if (this.editor) {
       this.editor.applyOctave(octave);
-    }
-  }
-
-  /**
-   * Open ornament editor dialog
-   */
-  openOrnamentEditor() {
-    if (this.editor) {
-      this.editor.openOrnamentEditor();
     }
   }
 

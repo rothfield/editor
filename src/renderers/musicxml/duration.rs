@@ -21,7 +21,10 @@ pub fn note_type_from_tuplet_normal(normal_notes: usize) -> &'static str {
     }
 }
 
-/// Convert duration (in quarter notes) to MusicXML note type and dot count
+/// Convert duration (as a fraction of quarter notes) to MusicXML note type and dot count
+///
+/// Takes numerator and denominator where duration = numerator / denominator quarter notes.
+/// All arithmetic is done with integers to avoid floating point errors.
 ///
 /// Returns a tuple of (note_type, dot_count) where:
 /// - note_type is one of "whole", "half", "quarter", "eighth", "16th", "32nd"
@@ -31,51 +34,81 @@ pub fn note_type_from_tuplet_normal(normal_notes: usize) -> &'static str {
 ///
 /// # Examples
 /// ```
-/// use editor_wasm::renderers::musicxml::duration::duration_to_note_type;
+/// use editor_wasm::renderers::musicxml::duration::duration_to_note_type_fraction;
 ///
-/// assert_eq!(duration_to_note_type(1.0), ("quarter", 0));
-/// assert_eq!(duration_to_note_type(0.75), ("eighth", 1));
+/// assert_eq!(duration_to_note_type_fraction(1, 1), ("quarter", 0));    // 1/1 = quarter
+/// assert_eq!(duration_to_note_type_fraction(3, 4), ("eighth", 1));     // 3/4 = dotted eighth
+/// assert_eq!(duration_to_note_type_fraction(4, 1), ("whole", 0));      // 4/1 = whole
 /// ```
-pub fn duration_to_note_type(duration: f64) -> (&'static str, usize) {
-    const EPSILON: f64 = 0.001;
+pub fn duration_to_note_type_fraction(numerator: usize, denominator: usize) -> (&'static str, usize) {
+    // Reduce fraction to lowest terms
+    fn gcd(a: usize, b: usize) -> usize {
+        if b == 0 { a } else { gcd(b, a % b) }
+    }
+    let g = gcd(numerator, denominator);
+    let num = numerator / g;
+    let den = denominator / g;
 
     // Check common durations first (whole through 32nd with dots)
-    if (duration - 4.0).abs() < EPSILON {
+    // All comparisons done with integer arithmetic: a/b == c/d iff a*d == c*b
+
+    // 4/1 = whole note
+    if num == 4 && den == 1 {
         return ("whole", 0);
     }
-    if (duration - 3.0).abs() < EPSILON {
+    // 3/1 = dotted half
+    if num == 3 && den == 1 {
         return ("half", 1);
     }
-    if (duration - 2.0).abs() < EPSILON {
+    // 2/1 = half note
+    if num == 2 && den == 1 {
         return ("half", 0);
     }
-    if (duration - 1.5).abs() < EPSILON {
+    // 3/2 = dotted quarter
+    if num == 3 && den == 2 {
         return ("quarter", 1);
     }
-    if (duration - 1.0).abs() < EPSILON {
+    // 1/1 = quarter note
+    if num == 1 && den == 1 {
         return ("quarter", 0);
     }
-    if (duration - 0.75).abs() < EPSILON {
+    // 3/4 = dotted eighth
+    if num == 3 && den == 4 {
         return ("eighth", 1);
     }
-    if (duration - 0.5).abs() < EPSILON {
+    // 1/2 = eighth note
+    if num == 1 && den == 2 {
         return ("eighth", 0);
     }
-    if (duration - 0.375).abs() < EPSILON {
+    // 3/8 = dotted 16th
+    if num == 3 && den == 8 {
         return ("16th", 1);
     }
-    if (duration - 0.25).abs() < EPSILON {
+    // 1/4 = 16th note
+    if num == 1 && den == 4 {
         return ("16th", 0);
     }
-    if (duration - 0.1875).abs() < EPSILON {
+    // 3/16 = dotted 32nd
+    if num == 3 && den == 16 {
         return ("32nd", 1);
     }
-    if (duration - 0.125).abs() < EPSILON {
+    // 1/8 = 32nd note
+    if num == 1 && den == 8 {
         return ("32nd", 0);
     }
 
     // Fallback for arbitrary divisions (use 16th as default)
     ("16th", 0)
+}
+
+/// Deprecated: use duration_to_note_type_fraction instead
+/// Converts f64 duration (in quarter notes) to note type
+#[deprecated(since = "0.1.0", note = "use duration_to_note_type_fraction instead")]
+pub fn duration_to_note_type(duration: f64) -> (&'static str, usize) {
+    // Convert f64 to fraction (with denominator 1000 for precision)
+    let numerator = (duration * 1000.0).round() as usize;
+    let denominator = 1000;
+    duration_to_note_type_fraction(numerator, denominator)
 }
 
 #[cfg(test)]
@@ -84,73 +117,73 @@ mod tests {
 
     #[test]
     fn test_whole_note() {
-        assert_eq!(duration_to_note_type(4.0), ("whole", 0));
+        assert_eq!(duration_to_note_type_fraction(4, 1), ("whole", 0));
     }
 
     #[test]
     fn test_dotted_half() {
-        assert_eq!(duration_to_note_type(3.0), ("half", 1));
+        assert_eq!(duration_to_note_type_fraction(3, 1), ("half", 1));
     }
 
     #[test]
     fn test_half_note() {
-        assert_eq!(duration_to_note_type(2.0), ("half", 0));
+        assert_eq!(duration_to_note_type_fraction(2, 1), ("half", 0));
     }
 
     #[test]
     fn test_dotted_quarter() {
-        assert_eq!(duration_to_note_type(1.5), ("quarter", 1));
+        assert_eq!(duration_to_note_type_fraction(3, 2), ("quarter", 1));
     }
 
     #[test]
     fn test_quarter_note() {
-        assert_eq!(duration_to_note_type(1.0), ("quarter", 0));
+        assert_eq!(duration_to_note_type_fraction(1, 1), ("quarter", 0));
     }
 
     #[test]
     fn test_dotted_eighth() {
-        assert_eq!(duration_to_note_type(0.75), ("eighth", 1));
+        assert_eq!(duration_to_note_type_fraction(3, 4), ("eighth", 1));
     }
 
     #[test]
     fn test_eighth_note() {
-        assert_eq!(duration_to_note_type(0.5), ("eighth", 0));
+        assert_eq!(duration_to_note_type_fraction(1, 2), ("eighth", 0));
     }
 
     #[test]
     fn test_dotted_16th() {
-        assert_eq!(duration_to_note_type(0.375), ("16th", 1));
+        assert_eq!(duration_to_note_type_fraction(3, 8), ("16th", 1));
     }
 
     #[test]
     fn test_16th_note() {
-        assert_eq!(duration_to_note_type(0.25), ("16th", 0));
+        assert_eq!(duration_to_note_type_fraction(1, 4), ("16th", 0));
     }
 
     #[test]
     fn test_dotted_32nd() {
-        assert_eq!(duration_to_note_type(0.1875), ("32nd", 1));
+        assert_eq!(duration_to_note_type_fraction(3, 16), ("32nd", 1));
     }
 
     #[test]
     fn test_32nd_note() {
-        assert_eq!(duration_to_note_type(0.125), ("32nd", 0));
+        assert_eq!(duration_to_note_type_fraction(1, 8), ("32nd", 0));
+    }
+
+    #[test]
+    fn test_fraction_reduction() {
+        // Test that fractions are properly reduced to lowest terms
+        assert_eq!(duration_to_note_type_fraction(2, 2), ("quarter", 0));     // 2/2 = 1/1
+        assert_eq!(duration_to_note_type_fraction(8, 4), ("half", 0));        // 8/4 = 2/1
+        assert_eq!(duration_to_note_type_fraction(6, 8), ("eighth", 1));      // 6/8 = 3/4
+        assert_eq!(duration_to_note_type_fraction(4, 16), ("16th", 0));       // 4/16 = 1/4
     }
 
     #[test]
     fn test_arbitrary_duration_fallback() {
         // Test that arbitrary divisions fall back to 16th
-        assert_eq!(duration_to_note_type(0.333), ("16th", 0)); // Triplet
-        assert_eq!(duration_to_note_type(0.2), ("16th", 0));   // Quintuplet
-        assert_eq!(duration_to_note_type(0.167), ("16th", 0)); // Sextuplet
-    }
-
-    #[test]
-    fn test_epsilon_tolerance() {
-        // Test that values close to common durations are recognized
-        assert_eq!(duration_to_note_type(0.9999), ("quarter", 0));
-        assert_eq!(duration_to_note_type(1.0001), ("quarter", 0));
-        assert_eq!(duration_to_note_type(0.7501), ("eighth", 1));
-        assert_eq!(duration_to_note_type(0.7499), ("eighth", 1));
+        assert_eq!(duration_to_note_type_fraction(1, 3), ("16th", 0));  // 1/3 = triplet
+        assert_eq!(duration_to_note_type_fraction(1, 5), ("16th", 0));  // 1/5 = quintuplet
+        assert_eq!(duration_to_note_type_fraction(1, 6), ("16th", 0));  // 1/6 = sextuplet
     }
 }

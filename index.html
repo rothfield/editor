@@ -53,6 +53,14 @@
             list-style: none;
         }
 
+        /* Prevent browser text selection on editor to allow custom selection */
+        .notation-editor {
+            user-select: none;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+        }
+
         /* Header styling - use BASE_FONT_SIZE (16px) */
         header {
             font-size: 1rem; /* BASE_FONT_SIZE = 16px */
@@ -116,6 +124,23 @@
 
         .tab.tab-icon.active svg {
             color: #0066cc;
+        }
+
+        /* Large icon tabs (like LilyPond PNG) */
+        .tab.tab-icon.large-icon {
+            min-width: 120px;
+            min-height: 120px;
+        }
+
+        .tab.tab-icon.large-icon svg {
+            width: 110px !important;
+            height: 110px !important;
+        }
+
+        .tab.tab-icon.large-icon img {
+            width: 110px !important;
+            height: 110px !important;
+            object-fit: contain;
         }
 
         .tab:hover {
@@ -188,6 +213,48 @@
                 #3b82f6 20%,
                 #3b82f6 80%,
                 transparent 100%);
+        }
+
+        /* Collapse button styling */
+        #panel-collapse-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 24px;
+            height: 24px;
+            padding: 0.25rem;
+            cursor: pointer;
+            border: none;
+            background: transparent;
+            color: #6b7280;
+            transition: all 0.2s;
+        }
+
+        #panel-collapse-btn:hover {
+            background: rgba(0, 0, 0, 0.05);
+            color: #374151;
+            border-radius: 4px;
+        }
+
+        #panel-collapse-btn svg {
+            width: 16px;
+            height: 16px;
+            stroke: currentColor;
+            transition: transform 0.2s ease-in-out;
+        }
+
+        /* Chevron points left when expanded, right when collapsed */
+        body.panel-collapsed #panel-collapse-btn svg {
+            transform: scaleX(-1) rotate(180deg);
+        }
+
+        /* Inspector panel transitions */
+        #tabs-panel {
+            transition: width 0.2s ease-in-out;
+        }
+
+        #tabs-panel.collapsed {
+            overflow: hidden;
         }
 
         /* Ensure tab content areas scroll properly */
@@ -271,10 +338,13 @@
             line-height: 1;
         }
 
-        /* Text cells - italics and red */
+        /* Text cells - proportional font, normal styling */
         .char-cell.kind-text {
-            font-style: italic;
-            color: #ef4444; /* red-500 */
+            /* Styling applied via inline styles in renderer.js for proper font sizing */
+            /* font-size: 60% of base (19.2px), non-italic, normal weight, same baseline */
+            /* Explicitly override any ornament styling that might bleed through */
+            vertical-align: baseline !important;
+            top: 0 !important;
         }
 
         /* Pitched elements - bold */
@@ -290,6 +360,28 @@
         /* Selected cells */
         .char-cell.selected {
             background-color: rgba(59, 130, 246, 0.3); /* Blue with transparency */
+        }
+
+        /* T027: Ornament cell styling - rhythm-transparent embellishments */
+        .char-cell.ornament-cell {
+            font-size: 0.75em; /* 75% of base font size */
+            vertical-align: super; /* Raised/superscript position */
+            color: #6366f1; /* Indigo-500 for visual distinction */
+        }
+
+        /* T067: Edit mode styling - ornaments inline when edit mode is ON */
+        .char-cell.ornament-cell[data-edit-mode="true"] {
+            /* Inline display: normal width, clickable, same visual styling */
+            vertical-align: baseline; /* Reset to baseline for inline editing */
+            cursor: text; /* Indicate editability */
+            pointer-events: auto; /* Enable interactions */
+        }
+
+        /* T067: Floating mode styling - zero-width overlay when edit mode is OFF */
+        .char-cell.ornament-cell[data-edit-mode="false"] {
+            /* Floating display: zero width, non-interactive, raised positioning */
+            overflow: visible; /* Allow content to extend beyond zero width */
+            cursor: default; /* Not editable in floating mode */
         }
 
         /* Ornament indicator spans - rendered smaller and raised */
@@ -500,8 +592,8 @@
         }
     </style>
 
-    <!-- OSMD for staff notation rendering -->
-    <script src="https://unpkg.com/opensheetmusicdisplay@1.7.6/build/opensheetmusicdisplay.min.js"></script>
+    <!-- OSMD for staff notation rendering (local copy) -->
+    <script src="dist/lib/opensheetmusicdisplay.min.js"></script>
 
     <!-- Preload critical resources -->
     <link rel="modulepreload" href="dist/pkg/editor_wasm.js">
@@ -584,9 +676,17 @@
                     <span id="selection-info">No selection</span>
                 </div>
 
-                <!-- Right: Document Title -->
-                <div id="composition-title" class="text-ui-disabled-text">
-                    Untitled Document
+                <!-- Right: Document Title and Panel Toggle -->
+                <div class="flex items-center space-x-4">
+                    <div id="composition-title" class="text-ui-disabled-text">
+                        Untitled Document
+                    </div>
+                    <!-- Collapse Inspector Panel Button -->
+                    <button id="panel-collapse-btn" class="px-2 py-1 rounded text-sm hover:bg-ui-hover" title="Toggle inspector panel" data-testid="panel-collapse-btn">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" style="display: inline-block;">
+                            <polyline points="15 18 9 12 15 6"></polyline>
+                        </svg>
+                    </button>
                 </div>
             </div>
         </header>
@@ -595,9 +695,10 @@
         <main class="flex-1 flex overflow-hidden" id="main-container">
             <!-- Editor Canvas -->
             <section class="flex-1 flex flex-col overflow-hidden" id="editor-section">
-                <div id="editor-container" class="flex-1 relative overflow-hidden p-4">
+                <div id="editor-container" class="flex-1 relative overflow-auto p-4">
                     <!-- Notation Editor -->
                     <div id="notation-editor"
+                         data-testid="editor-root"
                          class="notation-editor focusable"
                          tabindex="0"
                          role="textbox"
@@ -614,6 +715,10 @@
                     <div class="flex items-center justify-between text-xs text-gray-500">
                         <div class="flex items-center space-x-4">
                             <span id="focus-status" class="text-gray-500">No focus</span>
+                            <span class="text-gray-400">|</span>
+                            <button id="hotreload-toggle" class="px-2 py-1 rounded text-xs hover:bg-ui-hover transition-colors" title="Toggle hot reload (auto-refresh on file changes)">
+                                🔄 Hot Reload: <span id="hotreload-status">ON</span>
+                            </button>
                         </div>
                         <div class="flex items-center space-x-4">
                             <span id="performance-indicator" class="text-success hidden">Ready</span>
@@ -626,45 +731,35 @@
             <div id="resize-handle" class="w-4 bg-gray-300 hover:bg-blue-500 cursor-col-resize transition-colors flex-shrink-0"></div>
 
             <!-- Debug Information Panel -->
-            <aside id="tabs-panel" class="bg-ui-background border-l border-ui-border flex flex-col overflow-hidden" style="width: 384px; min-width: 200px; max-width: 800px;">
+            <aside id="tabs-panel" class="bg-ui-background border-l border-ui-border flex flex-col overflow-hidden" style="width: 384px;">
                 <!-- Tab Navigation (Multi-row wrap) -->
                 <div class="bg-white border-b border-ui-border">
                     <div class="tab-buttons flex flex-wrap gap-0">
-                        <button id="tab-staff-notation" class="tab tab-icon active" data-tab="staff-notation" title="Staff Notation">
-                            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-                                <line x1="2" y1="6" x2="22" y2="6" stroke="currentColor" stroke-width="1"/>
-                                <line x1="2" y1="10" x2="22" y2="10" stroke="currentColor" stroke-width="1"/>
-                                <line x1="2" y1="14" x2="22" y2="14" stroke="currentColor" stroke-width="1"/>
-                                <line x1="2" y1="18" x2="22" y2="18" stroke="currentColor" stroke-width="1"/>
-                                <circle cx="6" cy="12" r="1.5" fill="currentColor"/>
-                                <circle cx="12" cy="8" r="1.5" fill="currentColor"/>
-                                <circle cx="18" cy="16" r="1.5" fill="currentColor"/>
-                            </svg>
+                        <button id="tab-staff-notation" class="tab tab-icon large-icon active" data-tab="staff-notation" title="Staff Notation">
+                            <img src="/images.png" alt="Staff Notation">
                         </button>
-                        <button id="tab-midi" class="tab tab-icon" data-tab="midi" title="MIDI">
-                            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-                                <path d="M12 3v10.55c-.5-.31-1.1-.55-1.8-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
-                            </svg>
+                        <button id="tab-lilypond-png" class="tab tab-icon large-icon" data-tab="lilypond-png" title="LilyPond PNG">
+                            <img src="/document3.png" alt="LilyPond PNG">
                         </button>
-                        <button id="tab-musicxml" class="tab" data-tab="musicxml">
-                            MusicXML
-                        </button>
-                        <button id="tab-lilypond-src" class="tab tab-icon" data-tab="lilypond-src" title="LilyPond Source">
-                            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                        <button id="tab-lilypond-src" class="tab tab-icon large-icon" data-tab="lilypond-src" data-testid="tab-lilypond" title="LilyPond Source">
+                            <svg viewBox="0 0 24 24" fill="currentColor">
                                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-8-6z"/>
                                 <polyline points="14 2 14 8 20 8" fill="none" stroke="currentColor" stroke-width="0.5"/>
                                 <line x1="8" y1="13" x2="16" y2="13" stroke="white" stroke-width="1"/>
                                 <line x1="8" y1="17" x2="16" y2="17" stroke="white" stroke-width="1"/>
                             </svg>
                         </button>
-                        <button id="tab-lilypond-png" class="tab" data-tab="lilypond-png">
-                            LilyPond PNG
+                        <button id="tab-musicxml" class="tab" data-tab="musicxml" data-testid="tab-musicxml">
+                            MusicXML
                         </button>
-                        <button id="tab-layout" class="tab" data-tab="layout">
-                            Layout
+                        <button id="tab-displaylist" class="tab" data-tab="displaylist" data-testid="tab-displaylist">
+                            Display List
                         </button>
-                        <button id="tab-persistent" class="tab" data-tab="persistent">
+                        <button id="tab-persistent" class="tab" data-tab="persistent" data-testid="tab-docmodel">
                             Persistent Model
+                        </button>
+                        <button id="tab-ir" class="tab" data-tab="ir" data-testid="tab-ir" title="Intermediate Representation - IR structures (ExportLine, ExportMeasure, ExportEvent)">
+                            IR
                         </button>
                         <button id="tab-html" class="tab" data-tab="html">
                             HTML
@@ -676,13 +771,7 @@
                 <div class="flex-1 flex flex-col overflow-hidden">
                     <!-- Staff Notation Tab -->
                     <div id="tab-content-staff-notation" data-tab-content="staff-notation" class="tab-content flex-1 flex flex-col p-4">
-                        <div id="staff-notation-container" class="flex-1 bg-white p-4 border-2 border-gray-300 rounded overflow-auto">
-                        </div>
-                    </div>
-
-                    <!-- MIDI Tab -->
-                    <div id="tab-content-midi" data-tab-content="midi" class="tab-content hidden flex-1 flex flex-col p-4">
-                        <div class="flex-1 bg-white p-4 border-2 border-gray-300 rounded overflow-auto mb-2">
+                        <div id="staff-notation-container" class="flex-1 bg-white p-4 border-2 border-gray-300 rounded overflow-auto mb-2">
                         </div>
 
                         <!-- MIDI Playback Controls -->
@@ -716,29 +805,34 @@
 
                     <!-- MusicXML Tab -->
                     <div id="tab-content-musicxml" data-tab-content="musicxml" class="tab-content hidden flex-1 flex flex-col p-4">
-                        <pre id="musicxml-source" class="flex-1 text-xs font-mono bg-white p-3 border-2 border-gray-300 rounded overflow-auto"></pre>
+                        <pre id="musicxml-source" data-testid="pane-musicxml" class="flex-1 text-xs font-mono bg-white p-3 border-2 border-gray-300 rounded overflow-auto"></pre>
                     </div>
 
                     <!-- LilyPond Source Code Tab -->
                     <div id="tab-content-lilypond-src" data-tab-content="lilypond-src" class="tab-content hidden flex-1 flex flex-col p-4">
-                        <pre id="lilypond-source" class="flex-1 text-xs font-mono bg-white p-3 border-2 border-gray-300 rounded overflow-auto"></pre>
+                        <pre id="lilypond-source" data-testid="pane-lilypond" class="flex-1 text-xs font-mono bg-white p-3 border-2 border-gray-300 rounded overflow-auto"></pre>
                     </div>
 
                     <!-- LilyPond PNG/SVG Rendering Tab -->
                     <div id="tab-content-lilypond-png" data-tab-content="lilypond-png" class="tab-content hidden flex-1 flex flex-col p-4">
-                        <div id="lilypond-render-container" class="flex-1 bg-white p-3 border-2 border-gray-300 rounded overflow-auto flex items-center justify-center">
-                            <p class="text-gray-500 text-sm">LilyPond rendering</p>
-                        </div>
                     </div>
 
-                    <!-- Layout Tab (DisplayList from WASM) -->
-                    <div id="tab-content-layout" data-tab-content="layout" class="tab-content hidden flex-1 flex flex-col p-4">
-                        <pre id="layout-display" class="flex-1 text-xs font-mono bg-white p-3 border-2 border-gray-300 rounded overflow-auto"></pre>
+                    <!-- Display List Tab (pre-computed render commands from WASM) -->
+                    <div id="tab-content-displaylist" data-tab-content="displaylist" class="tab-content hidden flex-1 flex flex-col p-4">
+                        <pre id="displaylist-display" data-testid="pane-displaylist" class="flex-1 text-xs font-mono bg-white p-3 border-2 border-gray-300 rounded overflow-auto"></pre>
                     </div>
 
                     <!-- Persistent Model Tab (saveable content only) -->
                     <div id="tab-content-persistent" data-tab-content="persistent" class="tab-content hidden flex-1 flex flex-col p-4">
-                        <pre id="persistent-json" class="flex-1 text-xs font-mono bg-white p-3 border-2 border-gray-300 rounded overflow-auto"></pre>
+                        <pre id="persistent-json" data-testid="pane-docmodel" class="flex-1 text-xs font-mono bg-white p-3 border-2 border-gray-300 rounded overflow-auto"></pre>
+                    </div>
+
+                    <!-- Intermediate Representation Tab (IR structures: ExportLine → ExportMeasure → ExportEvent) -->
+                    <div id="tab-content-ir" data-tab-content="ir" class="tab-content hidden flex-1 flex flex-col p-4">
+                        <div class="mb-2 text-xs text-gray-600">
+                            <span title="Intermediate Representation: Bridges Document Model to MusicXML emission">IR (ExportLine → ExportMeasure → ExportEvent)</span>
+                        </div>
+                        <pre id="ir-display" data-testid="pane-ir" class="flex-1 text-xs font-mono bg-white p-3 border-2 border-gray-300 rounded overflow-auto"></pre>
                     </div>
 
                     <!-- HTML Tab -->

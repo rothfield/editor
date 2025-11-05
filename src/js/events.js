@@ -103,13 +103,19 @@ class EventManager {
       'Ctrl+o': () => this.handleOpenFile(),
       'Ctrl+O': () => this.handleOpenFile(),
 
+      // Ornament shortcuts
+      'Alt+o': () => this.applyOrnament(),
+      'Alt+O': () => this.applyOrnament(),
+
       // Ornament edit mode toggle (Alt+Shift+O)
       'Alt+Shift+o': () => this.toggleOrnamentEditMode(),
       'Alt+Shift+O': () => this.toggleOrnamentEditMode(),
 
       // Debug shortcuts
       F12: () => this.toggleDebugMode(),
-      'Ctrl+Shift+I': () => this.toggleDebugMode()
+      'Ctrl+Shift+I': () => this.toggleDebugMode(),
+      'Ctrl+Shift+D': () => this.toggleDebugHUD(),
+      'Ctrl+Shift+d': () => this.toggleDebugHUD()
     };
 
     // Prevent default behavior for certain keys when editor has focus
@@ -184,7 +190,9 @@ class EventManager {
     }
 
     // Route to editor if it has focus
+    console.log('[EventManager] Checking if editor has focus...');
     if (this.editorFocus()) {
+      console.log('[EventManager] Editor HAS focus, routing key:', key);
       // Prevent certain default behaviors
       if (this.preventDefaultWhenFocused.includes(key)) {
         event.preventDefault();
@@ -192,10 +200,15 @@ class EventManager {
 
       // Route to editor
       if (this.editor && this.editor.handleKeyboardEvent) {
+        console.log('[EventManager] Calling editor.handleKeyboardEvent');
         this.editor.handleKeyboardEvent(event);
         // Prevent further propagation after editor handles the event
         event.stopPropagation();
+      } else {
+        console.log('[EventManager] ERROR: editor or handleKeyboardEvent not available');
       }
+    } else {
+      console.log('[EventManager] Editor does NOT have focus');
     }
   }
 
@@ -386,6 +399,18 @@ class EventManager {
   }
 
   /**
+   * Apply ornament to selection (Alt+O)
+   */
+  applyOrnament() {
+    console.log('Alt+O: Apply ornament shortcut triggered');
+    if (this.editor && this.editor.applyOrnament) {
+      this.editor.applyOrnament('after');
+    } else {
+      console.warn('Apply ornament not available');
+    }
+  }
+
+  /**
      * Handle menu item clicks
      */
   handleMenuItemClick(target) {
@@ -433,6 +458,12 @@ class EventManager {
     const tabElement = document.querySelector(`[data-tab="${tabName}"]`);
     if (tabElement) {
       tabElement.classList.add('active');
+    }
+
+    // Update inspector tab content when switching tabs
+    // This ensures the newly visible tab shows the latest document state
+    if (this.editor) {
+      this.editor.updateDocumentDisplay();
     }
 
     // Request focus return to editor
@@ -529,6 +560,15 @@ Focus Management:
     const debugPanel = document.querySelector('.debug-panel');
     if (debugPanel) {
       debugPanel.classList.toggle('hidden');
+    }
+  }
+
+  /**
+   * Toggle Debug HUD (cursor/selection state display)
+   */
+  toggleDebugHUD() {
+    if (this.editor && this.editor.debugHUD) {
+      this.editor.debugHUD.toggle();
     }
   }
 

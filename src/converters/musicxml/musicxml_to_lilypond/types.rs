@@ -222,13 +222,40 @@ pub struct Duration {
     pub dots: u8,
 
     /// Scaling factor for tuplets (e.g., 2/3 for triplet)
+    /// NOTE: This is automatically reduced by Rational type (e.g., 30/16 becomes 15/8)
     pub factor: Option<Rational>,
+
+    /// Unreduced tuplet ratio: actual notes (numerator)
+    /// Stored separately to preserve original tuplet specification
+    /// Example: for 30:16 tuplet, this is 30
+    pub tuplet_actual: Option<u32>,
+
+    /// Unreduced tuplet ratio: normal notes (denominator)
+    /// Example: for 30:16 tuplet, this is 16
+    pub tuplet_normal: Option<u32>,
 }
 
 impl Duration {
     /// Create a new duration
     pub fn new(log: u8, dots: u8, factor: Option<Rational>) -> Self {
-        Self { log, dots, factor }
+        Self {
+            log,
+            dots,
+            factor,
+            tuplet_actual: None,
+            tuplet_normal: None,
+        }
+    }
+
+    /// Create a new duration with tuplet information
+    pub fn new_with_tuplet(log: u8, dots: u8, factor: Rational, actual: u32, normal: u32) -> Self {
+        Self {
+            log,
+            dots,
+            factor: Some(factor),
+            tuplet_actual: Some(actual),
+            tuplet_normal: Some(normal),
+        }
     }
 
     /// Convert duration to LilyPond notation (e.g., "4", "8.", "16*2/3")
@@ -290,6 +317,8 @@ impl Duration {
             log,
             dots,
             factor: None,
+            tuplet_actual: None,
+            tuplet_normal: None,
         })
     }
 }
@@ -344,6 +373,22 @@ pub enum Music {
     Text(TextMark),
 }
 
+/// Lyric data for a single note
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NoteLyric {
+    pub text: String,
+    pub syllabic: LyricSyllabic,
+}
+
+/// Syllabic type for note lyrics
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LyricSyllabic {
+    Single,
+    Begin,
+    Middle,
+    End,
+}
+
 /// Single note event (T015)
 #[derive(Debug, Clone)]
 pub struct NoteEvent {
@@ -355,6 +400,9 @@ pub struct NoteEvent {
     pub dynamics: Option<DynamicMark>,
     pub is_grace: bool,
     pub grace_slash: bool,
+    pub is_after_grace: bool, // Grace note that comes AFTER the main note (unmeasured fioritura)
+    pub steal_time_following: Option<f32>, // Percentage of time stolen from following note for after grace notes
+    pub lyric: Option<NoteLyric>, // Lyric syllable attached to this note
 }
 
 impl NoteEvent {
@@ -368,6 +416,9 @@ impl NoteEvent {
             dynamics: None,
             is_grace: false,
             grace_slash: false,
+            is_after_grace: false,
+            steal_time_following: None,
+            lyric: None,
         }
     }
 }
@@ -432,6 +483,7 @@ pub struct ChordEvent {
     pub duration: Duration,
     pub slur: Option<Slur>,
     pub articulations: Vec<ArticulationMark>,
+    pub lyric: Option<NoteLyric>, // Lyric syllable attached to this chord
 }
 
 impl ChordEvent {
@@ -444,6 +496,7 @@ impl ChordEvent {
             duration,
             slur: None,
             articulations: Vec::new(),
+            lyric: None,
         })
     }
 }

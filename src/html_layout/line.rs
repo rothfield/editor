@@ -66,21 +66,44 @@ impl<'a> LayoutLineComputer<'a> {
             HashMap::new()
         };
 
+        // Extract ornaments from indicators and attach to anchor cells when mode is OFF
+        let (working_cells, cell_index_map) = if !ornament_edit_mode {
+            self.extract_ornaments_from_indicators(&line.cells)
+        } else {
+            // Just copy cells when mode is ON, with identity mapping
+            let cells = line.cells.to_vec();
+            let map: Vec<usize> = (0..cells.len()).collect();
+            (cells, map)
+        };
+
         // Render cells with cumulative X positioning
         let mut cells = Vec::new();
         let mut cumulative_x = config.left_margin;
         let mut char_width_offset = 0;
 
         // Calculate X positions and create render cells
-        // Note: When ornament_edit_mode is OFF, ornaments are stored in cell.ornaments
-        // and won't appear in line.cells, so no filtering is needed
-        for (cell_idx, cell) in line.cells.iter().enumerate() {
+        // Note: When ornament_edit_mode is OFF, ornaments are extracted and stored in cell.ornaments
+        // working_cells contains the modified cells with ornaments attached
+        // cell_index_map maps working_cells indices to original line.cells indices
+        let mut last_original_idx = 0;
+        for (working_idx, cell) in working_cells.iter().enumerate() {
             // All cells use normal inline positioning
             let cell_x = cumulative_x;
 
+            // Use original cell index from mapping for dataset
+            let original_cell_idx = cell_index_map[working_idx];
+
+            // Skip character widths for any cells we skipped (ornaments that were extracted)
+            // This ensures char_width_offset stays in sync with the actual characters we're rendering
+            for skipped_idx in last_original_idx..original_cell_idx {
+                let skipped_char_count = line.cells[skipped_idx].char.chars().count();
+                char_width_offset += skipped_char_count;
+            }
+            last_original_idx = original_cell_idx + 1;
+
             let render_cell = cell_style_builder.build_render_cell(
                 cell,
-                cell_idx,
+                original_cell_idx,  // Use original index so JavaScript can map back correctly
                 line_idx,
                 cell_x,
                 config,
@@ -94,7 +117,9 @@ impl<'a> LayoutLineComputer<'a> {
             );
 
             // Advance X position for next cell
-            let effective_width = effective_widths.get(cell_idx).copied().unwrap_or(12.0);
+            // Use effective_widths which accounts for syllable padding
+            // This ensures X positions match the actual rendered cell widths
+            let effective_width = effective_widths.get(original_cell_idx).copied().unwrap_or(12.0);
             cumulative_x += effective_width;
 
             cells.push(render_cell);
@@ -114,13 +139,17 @@ impl<'a> LayoutLineComputer<'a> {
         // Position tala characters
         let tala = self.position_tala(&line.tala, &line.cells, &cells, config, line_y_offset);
 
-        // Calculate line height based on content
-        let has_beats = beats.iter().any(|b| b.end - b.start >= 1);
-        let has_octave_dots = line.cells.iter().any(|c| c.octave != 0);
-        let height = self.calculate_line_height(!line.lyrics.is_empty(), has_beats, has_octave_dots, config);
+        // Position octave dots
+        let octave_dots = self.position_octave_dots(&line.cells, &cells, config);
 
         // Compute slur arcs from slur indicators in cells
         let slurs = self.compute_slur_arcs(&line.cells, &cells, &ornament_anchors, config);
+
+        // Calculate line height based on content
+        let has_beats = beats.iter().any(|b| b.end - b.start >= 1);
+        let has_slurs = slurs.len() > 0;  // Check if any slurs were computed
+        let has_octave_dots = line.cells.iter().any(|c| c.octave != 0);
+        let height = self.calculate_line_height(!line.lyrics.is_empty(), has_beats, has_slurs, has_octave_dots, config);
 
         // Compute beat loop arcs from beat indicators
         let beat_loops = self.compute_beat_loop_arcs(&beats, &cells, &line.cells, config);
@@ -142,7 +171,7 @@ impl<'a> LayoutLineComputer<'a> {
         // Position ornaments separately when edit mode is OFF
         let ornaments = if !ornament_edit_mode {
             self.position_ornaments_from_cells(
-                &line.cells,
+                &working_cells,
                 &cells,
                 &effective_widths,
                 config,
@@ -167,6 +196,7 @@ impl<'a> LayoutLineComputer<'a> {
             beat_loops,
             ornament_arcs,
             ornaments,
+            octave_dots,
         }
     }
 
@@ -228,6 +258,8 @@ impl<'a> LayoutLineComputer<'a> {
     }
 
     /// Compute beat loop arcs from beat spans
+    /// Arc Y coordinates are stored as ABSOLUTE (including line_y_offset),
+    /// which JavaScript will use directly in the SVG overlay
     fn compute_beat_loop_arcs(
         &self,
         beats: &[BeatSpan],
@@ -274,8 +306,8 @@ impl<'a> LayoutLineComputer<'a> {
         &self,
         original_cells: &[Cell],
         render_cells: &[RenderCell],
-        effective_widths: &[f32],
-        config: &LayoutConfig,
+        _effective_widths: &[f32],
+        _config: &LayoutConfig,
         _line_y_offset: f32,
     ) -> Vec<RenderArc> {
         let mut arcs = Vec::new();
@@ -672,6 +704,59 @@ impl<'a> LayoutLineComputer<'a> {
             .collect()
     }
 
+    /// Position octave dots for cells with octave markings
+    fn position_octave_dots(
+        &self,
+        cells: &[Cell],
+        render_cells: &[RenderCell],
+        config: &LayoutConfig,
+    ) -> Vec<RenderOctaveDot> {
+        use super::display_list::RenderOctaveDot;
+
+        let mut octave_dots = Vec::new();
+
+        // Constants from JS: SMALL_FONT_SIZE = 12, BASE_FONT_SIZE = 32
+        let dot_font_size = 12.0;
+        let upper_offset = dot_font_size * 0.5; // -0.5em
+        let lower_offset = dot_font_size * 0.35; // -0.35em (from bottom)
+
+        for (cell, render_cell) in cells.iter().zip(render_cells.iter()) {
+            // Skip cells without octave markings or continuation cells
+            if cell.octave == 0 || cell.continuation {
+                continue;
+            }
+
+            let text = match cell.octave.abs() {
+                1 => "•",
+                2 => "••",
+                _ => continue, // Invalid octave value
+            };
+
+            let letter_spacing = if cell.octave.abs() == 2 { 2.0 } else { 0.0 };
+
+            // Center horizontally over cell
+            let x = render_cell.x + (render_cell.w / 2.0);
+
+            // Position vertically based on octave sign (absolute coordinates)
+            let y = if cell.octave > 0 {
+                // Upper octave: above cell
+                render_cell.y - upper_offset
+            } else {
+                // Lower octave: below cell (bottom + offset)
+                render_cell.y + config.cell_height + lower_offset
+            };
+
+            octave_dots.push(RenderOctaveDot {
+                text: text.to_string(),
+                x,
+                y,
+                letter_spacing,
+            });
+        }
+
+        octave_dots
+    }
+
     /// Position ornaments from cell.ornaments (when ornament_edit_mode is OFF)
     /// Ornaments are positioned to the RIGHT and UP from their parent note
     fn position_ornaments_from_cells(
@@ -735,36 +820,136 @@ impl<'a> LayoutLineComputer<'a> {
         ornaments
     }
 
+    /// Extract ornaments from inline indicator cells and attach them to anchor cells
+    ///
+    /// When ornament_edit_mode is OFF, this function:
+    /// - Scans for OrnamentStart/OrnamentEnd indicator pairs
+    /// - Extracts cells between indicators (the ornament content)
+    /// - Creates Ornament objects and attaches them to the anchor cell
+    /// - Removes the indicator cells from the returned vector
+    ///
+    /// Returns a tuple of (modified cell vector, index mapping)
+    /// where the mapping maps result indices to original cell indices
+    fn extract_ornaments_from_indicators(&self, cells: &[Cell]) -> (Vec<Cell>, Vec<usize>) {
+        let mut result: Vec<Cell> = Vec::new();
+        let mut index_map: Vec<usize> = Vec::new();
+        let mut i = 0;
 
-    /// Calculate line height based on content
+        while i < cells.len() {
+            let cell = &cells[i];
+
+            // Check if this cell has an ornament start indicator
+            if cell.ornament_indicator.is_start() {
+                let start_idx = i;
+                let position_type = cell.ornament_indicator.position_type();
+
+                // Find the matching end indicator
+                let mut end_idx = None;
+                for j in (start_idx + 1)..cells.len() {
+                    if cells[j].ornament_indicator.is_end()
+                        && cell.ornament_indicator.matches(&cells[j].ornament_indicator) {
+                        end_idx = Some(j);
+                        break;
+                    }
+                }
+
+                if let Some(end_idx) = end_idx {
+                    // Extract ornament cells (from start to end, inclusive)
+                    let ornament_cells: Vec<Cell> = cells[(start_idx)..=end_idx]
+                        .iter()
+                        .cloned()
+                        .collect();
+
+                    // Create the Ornament object
+                    let placement = match position_type {
+                        crate::models::elements::OrnamentPositionType::Before => {
+                            crate::models::elements::OrnamentPlacement::Before
+                        }
+                        crate::models::elements::OrnamentPositionType::After |
+                        crate::models::elements::OrnamentPositionType::OnTop => {
+                            crate::models::elements::OrnamentPlacement::After
+                        }
+                    };
+
+                    let ornament = crate::models::elements::Ornament {
+                        cells: ornament_cells,
+                        placement,
+                    };
+
+                    // Find the anchor cell (the cell immediately before the start indicator)
+                    if start_idx > 0 {
+                        // Attach ornament to the anchor cell
+                        if let Some(anchor_cell) = result.last_mut() {
+                            anchor_cell.ornaments.push(ornament);
+                        }
+                    }
+
+                    // Skip past all the ornament cells (including the end indicator)
+                    i = end_idx + 1;
+                    continue;
+                }
+            }
+
+            // Regular cell - add it to result with its original index
+            result.push(cell.clone());
+            index_map.push(i);
+            i += 1;
+        }
+
+        (result, index_map)
+    }
+
+
+    /// Calculate line height based on actual content
+    ///
+    /// Lines should have variable height based on what's actually rendered:
+    /// - Minimal height for simple notes
+    /// - Additional space when decorations (slurs, beat arcs) are present
+    /// - Even more space when lyrics are present
     fn calculate_line_height(
         &self,
         has_lyrics: bool,
         has_beats: bool,
+        has_slurs: bool,
         has_octave_dots: bool,
         config: &LayoutConfig,
     ) -> f32 {
-        if has_lyrics {
-            // Reuse same calculation as position_lyrics
-            const BEAT_LOOP_GAP: f32 = 2.0;
-            const BEAT_LOOP_HEIGHT: f32 = 5.0;
-            const OCTAVE_DOT_OFFSET_EM: f32 = 0.35;
-            const LYRICS_GAP: f32 = 4.0;
+        const SLUR_HEIGHT: f32 = 8.0;
+        const BEAT_LOOP_HEIGHT: f32 = 7.0;
+        const OCTAVE_DOT_HEIGHT: f32 = 4.0;
+        const DECORATION_GAP: f32 = 2.0;
+        const LYRICS_GAP: f32 = 4.0;
 
-            let cell_bottom = config.cell_y_offset + config.cell_height;
-            let lyrics_y = if has_beats {
-                cell_bottom + BEAT_LOOP_GAP + BEAT_LOOP_HEIGHT + LYRICS_GAP
-            } else if has_octave_dots {
-                cell_bottom + (OCTAVE_DOT_OFFSET_EM * config.font_size) + LYRICS_GAP
-            } else {
-                cell_bottom + LYRICS_GAP
-            };
+        let cell_bottom = config.cell_y_offset + config.cell_height;
 
-            let lyrics_font_size = config.font_size * 0.5;
-            let lyrics_bottom_padding = 2.0 * config.font_size;
-            lyrics_y + lyrics_font_size + lyrics_bottom_padding
-        } else {
-            80.0 // LINE_CONTAINER_HEIGHT from JS constants
+        // Calculate space needed for decorations
+        let mut decoration_height: f32 = 0.0;
+        if has_slurs {
+            decoration_height = decoration_height.max(SLUR_HEIGHT);
         }
+        if has_beats {
+            decoration_height = decoration_height.max(BEAT_LOOP_HEIGHT);
+        }
+        if has_octave_dots {
+            decoration_height = decoration_height.max(OCTAVE_DOT_HEIGHT);
+        }
+
+        // Start with baseline height (cell + bottom padding)
+        let baseline_bottom_padding = config.cell_y_offset;
+        let mut total_height = cell_bottom + baseline_bottom_padding;
+
+        // Add decoration space if decorations are present
+        if decoration_height > 0.0 {
+            total_height += DECORATION_GAP + decoration_height;
+        }
+
+        // Add lyrics space if lyrics are present
+        if has_lyrics {
+            let lyrics_font_size = config.font_size * 0.5;
+            let lyrics_bottom_padding = config.font_size;
+            total_height += LYRICS_GAP + lyrics_font_size + lyrics_bottom_padding;
+        }
+
+        total_height
     }
 }

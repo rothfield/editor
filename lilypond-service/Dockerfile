@@ -2,12 +2,14 @@ FROM debian:stable-slim
 
 # Install system dependencies with security best practices
 # - lilypond: music notation compiler
+# - fontconfig: font configuration and caching
+# - fonts-dejavu-core: reliable font availability
 # - nodejs/npm: runtime
-# - ca-certificates: HTTPS support (even though we disable it)
 # - tini: process reaper (handles zombies, proper signal forwarding)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     lilypond \
-    ca-certificates \
+    fontconfig \
+    fonts-dejavu-core \
     nodejs \
     npm \
     tini \
@@ -48,8 +50,8 @@ RUN mkdir -p /tmp/.fontconfig && \
 # Switch to non-root user
 USER runner
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+# Health check (increased timeout to account for font loading)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD node -e "require('http').get('http://localhost:8787/health', (r) => {if (r.statusCode !== 200) throw new Error(r.statusCode)})"
 
 # Use tini as entrypoint for proper process management

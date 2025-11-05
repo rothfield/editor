@@ -334,7 +334,8 @@ pub fn parse_duration(note_node: Node, divisions: u32) -> Result<Duration, Parse
         .count() as u8;
 
     // Check for tuplet (time-modification) FIRST
-    let tuplet_factor = if let Some(time_mod) = get_child(note_node, "time-modification") {
+    // Store both reduced (for calculation) and unreduced (for LilyPond output) ratios
+    let (tuplet_factor, tuplet_actual_unreduced, tuplet_normal_unreduced) = if let Some(time_mod) = get_child(note_node, "time-modification") {
         let actual_notes = get_child_text(time_mod, "actual-notes")
             .and_then(|s| s.parse::<i32>().ok())
             .ok_or_else(|| {
@@ -347,9 +348,14 @@ pub fn parse_duration(note_node: Node, divisions: u32) -> Result<Duration, Parse
                 ParseError::MissingRequiredElement("time-modification missing normal-notes".to_string())
             })?;
 
-        Some(Rational::new(normal_notes, actual_notes))
+        // Rational auto-reduces, but we need unreduced values for LilyPond
+        (
+            Some(Rational::new(normal_notes, actual_notes)),
+            Some(actual_notes as u32),
+            Some(normal_notes as u32),
+        )
     } else {
-        None
+        (None, None, None)
     };
 
     // Try to use the <type> element if available (more reliable for tuplets)
@@ -367,12 +373,19 @@ pub fn parse_duration(note_node: Node, divisions: u32) -> Result<Duration, Parse
             _ => return Err(ParseError::InvalidXml(format!("Unknown note type: {}", type_str))),
         };
 
-        Duration::new(log, dots, tuplet_factor)
+        // Use new constructor if we have tuplet info
+        if let (Some(factor), Some(actual), Some(normal)) = (tuplet_factor, tuplet_actual_unreduced, tuplet_normal_unreduced) {
+            Duration::new_with_tuplet(log, dots, factor, actual, normal)
+        } else {
+            Duration::new(log, dots, tuplet_factor)
+        }
     } else {
         // Fallback: calculate from divisions (may fail for complex tuplets)
         let mut duration = Duration::from_musicxml(divisions, duration_value, dots)
             .map_err(|e| ParseError::InvalidXml(format!("Duration calculation error: {}", e)))?;
         duration.factor = tuplet_factor;
+        duration.tuplet_actual = tuplet_actual_unreduced;
+        duration.tuplet_normal = tuplet_normal_unreduced;
         duration
     };
 

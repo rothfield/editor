@@ -6,7 +6,7 @@ use crate::converters::musicxml::musicxml_to_lilypond::errors::{ConversionError,
 use crate::converters::musicxml::musicxml_to_lilypond::parser::{get_child, get_child_text, parse_divisions, parse_duration, parse_pitch, MeasureNode};
 use crate::converters::musicxml::musicxml_to_lilypond::types::{
     ChordEvent, Clef, ClefType, Duration, KeySignature, Mode, Music, NoteEvent, Pitch, Rational,
-    RestEvent, SequentialMusic, SkippedElement, TimeSignature, TupletMusic,
+    RestEvent, SequentialMusic, SkippedElement, TimeSignature, TupletMusic, NoteLyric, LyricSyllabic,
 };
 use roxmltree::Node;
 
@@ -16,6 +16,10 @@ pub struct ConversionContext {
     pub current_measure: u32,
     pub current_part_id: String,
     pub skipped_elements: Vec<SkippedElement>,
+    // State tracking to avoid duplicate emissions
+    pub current_time_signature: Option<(u8, u8)>,  // (beats, beat_type)
+    pub current_key_signature: Option<(i8, Mode)>,  // (fifths, mode)
+    pub current_clef: Option<ClefType>,
 }
 
 impl ConversionContext {
@@ -25,6 +29,9 @@ impl ConversionContext {
             current_measure: 0,
             current_part_id: part_id,
             skipped_elements: Vec::new(),
+            current_time_signature: None,
+            current_key_signature: None,
+            current_clef: None,
         }
     }
 
@@ -174,16 +181,25 @@ pub fn convert_note(
 
     // Check for grace notes BEFORE parsing duration (grace notes don't have duration)
     let is_grace = get_child(note_node, "grace").is_some();
-    let grace_slash = if let Some(grace_node) = get_child(note_node, "grace") {
-        grace_node.attribute("slash").map_or(false, |s| s == "yes")
+    let (grace_slash, is_after_grace, steal_time_following) = if let Some(grace_node) = get_child(note_node, "grace") {
+        let slash = grace_node.attribute("slash").map_or(false, |s| s == "yes");
+        // Check for steal-time-following attribute (indicates unmeasured fioritura / after grace notes)
+        let has_steal_time = grace_node.attribute("steal-time-following").is_some();
+        let steal_pct = grace_node.attribute("steal-time-following")
+            .and_then(|s| s.parse::<f32>().ok());
+        (slash, has_steal_time, steal_pct)
     } else {
-        false
+        (false, false, None)
     };
 
     // Extract duration (or use dummy duration for grace notes)
     let duration = if is_grace {
-        // Grace notes don't have duration in MusicXML, use a dummy 16th note
-        Duration::new(4, 0, None)
+        // Grace notes don't have duration in MusicXML, use a dummy 16th note for before grace, 32nd for after grace
+        if is_after_grace {
+            Duration::new(5, 0, None) // 32nd note for smaller after grace notes
+        } else {
+            Duration::new(4, 0, None) // 16th note for before grace notes
+        }
     } else {
         parse_duration(note_node, divisions)?
     };
@@ -192,6 +208,8 @@ pub fn convert_note(
     let mut note_event = NoteEvent::new(pitch, duration);
     note_event.is_grace = is_grace;
     note_event.grace_slash = grace_slash;
+    note_event.is_after_grace = is_after_grace;
+    note_event.steal_time_following = steal_time_following;
 
     // Check for ties
     for child in note_node.children() {
@@ -206,6 +224,9 @@ pub fn convert_note(
             }
         }
     }
+
+    // Parse lyrics from note
+    note_event.lyric = parse_lyric_from_note(note_node);
 
     // Check for articulations and slurs
     if let Some(notations) = get_child(note_node, "notations") {
@@ -264,13 +285,14 @@ pub fn convert_note(
 }
 
 /// Convert attributes element to Music changes
+/// Only emits changes when the attribute actually changes (prevents duplicates)
 pub fn convert_attributes(
     attributes_node: Node,
-    _context: &mut ConversionContext,
+    context: &mut ConversionContext,
 ) -> Result<Vec<Music>, ConversionError> {
     let mut music = Vec::new();
 
-    // Key signature
+    // Key signature - only emit if changed
     if let Some(key_node) = get_child(attributes_node, "key") {
         if let Some((fifths, mode_str)) = crate::converters::musicxml::musicxml_to_lilypond::parser::parse_key(key_node) {
             let mode = match mode_str.to_lowercase().as_str() {
@@ -278,22 +300,35 @@ pub fn convert_attributes(
                 "minor" => Mode::Minor,
                 _ => Mode::Major,
             };
-            if let Ok(key_sig) = KeySignature::new(fifths, mode) {
-                music.push(Music::KeyChange(key_sig));
+
+            let new_key = (fifths, mode);
+            let has_changed = context.current_key_signature.as_ref() != Some(&new_key);
+
+            if has_changed {
+                if let Ok(key_sig) = KeySignature::new(fifths, mode) {
+                    music.push(Music::KeyChange(key_sig));
+                    context.current_key_signature = Some(new_key);
+                }
             }
         }
     }
 
-    // Time signature
+    // Time signature - only emit if changed
     if let Some(time_node) = get_child(attributes_node, "time") {
         if let Some((beats, beat_type)) = crate::converters::musicxml::musicxml_to_lilypond::parser::parse_time(time_node) {
-            if let Ok(time_sig) = TimeSignature::new(beats, beat_type) {
-                music.push(Music::TimeChange(time_sig));
+            let new_time = (beats, beat_type);
+            let has_changed = context.current_time_signature.as_ref() != Some(&new_time);
+
+            if has_changed {
+                if let Ok(time_sig) = TimeSignature::new(beats, beat_type) {
+                    music.push(Music::TimeChange(time_sig));
+                    context.current_time_signature = Some(new_time);
+                }
             }
         }
     }
 
-    // Clef
+    // Clef - only emit if changed
     if let Some(clef_node) = get_child(attributes_node, "clef") {
         if let Some((sign, _line)) = crate::converters::musicxml::musicxml_to_lilypond::parser::parse_clef(clef_node) {
             let clef_type = match sign.as_str() {
@@ -302,7 +337,13 @@ pub fn convert_attributes(
                 "C" => ClefType::Alto,
                 _ => ClefType::Treble,
             };
-            music.push(Music::ClefChange(Clef { clef_type }));
+
+            let has_changed = context.current_clef.as_ref() != Some(&clef_type);
+
+            if has_changed {
+                music.push(Music::ClefChange(Clef { clef_type }));
+                context.current_clef = Some(clef_type);
+            }
         }
     }
 
@@ -433,10 +474,13 @@ fn group_tuplets(music_elements: Vec<Music>) -> Result<Vec<Music>, ConversionErr
 
             // Create tuplet if we have multiple elements OR a single element with non-1:1 ratio
             if tuplet_contents.len() > 1 || factor != Rational::new(1, 1) {
-                // Extract the tuplet ratio from the factor
-                // factor is normal_notes/actual_notes
-                let actual_notes = *factor.denom() as u32;
-                let normal_notes = *factor.numer() as u32;
+                // Extract the UNREDUCED tuplet ratio from the first element's duration
+                // This preserves the original tuplet specification (e.g., 30:16 instead of 15:8)
+                let (actual_notes, normal_notes) = get_unreduced_tuplet_ratio(&tuplet_contents[0])
+                    .unwrap_or_else(|| {
+                        // Fallback to reduced ratio if unreduced not available
+                        (*factor.denom() as u32, *factor.numer() as u32)
+                    });
 
                 // Clear the tuplet factor from individual notes/rests
                 let cleaned_contents = tuplet_contents.into_iter().map(|mut music| {
@@ -472,11 +516,230 @@ fn get_tuplet_factor(music: &Music) -> Option<Rational> {
     }
 }
 
+/// Get the unreduced tuplet ratio from a Music element
+/// Returns Option<(actual_notes, normal_notes)>
+fn get_unreduced_tuplet_ratio(music: &Music) -> Option<(u32, u32)> {
+    match music {
+        Music::Note(note) => {
+            if let (Some(actual), Some(normal)) = (note.duration.tuplet_actual, note.duration.tuplet_normal) {
+                Some((actual, normal))
+            } else {
+                None
+            }
+        }
+        Music::Rest(rest) => {
+            if let (Some(actual), Some(normal)) = (rest.duration.tuplet_actual, rest.duration.tuplet_normal) {
+                Some((actual, normal))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
 /// Clear the tuplet factor from a Music element
 fn clear_tuplet_factor(music: &mut Music) {
     match music {
-        Music::Note(note) => note.duration.factor = None,
-        Music::Rest(rest) => rest.duration.factor = None,
+        Music::Note(note) => {
+            note.duration.factor = None;
+            note.duration.tuplet_actual = None;
+            note.duration.tuplet_normal = None;
+        }
+        Music::Rest(rest) => {
+            rest.duration.factor = None;
+            rest.duration.tuplet_actual = None;
+            rest.duration.tuplet_normal = None;
+        }
         _ => {}
+    }
+}
+
+/// Parse lyrics from a note element
+/// Expects structure like:
+/// <lyric number="1">
+///   <syllabic>begin</syllabic>
+///   <text>hel</text>
+/// </lyric>
+fn parse_lyric_from_note(note_node: Node) -> Option<NoteLyric> {
+    // Look for the first <lyric> element in the note (number="1" for first verse)
+    for child in note_node.children() {
+        if child.is_element() && child.tag_name().name() == "lyric" {
+            // Check if this is the first verse (number="1")
+            let number = child.attribute("number").unwrap_or("1");
+            if number != "1" {
+                continue; // Only process first verse for now
+            }
+
+            // Extract syllabic type
+            let syllabic = if let Some(_syl_node) = get_child(child, "syllabic") {
+                if let Some(text) = get_child_text(child, "syllabic") {
+                    match text.trim() {
+                        "begin" => LyricSyllabic::Begin,
+                        "middle" => LyricSyllabic::Middle,
+                        "end" => LyricSyllabic::End,
+                        "single" => LyricSyllabic::Single,
+                        _ => LyricSyllabic::Single,
+                    }
+                } else {
+                    LyricSyllabic::Single
+                }
+            } else {
+                // No explicit syllabic element means single syllable
+                LyricSyllabic::Single
+            };
+
+            // Extract text
+            if let Some(text) = get_child_text(child, "text") {
+                let trimmed = text.trim();
+                if !trimmed.is_empty() {
+                    return Some(NoteLyric {
+                        text: trimmed.to_string(),
+                        syllabic,
+                    });
+                }
+            }
+        }
+    }
+
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::converters::musicxml::musicxml_to_lilypond::lilypond::generate_lilypond_document;
+    use crate::converters::musicxml::musicxml_to_lilypond::parser::XmlDocument;
+    use crate::converters::musicxml::musicxml_to_lilypond::types::ConversionSettings;
+
+    #[test]
+    fn test_parse_lyric_from_note_single_syllable() {
+        let xml = r#"<?xml version="1.0"?>
+<note>
+  <pitch><step>C</step><octave>4</octave></pitch>
+  <duration>4</duration>
+  <type>quarter</type>
+  <lyric number="1">
+    <text>hello</text>
+  </lyric>
+</note>"#;
+
+        // We can't directly test parse_lyric_from_note without parsing,
+        // but we test it indirectly through the integration test below
+    }
+
+    #[test]
+    fn test_convert_musicxml_with_lyrics_to_lilypond() {
+        let musicxml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 3.1 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
+<score-partwise version="3.1">
+  <movement-title>Test Lyrics</movement-title>
+  <part-list>
+    <score-part id="P1">
+      <part-name>Part 1</part-name>
+    </score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>4</divisions>
+        <time>
+          <beats>4</beats>
+          <beat-type>4</beat-type>
+        </time>
+        <clef>
+          <sign>G</sign>
+          <line>2</line>
+        </clef>
+      </attributes>
+      <note>
+        <pitch><step>C</step><octave>4</octave></pitch>
+        <duration>4</duration>
+        <type>quarter</type>
+        <lyric number="1">
+          <text>hel</text>
+          <syllabic>begin</syllabic>
+        </lyric>
+      </note>
+      <note>
+        <pitch><step>D</step><octave>4</octave></pitch>
+        <duration>4</duration>
+        <type>quarter</type>
+        <lyric number="1">
+          <text>lo</text>
+          <syllabic>end</syllabic>
+        </lyric>
+      </note>
+      <note>
+        <pitch><step>E</step><octave>4</octave></pitch>
+        <duration>4</duration>
+        <type>quarter</type>
+        <lyric number="1">
+          <text>world</text>
+        </lyric>
+      </note>
+      <note>
+        <pitch><step>F</step><octave>4</octave></pitch>
+        <duration>4</duration>
+        <type>quarter</type>
+      </note>
+    </measure>
+  </part>
+</score-partwise>"#;
+
+        let result = super::super::convert_musicxml_to_lilypond(musicxml, None);
+        assert!(result.is_ok(), "MusicXML to LilyPond conversion should succeed");
+
+        let conversion_result = result.unwrap();
+        let lilypond = &conversion_result.lilypond_source;
+
+        // Check that lyrics are present in the output
+        assert!(lilypond.contains("hel"), "LilyPond output should contain 'hel'");
+        assert!(lilypond.contains("lo"), "LilyPond output should contain 'lo'");
+        assert!(lilypond.contains("world"), "LilyPond output should contain 'world'");
+
+        // Check for proper LilyPond \lyricsto syntax with voice binding
+        assert!(lilypond.contains("\\lyricsto"), "LilyPond should have \\lyricsto for voice binding");
+        assert!(lilypond.contains("hel -- lo"), "LilyPond should have syllabic markers for multi-syllable words");
+    }
+
+    #[test]
+    fn test_convert_musicxml_with_lyrics_and_convert_flag() {
+        let musicxml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 3.1 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
+<score-partwise version="3.1">
+  <part-list>
+    <score-part id="P1">
+      <part-name>Part 1</part-name>
+    </score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>4</divisions>
+        <clef><sign>G</sign><line>2</line></clef>
+      </attributes>
+      <note>
+        <pitch><step>C</step><octave>4</octave></pitch>
+        <duration>4</duration>
+        <type>quarter</type>
+        <lyric number="1"><text>test</text></lyric>
+      </note>
+    </measure>
+  </part>
+</score-partwise>"#;
+
+        // Test with convert_lyrics enabled (default)
+        let mut settings = ConversionSettings::default();
+        settings.convert_lyrics = true;
+        let result = super::super::convert_musicxml_to_lilypond(musicxml, Some(settings)).unwrap();
+        assert!(result.lilypond_source.contains("test"), "Should include lyric when convert_lyrics=true");
+        assert!(result.lilypond_source.contains("\\lyricsto"), "Should have \\lyricsto binding when convert_lyrics=true");
+
+        // Test with convert_lyrics disabled
+        let mut settings = ConversionSettings::default();
+        settings.convert_lyrics = false;
+        let result = super::super::convert_musicxml_to_lilypond(musicxml, Some(settings)).unwrap();
+        assert!(!result.lilypond_source.contains("test"), "Should exclude lyric when convert_lyrics=false");
     }
 }

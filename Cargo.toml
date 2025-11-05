@@ -4,7 +4,6 @@ version = "0.1.0"
 edition = "2021"
 description = "Music Notation Editor WASM module with Cell architecture"
 license = "MIT"
-authors = ["Editor Project"]
 repository = "https://github.com/rothfield/editor"
 
 [lib]
@@ -32,6 +31,7 @@ chrono = { version = "0.4.38", features = ["wasmbind", "js-sys"], optional = tru
 regex = { version = "1.10.4", optional = true }
 getrandom = { version = "0.2.14", features = ["js"] }
 uuid = { version = "1.8.0", features = ["v4", "js"], optional = true }
+lazy_static = "1.4"
 wasm-bindgen-test = "0.3.42"
 roxmltree = "0.19"
 quick-xml = { version = "0.31", features = ["serialize"] }

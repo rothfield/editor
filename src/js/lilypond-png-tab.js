@@ -139,7 +139,15 @@ class LilyPondPngTab {
         minimal: false,
         format: 'svg',
         onSuccess: (result) => {
-          this.displaySVG(result.svg_base64);
+          // Handle both multi-page and single-page responses
+          if (result.multiPage && result.pages) {
+            this.displayMultiPageSVG(result.pages, result.pageCount);
+          } else if (result.svg_base64) {
+            // Backwards compatibility: single page
+            this.displaySVG(result.svg_base64);
+          } else {
+            this.displayMessage('Invalid render result');
+          }
         },
         onError: (error) => {
           console.error('[LilyPondDisplay] Render error:', error);
@@ -180,8 +188,17 @@ class LilyPondPngTab {
       }
 
       console.log('[LilyPondDisplay] Converting MusicXML to LilyPond...');
-      // Convert to LilyPond (uses compact template automatically)
-      const result = this.editor.wasmModule.convertMusicXMLToLilyPond(musicxml, null);
+      // Convert to LilyPond with no title (forces Compact template)
+      const settings = JSON.stringify({
+        target_lilypond_version: "2.24.0",
+        language: "English",
+        convert_directions: true,
+        convert_lyrics: true,
+        convert_chord_symbols: true,
+        title: null,  // Explicitly clear title to use compact template
+        composer: null
+      });
+      const result = this.editor.wasmModule.convertMusicXMLToLilyPond(musicxml, settings);
       const parsed = JSON.parse(result);
 
       if (!parsed.lilypond_source) {
@@ -198,7 +215,93 @@ class LilyPondPngTab {
   }
 
   /**
-   * Display SVG in render area
+   * Display multi-page SVG in render area (stacked vertically)
+   */
+  displayMultiPageSVG(pagesBase64, pageCount) {
+    console.log('[LilyPondDisplay] displayMultiPageSVG called', {
+      pagesBase64Type: typeof pagesBase64,
+      pagesBase64IsArray: Array.isArray(pagesBase64),
+      pageCount,
+      pagesLength: pagesBase64?.length,
+      renderAreaExists: !!this.renderArea
+    });
+
+    if (!this.renderArea) {
+      console.error('[LilyPondDisplay] renderArea not found!');
+      return;
+    }
+
+    try {
+      console.log(`[LilyPondDisplay] Displaying ${pageCount} page(s)`);
+
+      // Update render area styling for multi-page display
+      this.renderArea.style.cssText = `
+        flex: 1;
+        overflow: auto;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 20px;
+        background: #f0f0f0;
+        gap: 16px;
+      `;
+
+      // Clear previous content
+      this.renderArea.innerHTML = '';
+
+      // Create container for stacked pages
+      const pagesContainer = document.createElement('div');
+      pagesContainer.className = 'lp-preview';
+      pagesContainer.style.cssText = `
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        width: 100%;
+        max-width: 800px;
+      `;
+
+      console.log('[LilyPondDisplay] Processing pages...');
+
+      // Add each page as an img element
+      pagesBase64.forEach((base64Data, index) => {
+        console.log(`[LilyPondDisplay] Processing page ${index + 1}, base64 length: ${base64Data?.length}`);
+
+        const binaryString = atob(base64Data);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        const blob = new Blob([bytes], { type: 'image/svg+xml' });
+        const url = URL.createObjectURL(blob);
+
+        const img = document.createElement('img');
+        img.src = url;
+        img.alt = `Page ${index + 1}`;
+        img.style.cssText = `
+          width: 100%;
+          height: auto;
+          background: white;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+          border-radius: 4px;
+        `;
+
+        console.log(`[LilyPondDisplay] Created img element for page ${index + 1}, src: ${url.substring(0, 50)}...`);
+
+        pagesContainer.appendChild(img);
+      });
+
+      this.renderArea.appendChild(pagesContainer);
+
+      console.log('[LilyPondDisplay] Multi-page SVG rendered successfully, container has', pagesContainer.children.length, 'children');
+    } catch (error) {
+      console.error('[LilyPondDisplay] Multi-page SVG display error:', error);
+      console.error('[LilyPondDisplay] Error stack:', error.stack);
+      this.displayMessage('Failed to display multi-page SVG: ' + error.message);
+    }
+  }
+
+  /**
+   * Display single SVG in render area (backwards compatibility)
    */
   displaySVG(base64Data) {
     if (!this.renderArea) return;

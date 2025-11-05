@@ -2,8 +2,47 @@
 
 use crate::models::pitch::Pitch;
 use crate::models::PitchCode;
-use super::duration::duration_to_note_type;
+use super::duration::duration_to_note_type_fraction;
 use super::pitch::{pitch_to_step_alter, pitch_code_to_step_alter};
+use super::export_ir::Syllabic;
+
+/// Articulation types supported in MusicXML export
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ArticulationType {
+    /// Accent mark (>')
+    Accent,
+    /// Staccato dot
+    Staccato,
+    /// Tenuto line (—)
+    Tenuto,
+    /// Pizzicato (plucked)
+    Pizzicato,
+    /// Marcato (accent + staccato)
+    Marcato,
+    /// Strongaccent
+    StrongAccent,
+}
+
+impl ArticulationType {
+    /// Get the MusicXML element name for this articulation
+    pub fn xml_name(&self) -> &'static str {
+        match self {
+            ArticulationType::Accent => "accent",
+            ArticulationType::Staccato => "staccato",
+            ArticulationType::Tenuto => "tenuto",
+            ArticulationType::Pizzicato => "pizzicato",
+            ArticulationType::Marcato => "strong-accent",
+            ArticulationType::StrongAccent => "strong-accent",
+        }
+    }
+}
+
+/// Represents a single part (staff/instrument) in the score
+struct Part {
+    id: String,
+    name: String,
+    measures: String,
+}
 
 /// State machine for building MusicXML documents
 pub struct MusicXmlBuilder {
@@ -15,6 +54,9 @@ pub struct MusicXmlBuilder {
     attributes_written: bool,
     title: Option<String>,
     key_signature: Option<i8>, // Circle of fifths position (-7 to +7)
+    parts: Vec<Part>, // Completed parts
+    current_part_id: usize, // ID counter for parts (P1, P2, P3, ...)
+    current_part_name: String, // Name of the current part being built
 }
 
 impl MusicXmlBuilder {
@@ -29,7 +71,49 @@ impl MusicXmlBuilder {
             attributes_written: false,
             title: None,
             key_signature: None,
+            parts: Vec::new(),
+            current_part_id: 0,
+            current_part_name: String::new(),
         }
+    }
+
+    /// Start a new part (staff/instrument)
+    /// Returns the part ID (e.g., "P1", "P2", ...)
+    pub fn start_part(&mut self, part_name: &str) -> String {
+        // End current part if one is in progress
+        if self.current_part_id > 0 {
+            self.end_part();
+        }
+
+        // Create new part
+        self.current_part_id += 1;
+        self.current_part_name = part_name.to_string();
+        let part_id = format!("P{}", self.current_part_id);
+
+        // Reset state for new part
+        self.buffer.clear();
+        self.measure_number = 1;
+        self.last_note = None;
+        self.last_note_legacy = None;
+        self.measure_started = false;
+        self.attributes_written = false;
+
+        part_id
+    }
+
+    /// End the current part and save it
+    fn end_part(&mut self) {
+        if self.current_part_id == 0 {
+            return; // No part to end
+        }
+
+        let part = Part {
+            id: format!("P{}", self.current_part_id),
+            name: self.current_part_name.clone(),
+            measures: self.buffer.clone(),
+        };
+
+        self.parts.push(part);
     }
 
     /// Set the document title
@@ -44,11 +128,11 @@ impl MusicXmlBuilder {
 
     /// Start a new measure with optional divisions value
     pub fn start_measure(&mut self) {
-        self.start_measure_with_divisions(None, false);
+        self.start_measure_with_divisions(None, false, 0);
     }
 
     /// Start a new measure with specific divisions value and optional new-system flag
-    pub fn start_measure_with_divisions(&mut self, divisions: Option<usize>, new_system: bool) {
+    pub fn start_measure_with_divisions(&mut self, divisions: Option<usize>, new_system: bool, beat_count: usize) {
         self.buffer.push_str(&format!("<measure number=\"{}\">\n", self.measure_number));
         self.measure_started = true;
 
@@ -59,12 +143,13 @@ impl MusicXmlBuilder {
 
         // Write attributes (key/clef in first measure, divisions in all measures)
         if !self.attributes_written {
-            self.write_attributes(divisions);
+            self.write_attributes(divisions, beat_count);
             self.attributes_written = true;
         } else if let Some(div) = divisions {
             // Write divisions-only attributes for subsequent measures
             self.buffer.push_str("  <attributes>\n");
             self.buffer.push_str(&format!("    <divisions>{}</divisions>\n", div));
+            self.write_time_signature(beat_count);
             self.buffer.push_str("  </attributes>\n");
         }
     }
@@ -78,15 +163,16 @@ impl MusicXmlBuilder {
 
     /// Write note with pitch and duration
     pub fn write_note(&mut self, pitch: &Pitch, duration_divs: usize, musical_duration: f64) -> Result<(), String> {
-        self.write_note_with_beam(pitch, duration_divs, musical_duration, None, None, None, None, None)
+        self.write_note_with_beam(pitch, duration_divs, musical_duration, None, None, None, None, None, None)
     }
 
-    /// Write note with pitch, duration, and optional beam, time_modification, tuplet_bracket, tie, and slur
+    /// Write note with pitch, duration, and optional beam, time_modification, tuplet_bracket, tie, slur, and articulations
     /// time_modification: Option<(usize, usize)> = (actual_notes, normal_notes) - written on ALL tuplet notes
     /// tuplet_bracket: Option<&str> = "start" or "stop" - only on first/last tuplet notes
     /// tie: Option<&str> = "start" or "stop"
     /// slur: Option<&str> = "start" or "stop"
-    pub fn write_note_with_beam(&mut self, pitch: &Pitch, duration_divs: usize, musical_duration: f64, beam: Option<&str>, time_modification: Option<(usize, usize)>, tuplet_bracket: Option<&str>, tie: Option<&str>, slur: Option<&str>) -> Result<(), String> {
+    /// articulations: Optional vector of articulation types to write in notations block
+    pub fn write_note_with_beam(&mut self, pitch: &Pitch, duration_divs: usize, musical_duration: f64, beam: Option<&str>, time_modification: Option<(usize, usize)>, tuplet_bracket: Option<&str>, tie: Option<&str>, slur: Option<&str>, articulations: Option<Vec<ArticulationType>>) -> Result<(), String> {
         let (step, alter) = pitch_to_step_alter(pitch)?;
         let xml_octave = pitch.octave + 4; // music-text octave 0 = MIDI octave 4 (middle C)
 
@@ -118,9 +204,11 @@ impl MusicXmlBuilder {
         // We need to scale by (actual_notes/normal_notes) to get the display duration
         let (note_type, dots) = if let Some((actual_notes, normal_notes)) = time_modification {
             let display_duration = musical_duration * (actual_notes as f64 / normal_notes as f64);
-            duration_to_note_type(display_duration)
+            let numerator = (display_duration * 1000.0).round() as usize;
+            duration_to_note_type_fraction(numerator, 1000)
         } else {
-            duration_to_note_type(musical_duration)
+            let numerator = (musical_duration * 1000.0).round() as usize;
+            duration_to_note_type_fraction(numerator, 1000)
         };
         self.buffer.push_str(&format!("  <type>{}</type>\n", note_type));
         for _ in 0..dots {
@@ -132,12 +220,13 @@ impl MusicXmlBuilder {
             self.buffer.push_str(&format!("  <beam number=\"1\">{}</beam>\n", beam_type));
         }
 
-        // Add notations if tuplet bracket, tie, or slur
+        // Add notations if tuplet bracket, tie, slur, or articulations
         let has_tuplet_bracket = tuplet_bracket.is_some();
         let has_tie = tie.is_some();
         let has_slur = slur.is_some();
+        let has_articulations = articulations.as_ref().map_or(false, |a| !a.is_empty());
 
-        if has_tuplet_bracket || has_tie || has_slur {
+        if has_tuplet_bracket || has_tie || has_slur || has_articulations {
             self.buffer.push_str("  <notations>\n");
 
             // Add tuplet bracket notation if specified (only start/stop)
@@ -155,6 +244,13 @@ impl MusicXmlBuilder {
                 self.buffer.push_str(&format!("    <slur type=\"{}\" number=\"1\"/>\n", slur_type));
             }
 
+            // Add articulations if specified
+            if let Some(arts) = articulations {
+                for art in arts {
+                    self.buffer.push_str(&format!("    <{}/>\n", art.xml_name()));
+                }
+            }
+
             self.buffer.push_str("  </notations>\n");
         }
 
@@ -168,7 +264,16 @@ impl MusicXmlBuilder {
     /// Write note using PitchCode (system-agnostic, works for all pitch systems)
     /// This is the PREFERRED method for MusicXML export
     /// slur: Option<&str> = "start" or "stop"
-    pub fn write_note_with_beam_from_pitch_code(&mut self, pitch_code: &PitchCode, octave: i8, duration_divs: usize, musical_duration: f64, beam: Option<&str>, time_modification: Option<(usize, usize)>, tuplet_bracket: Option<&str>, tie: Option<&str>, slur: Option<&str>) -> Result<(), String> {
+    /// articulations: Optional vector of articulation types to write in notations block
+    /// ornament_type: Optional ornament type ("trill", "turn", "mordent", etc.)
+    /// lyric_data: Optional lyric to attach to this note (must be inside note element)
+    pub fn write_note_with_beam_from_pitch_code(&mut self, pitch_code: &PitchCode, octave: i8, duration_divs: usize, musical_duration: f64, beam: Option<&str>, time_modification: Option<(usize, usize)>, tuplet_bracket: Option<&str>, tie: Option<&str>, slur: Option<&str>, articulations: Option<Vec<ArticulationType>>, ornament_type: Option<&str>) -> Result<(), String> {
+        self.write_note_with_beam_from_pitch_code_and_lyric(pitch_code, octave, duration_divs, musical_duration, beam, time_modification, tuplet_bracket, tie, slur, articulations, ornament_type, None)
+    }
+
+    /// Write note with all options including lyric
+    /// lyric_data: Optional tuple of (syllable text, syllabic type, verse number)
+    pub fn write_note_with_beam_from_pitch_code_and_lyric(&mut self, pitch_code: &PitchCode, octave: i8, duration_divs: usize, musical_duration: f64, beam: Option<&str>, time_modification: Option<(usize, usize)>, tuplet_bracket: Option<&str>, tie: Option<&str>, slur: Option<&str>, articulations: Option<Vec<ArticulationType>>, ornament_type: Option<&str>, lyric_data: Option<(String, Syllabic, u32)>) -> Result<(), String> {
         let (step, alter) = pitch_code_to_step_alter(pitch_code);
         let xml_octave = octave + 4; // music-text octave 0 = MIDI octave 4 (middle C)
 
@@ -198,9 +303,11 @@ impl MusicXmlBuilder {
         // For tuplets, calculate note type based on actual duration within tuplet
         let (note_type, dots) = if let Some((actual_notes, normal_notes)) = time_modification {
             let display_duration = musical_duration * (actual_notes as f64 / normal_notes as f64);
-            duration_to_note_type(display_duration)
+            let numerator = (display_duration * 1000.0).round() as usize;
+            duration_to_note_type_fraction(numerator, 1000)
         } else {
-            duration_to_note_type(musical_duration)
+            let numerator = (musical_duration * 1000.0).round() as usize;
+            duration_to_note_type_fraction(numerator, 1000)
         };
         self.buffer.push_str(&format!("  <type>{}</type>\n", note_type));
         for _ in 0..dots {
@@ -212,12 +319,14 @@ impl MusicXmlBuilder {
             self.buffer.push_str(&format!("  <beam number=\"1\">{}</beam>\n", beam_type));
         }
 
-        // Add notations if tuplet bracket, tie, or slur
+        // Add notations if tuplet bracket, tie, slur, articulations, or ornaments
         let has_tuplet_bracket = tuplet_bracket.is_some();
         let has_tie = tie.is_some();
         let has_slur = slur.is_some();
+        let has_articulations = articulations.as_ref().map_or(false, |a| !a.is_empty());
+        let has_ornament = ornament_type.is_some();
 
-        if has_tuplet_bracket || has_tie || has_slur {
+        if has_tuplet_bracket || has_tie || has_slur || has_articulations || has_ornament {
             self.buffer.push_str("  <notations>\n");
 
             // Add tuplet bracket notation if specified (only start/stop)
@@ -235,7 +344,56 @@ impl MusicXmlBuilder {
                 self.buffer.push_str(&format!("    <slur type=\"{}\" number=\"1\"/>\n", slur_type));
             }
 
+            // Add ornament element if detected
+            if let Some(orn_type) = ornament_type {
+                self.buffer.push_str("    <ornament>\n");
+                match orn_type {
+                    "trill" => self.buffer.push_str("      <trill-mark/>\n"),
+                    "turn" => self.buffer.push_str("      <turn/>\n"),
+                    "mordent" => self.buffer.push_str("      <mordent/>\n"),
+                    "inverted-turn" => self.buffer.push_str("      <inverted-turn/>\n"),
+                    "inverted-mordent" => self.buffer.push_str("      <inverted-mordent/>\n"),
+                    _ => self.buffer.push_str(&format!("      <{}/>\n", orn_type)),
+                }
+                self.buffer.push_str("    </ornament>\n");
+            }
+
+            // Add articulations if specified
+            if let Some(arts) = articulations {
+                for art in arts {
+                    self.buffer.push_str(&format!("    <{}/>\n", art.xml_name()));
+                }
+            }
+
             self.buffer.push_str("  </notations>\n");
+        }
+
+        // Add lyric if present (must be inside note element, after notations)
+        if let Some((syllable, syllabic, number)) = lyric_data {
+            self.buffer.push_str(&format!("  <lyric number=\"{}\">\n", number));
+
+            // Write syllabic type if it's not Single (Single is implicit)
+            match syllabic {
+                Syllabic::Single => {
+                    // Single syllables don't need explicit syllabic element
+                }
+                Syllabic::Begin => {
+                    self.buffer.push_str("    <syllabic>begin</syllabic>\n");
+                }
+                Syllabic::Middle => {
+                    self.buffer.push_str("    <syllabic>middle</syllabic>\n");
+                }
+                Syllabic::End => {
+                    self.buffer.push_str("    <syllabic>end</syllabic>\n");
+                }
+            }
+
+            // Write the syllable text with XML escaping
+            self.buffer.push_str("    <text>");
+            self.buffer.push_str(&xml_escape(&syllable));
+            self.buffer.push_str("</text>\n");
+
+            self.buffer.push_str("  </lyric>\n");
         }
 
         self.buffer.push_str("</note>\n");
@@ -271,9 +429,11 @@ impl MusicXmlBuilder {
         // We need to scale by (actual_notes/normal_notes) to get the display duration
         let (note_type, dots) = if let Some((actual_notes, normal_notes)) = time_modification {
             let display_duration = musical_duration * (actual_notes as f64 / normal_notes as f64);
-            duration_to_note_type(display_duration)
+            let numerator = (display_duration * 1000.0).round() as usize;
+            duration_to_note_type_fraction(numerator, 1000)
         } else {
-            duration_to_note_type(musical_duration)
+            let numerator = (musical_duration * 1000.0).round() as usize;
+            duration_to_note_type_fraction(numerator, 1000)
         };
         self.buffer.push_str(&format!("  <type>{}</type>\n", note_type));
         for _ in 0..dots {
@@ -298,17 +458,59 @@ impl MusicXmlBuilder {
     /// pitch_code: The pitch of the grace note
     /// octave: Octave offset relative to middle C
     /// slash: Whether to show slash (true = acciaccatura, false = appoggiatura)
-    pub fn write_grace_note(&mut self, pitch_code: &PitchCode, octave: i8, slash: bool) -> Result<(), String> {
+    /// placement: Optional placement ("above" or "below")
+    pub fn write_grace_note(&mut self, pitch_code: &PitchCode, octave: i8, slash: bool, placement: Option<&str>) -> Result<(), String> {
+        self.write_grace_note_with_timing(pitch_code, octave, slash, placement, false, None)
+    }
+
+    /// Write a grace note with optional after-grace positioning, steal-time attributes, and beaming
+    /// after_grace: if true, this is an after grace note that comes after the main note
+    /// steal_time_following: percentage (0-100) of time to steal from following note
+    /// beam_state: Optional beam state for grouping multiple grace notes ("begin", "continue", "end")
+    pub fn write_grace_note_with_timing(&mut self, pitch_code: &PitchCode, octave: i8, slash: bool, placement: Option<&str>, after_grace: bool, steal_time_following: Option<f32>) -> Result<(), String> {
+        self.write_grace_note_beamed(pitch_code, octave, slash, placement, after_grace, steal_time_following, None)
+    }
+
+    /// Write a grace note with full support for steal-time, beaming, and slurring
+    /// before_grace: if true, steals from previous note; if false, steals from following note
+    /// steal_time_pct: percentage of time stolen (before grace steals-previous, after grace steals-following)
+    /// beam_state: Optional beam state for grouping ("begin", "continue", "end")
+    /// slur_type: Optional slur direction to main note ("start", "stop", or None)
+    pub fn write_grace_note_beamed(&mut self, pitch_code: &PitchCode, octave: i8, slash: bool, placement: Option<&str>, after_grace: bool, steal_time_following: Option<f32>, beam_state: Option<&str>) -> Result<(), String> {
+        self.write_grace_note_full(pitch_code, octave, slash, placement, after_grace, steal_time_following, beam_state, None)
+    }
+
+    /// Full grace note with all attributes
+    pub fn write_grace_note_full(&mut self, pitch_code: &PitchCode, octave: i8, slash: bool, placement: Option<&str>, _after_grace: bool, steal_time_pct: Option<f32>, beam_state: Option<&str>, slur_type: Option<&str>) -> Result<(), String> {
         let (step, alter) = pitch_code_to_step_alter(pitch_code);
         let xml_octave = octave + 4; // music-text octave 0 = MIDI octave 4 (middle C)
 
         self.buffer.push_str("<note>\n");
 
-        // Grace element (with or without slash)
+        // Grace element with steal-time attributes
+        let mut grace_attrs = String::new();
+
         if slash {
-            self.buffer.push_str("  <grace slash=\"yes\"/>\n");
+            grace_attrs.push_str(" slash=\"yes\"");
+        }
+
+        if let Some(place) = placement {
+            grace_attrs.push_str(&format!(" placement=\"{}\"", place));
+        }
+
+        // Add steal-time attributes based on grace note position
+        if let Some(steal_pct) = steal_time_pct {
+            // Both before and after grace notes steal from the previous note (the main note they ornament)
+            grace_attrs.push_str(&format!(" steal-time-previous=\"{:.0}\"", steal_pct));
         } else {
+            // Default steal time values: both use steal-time-previous
+            grace_attrs.push_str(" steal-time-previous=\"10\"");
+        }
+
+        if grace_attrs.is_empty() {
             self.buffer.push_str("  <grace/>\n");
+        } else {
+            self.buffer.push_str(&format!("  <grace{}/>\n", grace_attrs));
         }
 
         self.buffer.push_str("  <pitch>\n");
@@ -319,12 +521,61 @@ impl MusicXmlBuilder {
         self.buffer.push_str(&format!("    <octave>{}</octave>\n", xml_octave));
         self.buffer.push_str("  </pitch>\n");
 
-        // Grace notes use 8th note type by default
-        self.buffer.push_str("  <type>eighth</type>\n");
+        // Grace notes: 16th for before grace (smaller), 16th for after grace (even smaller)
+        self.buffer.push_str("  <type>sixteenth</type>\n");
+
+        // Add beam information if provided (for grouping multiple grace notes)
+        if let Some(state) = beam_state {
+            self.buffer.push_str(&format!("  <beam number=\"1\">{}</beam>\n", state));
+        }
+
+        // Add slur if provided (to connect grace notes to main note)
+        if let Some(slur_dir) = slur_type {
+            self.buffer.push_str("  <notations>\n");
+            self.buffer.push_str(&format!("    <slur type=\"{}\" number=\"1\"/>\n", slur_dir));
+            self.buffer.push_str("  </notations>\n");
+        }
 
         self.buffer.push_str("</note>\n");
 
         Ok(())
+    }
+
+    /// Write an ornament element in notations block
+    /// ornament_type: "trill", "mordent", "turn", "inverted-turn", "tremolo"
+    /// placement: Optional placement ("above" or "below")
+    pub fn write_ornament_notation(&mut self, ornament_type: &str, placement: Option<&str>) -> String {
+        let mut notation = format!("    <ornament");
+        if let Some(place) = placement {
+            notation.push_str(&format!(" placement=\"{}\"", place));
+        }
+        notation.push_str(">\n");
+
+        // Add the specific ornament element
+        match ornament_type {
+            "trill" => notation.push_str("      <trill-mark/>\n"),
+            "mordent" => notation.push_str("      <mordent/>\n"),
+            "inverted-mordent" => notation.push_str("      <inverted-mordent/>\n"),
+            "turn" => notation.push_str("      <turn/>\n"),
+            "inverted-turn" => notation.push_str("      <inverted-turn/>\n"),
+            "tremolo" => notation.push_str("      <tremolo/>\n"),
+            _ => notation.push_str(&format!("      <{}/>\n", ornament_type)),
+        }
+
+        notation.push_str("    </ornament>\n");
+        notation
+    }
+
+    /// Write an articulation element
+    /// articulation_type: "accent", "staccato", "tenuto", "pizzicato", etc.
+    /// placement: Optional placement ("above" or "below")
+    pub fn write_articulation_notation(&mut self, articulation_type: &str, placement: Option<&str>) -> String {
+        let mut notation = format!("    <{}", articulation_type);
+        if let Some(place) = placement {
+            notation.push_str(&format!(" placement=\"{}\"", place));
+        }
+        notation.push_str("/>\n");
+        notation
     }
 
     /// Reset note context (for breath marks, line starts)
@@ -337,8 +588,54 @@ impl MusicXmlBuilder {
         self.buffer.push_str("<print new-system=\"yes\"/>\n");
     }
 
+    /// Write a lyric element to a note
+    /// syllable: The text of the syllable
+    /// syllabic: The syllabic type (Single, Begin, Middle, End)
+    /// verse_number: The verse/lyric number (typically 1 for first verse)
+    pub fn write_lyric(&mut self, syllable: &str, syllabic: Syllabic, verse_number: u32) {
+        self.buffer.push_str(&format!("  <lyric number=\"{}\">\n", verse_number));
+
+        // Write syllabic type if it's not Single (Single is implicit)
+        match syllabic {
+            Syllabic::Single => {
+                // Single syllables don't need explicit syllabic element
+            }
+            Syllabic::Begin => {
+                self.buffer.push_str("    <syllabic>begin</syllabic>\n");
+            }
+            Syllabic::Middle => {
+                self.buffer.push_str("    <syllabic>middle</syllabic>\n");
+            }
+            Syllabic::End => {
+                self.buffer.push_str("    <syllabic>end</syllabic>\n");
+            }
+        }
+
+        // Write the syllable text with XML escaping
+        self.buffer.push_str("    <text>");
+        self.buffer.push_str(&xml_escape(syllable));
+        self.buffer.push_str("</text>\n");
+
+        self.buffer.push_str("  </lyric>\n");
+    }
+
     /// Finalize and return complete MusicXML string
-    pub fn finalize(self) -> String {
+    pub fn finalize(mut self) -> String {
+        // End the current part if one is in progress
+        if self.current_part_id > 0 && !self.buffer.is_empty() {
+            self.end_part();
+        }
+
+        // If no parts were created, create a default empty part
+        if self.parts.is_empty() {
+            self.current_part_id = 1;
+            self.parts.push(Part {
+                id: "P1".to_string(),
+                name: "".to_string(),
+                measures: self.buffer.clone(),
+            });
+        }
+
         let mut xml = String::new();
         xml.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
         xml.push_str("<!DOCTYPE score-partwise PUBLIC \"-//Recordare//DTD MusicXML 3.1 Partwise//EN\" \"http://www.musicxml.org/dtds/partwise.dtd\">\n");
@@ -353,32 +650,51 @@ impl MusicXmlBuilder {
             }
         }
 
+        // Emit part-list with all parts
         xml.push_str("  <part-list>\n");
-        xml.push_str("    <score-part id=\"P1\">\n");
-        xml.push_str("      <part-name></part-name>\n");
-        xml.push_str("    </score-part>\n");
+        for part in &self.parts {
+            xml.push_str(&format!("    <score-part id=\"{}\">\n", part.id));
+            xml.push_str(&format!("      <part-name>{}</part-name>\n", xml_escape(&part.name)));
+            xml.push_str("    </score-part>\n");
+        }
         xml.push_str("  </part-list>\n");
-        xml.push_str("  <part id=\"P1\">\n");
-        xml.push_str(&self.buffer);
-        xml.push_str("  </part>\n");
+
+        // Emit all parts
+        for part in &self.parts {
+            xml.push_str(&format!("  <part id=\"{}\">\n", part.id));
+            xml.push_str(&part.measures);
+            xml.push_str("  </part>\n");
+        }
+
         xml.push_str("</score-partwise>\n");
         xml
     }
 
-    /// Write MusicXML attributes (clef, key, divisions)
-    fn write_attributes(&mut self, divisions: Option<usize>) {
+    /// Write MusicXML attributes (divisions, key, time, clef)
+    fn write_attributes(&mut self, divisions: Option<usize>, beat_count: usize) {
         self.buffer.push_str("  <attributes>\n");
         if let Some(div) = divisions {
             self.buffer.push_str(&format!("    <divisions>{}</divisions>\n", div));
         }
 
         // Write key signature (use fifths from parsed key, default to C major = 0)
+        // MUST come before time signature per MusicXML spec
         let fifths = self.key_signature.unwrap_or(0);
         self.buffer.push_str(&format!("    <key><fifths>{}</fifths></key>\n", fifths));
 
+        // Write hidden time signature for OSMD compatibility
+        self.write_time_signature(beat_count);
+
         self.buffer.push_str("    <clef><sign>G</sign><line>2</line></clef>\n");
-        // NO time signature per spec (FR-023)
         self.buffer.push_str("  </attributes>\n");
+    }
+
+    /// Write hidden time signature (print-object="no" for OSMD compatibility)
+    fn write_time_signature(&mut self, beat_count: usize) {
+        self.buffer.push_str("    <time print-object=\"no\">\n");
+        self.buffer.push_str(&format!("      <beats>{}</beats>\n", beat_count));
+        self.buffer.push_str("      <beat-type>4</beat-type>\n");
+        self.buffer.push_str("    </time>\n");
     }
 }
 
@@ -525,11 +841,11 @@ mod tests {
     #[test]
     fn test_attributes_written_once() {
         let mut builder = MusicXmlBuilder::new();
-        builder.start_measure_with_divisions(None, false);
+        builder.start_measure_with_divisions(None, false, 4);
         let first_buffer = builder.buffer.clone();
         builder.end_measure();
 
-        builder.start_measure_with_divisions(None, false);
+        builder.start_measure_with_divisions(None, false, 4);
         let second_buffer = builder.buffer.clone();
 
         // Attributes should only appear once (in first measure)
@@ -537,16 +853,6 @@ mod tests {
         assert_eq!(second_buffer.matches("<attributes>").count(), 1); // Still 1 total
     }
 
-    #[test]
-    fn test_no_time_signature() {
-        let mut builder = MusicXmlBuilder::new();
-        builder.start_measure();
-
-        // Should NOT contain time signature element
-        assert!(!builder.buffer.contains("<time>"));
-        assert!(!builder.buffer.contains("<beats>"));
-        assert!(!builder.buffer.contains("<beat-type>"));
-    }
 
     #[test]
     fn test_finalize_structure() {
@@ -566,7 +872,7 @@ mod tests {
     #[test]
     fn test_new_system_marker() {
         let mut builder = MusicXmlBuilder::new();
-        builder.start_measure_with_divisions(Some(1), true);
+        builder.start_measure_with_divisions(Some(1), true, 4);
 
         // Should have print new-system BEFORE attributes
         let buffer = &builder.buffer;
@@ -583,7 +889,7 @@ mod tests {
 
         // Write grace note using PitchCode for G (pitch 5 in number system = G)
         let grace_pitch_code = PitchCode::N5; // G natural
-        builder.write_grace_note(&grace_pitch_code, 0, true).unwrap();
+        builder.write_grace_note(&grace_pitch_code, 0, true, None).unwrap();
 
         // Should contain grace element with slash
         assert!(builder.buffer.contains("<grace slash=\"yes\"/>"));
@@ -606,7 +912,7 @@ mod tests {
 
         // Write grace note without slash (appoggiatura)
         let grace_pitch_code = PitchCode::N1; // C natural
-        builder.write_grace_note(&grace_pitch_code, 0, false).unwrap();
+        builder.write_grace_note(&grace_pitch_code, 0, false, None).unwrap();
 
         // Should contain grace element without slash
         assert!(builder.buffer.contains("<grace/>"));
@@ -620,10 +926,125 @@ mod tests {
 
         // Write grace note with sharp (F# = pitch 4 with sharp)
         let grace_pitch_code = PitchCode::N4s; // F#
-        builder.write_grace_note(&grace_pitch_code, 0, true).unwrap();
+        builder.write_grace_note(&grace_pitch_code, 0, true, None).unwrap();
 
         // Should contain pitch with alteration
         assert!(builder.buffer.contains("<step>F</step>"));
         assert!(builder.buffer.contains("<alter>1</alter>"));
+    }
+
+    #[test]
+    fn test_hidden_time_signature() {
+        let mut builder = MusicXmlBuilder::new();
+        builder.start_measure_with_divisions(Some(4), false, 4);
+
+        // Should contain hidden time signature
+        assert!(builder.buffer.contains("<time print-object=\"no\">"));
+        assert!(builder.buffer.contains("<beats>4</beats>"));
+        assert!(builder.buffer.contains("<beat-type>4</beat-type>"));
+    }
+
+    #[test]
+    fn test_time_signature_different_beat_counts() {
+        let mut builder = MusicXmlBuilder::new();
+        builder.start_measure_with_divisions(Some(3), false, 3);
+        builder.end_measure();
+
+        builder.start_measure_with_divisions(Some(2), false, 2);
+
+        // First measure should have 3 beats
+        assert!(builder.buffer.contains("<beats>3</beats>"));
+
+        // Second measure should have 2 beats
+        let second_measure_start = builder.buffer.rfind("<measure number=\"2\">").unwrap();
+        let second_measure_section = &builder.buffer[second_measure_start..];
+        assert!(second_measure_section.contains("<beats>2</beats>"));
+    }
+
+    #[test]
+    fn test_write_note_with_lyric_single() {
+        let mut builder = MusicXmlBuilder::new();
+        builder.start_measure();
+
+        // Write a note with a single syllable lyric (lyrics are now embedded in notes)
+        builder.write_note_with_beam_from_pitch_code_and_lyric(
+            &PitchCode::N1,
+            4,
+            1,
+            0.25,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(("hello".to_string(), Syllabic::Single, 1)),
+        ).unwrap();
+
+        // Should contain note with lyric element inside it
+        assert!(builder.buffer.contains("<note>"));
+        assert!(builder.buffer.contains("<lyric number=\"1\">"));
+        assert!(builder.buffer.contains("<text>hello</text>"));
+        assert!(builder.buffer.contains("</lyric>"));
+        assert!(builder.buffer.contains("</note>"));
+
+        // Verify order: lyric should be inside note (before </note>)
+        let lyric_end = builder.buffer.find("</lyric>").unwrap();
+        let note_end = builder.buffer.find("</note>").unwrap();
+        assert!(lyric_end < note_end, "Lyric must close before note closes");
+    }
+
+    #[test]
+    fn test_write_note_with_lyric_begin() {
+        let mut builder = MusicXmlBuilder::new();
+        builder.start_measure();
+
+        // Write a note with a begin syllable
+        builder.write_note_with_beam_from_pitch_code_and_lyric(
+            &PitchCode::N1,
+            4,
+            1,
+            0.25,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(("hel".to_string(), Syllabic::Begin, 1)),
+        ).unwrap();
+
+        // Should contain syllabic begin
+        assert!(builder.buffer.contains("<syllabic>begin</syllabic>"));
+        assert!(builder.buffer.contains("<text>hel</text>"));
+    }
+
+    #[test]
+    fn test_write_note_without_lyric() {
+        let mut builder = MusicXmlBuilder::new();
+        builder.start_measure();
+
+        // Write a note without lyric
+        builder.write_note_with_beam_from_pitch_code_and_lyric(
+            &PitchCode::N1,
+            4,
+            1,
+            0.25,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        ).unwrap();
+
+        // Should NOT contain lyric element
+        assert!(builder.buffer.contains("<note>"));
+        assert!(!builder.buffer.contains("<lyric"));
+        assert!(builder.buffer.contains("</note>"));
     }
 }

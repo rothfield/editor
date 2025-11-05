@@ -1,369 +1,228 @@
-# Music Notation Editor - Quick Reference Guide
+# Quick Reference: Double-Click & Selection Implementation
 
-## Key File Locations
+## Current Double-Click Flow
 
-| Component | Path | Lines | Purpose |
-|-----------|------|-------|---------|
-| Main HTML | `/home/john/editor/index.html` | 506 | Single-page app template |
-| App Entry | `/home/john/editor/src/js/main.js` | 476 | App initialization & MIDI setup |
-| WASM API | `/home/john/editor/src/api.rs` | 1046 | JavaScript-facing Rust functions |
-| Lilypond Renderer | `/home/john/editor/src/js/lilypond-renderer.js` | 150 | API client for rendering |
-| Lilypond Tab | `/home/john/editor/src/js/lilypond-png-tab.js` | 491 | PNG/SVG display component |
-| Service Server | `/home/john/editor/lilypond-service/server.js` | 406 | LilyPond rendering service |
-| Docker Config | `/home/john/editor/lilypond-service/docker-compose.yaml` | 63 | Service orchestration |
-| Build Script | `/home/john/editor/Makefile` | 267 | Build & deploy automation |
-
----
-
-## Core API Functions (WASM)
-
-### Character Operations
-```javascript
-wasmModule.insertCharacter(cells, char, cursorPos, pitchSystem)
-  → { cells, newCursorPos }
-
-wasmModule.deleteCharacter(cells, cursorPos)
-  → Array<Cell>
-
-wasmModule.parseText(text, pitchSystem)
-  → Array<Cell>
+```
+Browser dblclick event
+    ↓
+MouseHandler.handleDoubleClick() [JS]
+    ↓
+calculateCellPosition(x, y) → stop index [JS/DOM]
+    ↓
+selectBeatOrCharGroup(cellIndex) [JS]
+    ├─ IF beat-loop class exists → scan DOM for beat boundaries
+    └─ ELSE → scan model for continuation flag
+    ↓
+initializeSelection(start, end) [JS]
+    ├─ Store in document.state.selection
+    └─ Convert cell indices to stop indices
+    ↓
+updateSelectionDisplay() [JS]
+    └─ Add 'selected' CSS class to DOM cells
 ```
 
-### Notation Operations
+## Key Files
+
+| What | File | Lines | Language |
+|------|------|-------|----------|
+| Double-click entry | `src/js/handlers/MouseHandler.js` | 147-159 | JS |
+| Beat/char selection | `src/js/handlers/MouseHandler.js` | 165-263 | JS |
+| Cell position calc | `src/js/handlers/MouseHandler.js` | 349-432 | JS |
+| Beat derivation | `src/parse/beats.rs` | 65-125 | Rust |
+| Mouse down/up | `src/api/core.rs` | 2425-2490 | Rust |
+| Selection storage | `src/js/editor.js` | 156-159 | JS |
+| Selection methods | `src/js/editor.js` | 800-843, 1100-1254 | JS |
+| Data structures | `src/models/notation.rs` | 10-283 | Rust |
+
+## Two-Branch Logic in `selectBeatOrCharGroup()`
+
+### Branch 1: Beat Selection (DOM-based)
+**Trigger**: Cell has CSS class `beat-loop-first`, `beat-loop-middle`, or `beat-loop-last`
+
 ```javascript
-wasmModule.applyOctave(cells, start, end, octave)
-  → Array<Cell>
-
-wasmModule.applySlur(cells, start, end)
-  → Array<Cell>
-
-wasmModule.removeSlur(cells, start, end)
-  → Array<Cell>
+// Scan backward for beat-loop-first
+// Scan forward for beat-loop-last
+// Select all cells between them
 ```
 
-### Export Operations
+**Issues**:
+- Depends on render order
+- Not testable
+- Fragile
+
+### Branch 2: Character Selection (Model-based)
+**Trigger**: Cell has `continuation` flag
+
 ```javascript
-wasmModule.exportMusicXML(document)
-  → String (MusicXML 3.1)
-
-wasmModule.convertMusicXMLToLilyPond(musicxml, settings)
-  → { lilypond_source: String, skipped_elements: Array }
-
-wasmModule.computeLayout(document, config)
-  → DisplayList
+// Scan backward for continuation=false
+// Scan forward while continuation=true
+// Select all cells in group
 ```
 
----
+**Advantages**:
+- Model-based (deterministic)
+- Testable
+- Reliable
 
-## External API Endpoints
-
-### WebUI → Backend (JSON)
-**Endpoint**: `POST /api/lilypond/render`
-**Status**: MISSING - Needs implementation
+## Selection State Structure
 
 ```javascript
-Request: {
-  lilypond_source: "...",
-  template_variant: "minimal" | "full",
-  output_format: "svg" | "png"
+document.state.selection = {
+  // WASM model (from mouseDown/Move/Up)
+  anchor: { line: 0, col: 5 },      // Fixed point
+  head: { line: 0, col: 10 },       // Moving cursor
+  start: { line: 0, col: 5 },       // Normalized min
+  end: { line: 0, col: 10 },        // Normalized max
+  is_empty: false,
+  is_forward: true,
+  active: true,
+  
+  // Legacy (for backward compatibility)
+  startStopIndex: 0,
+  endStopIndex: 1,
 }
-
-Response: {
-  success: boolean,
-  svg?: string,
-  png_base64?: string,
-  format: string,
-  error?: string
-}
 ```
 
-### Backend → LilyPond Service (Binary)
-**Endpoint**: `POST http://localhost:8787/engrave`
-**Status**: IMPLEMENTED
+## Beat Structure
 
-```bash
-curl -X POST http://localhost:8787/engrave \
-  -H "Content-Type: application/json" \
-  -d '{"ly":"\\version \"2.24.0\"\n...","format":"svg"}'
-
-# Returns: Binary SVG or PDF
-```
-
----
-
-## Data Models
-
-### Cell
+### BeatSpan Model
 ```rust
-struct Cell {
-  char: String,
-  kind: ElementKind,           // PitchedElement, Text, etc.
-  continuation: bool,          // Multi-char glyph?
-  col: usize,
-  pitch_code: Option<PitchCode>, // Musical pitch
-  pitch_system: Option<PitchSystem>,
-  octave: i8,
-  slur_indicator: SlurIndicator,
-  x, y, w, h: f64,
-  bbox, hit: (f64, f64, f64, f64),
+pub struct BeatSpan {
+    pub start: usize,       // First cell in beat (inclusive)
+    pub end: usize,         // Last cell in beat (inclusive)
+    pub duration: f32,      // Relative duration
+    pub visual: BeatVisual, // Rendering config
 }
 ```
 
-### Document
+### Beat Derivation
+```
+Input: Cell array
+       ├─ Skip rhythm-transparent (ornaments)
+       ├─ Identify beat elements (pitched/unpitched/breath)
+       └─ Group consecutive beat elements
+
+Output: Vec<BeatSpan>
+       └─ Each span = start..end columns
+```
+
+### CSS Classes (After Render)
+```
+beat-loop-first   ← First cell of beat (defines arc start)
+beat-loop-middle  ← Middle cells of beat
+beat-loop-last    ← Last cell of beat (defines arc end)
+```
+
+## Selection Methods
+
+### updateCursorFromWASM(diff)
+- Called after mouseDown/Move/Up
+- Copies selection from WASM to JS
+- Triggers visual update
+
+### initializeSelection(startCellIndex, endCellIndex)
+- Called by double-click handler
+- Stores in document.state.selection
+- Converts to stop indices internally
+
+### updateSelectionDisplay()
+- Clears previous 'selected' classes
+- Calls renderSelectionVisual()
+- Updates cursor display
+
+### renderSelectionVisual(selection)
+- Iterates through DOM cells
+- Adds 'selected' class to cells in range
+- Works with normalized start.col to end.col
+
+## Mouse Event Flow
+
+### Drag Selection (WASM-backed)
+```
+mousedown → WASM: mouseDown(pos) → JS: updateCursorFromWASM(diff)
+mousemove → WASM: mouseMove(pos) → JS: updateCursorFromWASM(diff)
+mouseup   → WASM: mouseUp(pos)   → JS: updateCursorFromWASM(diff)
+```
+
+### Double-Click (Pure JavaScript)
+```
+dblclick → JS: handleDoubleClick()
+        → JS: selectBeatOrCharGroup()
+        → JS: initializeSelection()
+        → JS: updateSelectionDisplay()
+```
+
+## Cell Position Calculation
+
+**Input**: X, Y coordinates (screen-relative)
+
+**Process**:
+1. Determine line from Y coordinate
+2. Get all `.char-cell` elements
+3. Filter out ornament cells (in normal mode)
+4. Measure rendered positions from DOM
+5. Find which cell X falls in
+6. Determine left/right half
+
+**Output**: Stop index (0..N+1)
+
+## WASM Function Locations
+
+| Function | File | Purpose |
+|----------|------|---------|
+| `mouse_down` | api/core.rs:2425 | Start selection |
+| `mouse_move` | api/core.rs:2445 | Extend selection |
+| `mouse_up` | api/core.rs:2464 | Finalize selection |
+| `extract_implicit_beats` | parse/beats.rs:70 | Derive beat spans |
+
+## Ornament Handling
+
+### In Beat Derivation
 ```rust
-struct Document {
-  title: Option<String>,
-  composer: Option<String>,
-  pitch_system: Option<PitchSystem>,
-  lines: Vec<Line>,
+// Skip rhythm-transparent cells (ornaments) entirely
+if cell.is_rhythm_transparent() {
+    continue;
 }
 ```
 
-### PitchSystem
+### In Cell Position Calculation
+```javascript
+// Filter out ornament cells in normal mode
+if (editMode || !line) return true;
+if (cell.ornament_indicator.name !== 'none') return false;
+```
+
+### Current Behavior
+- Beats exclude ornament cells
+- Double-click can't select through ornaments
+- Edit mode includes ornaments
+
+## Recommended Improvement
+
+**Add WASM function**:
 ```rust
-enum PitchSystem {
-  Unknown,
-  Number,        // 1-7
-  Western,       // C-B
-  Sargam,        // Sa-Ni
-  Bhatkhande,    // 1-7 with diacritics
-  Tabla,         // Percussion patterns
-}
+#[wasm_bindgen(js_name = selectBeatAtPosition)]
+pub fn select_beat_at_position(pos_js: JsValue) -> Result<SelectionInfo, JsValue>
 ```
 
----
+**Benefit**: Unify beat selection logic, eliminate DOM scanning
 
-## Build Commands
+## Common Gotchas
 
-```bash
-# Development
-make build              # Full build (WASM + JS + CSS)
-make serve             # Dev server with hot reload
-make clean             # Clean artifacts
+1. **Selection is exclusive on end**: `initializeSelection(start, end + 1)`
+2. **Stops ≠ Cells**: Stops are positions between cells (0..N+1)
+3. **Beats are ephemeral**: Not saved to JSON, recalculated on render
+4. **Continuation flag**: Only set for accidentals and modifiers
+5. **Ornaments in normal mode**: Filtered from navigation, shown in edit mode
 
-# Production
-make build-prod        # Optimized production build
-make serve-prod        # Serve production
+## Testing Checklist
 
-# LilyPond Service
-make lilypond-start    # Start Docker service (port 8787)
-make lilypond-stop     # Stop service
-make lilypond-health   # Check health
-make lilypond-test     # Test rendering
-```
-
----
-
-## Directory Tree - Source Structure
-
-```
-/home/john/editor/
-├── index.html                    # Entry point
-├── src/
-│   ├── js/                       # 25 JavaScript files
-│   │   ├── main.js              # App initialization
-│   │   ├── editor.js            # Core editor
-│   │   ├── lilypond-renderer.js # API client
-│   │   ├── lilypond-png-tab.js  # Render display
-│   │   └── ... (22 more files)
-│   ├── api.rs                    # WASM API (1046 lines)
-│   ├── lib.rs                    # Crate root
-│   ├── models/                   # Data structures
-│   ├── parse/                    # Grammar & parsing
-│   ├── converters/
-│   │   └── musicxml/
-│   │       └── musicxml_to_lilypond/
-│   │           ├── converter.rs
-│   │           ├── parser.rs
-│   │           ├── lilypond.rs
-│   │           └── templates/
-│   └── renderers/                # Layout & rendering
-├── dist/                         # Build output
-│   ├── main.js
-│   ├── main.css
-│   └── pkg/                      # WASM output
-├── lilypond-service/             # Docker service
-│   ├── server.js
-│   ├── Dockerfile
-│   └── docker-compose.yaml
-├── Makefile                      # 267 lines
-├── Cargo.toml                    # Rust config
-└── package.json                  # Node config
-```
-
----
-
-## UI Components & Tabs
-
-| Tab | File | Purpose |
-|-----|------|---------|
-| Staff Notation | osmd-renderer.js | OSMD integration + MIDI controls |
-| MusicXML | (inline) | Display exported MusicXML |
-| LilyPond Src | lilypond-tab.js | Display LilyPond source code |
-| LilyPond PNG | lilypond-png-tab.js | Display rendered SVG/PNG |
-| Ephemeral Model | (inline) | Full document JSON with state |
-| Persistent Model | (inline) | Saveable document JSON |
-| Console Errors | logger.js | Error log display |
-| Console Log | logger.js | Debug log display |
-| HTML | (inline) | Rendered HTML structure |
-
----
-
-## Keyboard Shortcuts
-
-| Keys | Action |
-|------|--------|
-| Alt+S | Apply slur to selection |
-| Alt+U | Upper octave |
-| Alt+M | Middle octave |
-| Alt+L | Lower octave |
-| Alt+T | Set tala (implied) |
-
----
-
-## Pitch Systems & Values
-
-### Number System (1-7)
-- 1, 2, 3, 4, 5, 6, 7 map to Do, Re, Mi, Fa, Sol, La, Ti
-- Accidentals: `#` (sharp), `b` (flat)
-- Example: `1#`, `2b`
-
-### Western System (C-B)
-- C, D, E, F, G, A, B standard notation
-- Accidentals: `#` (sharp), `b` (flat)
-- Octave modifiers: `-1` (lower), `0` (middle), `1` (upper)
-
-### Sargam System
-- Sa, Re, Ga, Ma, Pa, Dha, Ni (traditional Indian)
-- Similar accidental support
-
----
-
-## Security Features (LilyPond Service)
-
-### Input Validation
-- Blocks `\include` directives
-- Blocks Scheme expressions `#(...)`
-- Blocks system calls
-- Blocks external URLs
-- Max size: 512 KB
-- Timeout: 15 seconds
-
-### Container Security
-- Read-only root filesystem
-- Non-root execution (UID 10001)
-- Resource limits: 1 CPU, 512MB RAM
-- Health check every 30 seconds
-- tmpfs /tmp with 64MB limit
-
-### Response Security
-- Cache headers: 1-year immutable
-- Content-Type validation
-- NoSniff headers
-- SHA-256 hash-based caching
-
----
-
-## Performance Characteristics
-
-### Debouncing
-- In-tab LilyPond rendering: 2 seconds
-- Manual refresh: Immediate (renderNow)
-- Duplicate detection: Skip if source unchanged
-
-### Caching
-- Service-level SHA-256 caching
-- Cache location: `/tmp/lilypond-cache`
-- 1-year immutable cache headers
-- Work directory: `/tmp/lilypond-work`
-
-### Rendering
-- Timeout: 15 seconds
-- Max request size: 512 KB
-- Output formats: SVG, PNG (via /engrave endpoint)
-
----
-
-## Troubleshooting
-
-### LilyPond Service Not Responding
-```bash
-# Check if service is running
-curl http://localhost:8787/health
-
-# Check logs
-make lilypond-logs
-
-# Restart service
-make lilypond-stop
-make lilypond-start
-```
-
-### No Rendering Output
-1. Check `/api/lilypond/render` backend exists
-2. Verify lilypond-service is running on port 8787
-3. Check browser console for fetch errors
-4. Verify LilyPond source is valid (check lilypond-src tab)
-
-### Build Failures
-```bash
-# Clean and rebuild
-make clean
-make build
-
-# Check specific component
-make build-wasm    # WASM only
-make build-js      # JS only
-make build-css     # CSS only
-```
-
----
-
-## Critical Implementation Gap
-
-**Missing Component**: Backend server at `/api/lilypond/render`
-
-**Impact**: LilyPond rendering (PNG/SVG) does not work
-
-**Solution Required**: Create endpoint that:
-1. Receives JSON: `{ lilypond_source, template_variant, output_format }`
-2. Calls lilypond-service `/engrave` at localhost:8787
-3. Converts binary response to JSON base64
-4. Returns: `{ success: true, svg/png_base64, format }`
-
-**Current State**:
-- Client-side code: READY (lilypond-renderer.js)
-- Service (lilypond-service): READY (server.js, /engrave)
-- Backend bridge: MISSING
-
----
-
-## Dependencies Summary
-
-### WASM/Rust
-- wasm-bindgen 0.2.92
-- roxmltree 0.19
-- mustache 0.9
-- serde, serde_json
-
-### JavaScript
-- rollup 4.14.0
-- unocss 66.5.3
-- osmd-audio-player 0.7.0
-
-### LilyPond Service
-- express 4.18.2
-- debian:stable-slim (Docker)
-- lilypond binary
-
----
-
-## Quick Links
-
-- HTML Entry: `/home/john/editor/index.html`
-- Main App: `/home/john/editor/src/js/main.js`
-- WASM API: `/home/john/editor/src/api.rs`
-- Service: `/home/john/editor/lilypond-service/server.js`
-- Documentation: `/home/john/editor/CODEBASE_EXPLORATION.md`
-- Architecture: `/home/john/editor/ARCHITECTURE_DIAGRAM.md`
+- [ ] Double-click selects beat correctly
+- [ ] Double-click selects character group correctly
+- [ ] Selection state stored in document
+- [ ] Visual selection displayed with 'selected' class
+- [ ] Beat derivation skips ornaments
+- [ ] CSS classes applied correctly
+- [ ] Drag selection still works
+- [ ] Multi-line selection (if enabled)
 

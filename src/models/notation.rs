@@ -94,7 +94,7 @@ pub struct SlurSpan {
 #[wasm_bindgen]
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
 pub struct Position {
-    pub stave: usize,
+    pub line: usize,
     pub column: usize,
 }
 
@@ -136,17 +136,17 @@ impl SlurSpan {
 
     /// Get the horizontal span of this slur
     pub fn horizontal_span(&self) -> usize {
-        if self.start.stave == self.end.stave {
+        if self.start.line == self.end.line {
             self.end.column.abs_diff(self.start.column) + 1
         } else {
-            0 // Multi-stave slur (not supported in POC)
+            0 // Multi-line slur (not supported in POC)
         }
     }
 
     /// Check if this slur contains a given position
-    pub fn contains(&self, stave: usize, column: usize) -> bool {
-        // Only check if stave matches
-        if stave != self.start.stave {
+    pub fn contains(&self, line: usize, column: usize) -> bool {
+        // Only check if line matches
+        if line != self.start.line {
             return false;
         }
 
@@ -165,128 +165,157 @@ impl SlurSpan {
     }
 }
 
-/// Cursor position in the document
+/// Position in the document (line, column)
+/// This is the fundamental position type used for cursor and selection
 #[wasm_bindgen]
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct CursorPosition {
-    /// Stave index (0-based)
-    pub stave: usize,
+pub struct Pos {
+    /// Line index (0-based, line number)
+    pub line: usize,
 
-    /// Column within the stave (0-based)
-    pub column: usize,
+    /// Column within the line (0-based, cell index)
+    pub col: usize,
 }
 
-impl CursorPosition {
-    /// Create a new cursor position
-    pub fn new() -> Self {
-        Self {
-            stave: 0,
-            column: 0,
-        }
+#[wasm_bindgen]
+impl Pos {
+    /// Create a new position
+    #[wasm_bindgen(constructor)]
+    pub fn new(line: usize, col: usize) -> Self {
+        Self { line, col }
     }
 
-    /// Create a cursor position at specific coordinates
-    pub fn at(stave: usize, column: usize) -> Self {
-        Self { stave, column }
-    }
-
-    /// Move cursor relative to current position
-    pub fn move_by(&mut self, delta_stave: isize, delta_column: isize) {
-        // Update stave
-        if let Some(new_stave) = self.stave.checked_add_signed(delta_stave) {
-            self.stave = new_stave;
-        }
-
-        // Update column
-        if let Some(new_column) = self.column.checked_add_signed(delta_column) {
-            self.column = new_column;
-        }
+    /// Create position at origin
+    pub fn origin() -> Self {
+        Self { line: 0, col: 0 }
     }
 }
 
-impl Default for CursorPosition {
+impl Pos {
+    /// Move position relative to current location
+    pub fn move_by(&self, delta_line: isize, delta_col: isize) -> Self {
+        let line = self.line.saturating_add_signed(delta_line);
+        let col = self.col.saturating_add_signed(delta_col);
+        Self { line, col }
+    }
+
+    /// Compare two positions
+    pub fn compare(&self, other: &Self) -> std::cmp::Ordering {
+        self.line.cmp(&other.line)
+            .then(self.col.cmp(&other.col))
+    }
+}
+
+impl Default for Pos {
     fn default() -> Self {
-        Self::new()
+        Self::origin()
     }
 }
 
-/// Selection range in the document
+/// Legacy alias for backward compatibility
+pub type CursorPosition = Pos;
+
+/// Selection using anchor/head model
+/// Anchor is where selection started (fixed), head is the moving end (cursor)
 #[wasm_bindgen]
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Selection {
-    /// Starting position of selection
-    pub start: CursorPosition,
+    /// Fixed point where selection started
+    pub anchor: Pos,
 
-    /// Ending position of selection
-    pub end: CursorPosition,
+    /// Moving point (current cursor position during selection)
+    pub head: Pos,
+}
 
-    /// Whether selection is active
-    pub active: bool,
+#[wasm_bindgen]
+impl Selection {
+    /// Create a new selection
+    #[wasm_bindgen(constructor)]
+    pub fn new(anchor: Pos, head: Pos) -> Self {
+        Self { anchor, head }
+    }
+
+    /// Create an empty selection at a position
+    pub fn empty_at(pos: Pos) -> Self {
+        Self {
+            anchor: pos,
+            head: pos,
+        }
+    }
+
+    /// Check if selection is empty (anchor == head)
+    pub fn is_empty(&self) -> bool {
+        self.anchor == self.head
+    }
 }
 
 impl Selection {
-    /// Create a new selection
-    pub fn new(start: CursorPosition, end: CursorPosition) -> Self {
-        Self {
-            start,
-            end,
-            active: true,
+    /// Get the normalized range (start <= end)
+    pub fn range(&self) -> (Pos, Pos) {
+        if self.anchor <= self.head {
+            (self.anchor, self.head)
+        } else {
+            (self.head, self.anchor)
         }
     }
 
-    /// Get the range as (start_pos, end_pos) with start <= end
-    pub fn range(&self) -> (CursorPosition, CursorPosition) {
-        if self.start.stave < self.end.stave ||
-           (self.start.stave == self.end.stave && self.start.column <= self.end.column) {
-            (self.start.clone(), self.end.clone())
+    /// Get start position (minimum)
+    pub fn start(&self) -> Pos {
+        if self.anchor <= self.head {
+            self.anchor
         } else {
-            (self.end.clone(), self.start.clone())
+            self.head
         }
+    }
+
+    /// Get end position (maximum)
+    pub fn end(&self) -> Pos {
+        if self.anchor <= self.head {
+            self.head
+        } else {
+            self.anchor
+        }
+    }
+
+    /// Check if selection is forward (anchor <= head)
+    pub fn is_forward(&self) -> bool {
+        self.anchor <= self.head
     }
 
     /// Check if a position is within the selection
-    pub fn contains(&self, stave: usize, column: usize) -> bool {
-        if !self.active {
+    pub fn contains(&self, pos: &Pos) -> bool {
+        if self.is_empty() {
             return false;
         }
 
         let (start, end) = self.range();
 
-        // Only check if on the same stave
-        if stave != start.stave {
+        // Multi-line not yet supported - only check same line
+        if pos.line != start.line || pos.line != end.line {
             return false;
         }
 
-        column >= start.column && column <= end.column
+        pos.col >= start.col && pos.col <= end.col
     }
 
-    /// Clear the selection
-    pub fn clear(&mut self) {
-        self.active = false;
-    }
-
-    /// Get the length of the selection in characters
+    /// Get the length of the selection in columns
     pub fn length(&self) -> usize {
-        if !self.active {
+        if self.is_empty() {
             return 0;
         }
 
         let (start, end) = self.range();
-        if start.stave == end.stave {
-            end.column.abs_diff(start.column) + 1
+        if start.line == end.line {
+            end.col.saturating_sub(start.col) + 1
         } else {
-            0 // Multi-stave selections not supported in POC
+            0 // Multi-line not yet supported
         }
     }
 }
 
 impl Default for Selection {
     fn default() -> Self {
-        Self {
-            start: CursorPosition::new(),
-            end: CursorPosition::new(),
-            active: false,
-        }
+        Self::empty_at(Pos::origin())
     }
 }
 
@@ -333,14 +362,14 @@ impl Range {
 
 impl From<Selection> for Range {
     fn from(selection: Selection) -> Self {
-        if !selection.active {
+        if selection.is_empty() {
             return Range { start: 0, end: 0 };
         }
 
         let (start, end) = selection.range();
         Range {
-            start: start.column,
-            end: end.column,
+            start: start.col,
+            end: end.col,
         }
     }
 }
@@ -506,3 +535,97 @@ impl Default for TalaVisual {
         }
     }
 }
+
+// ==================== NEW WASM INTERFACE TYPES ====================
+
+/// Direction for cursor movement
+#[wasm_bindgen]
+#[repr(u8)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Direction {
+    Up = 0,
+    Down = 1,
+    Left = 2,
+    Right = 3,
+    LineStart = 4,
+    LineEnd = 5,
+    DocumentStart = 6,
+    DocumentEnd = 7,
+}
+
+/// Cursor information returned from WASM to JavaScript
+#[wasm_bindgen]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+pub struct CaretInfo {
+    /// Current caret position
+    pub caret: Pos,
+
+    /// Desired column for vertical movement (preserves horizontal position across lines)
+    pub desired_col: usize,
+}
+
+#[wasm_bindgen]
+impl CaretInfo {
+    /// Create new caret info
+    #[wasm_bindgen(constructor)]
+    pub fn new(caret: Pos, desired_col: usize) -> Self {
+        Self { caret, desired_col }
+    }
+}
+
+/// Selection information returned from WASM to JavaScript
+#[wasm_bindgen]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+pub struct SelectionInfo {
+    /// Anchor position (where selection started)
+    pub anchor: Pos,
+
+    /// Head position (current cursor / moving end)
+    pub head: Pos,
+
+    /// Normalized start position (min of anchor/head)
+    pub start: Pos,
+
+    /// Normalized end position (max of anchor/head)
+    pub end: Pos,
+
+    /// Whether selection is empty (anchor == head)
+    pub is_empty: bool,
+
+    /// Direction: true if forward (anchor <= head), false if backward
+    pub is_forward: bool,
+}
+
+#[wasm_bindgen]
+impl SelectionInfo {
+    /// Create from a Selection
+    pub fn from_selection(selection: &Selection) -> Self {
+        let (start, end) = selection.range();
+        Self {
+            anchor: selection.anchor,
+            head: selection.head,
+            start,
+            end,
+            is_empty: selection.is_empty(),
+            is_forward: selection.is_forward(),
+        }
+    }
+}
+
+/// Document diff information for efficient rendering
+/// This tells JavaScript what changed so it can update only the necessary parts
+/// Note: This is serialized to JsValue manually, not using wasm_bindgen directly
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct EditorDiff {
+    /// Which lines changed (for efficient re-rendering)
+    pub dirty_lines: Vec<usize>,
+
+    /// New caret information
+    pub caret: CaretInfo,
+
+    /// New selection information (if any)
+    pub selection: Option<SelectionInfo>,
+}
+
+/// Legacy alias for backward compatibility
+pub type DocDiff = EditorDiff;

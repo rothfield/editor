@@ -87,7 +87,6 @@ class ArcRenderer {
 
   /**
    * Render slurs from DisplayList
-   * Uses pre-computed arc data from Rust layout engine
    *
    * @param {Object} displayList - DisplayList from Rust layout engine
    */
@@ -97,24 +96,36 @@ class ArcRenderer {
     }
 
     const slurs = [];
+    const lineElements = Array.from(document.querySelectorAll('.notation-line'));
 
-    // Collect all pre-computed slur arcs from DisplayList
-    for (const line of displayList.lines) {
-      if (line.slurs && Array.isArray(line.slurs)) {
-        slurs.push(...line.slurs);
+    let cumulativeY = 0;
+    for (let lineIdx = 0; lineIdx < displayList.lines.length; lineIdx++) {
+      const line = displayList.lines[lineIdx];
+      const lineElement = lineElements[lineIdx];
+
+      if (line.slurs && Array.isArray(line.slurs) && lineElement) {
+        for (const arc of line.slurs) {
+          slurs.push({
+            ...arc,
+            start_y: (arc.start_y - cumulativeY) + lineElement.offsetTop,
+            end_y: (arc.end_y - cumulativeY) + lineElement.offsetTop,
+            cp1_y: (arc.cp1_y - cumulativeY) + lineElement.offsetTop,
+            cp2_y: (arc.cp2_y - cumulativeY) + lineElement.offsetTop
+          });
+        }
       }
+
+      cumulativeY += line.height;
     }
 
-    // Update SVG paths from pre-computed arc data
     this.updateArcPathsFromData(slurs, this.slurPaths, this.slurGroup);
-
-    // Store for comparison on next render
     this.slurData = slurs;
   }
 
   /**
    * Render beat loops from DisplayList
-   * Uses pre-computed arc data from Rust layout engine
+   * Cells in Rust have absolute Y (cumulative), but are rendered relative within lines.
+   * SVG is absolute, so we convert: relative Y within line + line's DOM offsetTop
    *
    * @param {Object} displayList - DisplayList from Rust layout engine
    */
@@ -124,24 +135,43 @@ class ArcRenderer {
     }
 
     const beatLoops = [];
+    const lineElements = Array.from(document.querySelectorAll('.notation-line'));
 
-    // Collect all pre-computed beat loop arcs from DisplayList
-    for (const line of displayList.lines) {
-      if (line.beat_loops && Array.isArray(line.beat_loops)) {
-        beatLoops.push(...line.beat_loops);
+    // Calculate cumulative Y same way as renderer does for cells
+    let cumulativeY = 0;
+    for (let prevLineIdx = 0; prevLineIdx < displayList.lines.length; prevLineIdx++) {
+      const prevHeight = displayList.lines[prevLineIdx].height;
+
+      // Calculate for this line
+      const lineIdx = prevLineIdx;
+      const line = displayList.lines[lineIdx];
+      const lineElement = lineElements[lineIdx];
+
+      if (line.beat_loops && Array.isArray(line.beat_loops) && lineElement) {
+        for (const arc of line.beat_loops) {
+          // Arc Y is absolute from Rust. Convert to line-relative, then add line's DOM position
+          // Line-relative = arc.y - cumulativeY (same as cells: relativeY = cellData.y - lineStartY)
+          // SVG absolute = line-relative + lineElement.offsetTop
+          beatLoops.push({
+            ...arc,
+            start_y: (arc.start_y - cumulativeY) + lineElement.offsetTop,
+            end_y: (arc.end_y - cumulativeY) + lineElement.offsetTop,
+            cp1_y: (arc.cp1_y - cumulativeY) + lineElement.offsetTop,
+            cp2_y: (arc.cp2_y - cumulativeY) + lineElement.offsetTop
+          });
+        }
       }
+
+      // Advance cumulative Y for next line
+      cumulativeY += prevHeight;
     }
 
-    // Update SVG paths from pre-computed arc data
     this.updateArcPathsFromData(beatLoops, this.beatLoopPaths, this.beatLoopGroup);
-
-    // Store for comparison on next render
     this.beatLoopData = beatLoops;
   }
 
   /**
    * Render ornament arcs from DisplayList
-   * Uses pre-computed arc data from Rust layout engine
    *
    * @param {Object} displayList - DisplayList from Rust layout engine
    */
@@ -151,18 +181,29 @@ class ArcRenderer {
     }
 
     const ornamentArcs = [];
+    const lineElements = Array.from(document.querySelectorAll('.notation-line'));
 
-    // Collect all pre-computed ornament arcs from DisplayList
-    for (const line of displayList.lines) {
-      if (line.ornament_arcs && Array.isArray(line.ornament_arcs)) {
-        ornamentArcs.push(...line.ornament_arcs);
+    let cumulativeY = 0;
+    for (let lineIdx = 0; lineIdx < displayList.lines.length; lineIdx++) {
+      const line = displayList.lines[lineIdx];
+      const lineElement = lineElements[lineIdx];
+
+      if (line.ornament_arcs && Array.isArray(line.ornament_arcs) && lineElement) {
+        for (const arc of line.ornament_arcs) {
+          ornamentArcs.push({
+            ...arc,
+            start_y: (arc.start_y - cumulativeY) + lineElement.offsetTop,
+            end_y: (arc.end_y - cumulativeY) + lineElement.offsetTop,
+            cp1_y: (arc.cp1_y - cumulativeY) + lineElement.offsetTop,
+            cp2_y: (arc.cp2_y - cumulativeY) + lineElement.offsetTop
+          });
+        }
       }
+
+      cumulativeY += line.height;
     }
 
-    // Update SVG paths from pre-computed arc data
     this.updateArcPathsFromData(ornamentArcs, this.ornamentArcPaths, this.ornamentArcGroup);
-
-    // Store for comparison on next render
     this.ornamentArcData = ornamentArcs;
   }
 

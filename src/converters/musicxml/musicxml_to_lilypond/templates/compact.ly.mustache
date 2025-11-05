@@ -10,57 +10,61 @@
 \header {
   title = "{{{title}}}"
   {{#composer}}composer = "{{{composer}}}"{{/composer}}
-  tagline = ##f
-  print-page-number = ##f
-  oddHeaderMarkup = ##f
-  evenHeaderMarkup = ##f
-  oddFooterMarkup = ##f
-  evenFooterMarkup = ##f
+  tagline = ""
+  oddHeaderMarkup = \markup { }
+  evenHeaderMarkup = \markup { }
+  oddFooterMarkup = \markup { }
+  evenFooterMarkup = \markup { }
 }
 {{/title}}
 {{^title}}
 {{#composer}}
 \header {
   composer = "{{{composer}}}"
-  tagline = ##f
-  print-page-number = ##f
-  oddHeaderMarkup = ##f
-  evenHeaderMarkup = ##f
-  oddFooterMarkup = ##f
-  evenFooterMarkup = ##f
+  tagline = ""
+  oddHeaderMarkup = \markup { }
+  evenHeaderMarkup = \markup { }
+  oddFooterMarkup = \markup { }
+  evenFooterMarkup = \markup { }
 }
 {{/composer}}
 {{/title}}
 
 \paper {
+  % Enable automatic page breaking
+  page-breaking = #ly:optimal-breaking
+
+  % Minimal margins for clean output
   indent = 0\mm
-  top-margin = 0\mm
-  bottom-margin = 0\mm
-  left-margin = 0\mm
-  right-margin = 0\mm
-  ragged-right = ##t
-  page-breaking = #ly:one-page-breaking
-  paper-height = 50\mm
-  paper-width = 200\mm
+  left-margin = 10\mm
+  right-margin = 10\mm
+  top-margin = 10\mm
+  bottom-margin = 10\mm
+
+  % System spacing to encourage natural page breaks
+  % Increased spacing for better readability with many staves
+  system-system-spacing.basic-distance = #20
+  system-system-spacing.minimum-distance = #16
+  system-system-spacing.padding = #2
+  score-system-spacing.basic-distance = #20
+  score-system-spacing.minimum-distance = #16
+
+  % Force page breaks after a reasonable number of systems
+  % This ensures multi-page rendering for documents with many staves
+  systems-per-page = #4
+  ragged-last-bottom = ##t
 }
 
 \score {
-  \new Staff {
-    \fixed c' {
-      \key c \major
-      {{#time_signature}}{{{time_signature}}}{{/time_signature}}{{^time_signature}}\time 4/4{{/time_signature}}
-      {{#key_signature}}{{{key_signature}}}{{/key_signature}}
-      {{{staves}}}
-    }
-  }
+  <<
+    {{{staves}}}
 
-  {{#lyrics}}
-  \addlyrics {
-    \override LyricText.font-size = #-2
-    \override LyricText.font-shape = #'italic
-    {{{lyrics}}}
-  }
-  {{/lyrics}}
+    {{#lyrics}}
+    \new Lyrics \lyricsto "mel" {
+      {{{lyrics}}}
+    }
+    {{/lyrics}}
+  >>
 
   \layout { }
 }

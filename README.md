@@ -100,9 +100,49 @@ editor/
 
 ## Architecture
 
-### Cell-Based Model
+### Philosophy: "Honor the Page, Don't Force the Score"
 
-The editor uses an innovative **cell-based architecture** where:
+This editor is built on one guiding principle:
+
+**Capture musical notation the way musicians actually write it by hand — not the way engraving software wishes it looked after cleanup.**
+
+Most notation software assumes you're typesetting something already final and metrically valid. It forces you to choose exact durations, attach embellishments to specific host notes, satisfy bar math, and encode everything in classical Western terms immediately.
+
+**Real working notation doesn't look like that.**
+
+Handwritten practice sheets, teaching notation, raga phrases, ornament-heavy vocal lines, baroque embellishment shorthand, jazz scoops — they're all informal and expressive:
+- Notes written in sequence
+- Tiny scoops or grace pitches drawn before/after/above notes
+- Curved slurs drawn from "here to there" with no extra ceremony
+- Tala/bar/phrasing marks that are suggestive, not fully enforced
+- Rhythm often implied by style, not quantified into exact durations
+
+**That "messy but clear to musicians" state is valid music.** The editor treats that as first-class, not as "temporary garbage to be fixed."
+
+### Token-Based Model
+
+The editor's data model reflects this philosophy:
+
+**A line of music is stored as a flat ordered list of typed tokens** — not a tree structure you edit indirectly.
+
+Token types include:
+- **`note`**: Main pitch (e.g., `S`, `r`, `3b`)
+- **`ornament`**: Pitched ornament with explicit pitch, marked by indicator variants (before/after/top)
+- **`ornamentSymbol`**: Non-pitched ornament mark (e.g., `tr` for trill)
+- **`slur-begin`, `slur-end`**: Literal markers for where slurs start/end
+- **Structural markers**: barlines, dashes, breath marks, etc.
+
+**Key principles:**
+1. **Tokens are semantically typed at entry**: A pitch is always stored as a pitch (not guessed later from text)
+2. **No over-specification**: The model doesn't force rhythm quantization, measure balancing, or exact durations during editing
+3. **Attachment is computed later**: Ornaments don't "belong to" other tokens during editing; attachment is resolved algorithmically at render/export time (preferably to pitched elements, but any token can serve as an anchor)
+4. **Rendering/export are deterministic transforms**: The token stream is processed into visual layout (for display) or formal notation (for MusicXML/LilyPond export)
+
+See [specs/006-music-notation-ornament/spec.md](specs/006-music-notation-ornament/spec.md) for detailed ornament design philosophy.
+
+### Cell-Based Implementation
+
+At the implementation level, the token model is realized through a **cell-based architecture** where:
 - Each musical element is a **Cell** with properties (pitch, duration, type, etc.)
 - Cells are arranged in lines, allowing flexible multi-line editing
 - Operations are performed on cell collections, enabling efficient batch processing
@@ -309,8 +349,10 @@ make pre-commit
 
 ## Documentation
 
+- [PHILOSOPHY.md](PHILOSOPHY.md) - Editor philosophy and design principles
 - [BUILD_OPTIMIZATION_GUIDE.md](BUILD_OPTIMIZATION_GUIDE.md) - Detailed build system documentation
 - [CLAUDE.md](CLAUDE.md) - Project development guidelines
+- [specs/006-music-notation-ornament/spec.md](specs/006-music-notation-ornament/spec.md) - Ornament feature specification
 
 ## License
 

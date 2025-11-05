@@ -15,27 +15,40 @@ pub fn generate_lilypond_document(
     // Generate just the musical content
     let staves_content = generate_staves_content(&parts, settings);
 
+    // Collect lyrics if enabled
+    let lyrics_content = if settings.convert_lyrics {
+        collect_lyrics_content(&parts)
+    } else {
+        None
+    };
+
     // Escape title and composer for LilyPond
     let escaped_title = settings.title.as_ref().map(|s| escape_lilypond_string(s));
     let escaped_composer = settings.composer.as_ref().map(|s| escape_lilypond_string(s));
 
     // Build template context from settings and content
-    let context = TemplateContext::builder(
+    let mut context_builder = TemplateContext::builder(
         settings.target_lilypond_version.clone(),
         staves_content,
     )
     .title(escaped_title)
-    .composer(escaped_composer)
-    .build();
+    .composer(escaped_composer);
 
-    // Select appropriate template based on part count and metadata
-    let template = if parts.len() > 1 {
-        LilyPondTemplate::MultiStave
-    } else if settings.title.is_some() {
+    // Add lyrics if present
+    if let Some(lyrics) = lyrics_content {
+        context_builder = context_builder.lyrics(lyrics);
+    }
+
+    let context = context_builder.build();
+
+    // Select appropriate template based on metadata
+    // Note: We now use \break for multiple lines instead of separate staves,
+    // so we always use single-staff templates
+    let template = if settings.title.is_some() {
+        // Use Standard when title is present
         LilyPondTemplate::Standard
     } else {
-        // Use Compact for minimal layouts (no title, single staff)
-        // Compact has proper paper sizing and no branding
+        // Use Compact when no title (minimal formatting for tab rendering)
         LilyPondTemplate::Compact
     };
 
@@ -57,19 +70,65 @@ fn generate_staves_content(parts: &[SequentialMusic], settings: &ConversionSetti
     }
 
     if parts.len() == 1 {
-        // Single part - generate music without staff wrapper
-        generate_music(&parts[0], settings, 0)
+        // Single part - Staff > Voice > \fixed c > notes
+        let music_content = generate_music(&parts[0], settings, 8);
+        format!(
+            "    \\new Staff {{\n      \\new Voice = \"mel\" {{\n        % \\fixed c anchors absolute pitch spelling for note names we emit.\n        \\fixed c {{\n{}\n        }}\n      }}\n    }}",
+            music_content
+        )
     } else {
-        // Multiple parts - wrap each in \new Staff
-        parts
+        // Multiple parts - use \break between lines instead of creating new staves
+        let combined_music = parts
             .iter()
-            .map(|part| {
-                let music_content = generate_music(part, settings, 2);
-                format!("  \\new Staff {{\n{}\n  }}", music_content)
+            .enumerate()
+            .map(|(i, part)| {
+                // For parts after the first, filter out initial time/key/clef signatures
+                let filtered_part = if i > 0 {
+                    filter_initial_attributes(part)
+                } else {
+                    part.clone()
+                };
+                let music_content = generate_music(&filtered_part, settings, 10);
+
+                // Add \break before each part except the first
+                if i > 0 {
+                    format!("          \\break\n{}", music_content)
+                } else {
+                    music_content
+                }
             })
             .collect::<Vec<_>>()
-            .join("\n")
+            .join("\n");
+
+        // Create a single staff with all parts and breaks
+        format!(
+            "    \\new Staff {{\n      \\new Voice = \"mel\" {{\n        \\fixed c {{\n{}\n        }}\n      }}\n    }}",
+            combined_music
+        )
     }
+}
+
+/// Filter out initial time/key/clef signatures from a part (for multi-staff scores)
+/// These should only appear in the first staff to avoid duplication
+fn filter_initial_attributes(part: &SequentialMusic) -> SequentialMusic {
+    let mut filtered_elements = Vec::new();
+    let mut seen_non_attribute = false;
+
+    for music in &part.elements {
+        match music {
+            Music::TimeChange(_) | Music::KeyChange(_) | Music::ClefChange(_)
+                if !seen_non_attribute => {
+                // Skip initial time/key/clef changes (they'll be in the first staff)
+                continue;
+            }
+            _ => {
+                seen_non_attribute = true;
+                filtered_elements.push(music.clone());
+            }
+        }
+    }
+
+    SequentialMusic::new(filtered_elements)
 }
 
 /// Fallback: Generate LilyPond document with hardcoded structure
@@ -144,6 +203,89 @@ fn generate_lilypond_document_fallback(
     output
 }
 
+/// Collect lyrics from music tree and format for \lyricmode block
+fn collect_lyrics_content(parts: &[SequentialMusic]) -> Option<String> {
+    // Collect all lyrics from all parts into a single list
+    let mut lyrics_list = Vec::new();
+
+    for part in parts {
+        collect_lyrics_from_sequential(part, &mut lyrics_list);
+    }
+
+    if !lyrics_list.is_empty() {
+        let formatted = format_lyrics_for_block(&lyrics_list);
+        // When inside \new Lyrics context, we're already in lyric mode implicitly
+        // Just put the lyrics directly without \lyricmode wrapper
+        Some(formatted)
+    } else {
+        None
+    }
+}
+
+/// Recursively collect lyrics from Music tree
+fn collect_lyrics_from_sequential(seq: &SequentialMusic, lyrics_list: &mut Vec<String>) {
+    for music in &seq.elements {
+        collect_lyrics_from_music(music, lyrics_list);
+    }
+}
+
+/// Recursively collect lyrics from a Music element
+fn collect_lyrics_from_music(music: &Music, lyrics_list: &mut Vec<String>) {
+    match music {
+        Music::Note(note) => {
+            if let Some(ref lyric) = note.lyric {
+                lyrics_list.push(format_lyric_syllable(&lyric.text, lyric.syllabic));
+            }
+        }
+        Music::Chord(chord) => {
+            if let Some(ref lyric) = chord.lyric {
+                lyrics_list.push(format_lyric_syllable(&lyric.text, lyric.syllabic));
+            }
+        }
+        Music::Rest(_) => {
+            // Skip rests - don't add placeholders
+        }
+        Music::Sequential(seq) => {
+            collect_lyrics_from_sequential(seq, lyrics_list);
+        }
+        Music::Simultaneous(sim) => {
+            // For chords, just collect from first voice
+            if let Some(first) = sim.elements.first() {
+                collect_lyrics_from_music(first, lyrics_list);
+            }
+        }
+        Music::Tuplet(tuplet) => {
+            for music in &tuplet.contents {
+                collect_lyrics_from_music(music, lyrics_list);
+            }
+        }
+        Music::Voice(voice) => {
+            for music in &voice.elements {
+                collect_lyrics_from_music(music, lyrics_list);
+            }
+        }
+        _ => {} // Skip other music types for lyrics
+    }
+}
+
+/// Format a single lyric syllable with proper continuation markers
+fn format_lyric_syllable(text: &str, syllabic: LyricSyllabic) -> String {
+    use crate::converters::musicxml::musicxml_to_lilypond::types::LyricSyllabic;
+
+    let escaped = escape_lilypond_string(text);
+    match syllabic {
+        LyricSyllabic::Begin => format!("{} --", escaped),
+        LyricSyllabic::Middle => format!("{} --", escaped),
+        LyricSyllabic::End => escaped,
+        LyricSyllabic::Single => escaped,
+    }
+}
+
+/// Format lyrics list for \addlyrics block with proper spacing
+fn format_lyrics_for_block(lyrics: &[String]) -> String {
+    lyrics.join(" ")
+}
+
 /// Generate LilyPond code for sequential music
 fn generate_music(seq: &SequentialMusic, settings: &ConversionSettings, indent: usize) -> String {
     let indent_str = " ".repeat(indent);
@@ -199,7 +341,12 @@ fn note_to_lilypond(note: &NoteEvent, settings: &ConversionSettings) -> String {
 
     // Add grace note prefix if needed
     if note.is_grace {
-        if note.grace_slash {
+        if note.is_after_grace {
+            // After grace notes (unmeasured fioritura) - use smaller sizing with \tiny
+            // These don't use \grace or \acciaccatura prefix; they're wrapped by \afterGrace at a higher level
+            // For now, just render with \tiny modifier for visual distinction
+            result.push_str("\\tiny ");
+        } else if note.grace_slash {
             result.push_str("\\acciaccatura ");
         } else {
             result.push_str("\\grace ");
@@ -249,6 +396,9 @@ fn note_to_lilypond(note: &NoteEvent, settings: &ConversionSettings) -> String {
         result.push_str(&dynamic_to_lilypond(dynamic));
     }
 
+    // Note: Lyrics are now handled separately via \addlyrics block in the template,
+    // not inline with note notation. This avoids invalid LilyPond syntax.
+
     result
 }
 
@@ -267,7 +417,12 @@ fn chord_to_lilypond(chord: &ChordEvent, settings: &ConversionSettings) -> Strin
         .collect::<Vec<_>>()
         .join(" ");
     let duration = chord.duration.to_lilypond_string();
-    format!("< {} >{}", pitches, duration)
+    let result = format!("< {} >{}", pitches, duration);
+
+    // Note: Lyrics are now handled separately via \addlyrics block in the template,
+    // not inline with note notation. This avoids invalid LilyPond syntax.
+
+    result
 }
 
 /// Convert key signature to LilyPond

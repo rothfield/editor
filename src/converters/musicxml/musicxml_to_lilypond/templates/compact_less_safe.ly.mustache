@@ -1,0 +1,63 @@
+\version "{{version}}"
+\language "english"
+
+{{#source_comment}}
+% Original notation source:
+{{{source_comment}}}
+{{/source_comment}}
+
+{{#title}}
+\header {
+  title = "{{{title}}}"
+  {{#composer}}composer = "{{{composer}}}"{{/composer}}
+  tagline = ##f
+  print-page-number = ##f
+  oddHeaderMarkup = ##f
+  evenHeaderMarkup = ##f
+  oddFooterMarkup = ##f
+  evenFooterMarkup = ##f
+}
+{{/title}}
+{{^title}}
+{{#composer}}
+\header {
+  composer = "{{{composer}}}"
+  tagline = ##f
+  print-page-number = ##f
+  oddHeaderMarkup = ##f
+  evenHeaderMarkup = ##f
+  oddFooterMarkup = ##f
+  evenFooterMarkup = ##f
+}
+{{/composer}}
+{{/title}}
+
+\paper {
+  indent = 0\mm
+  top-margin = 0\mm
+  bottom-margin = 0\mm
+  left-margin = 0\mm
+  right-margin = 0\mm
+  ragged-right = ##t
+  page-breaking = #ly:one-page-breaking
+  paper-height = 50\mm
+  paper-width = 200\mm
+}
+
+\score {
+  \new Staff {
+    \fixed c {
+      {{{staves}}}
+    }
+  }
+
+  {{#lyrics}}
+  \addlyrics {
+    \override LyricText.font-size = #-2
+    \override LyricText.font-shape = #'italic
+    {{{lyrics}}}
+  }
+  {{/lyrics}}
+
+  \layout { }
+}

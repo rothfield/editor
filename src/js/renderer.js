@@ -26,6 +26,11 @@ class DOMRenderer {
     this.theDocument = null;
     this.renderCache = new Map();
 
+    // Measurement caching
+    this.cachedCellWidths = [];
+    this.cachedCharWidths = [];
+    this.lastDocumentCellCount = 0;
+
     // Configuration options
     this.options = {
       skipBeatLoops: options.skipBeatLoops || false,
@@ -140,7 +145,7 @@ class DOMRenderer {
         top: ${BASE_FONT_SIZE * 0.75}px;
         transform: translateY(-50%);
         color: #000;
-        font-size: ${BRAVURA_FONT_SIZE}px;
+        font-size: ${BRAVURA_FONT_SIZE * 1.2}px;
         line-height: 1;
         pointer-events: none;
         z-index: 4;
@@ -173,24 +178,45 @@ class DOMRenderer {
         width: 100%;
         text-align: center;
       }
+
+      /* Current line border */
+      .notation-line.current-line {
+        outline: 2px solid #3b82f6; /* blue-500 */
+        outline-offset: -2px;
+        border-radius: 4px;
+        background-color: rgba(59, 130, 246, 0.05); /* very subtle blue tint */
+      }
     `;
     document.head.appendChild(style);
   }
 
   /**
    * Render entire document using Rust layout engine + thin JS DOM layer
+   * @param {Object} doc - The document to render
+   * @param {number[]} dirtyLineIndices - Optional array of line indices to render (incremental update)
    */
-  renderDocument(doc) {
+  renderDocument(doc, dirtyLineIndices = null) {
     const startTime = performance.now();
+
+    console.warn(`🚀 renderDocument called with ${doc.lines?.length || 0} lines, dirty: ${dirtyLineIndices}`);
 
     this.theDocument = doc;
 
-    // Clear previous content
-    this.clearElement();
+    // IMPORTANT: Save scroll position BEFORE clearing element
+    // Clearing the element children can cause the browser to reset parent scroll to 0,0
+    const scrollContainer = document.getElementById('editor-container');
+    const savedScrollLeft = scrollContainer?.scrollLeft ?? 0;
+    const savedScrollTop = scrollContainer?.scrollTop ?? 0;
 
-    if (!doc.lines || doc.lines.length === 0) {
-      this.showEmptyState();
-      return;
+    // Only clear if doing full render (no dirty lines specified)
+    if (dirtyLineIndices === null) {
+      // Clear previous content
+      this.clearElement();
+
+      if (!doc.lines || doc.lines.length === 0) {
+        this.showEmptyState();
+        return;
+      }
     }
 
     // STEP 1: Measure all widths (JS-only, native DOM)
@@ -201,6 +227,7 @@ class DOMRenderer {
     this.characterWidthData = this.measureCharacterWidths(doc);
 
     const measureTime = performance.now() - measureStart;
+    console.log(`⏱️ Measurement time: ${measureTime.toFixed(2)}ms`);
 
     // Flatten character widths for Rust
     const flattenedCharWidths = [];
@@ -220,10 +247,14 @@ class DOMRenderer {
       cell_y_offset: CELL_Y_OFFSET,
       cell_height: CELL_HEIGHT,
       min_syllable_padding: 4.0,
+      ornament_edit_mode: this.editor.wasmModule.getOrnamentEditMode(doc),
     };
+
+    console.log(`🎨 Layout config ornament_edit_mode: ${config.ornament_edit_mode}`);
 
     const displayList = this.editor.wasmModule.computeLayout(doc, config);
     const layoutTime = performance.now() - layoutStart;
+    console.log(`⏱️ Layout time: ${layoutTime.toFixed(2)}ms`);
 
     // Cache DisplayList for cursor positioning
     this.displayList = displayList;
@@ -231,8 +262,9 @@ class DOMRenderer {
 
     // STEP 3: Render from DisplayList (fast native JS DOM)
     const renderStart = performance.now();
-    this.renderFromDisplayList(displayList);
+    this.renderFromDisplayList(displayList, savedScrollLeft, savedScrollTop, dirtyLineIndices);
     const renderTime = performance.now() - renderStart;
+    console.log(`⏱️ DOM render time: ${renderTime.toFixed(2)}ms`);
 
     // Ornaments are now rendered from DisplayList in renderFromDisplayList()
 
@@ -244,6 +276,7 @@ class DOMRenderer {
   /**
    * Measure all cell widths and syllable widths for the document
    * This is done in JavaScript using temporary DOM elements
+   * Uses caching to avoid re-measuring unchanged cells
    *
    * @param {Object} doc - The document to measure
    * @returns {Object} {cellWidths: number[], syllableWidths: number[]}
@@ -252,26 +285,65 @@ class DOMRenderer {
     const cellWidths = [];
     const syllableWidths = [];
 
+    // Calculate total cell count
+    let totalCells = 0;
+    for (const line of doc.lines) {
+      totalCells += line.cells.length;
+    }
+
+    // Check if we can reuse cached measurements
+    const canUseCache = (
+      this.cachedCellWidths.length === totalCells &&
+      this.lastDocumentCellCount === totalCells
+    );
+
+    if (canUseCache) {
+      console.log(`✨ Using cached cell widths (${totalCells} cells)`);
+      return {
+        cellWidths: [...this.cachedCellWidths], // Return copy
+        syllableWidths: [] // Syllables are rarely used, skip for now
+      };
+    }
+
+    console.log(`📏 Measuring ${totalCells} cells (cache miss)`);
+
     // Create temporary invisible container for measurements
     const temp = document.createElement('div');
     temp.style.cssText = 'position:absolute; left:-9999px; visibility:hidden; pointer-events:none;';
     document.body.appendChild(temp);
 
+    // OPTIMIZATION: Batch DOM operations to avoid forced layouts
+    // First pass: Create all spans and add to DOM
+    const spans = [];
     for (const line of doc.lines) {
-      // Measure each cell
       for (const cell of line.cells) {
-        // Continuation cells (raw accidental chars like '#', 'b') should be minimal width
-        if (cell.continuation) {
-          // Use 1/10th of font width for continuation cells
+        if (cell.continuation && cell.kind.name !== 'text') {
+          // Continuation cells: use computed width, no need to measure
           cellWidths.push(BASE_FONT_SIZE * 0.1);
+          spans.push(null); // Placeholder
         } else {
           const span = document.createElement('span');
           span.className = 'char-cell';
           span.textContent = cell.char === ' ' ? '\u00A0' : cell.char;
+
+          // Apply proportional font and reduced size for text cells during measurement
+          if (cell.kind && cell.kind.name === 'text') {
+            span.style.fontSize = `${BASE_FONT_SIZE * 0.6}px`; // 19.2px
+            span.style.fontFamily = "'Inter', 'Segoe UI', 'Helvetica Neue', system-ui, sans-serif";
+          }
+
           temp.appendChild(span);
-          cellWidths.push(span.getBoundingClientRect().width);
-          temp.removeChild(span);
+          spans.push(span);
+          cellWidths.push(0); // Placeholder, will measure next
         }
+      }
+    }
+
+    // Second pass: Measure all at once (single layout pass)
+    let widthIndex = 0;
+    for (let i = 0; i < spans.length; i++) {
+      if (spans[i] !== null) {
+        cellWidths[i] = spans[i].getBoundingClientRect().width;
       }
     }
 
@@ -310,6 +382,10 @@ class DOMRenderer {
     }
 
     document.body.removeChild(temp);
+
+    // Cache the measurements
+    this.cachedCellWidths = [...cellWidths];
+    this.lastDocumentCellCount = totalCells;
 
     return { cellWidths, syllableWidths };
   }
@@ -393,38 +469,76 @@ class DOMRenderer {
     temp.style.cssText = 'position:absolute; left:-9999px; visibility:hidden; pointer-events:none;';
     document.body.appendChild(temp);
 
+    // OPTIMIZATION: Batch all spans first, then measure
+    const allSpans = [];
+    const cellMetadata = [];
+
     let cellIndex = 0;
     for (const line of doc.lines) {
       for (const cell of line.cells) {
         const charWidths = [];
+        const spans = [];
 
         // Measure each character in the cell's glyph
-        if (cell.continuation) {
-          // Continuation cells: minimal width for each character (1/10th font size)
+        if (cell.continuation && cell.kind.name !== 'text') {
+          // Continuation cells with minimal width (for accidentals like #, b)
           for (const char of cell.char) {
             charWidths.push(BASE_FONT_SIZE * 0.1);
+            spans.push(null);
           }
         } else {
-          // Normal cells: measure actual character widths
+          // Normal cells: create spans for measurement
+          // Cache the kind check once per cell (not per character!)
+          const isTextCell = cell.kind && cell.kind.name === 'text';
+          const fontSize = isTextCell ? `${BASE_FONT_SIZE * 0.6}px` : null;
+          const fontFamily = isTextCell ? "'Inter', 'Segoe UI', 'Helvetica Neue', system-ui, sans-serif" : null;
+
           for (const char of cell.char) {
             const span = document.createElement('span');
             span.className = 'char-cell';
             span.textContent = char === ' ' ? '\u00A0' : char;
+
+            // Apply proportional font and reduced size if this is a text cell
+            if (fontSize) {
+              span.style.fontSize = fontSize;
+            }
+            if (fontFamily) {
+              span.style.fontFamily = fontFamily;
+            }
+
             temp.appendChild(span);
-            charWidths.push(span.getBoundingClientRect().width);
-            temp.removeChild(span);
+            spans.push(span);
+            charWidths.push(0); // Placeholder
           }
         }
 
-        characterData.push({
+        cellMetadata.push({
           cellIndex,
           cellCol: cell.col,
           glyph: cell.char,
-          charWidths
+          charWidths,
+          spans
         });
 
         cellIndex++;
       }
+    }
+
+    // Measure all spans at once (single layout pass)
+    for (const meta of cellMetadata) {
+      for (let i = 0; i < meta.spans.length; i++) {
+        if (meta.spans[i] !== null) {
+          meta.charWidths[i] = meta.spans[i].getBoundingClientRect().width;
+        }
+      }
+
+      // Add to final result (without spans)
+      characterData.push({
+        cellIndex: meta.cellIndex,
+        cellCol: meta.cellCol,
+        glyph: meta.glyph,
+        charWidths: meta.charWidths
+      });
     }
 
     document.body.removeChild(temp);
@@ -437,8 +551,61 @@ class DOMRenderer {
    * Pure DOM rendering with no layout calculations
    *
    * @param {Object} displayList - DisplayList from Rust computeLayout
+   * @param {number} savedScrollLeft - Saved scroll left position
+   * @param {number} savedScrollTop - Saved scroll top position
+   * @param {number[]} dirtyLineIndices - Optional array of line indices to render (incremental)
    */
-  renderFromDisplayList(displayList) {
+  renderFromDisplayList(displayList, savedScrollLeft = 0, savedScrollTop = 0, dirtyLineIndices = null) {
+    // Find the actual scroll container - explicitly get #editor-container
+    const scrollContainer = document.getElementById('editor-container');
+
+    if (!scrollContainer) {
+      console.error('Scroll container #editor-container not found!');
+    }
+
+    console.log(`[Renderer] Using saved scroll position: left=${savedScrollLeft}, top=${savedScrollTop}`);
+    console.log(`[Renderer] Incremental render:`, dirtyLineIndices);
+
+    // INCREMENTAL RENDERING: Only update dirty lines
+    if (dirtyLineIndices !== null && dirtyLineIndices.length > 0) {
+      // Incremental update - replace only dirty lines
+      dirtyLineIndices.forEach(lineIndex => {
+        if (lineIndex >= displayList.lines.length) {
+          console.warn(`[Renderer] Line index ${lineIndex} out of bounds`);
+          return;
+        }
+
+        const renderLine = displayList.lines[lineIndex];
+        const newLineElement = this.renderLineFromDisplayList(renderLine, displayList);
+
+        // Find and replace existing line element
+        const existingLineElement = this.element.querySelector(`.notation-line[data-line="${lineIndex}"]`);
+        if (existingLineElement) {
+          existingLineElement.replaceWith(newLineElement);
+        } else {
+          // Line doesn't exist yet (new line created), append it
+          this.element.appendChild(newLineElement);
+        }
+      });
+
+      // Update arcs (slurs and beat loops) - full re-render for now
+      this.arcRenderer.render(displayList);
+      this.renderStats.slursRendered = this.arcRenderer.slurPaths.size;
+
+      return; // Skip full render
+    }
+
+    // FULL RENDERING: Destroy and rebuild everything
+    // Clear previous render to avoid duplicate event handlers
+    // IMPORTANT: Preserve the arc overlay SVG when clearing
+    const arcOverlaySvg = this.arcRenderer?.svgOverlay;
+    this.element.innerHTML = '';
+
+    // Re-append the arc overlay SVG after clearing
+    if (arcOverlaySvg && arcOverlaySvg.parentNode !== this.element) {
+      this.element.appendChild(arcOverlaySvg);
+    }
+
     // Render header if present
     if (displayList.header) {
       this.renderHeaderFromDisplayList(displayList.header);
@@ -455,6 +622,23 @@ class DOMRenderer {
 
     // Update arc counts in stats
     this.renderStats.slursRendered = this.arcRenderer.slurPaths.size;
+
+    // Restore scroll position immediately after rendering
+    if (scrollContainer && (savedScrollLeft !== 0 || savedScrollTop !== 0)) {
+      // Set scroll position synchronously
+      scrollContainer.scrollLeft = savedScrollLeft;
+      scrollContainer.scrollTop = savedScrollTop;
+
+      console.log(`[Renderer] Restored scroll to: left=${scrollContainer.scrollLeft}, top=${scrollContainer.scrollTop}`);
+
+      // Also restore after next frame as backup for browser quirks
+      requestAnimationFrame(() => {
+        if (scrollContainer) {
+          scrollContainer.scrollLeft = savedScrollLeft;
+          scrollContainer.scrollTop = savedScrollTop;
+        }
+      });
+    }
   }
 
   /**
@@ -482,7 +666,22 @@ class DOMRenderer {
       min-height: 24px;
     `;
 
-    // Title display disabled - only show composer if present
+    // Render title (centered)
+    if (title && title !== 'Untitled Document') {
+      const titleElement = document.createElement('div');
+      titleElement.className = 'document-title';
+      titleElement.setAttribute('data-testid', 'document-title');
+      titleElement.textContent = title;
+      titleElement.style.cssText = `
+        text-align: center;
+        font-size: ${BASE_FONT_SIZE * 0.8}px;
+        font-weight: bold;
+        color: #1f2937;
+        width: 100%;
+        margin-bottom: 8px;
+      `;
+      headerContainer.appendChild(titleElement);
+    }
 
     // Render composer (flush right)
     if (composer) {
@@ -514,7 +713,12 @@ class DOMRenderer {
    */
   renderLineFromDisplayList(renderLine, displayList) {
     const line = document.createElement('div');
-    line.className = 'notation-line';
+
+    // Check if this is the current line (where the cursor is)
+    const currentLineIndex = this.editor?.theDocument?.state?.cursor?.line ?? -1;
+    const isCurrentLine = renderLine.line_index === currentLineIndex;
+
+    line.className = isCurrentLine ? 'notation-line current-line' : 'notation-line';
     line.dataset.line = renderLine.line_index;
     line.style.cssText = `position:relative; height:${renderLine.height}px; width:100%;`;
 
@@ -548,9 +752,29 @@ class DOMRenderer {
     // Get line index from renderLine
     const lineIndex = renderLine.line_index;
 
+    // T028: Collect ornamental cells for floating rendering (render filtering)
+    const ornamentalCells = [];
+
     // Render cells with new DOM structure
     // Structure: cell-container > (cell-content > (cell-char + octave-dot) + cell-text)
     renderLine.cells.forEach((cellData, idx) => {
+      // Get cellIndex from dataset
+      let cellIndex = idx;
+      if (cellData.dataset) {
+        if (cellData.dataset instanceof Map) {
+          cellIndex = parseInt(cellData.dataset.get('cellIndex'));
+        } else {
+          cellIndex = parseInt(cellData.dataset.cellIndex);
+        }
+      }
+      const cell = this.theDocument.lines[lineIndex].cells[cellIndex];
+
+      // T028: Filter rhythm-transparent cells from main rendering flow
+      if (cell && cell.ornament_indicator && cell.ornament_indicator.name !== 'none') {
+        // Collect ornamental cell for floating rendering
+        ornamentalCells.push({ cellData, cellIndex, cell });
+        return; // Skip normal rendering for this cell
+      }
       // Create pitch span (the actual note character)
       const cellChar = document.createElement('span');
       // Filter out slur and beat-loop classes - these go on cell-container only
@@ -570,6 +794,14 @@ class DOMRenderer {
         position: relative;
       `;
 
+      // Apply proportional font and reduced size for text cells (60% of base)
+      if (cell && cell.kind && cell.kind.name === 'text') {
+        cellChar.style.fontSize = `${BASE_FONT_SIZE * 0.6}px`;
+        cellChar.style.fontFamily = "'Inter', 'Segoe UI', 'Helvetica Neue', system-ui, sans-serif";
+        cellChar.style.transform = 'translateY(40%)';
+        cellChar.classList.add('text-cell');
+      }
+
       // Set data attributes on cell-char
       if (cellData.dataset) {
         if (cellData.dataset instanceof Map) {
@@ -583,78 +815,8 @@ class DOMRenderer {
         }
       }
 
-      // Add event handlers
-      let cellIndex = idx;
-      if (cellData.dataset) {
-        if (cellData.dataset instanceof Map) {
-          cellIndex = parseInt(cellData.dataset.get('cellIndex'));
-        } else {
-          cellIndex = parseInt(cellData.dataset.cellIndex);
-        }
-      }
-      const cell = this.theDocument.lines[lineIndex].cells[cellIndex];
-
-      cellChar.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this.handleCellClick(cell, e);
-      });
-
-      cellChar.addEventListener('mouseenter', () => {
-        this.handleCellHover(cell, true);
-      });
-
-      cellChar.addEventListener('mouseleave', () => {
-        this.handleCellHover(cell, false);
-      });
-
-      // Create octave-dot span if needed (real DOM element, not pseudo-element)
-      const octaveDot = document.createElement('span');
-      octaveDot.className = 'cell-modifier octave-dot';
-      const octaveValue = cellChar.dataset.octave;
-
-      if (octaveValue && octaveValue !== '0') {
-        if (octaveValue === '1') {
-          octaveDot.textContent = '•';
-        } else if (octaveValue === '2') {
-          octaveDot.textContent = '••';
-        } else if (octaveValue === '-1') {
-          octaveDot.textContent = '•';
-        } else if (octaveValue === '-2') {
-          octaveDot.textContent = '••';
-        }
-
-        // Add letter-spacing for double dots
-        const letterSpacing = (octaveValue === '2' || octaveValue === '-2') ? 'letter-spacing: 2px;' : '';
-
-        octaveDot.style.cssText = `
-          position: absolute;
-          font-size: ${SMALL_FONT_SIZE}px;
-          color: #000;
-          pointer-events: none;
-          z-index: 2;
-          line-height: 1;
-          white-space: nowrap;
-          ${letterSpacing}
-        `;
-
-        // Position octave dot based on octave value (using em units for scaling)
-        if (octaveValue === '1' || octaveValue === '2') {
-          // Upper octave: above the cell, relative to font-size
-          octaveDot.style.top = '-0.5em';
-          octaveDot.style.left = '50%';
-          octaveDot.style.transform = 'translateX(-50%)';
-        } else {
-          // Lower octave: below the cell, relative to font-size
-          octaveDot.style.bottom = '-0.35em';
-          octaveDot.style.left = '50%';
-          octaveDot.style.transform = 'translateX(-50%)';
-        }
-      }
-
-      // Add octave-dot as child of cell-char (positions relative to the pitch character)
-      if (octaveDot.textContent) {
-        cellChar.appendChild(octaveDot);
-      }
+      // Mouse events are now handled by MouseHandler in editor.js
+      // No cell-level handlers needed anymore
 
       // Create cell-content wrapper (groups character + modifiers)
       const cellContent = document.createElement('span');
@@ -715,6 +877,72 @@ class DOMRenderer {
       line.appendChild(lyricSpan);
     });
 
+    // T029/T066-T069: Render ornamental cells (inline when edit mode ON, floating when OFF)
+    // These are cells with ornament indicators (rhythm-transparent)
+
+    // T066: Get edit mode state from WASM (WASM-first architecture)
+    const ornamentEditMode = this.editor.wasmModule.getOrnamentEditMode(this.theDocument);
+
+    ornamentalCells.forEach(({ cellData, cellIndex, cell }) => {
+      const ornamentChar = document.createElement('span');
+
+      // Apply CSS classes including ornament-cell
+      const ornamentClasses = cellData.classes.filter(cls =>
+        !cls.includes('slur-') && !cls.includes('beat-loop-')
+      );
+      ornamentChar.className = ornamentClasses.join(' ');
+      ornamentChar.textContent = cellData.char === ' ' ? '\u00A0' : cellData.char;
+
+      // Set data attributes for testing
+      if (cellData.dataset) {
+        if (cellData.dataset instanceof Map) {
+          for (const [key, value] of cellData.dataset.entries()) {
+            ornamentChar.dataset[key] = value;
+          }
+        } else {
+          for (const [key, value] of Object.entries(cellData.dataset)) {
+            ornamentChar.dataset[key] = value;
+          }
+        }
+      }
+
+      // T067: Add data-edit-mode attribute for CSS styling
+      ornamentChar.dataset.editMode = ornamentEditMode ? 'true' : 'false';
+
+      // Convert absolute Y to relative Y within this line
+      const ornamentRelativeY = cellData.y - lineStartY;
+
+      // T069: Conditional rendering based on edit mode
+      if (ornamentEditMode) {
+        // Edit mode ON: Render inline with normal width and interactivity
+        ornamentChar.style.cssText = `
+          position: absolute;
+          left: ${cellData.x}px;
+          top: ${ornamentRelativeY}px;
+          width: ${cellData.w}px;
+          height: ${cellData.h}px;
+          pointer-events: auto;
+          z-index: 1;
+        `;
+
+        // Mouse events are now handled by MouseHandler in editor.js
+        // No cell-level handlers needed anymore
+      } else {
+        // Edit mode OFF: Zero-width floating layout with absolute positioning
+        ornamentChar.style.cssText = `
+          position: absolute;
+          left: ${cellData.x}px;
+          top: ${ornamentRelativeY}px;
+          width: 0;
+          height: ${cellData.h}px;
+          pointer-events: none;
+          z-index: 5;
+        `;
+      }
+
+      line.appendChild(ornamentChar);
+    });
+
     // Render ornaments when ornament_edit_mode is OFF
     // Ornaments are positioned to the RIGHT and UP (70%) from anchor notes, scaled smaller
     if (renderLine.ornaments && renderLine.ornaments.length > 0) {
@@ -722,6 +950,7 @@ class DOMRenderer {
         const ornamentSpan = document.createElement('span');
         ornamentSpan.className = 'char-cell ' + (ornament.classes || []).join(' ');
         ornamentSpan.textContent = ornament.text;
+        ornamentSpan.dataset.testid = 'ornament-cell'; // For E2E tests
         const ornamentRelativeY = ornament.y - lineStartY;
         ornamentSpan.style.cssText = `
           position: absolute;
@@ -755,6 +984,33 @@ class DOMRenderer {
       line.appendChild(span);
     });
 
+    // Render octave dots (positioned overlay elements from WASM)
+    if (renderLine.octave_dots) {
+      renderLine.octave_dots.forEach(dot => {
+        const dotSpan = document.createElement('span');
+        dotSpan.className = 'octave-dot';
+        dotSpan.textContent = dot.text;
+
+        const dotRelativeY = dot.y - lineStartY;
+
+        dotSpan.style.cssText = `
+          position: absolute;
+          left: ${dot.x}px;
+          top: ${dotRelativeY}px;
+          transform: translateX(-50%);
+          font-size: ${SMALL_FONT_SIZE}px;
+          color: #000;
+          pointer-events: none;
+          z-index: 2;
+          line-height: 1;
+          white-space: nowrap;
+          ${dot.letter_spacing > 0 ? `letter-spacing: ${dot.letter_spacing}px;` : ''}
+        `;
+
+        line.appendChild(dotSpan);
+      });
+    }
+
     return line;
   }
 
@@ -764,25 +1020,6 @@ class DOMRenderer {
   showEmptyState() {
     this.element.innerHTML = '';
   }
-
-  /**
-   * Handle Cell click
-   */
-  handleCellClick(charCell, event) {
-    // Update cursor position
-    if (window.musicEditor) {
-      window.musicEditor.setCursorPosition(charCell.col);
-    }
-  }
-
-  /**
-   * Handle Cell hover
-   */
-  handleCellHover(charCell, isHovering) {
-    // Could add hover effects here
-  }
-
-
 
   /**
    * Clear editor element content

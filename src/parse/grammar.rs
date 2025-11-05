@@ -266,6 +266,13 @@ pub fn mark_continuations(cells: &mut Vec<Cell>) {
     log::info!("  🏁 Marked {} cells as continuations", continuation_count);
 }
 
+// ============================================================================
+// Ornament Span Marking
+// ============================================================================
+// REMOVED: mark_ornament_spans() function per Decision #8 in research.md
+// Ornaments now use WYSIWYG "select and apply" pattern (like slurs/octaves)
+// No delimiter-based syntax (<234>, >234<, ^234^) - those were incorrect
+
 /// Check if current character should continue previous cell (with accidental limit)
 /// For PitchedElement: limits accidentals to maximum of 2 (double sharp/flat)
 fn should_continue_with_limit(cells: &[Cell], i: usize, prev_kind: ElementKind, curr_char: char) -> bool {

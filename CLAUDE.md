@@ -2,8 +2,74 @@
 
 Auto-generated from all feature plans. Last updated: 2025-10-14
 
+---
+
+## ⚠️ **PRIME DIRECTIVE: WASM-FIRST ARCHITECTURE** ⚠️
+
+### ***CRITICAL: BEFORE WRITING ANY JAVASCRIPT CODE***
+
+**STOP AND ASK THE USER:** "Does this code belong in JavaScript or WASM?"
+
+### **Default Answer: WASM (Rust)**
+
+**MOST code should be in Rust/WASM.** Only platform I/O and UI glue belongs in JavaScript.
+
+### **What Goes Where**
+
+**✅ WASM (Rust) - The Core:**
+- **All document model and business logic**
+- **All text/selection operations**: cursor movement, selection management, insert/delete/backspace
+- **State management**: cursor position (anchor/head), selection, desiredCol, undo/redo
+- **Text math**: code points, graphemes, multi-line operations, block selections
+- **Structure-aware operations**: columns, beats, measures, cells
+- **All edit semantics**: join/split, undo batching
+- **Clipboard data preparation**: get_plain_text(), get_structured()
+- **Any deterministic, testable logic**
+
+**✅ JavaScript - The Glue:**
+- **Browser event capture ONLY**: keyboard, mouse, IME (compositionstart/update/end)
+- **Platform APIs**: Clipboard API, focus/blur, File API
+- **DOM/SVG rendering**: taking minimal diffs from WASM and updating display
+- **UI components**: buttons, panels, inspector tabs
+- **Event translation**: converting browser events into simple WASM commands
+
+### **Interface Pattern**
+
+**JS → WASM (commands):**
+```rust
+move_caret(dir: Direction, extend: bool) -> CaretInfo
+set_selection(anchor: Pos, head: Pos) -> SelectionInfo
+insert_text(text: String) -> DocDiff
+backspace() -> DocDiff
+delete() -> DocDiff
+```
+
+**WASM → JS (data):**
+```rust
+CaretInfo { caret: Pos, desiredCol: u32 }
+SelectionInfo { anchor: Pos, head: Pos, ... }
+DocDiff { changed_staves: Vec<u32>, ... }
+```
+
+### **When in Doubt**
+
+If you're about to implement:
+- Selection logic → **WASM**
+- Cursor movement → **WASM**
+- Text operations → **WASM**
+- Undo/redo → **WASM**
+- Document state → **WASM**
+- Business rules → **WASM**
+
+**ASK FIRST. THEN CODE IN RUST.**
+
+---
+
 ## Active Technologies
 - Rust 1.75+ (WASM module), JavaScript ES2022+ (host application), Node.js 18+ + wasm-bindgen 0.2.92, OSMD (OpenSheetMusicDisplay) 1.7.6, existing Cell-based editor (002-real-time-staff)
+- Rust 1.75+ (WASM module) + JavaScript ES2022+ (host application) + wasm-bindgen 0.2.92, OSMD 1.7.6, serde 1.0.197, quick-xml 0.31, mustache 0.9 (006-music-notation-ornament)
+- JSON file format for document persistence (006-music-notation-ornament)
+- Rust 1.75+ (WASM module) + JavaScript ES2022+ (host application) + wasm-bindgen 0.2.92, OSMD 1.7.6, UnoCSS (styling) (006-music-notation-ornament)
 
 ## Project Structure
 ```
@@ -18,7 +84,69 @@ cargo test [ONLY COMMANDS FOR ACTIVE TECHNOLOGIES][ONLY COMMANDS FOR ACTIVE TECH
 Rust 1.75+ (WASM module), JavaScript ES2022+ (host application), Node.js 18+: Follow standard conventions
 
 ## Recent Changes
+- 006-music-notation-ornament: Added Rust 1.75+ (WASM module) + JavaScript ES2022+ (host application) + wasm-bindgen 0.2.92, OSMD 1.7.6, UnoCSS (styling)
+- 006-music-notation-ornament: Added Rust 1.75+ (WASM module) + JavaScript ES2022+ (host application) + wasm-bindgen 0.2.92, OSMD 1.7.6, serde 1.0.197, quick-xml 0.31, mustache 0.9
 - 002-real-time-staff: Added Rust 1.75+ (WASM module), JavaScript ES2022+ (host application), Node.js 18+ + wasm-bindgen 0.2.92, OSMD (OpenSheetMusicDisplay) 1.7.6, existing Cell-based editor
+
+## Rhythmic Notation Reference
+**For questions about how rhythm works in this codebase, refer to [@RHYTHM.md](RHYTHM.md).** This document explains:
+- How horizontal space represents musical time (spatial rhythmic notation)
+- Beat grouping and subdivision counting
+- Tuplet detection and generation
+- The processing algorithm for converting spatial layout to precise durations
+- LilyPond and MusicXML mapping
+
+## Export Architecture: From Document Model to Multiple Formats
+
+The editor uses a **three-layer export pipeline** to support multiple output formats:
+
+```
+Document (Cell-based)
+    ↓
+IR (Intermediate Representation)
+    ↓
+MusicXML (Standard interchange format)
+    ↓
+    ├→ LilyPond (High-quality engraving)
+    ├→ OSMD (Browser rendering)
+    └→ VexFlow (Alternative browser rendering)
+```
+
+### Why This Architecture?
+
+1. **IR is format-agnostic**: Captures all musical information once (notes, rests, measures, divisions, slurs, articulations, etc.). New export features are added here first.
+2. **MusicXML is the hub**: Standard interchange format that all downstream tools understand. Easier to maintain than exporting directly to each format.
+3. **Multiple renderers**: Same musical data can drive LilyPond, OSMD, VexFlow, or custom renderers without duplicating conversion logic.
+
+### Key Components
+
+**IR (Intermediate Representation):**
+- **Location**: `src/renderers/musicxml/cell_to_ir.rs`, `src/renderers/musicxml/export_ir.rs`
+- **Responsibilities**: Convert Cell-based document to structured musical events
+- **Key types**: `ExportLine`, `ExportMeasure`, `ExportEvent`, `NoteData`, `SlurData`, `TieData`, etc.
+- **Future**: Will move to `src/renderers/ir/` when architecture is fully shared
+
+**Cell-to-IR Conversion (FSM):**
+- **Location**: `src/renderers/musicxml/cell_to_ir.rs`
+- **Process**: Finite State Machine processes cells sequentially, grouping them into beat-level events
+- **Handles**: Grace notes, dashes (rests/extensions), rhythmic grouping, lyrics, slurs, ties
+
+**MusicXML Export:**
+- **Location**: `src/renderers/musicxml/emitter.rs`, `builder.rs`
+- **Process**: Consumes IR and emits valid MusicXML XML
+- **Handles**: Divisions, note elements, slur elements, articulations, tuplets
+
+### Adding New Musical Features
+
+When adding support for a new musical element (e.g., slurs):
+
+1. **Add to Cell model** if it's user-creatable (e.g., `SlurIndicator` on Cell)
+2. **Add to IR types** if it needs to be exported (e.g., `SlurData` in `NoteData`)
+3. **Wire up conversion** in `cell_to_ir.rs` FSM to extract from Cell and populate IR
+4. **Verify emission** in `emitter.rs` / `builder.rs` to ensure MusicXML output is correct
+5. **Test end-to-end**: Document → Cell → IR → MusicXML → Inspector tab
+
+This ensures the feature works across all downstream renderers automatically.
 
 <!-- MANUAL ADDITIONS START -->
 
@@ -54,13 +182,13 @@ You are an **autonomous test engineer** (CLI only):
 <!-- Inspector tabs -->
 <button data-testid="tab-lilypond">LilyPond</button>
 <button data-testid="tab-musicxml">MusicXML</button>
-<button data-testid="tab-wasm">Layout</button>
+<button data-testid="tab-displaylist">Display List</button>
 <button data-testid="tab-docmodel">Doc Model</button>
 
 <!-- Inspector panes -->
 <pre data-testid="pane-lilypond"></pre>
 <pre data-testid="pane-musicxml"></pre>
-<pre data-testid="pane-wasm"></pre>
+<pre data-testid="pane-displaylist"></pre>
 <pre data-testid="pane-docmodel"></pre>
 
 <!-- Editor -->
@@ -176,6 +304,8 @@ No report UI is opened; artifacts & traces go to `./artifacts`.
 
 ### Overview
 This project uses Playwright for E2E testing, running in Docker containers to ensure consistent cross-browser testing (especially for WebKit/Safari on non-compatible systems).
+
+**⚠️ CRITICAL: Do not open the Playwright HTML report browser window.** Always configure Playwright with `{ open: 'never' }` and rely on test output, logs, and artifacts saved to disk instead. This keeps the CLI experience clean and avoids unexpected browser windows.
 
 ### Core Testing Commands
 
@@ -365,5 +495,88 @@ docker run --rm -v $(pwd):/work -w /work -e CI=1 \
 10. ❌ **Testing visuals** instead of inspector tab content
 11. ❌ **Missing `data-testid` attributes** on interactive elements
 12. ❌ **Ignoring LilyPond/MusicXML output** when verifying features
+
+## IMPORTANT: WASM Function Integration Pattern
+
+**⚠️ DO NOT FORGET THIS - It's a waste of time to debug later**
+
+When adding a new WASM function that needs to be called from JavaScript:
+
+### The Pattern
+1. ✅ Add `#[wasm_bindgen]` to Rust function
+2. ✅ Rebuild WASM: `npm run build-wasm` (generates new `.wasm` + `.js` exports)
+3. ⚠️ **CRITICAL: Add the function to the JavaScript wrapper object in `src/js/editor.js`** (lines ~64-101)
+
+### Example - DO NOT SKIP STEP 3
+```rust
+// src/api/core.rs
+#[wasm_bindgen(js_name = generateIRJson)]
+pub fn generate_ir_json(document_js: JsValue) -> Result<String, JsValue> {
+    // implementation
+}
+```
+
+The function is now **exported from WASM**, but JavaScript code using `this.wasmModule.generateIRJson()` will **FAIL** unless you add it here:
+
+```javascript
+// src/js/editor.js - lines ~64-101
+this.wasmModule = {
+    // ... other functions
+    generateIRJson: wasmModule.generateIRJson  // ⚠️ ADD THIS LINE OR IT WON'T WORK
+};
+```
+
+### Why This Happens
+- `wasm-pack` exports all `#[wasm_bindgen]` functions to the module's public API
+- The Editor class wraps WASM functions in `this.wasmModule` for organized access
+- If you don't add the function to the wrapper, `this.wasmModule.functionName` will be `undefined`
+- JavaScript code checking `typeof this.wasmModule?.functionName === 'function'` will fail silently
+- This wastes debugging time - the function exists in WASM but isn't accessible from JS
+
+### Quick Checklist for New WASM Functions
+- [ ] Function works in Rust tests (`cargo test`)
+- [ ] Added `#[wasm_bindgen]` decorator
+- [ ] Ran `npm run build-wasm` successfully
+- [ ] **Added to `this.wasmModule` object in `src/js/editor.js`** ← REQUIRED
+- [ ] JavaScript code calls `this.wasmModule.functionName()`
+- [ ] Tested in browser with hard refresh (Ctrl+Shift+R)
+
+## ⚠️ CRITICAL: Feature Completion Criteria
+
+**DO NOT CLAIM A FEATURE IS COMPLETE UNLESS:**
+
+1. ✅ **E2E tests PASS** - Run the relevant Playwright test and verify it passes
+2. ✅ **NO console errors** - Check browser console in test output for [BROWSER] ERROR or [PAGE ERROR] messages
+3. ✅ **NO compiler warnings** - `npm run build-wasm` should complete with zero warnings
+4. ✅ **Inspector tabs show correct output** - Verify MusicXML, LilyPond, etc. display expected content
+5. ✅ **Manual browser testing** - Open the app at http://localhost:8080 and test the feature manually
+
+**Why This Matters:**
+- Unit tests passing ≠ feature working end-to-end
+- Compiler warnings hide real issues (unused imports can mask broken code paths)
+- Console errors compound and make debugging harder later
+- Silent failures (undefined returns, missing WASM exports) are hardest to debug
+
+**Example Failure Pattern (That Happened):**
+- ✗ Changed `createNewDocument()` return type from `Result<JsValue>` to `Result<()>`
+- ✗ Rust compiled fine (no type errors at call sites)
+- ✓ WASM built successfully
+- ✗ BUT: JavaScript received `undefined`, causing app initialization to fail
+- 🔍 Root cause: Forgot that JavaScript code expects the function to return a value
+
+**Always run:**
+```bash
+# 1. Build WASM and check for warnings
+npm run build-wasm
+
+# 2. Run E2E tests
+npx playwright test tests/e2e-pw/tests/your-feature.spec.js --project=chromium
+
+# 3. Check for console errors in test output
+# Look for: [BROWSER] ERROR or [PAGE ERROR]
+
+# 4. Manual test in browser
+# Visit http://localhost:8080 and test the feature
+```
 
 <!-- MANUAL ADDITIONS END -->
