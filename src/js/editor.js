@@ -1189,7 +1189,6 @@ class MusicNotationEditor {
   async handleBackspace() {
     logger.time('handleBackspace', LOG_CATEGORIES.EDITOR);
 
-    console.log('[handleBackspace] Called, hasSelection:', this.hasSelection());
     logger.info(LOG_CATEGORIES.EDITOR, 'Backspace pressed', {
       hasSelection: this.hasSelection()
     });
@@ -1202,7 +1201,6 @@ class MusicNotationEditor {
       logger.timeEnd('handleBackspace', LOG_CATEGORIES.EDITOR);
       return;
     }
-    console.log('[handleBackspace] No selection, using deleteAtCursor');
 
     // WASM-first approach: Use deleteAtCursor which operates on internal DOCUMENT
     try {
@@ -2337,7 +2335,7 @@ class MusicNotationEditor {
 
     const currentStave = this.getCurrentStave();
 
-    console.log(`📍 updateCursorVisualPosition: currentStave=${currentStave}, charPos=${charPos}`);
+    // console.log(`📍 updateCursorVisualPosition: currentStave=${currentStave}, charPos=${charPos}`);
 
     // SIMPLIFIED: Cursor is now a child of the current .notation-line
     // So it's positioned absolutely relative to its line container
@@ -2347,22 +2345,22 @@ class MusicNotationEditor {
 
     // Find first cell to get its Y position (relative to the line)
     const cells = this.element.querySelectorAll(`[data-line-index="${currentStave}"]`);
-    console.log(`📍 Found ${cells.length} cells for line ${currentStave}`);
+    // console.log(`📍 Found ${cells.length} cells for line ${currentStave}`);
 
     if (cells.length > 0) {
       const firstCell = cells[0];
       const cellTop = parseInt(firstCell.style.top) || 32;
-      console.log(`📍 First cell top: ${firstCell.style.top}, parsed as: ${cellTop}px`);
+      // console.log(`📍 First cell top: ${firstCell.style.top}, parsed as: ${cellTop}px`);
       yOffset = cellTop; // This is already relative to the line, no offset needed
     } else {
-      console.log(`📍 No cells found for line ${currentStave}, using default yOffset=${yOffset}px`);
+      // console.log(`📍 No cells found for line ${currentStave}, using default yOffset=${yOffset}px`);
     }
 
     // Calculate pixel position using character-level positioning
     const pixelPos = this.charPosToPixel(charPos);
-    console.log(`📍 charPosToPixel(${charPos}) returned: ${pixelPos}px`);
+    // console.log(`📍 charPosToPixel(${charPos}) returned: ${pixelPos}px`);
 
-    console.log(`📍 Setting cursor: left=${pixelPos}px, top=${yOffset}px`);
+    // console.log(`📍 Setting cursor: left=${pixelPos}px, top=${yOffset}px`);
 
     // Set cursor position (position: absolute relative to .notation-line)
     cursor.style.position = 'absolute';
@@ -2624,11 +2622,11 @@ class MusicNotationEditor {
         // Just exclude the runtime state field - WASM serialization handles the rest
         const { state, ...persistentDoc } = this.theDocument;
 
-        // DEBUG: Log what fields are actually present
-        console.log('Document keys:', Object.keys(persistentDoc));
-        if (persistentDoc.lines && persistentDoc.lines[0]) {
-          console.log('Line[0] keys:', Object.keys(persistentDoc.lines[0]));
-        }
+        // DEBUG: Log what fields are actually present (disabled)
+        // console.log('Document keys:', Object.keys(persistentDoc));
+        // if (persistentDoc.lines && persistentDoc.lines[0]) {
+        //   console.log('Line[0] keys:', Object.keys(persistentDoc.lines[0]));
+        // }
 
         const displayDoc = this.createDisplayDocument(persistentDoc);
         persistentJson.textContent = this.toYAML(displayDoc);

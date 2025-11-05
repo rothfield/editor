@@ -1330,8 +1330,9 @@ pub fn edit_replace_range(
     let doc = doc_guard.as_mut()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
-    // Save the previous state for undo
-    let previous_state = doc.clone();
+    // TODO: Implement efficient undo (batching or incremental)
+    // Temporarily disabled to fix performance issue (was cloning entire document!)
+    // let previous_state = doc.clone();
 
     // 1. Delete the range [start, end)
     // If multi-line deletion, handle line merging
@@ -1394,16 +1395,16 @@ pub fn edit_replace_range(
         }
     }
 
-    // 3. Record undo action
-    let new_state = doc.clone();
-    let action = crate::models::DocumentAction {
-        action_type: crate::models::ActionType::InsertText,
-        description: format!("Edit: delete [({},{})-({},{})] insert {:?}", start_row, start_col, end_row, end_col, text),
-        previous_state: Some(previous_state),
-        new_state: Some(new_state),
-        timestamp: String::from("WASM-edit"),
-    };
-    doc.state.add_action(action);
+    // TODO: Record undo action (temporarily disabled for performance)
+    // let new_state = doc.clone();
+    // let action = crate::models::DocumentAction {
+    //     action_type: crate::models::ActionType::InsertText,
+    //     description: format!("Edit: delete [({},{})-({},{})] insert {:?}", start_row, start_col, end_row, end_col, text),
+    //     previous_state: Some(previous_state),
+    //     new_state: Some(new_state),
+    //     timestamp: String::from("WASM-edit"),
+    // };
+    // doc.state.add_action(action);
 
     // 4. Calculate dirty lines (all lines affected by the edit)
     let mut dirty_lines = Vec::new();
@@ -1569,8 +1570,9 @@ pub fn delete_at_cursor() -> Result<JsValue, JsValue> {
         return Err(JsValue::from_str("Cannot delete at start of document"));
     }
 
-    // Save previous state for undo
-    let previous_state = doc.clone();
+    // TODO: Implement efficient undo (batching or incremental)
+    // Temporarily disabled to fix performance issue (was cloning entire document on every backspace!)
+    // let previous_state = doc.clone();
 
     let mut new_cursor_row = cursor_line;
     let mut new_cursor_col = cursor_col;
@@ -1633,16 +1635,16 @@ pub fn delete_at_cursor() -> Result<JsValue, JsValue> {
     doc.state.cursor.line = new_cursor_row;
     doc.state.cursor.col = new_cursor_col;
 
-    // Record undo action
-    let new_state = doc.clone();
-    let action = crate::models::DocumentAction {
-        action_type: crate::models::ActionType::DeleteText,
-        description: format!("Delete at ({}, {})", cursor_line, cursor_col),
-        previous_state: Some(previous_state),
-        new_state: Some(new_state),
-        timestamp: String::from("WASM-deleteAtCursor"),
-    };
-    doc.state.add_action(action);
+    // TODO: Record undo action (temporarily disabled for performance)
+    // let new_state = doc.clone();
+    // let action = crate::models::DocumentAction {
+    //     action_type: crate::models::ActionType::DeleteText,
+    //     description: format!("Delete at ({}, {})", cursor_line, cursor_col),
+    //     previous_state: Some(previous_state),
+    //     new_state: Some(new_state),
+    //     timestamp: String::from("WASM-deleteAtCursor"),
+    // };
+    // doc.state.add_action(action);
 
     // Return EditResult
     let result = EditResult {

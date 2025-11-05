@@ -325,6 +325,12 @@ class DOMRenderer {
           const span = document.createElement('span');
           span.className = 'char-cell';
           span.textContent = cell.char === ' ' ? '\u00A0' : cell.char;
+
+          // Apply reduced font size for text cells during measurement
+          if (cell.kind && cell.kind.name === 'text') {
+            span.style.fontSize = `${BASE_FONT_SIZE * 0.6}px`; // 19.2px
+          }
+
           temp.appendChild(span);
           spans.push(span);
           cellWidths.push(0); // Placeholder, will measure next
@@ -481,10 +487,20 @@ class DOMRenderer {
           }
         } else {
           // Normal cells: create spans for measurement
+          // Cache the kind check once per cell (not per character!)
+          const isTextCell = cell.kind && cell.kind.name === 'text';
+          const fontSize = isTextCell ? `${BASE_FONT_SIZE * 0.6}px` : null;
+
           for (const char of cell.char) {
             const span = document.createElement('span');
             span.className = 'char-cell';
             span.textContent = char === ' ' ? '\u00A0' : char;
+
+            // Apply cached font size if this is a text cell
+            if (fontSize) {
+              span.style.fontSize = fontSize;
+            }
+
             temp.appendChild(span);
             spans.push(span);
             charWidths.push(0); // Placeholder
@@ -772,6 +788,15 @@ class DOMRenderer {
         display: inline-block;
         position: relative;
       `;
+
+      // Apply reduced font size for ALL text cells (60% of base)
+      if (cell && cell.kind && cell.kind.name === 'text') {
+        const textFontSize = BASE_FONT_SIZE * 0.6; // 19.2px (same as ornaments)
+        cellChar.style.fontSize = `${textFontSize}px`;
+        cellChar.style.fontStyle = 'normal'; // Non-italic
+        cellChar.style.fontWeight = 'normal'; // Normal weight (not bold)
+        cellChar.classList.add('text-cell');
+      }
 
       // Set data attributes on cell-char
       if (cellData.dataset) {
