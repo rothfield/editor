@@ -338,10 +338,13 @@
             line-height: 1;
         }
 
-        /* Text cells - italics and red */
+        /* Text cells - proportional font, normal styling */
         .char-cell.kind-text {
-            font-style: italic;
-            color: #ef4444; /* red-500 */
+            /* Styling applied via inline styles in renderer.js for proper font sizing */
+            /* font-size: 60% of base (19.2px), non-italic, normal weight, same baseline */
+            /* Explicitly override any ornament styling that might bleed through */
+            vertical-align: baseline !important;
+            top: 0 !important;
         }
 
         /* Pitched elements - bold */

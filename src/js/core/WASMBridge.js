@@ -51,6 +51,7 @@ export class WASMBridge {
     // Ornament Edit Mode API
     this.getOrnamentEditMode = wasm.getOrnamentEditMode;
     this.setOrnamentEditMode = wasm.setOrnamentEditMode;
+    this.getNavigableIndices = wasm.getNavigableIndices;
 
     // Document lifecycle API (WASM-owned)
     this.createNewDocument = wasm.createNewDocument;

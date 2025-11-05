@@ -268,6 +268,13 @@ pub fn delete_character(
         return Err(JsValue::from_str("Cursor position out of bounds"));
     }
 
+    // WASM-First Architecture: Ornament deletion protection
+    // Check if cell has ornament indicator - ornaments cannot be deleted in normal mode
+    if cells[cursor_pos].has_ornament_indicator() {
+        wasm_warn!("Cannot delete ornament cell at position {} - ornaments are non-editable", cursor_pos);
+        return Err(JsValue::from_str("Cannot delete ornament cells - toggle ornament edit mode first"));
+    }
+
     // IMPORTANT: When deleting from a multi-cell glyph, we need to reparse!
     // Find the root cell (trace back to non-continuation)
     let mut root_idx = cursor_pos;
@@ -579,3 +586,8 @@ pub fn apply_command(
     wasm_info!("applyCommand completed successfully");
     Ok(result)
 }
+
+// Note: Unit tests for deletion protection are verified via Playwright E2E tests
+// (tests/e2e-pw/tests/ornament-*.spec.js) because WASM functions require a browser
+// environment to run. The logic is tested by attempting to delete ornament cells
+// and verifying that appropriate error messages are shown to the user.

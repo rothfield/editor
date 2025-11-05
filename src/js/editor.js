@@ -494,18 +494,8 @@ class MusicNotationEditor {
       const line = this.getCurrentLine();
       if (!line) return;
 
-      // Check if any cell in range has an ornament indicator - if so, prevent deletion
-      // TODO: Move this business rule to WASM (per WASM-first principle)
-      const cells = line.cells;
-      for (let i = start.col; i < end.col && i < cells.length; i++) {
-        if (cells[i] && cells[i].ornament_indicator && cells[i].ornament_indicator.name !== 'none') {
-          console.log('[DELETE] Protected: cannot delete ornament cell at index', i);
-          this.showWarning('Cannot delete cells with ornaments - ornaments are non-editable');
-          return; // Don't delete anything if any cell has an ornament
-        }
-      }
-
       // Use WASM editReplaceRange for deletion (delete = replace with empty string)
+      // Note: Ornament deletion protection is now handled in WASM
       this.wasmModule.loadDocument(this.theDocument);
       console.log('[deleteRange] Calling editReplaceRange with:', {
         start_row: start.line,
@@ -546,7 +536,13 @@ class MusicNotationEditor {
       this.updateSelectionDisplay();
     } catch (error) {
       console.error('Failed to delete range:', error);
-      this.showError('Failed to delete selection');
+      // Show the WASM error message (e.g., ornament protection)
+      const errorMsg = error?.message || error?.toString() || 'Failed to delete selection';
+      if (errorMsg.includes('ornament')) {
+        this.showWarning(errorMsg);
+      } else {
+        this.showError(errorMsg);
+      }
     }
   }
 
@@ -592,23 +588,30 @@ class MusicNotationEditor {
     const editMode = this.wasmModule.getOrnamentEditMode(this.theDocument);
     const displayList = this.displayList;
 
+    // Get navigable indices from WASM (WASM-first architecture)
+    const navigableIndicesArray = this.wasmModule.getNavigableIndices(line, editMode);
+    const navigableIndices = new Set(Array.from(navigableIndicesArray));
+
     if (!displayList || !displayList.lines) {
-      // Fallback: return basic stops from cells
-      return line.cells
-        .filter((cell, idx) => {
-          if (editMode) return true;
-          return !cell.ornament_indicator || cell.ornament_indicator.name === 'none';
-        })
-        .map((cell, stopIdx) => ({
-          stopIndex: stopIdx,
-          kind: 'cell',
-          cellIndex: line.cells.indexOf(cell),
-          id: `c${line.cells.indexOf(cell)}`,
-          x: 0,
-          y: 0,
-          w: 0,
-          h: 0,
-        }));
+      // Fallback: return basic stops from navigable cells
+      const stops = [];
+      let stopIdx = 0;
+      for (let cellIndex = 0; cellIndex < line.cells.length; cellIndex++) {
+        if (navigableIndices.has(cellIndex)) {
+          const cell = line.cells[cellIndex];
+          stops.push({
+            stopIndex: stopIdx++,
+            kind: 'cell',
+            cellIndex,
+            id: `c${cellIndex}`,
+            x: 0,
+            y: 0,
+            w: 0,
+            h: 0,
+          });
+        }
+      }
+      return stops;
     }
 
     // Get rendered cells from DisplayList
@@ -619,7 +622,7 @@ class MusicNotationEditor {
       return [];
     }
 
-    // Build stops from rendered cells
+    // Build stops from rendered cells (filter using WASM navigable indices)
     const stops = [];
     let stopIndex = 0;
 
@@ -629,13 +632,12 @@ class MusicNotationEditor {
       const cellIndex = parseInt(renderCell.dataset.get('cellIndex'), 10);
       const cell = line.cells[cellIndex];
 
-      // Check if this cell is navigable
-      const isOrnament = cell && cell.ornament_indicator && cell.ornament_indicator.name !== 'none';
-
-      if (!editMode && isOrnament) {
-        // Skip ornament cells when edit mode is OFF
-        continue;
+      // Check if this cell is navigable (using WASM logic)
+      if (!navigableIndices.has(cellIndex)) {
+        continue; // Skip non-navigable cells (e.g., ornaments in normal mode)
       }
+
+      const isOrnament = cell && cell.ornament_indicator && cell.ornament_indicator.name !== 'none';
 
       stops.push({
         stopIndex: stopIndex++,
@@ -1277,22 +1279,9 @@ class MusicNotationEditor {
             const cellToDelete = cells[cellIndex];
             console.log('[DELETE] Attempting to delete cell at index', cellIndex, 'char:', cellToDelete?.char, 'ornament_indicator:', cellToDelete?.ornament_indicator);
 
-            // Check if cell has an ornament indicator - if so, prevent deletion
-            if (cellToDelete && cellToDelete.ornament_indicator && cellToDelete.ornament_indicator.name !== 'none') {
-              console.log('[DELETE] Protected: ornament cell cannot be deleted, moving cursor right');
-              logger.info(LOG_CATEGORIES.EDITOR, 'Delete on ornament cell - moving cursor right instead', {
-                cellIndexToDelete: cellIndex,
-                currentCharPos: charPos,
-                ornamentIndicator: cellToDelete.ornament_indicator
-              });
-              // Move cursor right instead of deleting
-              const newCharPos = Math.min(maxCharPos, charPos + 1);
-              this.setCursorPosition(newCharPos);
-              this.showCursor();
-              this.updateSelectionDisplay();
-              return; // Early return - don't delete
-            }
+            // Note: Ornament deletion protection is now handled in WASM
 
+            // TODO: Move slur deletion protection to WASM as well
             // Check if cell has a slur indicator - if so, prevent deletion
             if (cellToDelete && cellToDelete.slur_indicator && cellToDelete.slur_indicator.name !== 'none') {
               console.log('[DELETE] Protected: slur cell cannot be deleted, moving cursor right');
@@ -1309,19 +1298,35 @@ class MusicNotationEditor {
               return; // Early return - don't delete
             }
 
-            console.log('[DELETE] No ornament/slur protection - proceeding with deletion');
-            const updatedCells = this.wasmModule.deleteCharacter(cells, cellIndex);
-            line.cells = updatedCells;
+            console.log('[DELETE] No slur protection - proceeding with deletion');
+            try {
+              const updatedCells = this.wasmModule.deleteCharacter(cells, cellIndex);
+              line.cells = updatedCells;
+
+              // Recalculate beats after deletion
+              await this.recalculateBeats();
+
+              await this.renderAndUpdate();
+
+              // Restore visual selection after delete
+              this.updateSelectionDisplay();
+            } catch (error) {
+              console.error('[DELETE] WASM deleteCharacter failed:', error);
+              // Show the WASM error message (e.g., ornament protection)
+              const errorMsg = error?.message || error?.toString() || 'Failed to delete character';
+              if (errorMsg.includes('ornament')) {
+                this.showWarning(errorMsg);
+                // Move cursor right instead of deleting (same behavior as before)
+                const newCharPos = Math.min(maxCharPos, charPos + 1);
+                this.setCursorPosition(newCharPos);
+                this.showCursor();
+                this.updateSelectionDisplay();
+              } else {
+                this.showError(errorMsg);
+              }
+            }
           }
         }
-
-        // Recalculate beats after deletion
-        await this.recalculateBeats();
-
-        await this.renderAndUpdate();
-
-        // Restore visual selection after delete
-        this.updateSelectionDisplay();
       }
     }
   }

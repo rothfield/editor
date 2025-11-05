@@ -416,19 +416,22 @@ export class MouseHandler {
       return 0;
     }
 
-    // In normal mode, filter out ornament cells to make them non-interactive
+    // Get navigable cell indices from WASM (WASM-first architecture)
     const editMode = this.editor.wasmModule.getOrnamentEditMode(this.editor.theDocument);
     // BUG FIX: Use the CLICKED line, not the current cursor line!
     const line = this.editor.theDocument?.lines?.[lineIndex];
+
+    // Get navigable indices from WASM
+    let navigableIndices = new Set();
+    if (line) {
+      const navigableIndicesArray = this.editor.wasmModule.getNavigableIndices(line, editMode);
+      navigableIndices = new Set(Array.from(navigableIndicesArray));
+    }
+
     const navigableCellElements = Array.from(allCellElements).filter(cellElement => {
-      if (editMode || !line) return true; // In edit mode, all cells are navigable
+      if (!line) return true; // Fallback if no line data
       const cellIndex = parseInt(cellElement.getAttribute('data-cell-index'), 10);
-      const cell = line.cells[cellIndex];
-      // Skip ornament cells in normal mode
-      if (cell && cell.ornament_indicator && cell.ornament_indicator.name !== 'none') {
-        return false;
-      }
-      return true;
+      return navigableIndices.has(cellIndex);
     });
 
     if (navigableCellElements.length === 0) {

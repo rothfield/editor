@@ -1096,6 +1096,59 @@ pub fn get_ornament_edit_mode(document_js: JsValue) -> Result<bool, JsValue> {
     Ok(document.ornament_edit_mode)
 }
 
+/// Get navigable cell indices for a line, filtered based on ornament edit mode
+///
+/// In normal mode (edit_mode = false), ornament cells are excluded from navigation.
+/// In edit mode (edit_mode = true), all cells are navigable.
+///
+/// # Parameters
+/// - `line_js`: JavaScript Line object
+/// - `edit_mode`: Whether ornament edit mode is enabled
+///
+/// # Returns
+/// JavaScript Uint32Array of navigable cell indices
+#[wasm_bindgen(js_name = getNavigableIndices)]
+pub fn get_navigable_indices(
+    line_js: JsValue,
+    edit_mode: bool,
+) -> Result<js_sys::Uint32Array, JsValue> {
+    wasm_info!("getNavigableIndices called: edit_mode={}", edit_mode);
+
+    // Deserialize line from JavaScript
+    let line: Line = serde_wasm_bindgen::from_value(line_js)
+        .map_err(|e| {
+            wasm_error!("Deserialization error: {}", e);
+            JsValue::from_str(&format!("Deserialization error: {}", e))
+        })?;
+
+    wasm_log!("  Line has {} cells", line.cells.len());
+
+    // Filter cells based on ornament edit mode
+    let navigable_indices: Vec<u32> = line.cells.iter()
+        .enumerate()
+        .filter(|(_, cell)| {
+            if edit_mode {
+                // In edit mode, all cells are navigable
+                true
+            } else {
+                // In normal mode, skip ornament cells
+                !cell.has_ornament_indicator()
+            }
+        })
+        .map(|(idx, _)| idx as u32)
+        .collect();
+
+    wasm_info!("  Found {} navigable cells (out of {})", navigable_indices.len(), line.cells.len());
+
+    // Convert to JavaScript Uint32Array for efficient transfer
+    let result = js_sys::Uint32Array::new_with_length(navigable_indices.len() as u32);
+    for (i, &idx) in navigable_indices.iter().enumerate() {
+        result.set_index(i as u32, idx);
+    }
+
+    Ok(result)
+}
+
 /// Set lyrics for a specific line
 ///
 /// # Parameters
@@ -1329,6 +1382,53 @@ pub fn edit_replace_range(
     let mut doc_guard = DOCUMENT.lock().unwrap();
     let doc = doc_guard.as_mut()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    // WASM-First Architecture: Ornament deletion protection
+    // Check if any cells in the deletion range have ornament indicators
+    if text.is_empty() {  // Only check on deletion (not insertion/replacement)
+        if start_row == end_row && start_row < doc.lines.len() {
+            // Single-line deletion: check cells in range
+            let line = &doc.lines[start_row];
+            for col in start_col..end_col.min(line.cells.len()) {
+                if line.cells[col].has_ornament_indicator() {
+                    wasm_warn!("Cannot delete ornament cells at ({}, {})", start_row, col);
+                    return Err(JsValue::from_str("Cannot delete ornament cells - toggle ornament edit mode first"));
+                }
+            }
+        } else if start_row != end_row {
+            // Multi-line deletion: check all affected cells
+            if start_row < doc.lines.len() {
+                let start_line = &doc.lines[start_row];
+                for col in start_col..start_line.cells.len() {
+                    if start_line.cells[col].has_ornament_indicator() {
+                        wasm_warn!("Cannot delete ornament cells at ({}, {})", start_row, col);
+                        return Err(JsValue::from_str("Cannot delete ornament cells - toggle ornament edit mode first"));
+                    }
+                }
+            }
+            // Check intermediate lines
+            for row in (start_row + 1)..end_row {
+                if row < doc.lines.len() {
+                    for (col, cell) in doc.lines[row].cells.iter().enumerate() {
+                        if cell.has_ornament_indicator() {
+                            wasm_warn!("Cannot delete ornament cells at ({}, {})", row, col);
+                            return Err(JsValue::from_str("Cannot delete ornament cells - toggle ornament edit mode first"));
+                        }
+                    }
+                }
+            }
+            // Check end line
+            if end_row < doc.lines.len() {
+                let end_line = &doc.lines[end_row];
+                for col in 0..end_col.min(end_line.cells.len()) {
+                    if end_line.cells[col].has_ornament_indicator() {
+                        wasm_warn!("Cannot delete ornament cells at ({}, {})", end_row, col);
+                        return Err(JsValue::from_str("Cannot delete ornament cells - toggle ornament edit mode first"));
+                    }
+                }
+            }
+        }
+    }
 
     // TODO: Implement efficient undo (batching or incremental)
     // Temporarily disabled to fix performance issue (was cloning entire document!)

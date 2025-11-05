@@ -247,7 +247,7 @@ class DOMRenderer {
       cell_y_offset: CELL_Y_OFFSET,
       cell_height: CELL_HEIGHT,
       min_syllable_padding: 4.0,
-      ornament_edit_mode: doc.ornament_edit_mode || false,
+      ornament_edit_mode: this.editor.wasmModule.getOrnamentEditMode(doc),
     };
 
     console.log(`🎨 Layout config ornament_edit_mode: ${config.ornament_edit_mode}`);
@@ -326,9 +326,10 @@ class DOMRenderer {
           span.className = 'char-cell';
           span.textContent = cell.char === ' ' ? '\u00A0' : cell.char;
 
-          // Apply reduced font size for text cells during measurement
+          // Apply proportional font and reduced size for text cells during measurement
           if (cell.kind && cell.kind.name === 'text') {
             span.style.fontSize = `${BASE_FONT_SIZE * 0.6}px`; // 19.2px
+            span.style.fontFamily = "'Inter', 'Segoe UI', 'Helvetica Neue', system-ui, sans-serif";
           }
 
           temp.appendChild(span);
@@ -490,15 +491,19 @@ class DOMRenderer {
           // Cache the kind check once per cell (not per character!)
           const isTextCell = cell.kind && cell.kind.name === 'text';
           const fontSize = isTextCell ? `${BASE_FONT_SIZE * 0.6}px` : null;
+          const fontFamily = isTextCell ? "'Inter', 'Segoe UI', 'Helvetica Neue', system-ui, sans-serif" : null;
 
           for (const char of cell.char) {
             const span = document.createElement('span');
             span.className = 'char-cell';
             span.textContent = char === ' ' ? '\u00A0' : char;
 
-            // Apply cached font size if this is a text cell
+            // Apply proportional font and reduced size if this is a text cell
             if (fontSize) {
               span.style.fontSize = fontSize;
+            }
+            if (fontFamily) {
+              span.style.fontFamily = fontFamily;
             }
 
             temp.appendChild(span);
@@ -789,12 +794,11 @@ class DOMRenderer {
         position: relative;
       `;
 
-      // Apply reduced font size for ALL text cells (60% of base)
+      // Apply proportional font and reduced size for text cells (60% of base)
       if (cell && cell.kind && cell.kind.name === 'text') {
-        const textFontSize = BASE_FONT_SIZE * 0.6; // 19.2px (same as ornaments)
-        cellChar.style.fontSize = `${textFontSize}px`;
-        cellChar.style.fontStyle = 'normal'; // Non-italic
-        cellChar.style.fontWeight = 'normal'; // Normal weight (not bold)
+        cellChar.style.fontSize = `${BASE_FONT_SIZE * 0.6}px`;
+        cellChar.style.fontFamily = "'Inter', 'Segoe UI', 'Helvetica Neue', system-ui, sans-serif";
+        cellChar.style.transform = 'translateY(40%)';
         cellChar.classList.add('text-cell');
       }
 
@@ -876,8 +880,8 @@ class DOMRenderer {
     // T029/T066-T069: Render ornamental cells (inline when edit mode ON, floating when OFF)
     // These are cells with ornament indicators (rhythm-transparent)
 
-    // T066: Get edit mode state from document
-    const ornamentEditMode = this.theDocument.ornament_edit_mode || false;
+    // T066: Get edit mode state from WASM (WASM-first architecture)
+    const ornamentEditMode = this.editor.wasmModule.getOrnamentEditMode(this.theDocument);
 
     ornamentalCells.forEach(({ cellData, cellIndex, cell }) => {
       const ornamentChar = document.createElement('span');
