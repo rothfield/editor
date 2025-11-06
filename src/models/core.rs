@@ -46,9 +46,9 @@ pub struct Cell {
     /// Ornament indicator (None, OrnamentStart, OrnamentEnd)
     pub ornament_indicator: OrnamentIndicator,
 
-    /// Ornaments attached to this cell (when ornament_edit_mode is OFF)
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub ornaments: Vec<crate::models::elements::Ornament>,
+    /// Ornament attached to this cell (single ornament per cell)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ornament: Option<crate::models::elements::Ornament>,
 
     /// Layout cache properties (calculated at render time) - ephemeral, not saved
     #[serde(skip)]
@@ -83,7 +83,7 @@ impl Cell {
             octave: 0,
             slur_indicator: SlurIndicator::None,
             ornament_indicator: OrnamentIndicator::None,
-            ornaments: Vec::new(),
+            ornament: None,
             x: 0.0,
             y: 0.0,
             w: 0.0,
@@ -1091,7 +1091,7 @@ mod tests {
         let line = Line::new();
         let json = serde_json::to_string_pretty(&line).unwrap();
         println!("Serialized Line:\n{}", json);
-        
+
         // Check that null fields are present in JSON
         assert!(json.contains("\"label\""), "label field should be present");
         assert!(json.contains("\"tonic\""), "tonic field should be present");
@@ -1099,5 +1099,132 @@ mod tests {
         assert!(json.contains("\"tala\""), "tala field should be present");
         assert!(json.contains("\"pitch_system\""), "pitch_system field should be present");
         assert!(json.contains("\"key_signature\""), "key_signature field should be present");
+    }
+
+    // TDD Tests for Cell.ornament refactoring (Vec<Ornament> -> Option<Ornament>)
+
+    #[test]
+    fn test_cell_has_ornament_option() {
+        use crate::models::elements::{Ornament, OrnamentPlacement};
+
+        // Create base cell (anchor note)
+        let mut cell = Cell::new("G".to_string(), ElementKind::PitchedElement, 0);
+
+        // Initially no ornament
+        assert!(cell.ornament.is_none(), "Cell should start with no ornament");
+
+        // Create ornament cells
+        let orn_cells = vec![
+            Cell::new("r".to_string(), ElementKind::PitchedElement, 0),
+            Cell::new("g".to_string(), ElementKind::PitchedElement, 1),
+        ];
+
+        // Attach ornament
+        cell.ornament = Some(Ornament {
+            cells: orn_cells,
+            placement: OrnamentPlacement::Before,
+        });
+
+        // Verify structure
+        assert!(cell.ornament.is_some(), "Cell should have ornament after assignment");
+        let orn = cell.ornament.as_ref().unwrap();
+        assert_eq!(orn.cells.len(), 2, "Ornament should have 2 cells");
+        assert_eq!(orn.placement, OrnamentPlacement::Before, "Ornament placement should be Before");
+    }
+
+    #[test]
+    fn test_ornament_placement_change() {
+        use crate::models::elements::{Ornament, OrnamentPlacement};
+
+        let mut cell = Cell::new("G".to_string(), ElementKind::PitchedElement, 0);
+
+        // Add ornament with "Before" placement
+        cell.ornament = Some(Ornament {
+            cells: vec![Cell::new("r".to_string(), ElementKind::PitchedElement, 0)],
+            placement: OrnamentPlacement::Before,
+        });
+
+        // Change placement
+        if let Some(ref mut orn) = cell.ornament {
+            orn.placement = OrnamentPlacement::After;
+        }
+
+        // Verify change
+        assert_eq!(
+            cell.ornament.as_ref().unwrap().placement,
+            OrnamentPlacement::After,
+            "Ornament placement should be After"
+        );
+    }
+
+    #[test]
+    fn test_clear_ornament() {
+        use crate::models::elements::{Ornament, OrnamentPlacement};
+
+        let mut cell = Cell::new("G".to_string(), ElementKind::PitchedElement, 0);
+
+        // Add ornament
+        cell.ornament = Some(Ornament {
+            cells: vec![Cell::new("r".to_string(), ElementKind::PitchedElement, 0)],
+            placement: OrnamentPlacement::Before,
+        });
+
+        assert!(cell.ornament.is_some(), "Cell should have ornament");
+
+        // Clear ornament
+        cell.ornament = None;
+
+        assert!(cell.ornament.is_none(), "Cell ornament should be cleared");
+    }
+
+    #[test]
+    fn test_paste_ornament_with_cursor_after_note() {
+        use crate::models::elements::{Ornament, OrnamentPlacement};
+
+        // SCENARIO: User types "S" (cursor now at position 1, after the note)
+        // User pastes ornament "rg"
+        // EXPECTED: Ornament attaches to the S note (cell at index 0)
+        // MISTAKE: Current implementation uses cursor position (1) as cell_index,
+        //          which would try to attach to a non-existent cell
+
+        let mut line = Line::new();
+
+        // User typed "S" - cursor is now at position 1 (after S)
+        line.cells.push(Cell::new("S".to_string(), ElementKind::PitchedElement, 0));
+        let cursor_position = 1; // Cursor is AFTER the note
+
+        // Calculate target cell index: cursor position 1 means we just typed cell 0
+        // So we should attach to cell_index = cursor_position - 1 = 0
+        let target_cell_index = if cursor_position > 0 {
+            cursor_position - 1
+        } else {
+            0
+        };
+
+        assert_eq!(target_cell_index, 0, "Should target the note we just typed");
+
+        // Create ornament from pasted notation "rg"
+        let ornament_cells = vec![
+            Cell::new("r".to_string(), ElementKind::PitchedElement, 0),
+            Cell::new("g".to_string(), ElementKind::PitchedElement, 1),
+        ];
+
+        // Attach ornament to the correct cell (the S note)
+        line.cells[target_cell_index].ornament = Some(Ornament {
+            cells: ornament_cells,
+            placement: OrnamentPlacement::Before,
+        });
+
+        // VERIFY: S note (cell 0) should have the ornament
+        assert!(
+            line.cells[0].ornament.is_some(),
+            "Note 'S' should have ornament attached"
+        );
+
+        let ornament = line.cells[0].ornament.as_ref().unwrap();
+        assert_eq!(ornament.cells.len(), 2, "Ornament should have 2 cells (r, g)");
+        assert_eq!(ornament.cells[0].char, "r", "First ornament cell should be 'r'");
+        assert_eq!(ornament.cells[1].char, "g", "Second ornament cell should be 'g'");
+        assert_eq!(ornament.placement, OrnamentPlacement::Before, "Default placement should be Before");
     }
 }

@@ -44,9 +44,11 @@ export class WASMBridge {
     this.removeSlur = wasm.removeSlur;
     this.hasSlurInSelection = wasm.hasSlurInSelection;
 
-    // Ornament API
-    this.applyOrnament = wasm.applyOrnament;
-    this.removeOrnament = wasm.removeOrnament;
+    // Ornament Copy/Paste API (cells-array pattern, like applyCommand)
+    this.copyOrnamentFromCell = wasm.copyOrnamentFromCell;
+    this.pasteOrnamentToCell = wasm.pasteOrnamentToCell;
+    this.setOrnamentPlacementOnCell = wasm.setOrnamentPlacementOnCell;
+    this.clearOrnamentFromCell = wasm.clearOrnamentFromCell;
 
     // Ornament Edit Mode API
     this.getOrnamentEditMode = wasm.getOrnamentEditMode;

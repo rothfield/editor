@@ -314,7 +314,7 @@ impl<'a> LayoutLineComputer<'a> {
 
         // Iterate through cells and create arcs for those with ornaments
         for (cell_idx, cell) in original_cells.iter().enumerate() {
-            if cell.ornaments.is_empty() {
+            if cell.ornament.is_none() {
                 continue;
             }
 
@@ -327,10 +327,9 @@ impl<'a> LayoutLineComputer<'a> {
 
             // Calculate total width of ornaments (scaled down by 0.6)
             // Use default cell width of 12.0
-            let total_ornament_width: f32 = cell.ornaments.iter()
-                .flat_map(|orn| orn.cells.iter())
-                .map(|_| 12.0 * 0.6)
-                .sum();
+            let total_ornament_width: f32 = cell.ornament.as_ref()
+                .map(|orn| orn.cells.iter().map(|_| 12.0 * 0.6).sum())
+                .unwrap_or(0.0);
 
             // Ornaments start at RIGHT edge of parent
             let ornament_start_x = parent_cell.x + parent_cell.w;
@@ -782,7 +781,7 @@ impl<'a> LayoutLineComputer<'a> {
 
         // Iterate through cells and render their ornaments
         for (cell_idx, cell) in original_cells.iter().enumerate() {
-            if cell.ornaments.is_empty() {
+            if cell.ornament.is_none() {
                 continue;
             }
 
@@ -797,8 +796,8 @@ impl<'a> LayoutLineComputer<'a> {
             // Start position is at the right edge of parent
             let mut ornament_x = parent_cell.x + parent_cell.w;
 
-            // Render each ornament's cells
-            for ornament in &cell.ornaments {
+            // Render ornament's cells
+            if let Some(ornament) = &cell.ornament {
                 for ornament_cell in &ornament.cells {
                     // Use smaller width for ornaments (scaled down by 0.6)
                     // Use default cell width of 12.0
@@ -880,7 +879,7 @@ impl<'a> LayoutLineComputer<'a> {
                     if start_idx > 0 {
                         // Attach ornament to the anchor cell
                         if let Some(anchor_cell) = result.last_mut() {
-                            anchor_cell.ornaments.push(ornament);
+                            anchor_cell.ornament = Some(ornament);
                         }
                     }
 

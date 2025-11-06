@@ -587,6 +587,235 @@ pub fn apply_command(
     Ok(result)
 }
 
+// ============================================================================
+// Ornament Copy/Paste Operations (cells-array pattern, like applyCommand)
+// ============================================================================
+
+/// Copy ornament from a specific cell
+///
+/// # Parameters
+/// - `cells_js`: JavaScript array of Cell objects
+/// - `cell_index`: Index of the cell to copy ornament from
+///
+/// # Returns
+/// Ornament notation string (e.g., "rg" for two grace notes)
+#[wasm_bindgen(js_name = copyOrnamentFromCell)]
+pub fn copy_ornament_from_cell(
+    cells_js: JsValue,
+    cell_index: usize,
+) -> Result<String, JsValue> {
+    wasm_info!("copyOrnamentFromCell called: cell_index={}", cell_index);
+
+    // Deserialize cells from JavaScript
+    let cells: Vec<Cell> = serde_wasm_bindgen::from_value(cells_js)
+        .map_err(|e| {
+            wasm_error!("Deserialization error: {}", e);
+            JsValue::from_str(&format!("Deserialization error: {}", e))
+        })?;
+
+    if cell_index >= cells.len() {
+        return Err(JsValue::from_str("Cell index out of bounds"));
+    }
+
+    let cell = &cells[cell_index];
+
+    if let Some(ref ornament) = cell.ornament {
+        // Convert ornament cells to notation string (using cell.char)
+        let notation = ornament.cells.iter()
+            .map(|cell| cell.char.clone())
+            .collect::<String>();
+
+        wasm_info!("  Copied ornament notation: '{}'", notation);
+        Ok(notation)
+    } else {
+        Err(JsValue::from_str("No ornament on this cell"))
+    }
+}
+
+/// Paste ornament to a specific cell
+///
+/// # Parameters
+/// - `cells_js`: JavaScript array of Cell objects
+/// - `cell_index`: Index of the cell to paste ornament to
+/// - `notation_text`: Ornament notation string (e.g., "rg")
+/// - `placement`: Placement string ("before" or "after")
+///
+/// # Returns
+/// Updated JavaScript array of Cell objects with ornament pasted
+#[wasm_bindgen(js_name = pasteOrnamentToCell)]
+pub fn paste_ornament_to_cell(
+    cells_js: JsValue,
+    cell_index: usize,
+    notation_text: &str,
+    placement: &str,
+) -> Result<js_sys::Array, JsValue> {
+    wasm_info!("pasteOrnamentToCell called: cell_index={}, notation='{}', placement='{}'",
+               cell_index, notation_text, placement);
+
+    // Deserialize cells from JavaScript
+    let mut cells: Vec<Cell> = serde_wasm_bindgen::from_value(cells_js)
+        .map_err(|e| {
+            wasm_error!("Deserialization error: {}", e);
+            JsValue::from_str(&format!("Deserialization error: {}", e))
+        })?;
+
+    if cell_index >= cells.len() {
+        return Err(JsValue::from_str("Cell index out of bounds"));
+    }
+
+    // Parse placement
+    let ornament_placement = match placement {
+        "before" => crate::models::OrnamentPlacement::Before,
+        "after" => crate::models::OrnamentPlacement::After,
+        _ => return Err(JsValue::from_str(&format!("Invalid placement: {}", placement))),
+    };
+
+    // Parse notation text into ornament cells
+    let mut ornament_cells = Vec::new();
+    for (idx, ch) in notation_text.chars().enumerate() {
+        // Create a cell for each character in the notation
+        let cell = crate::models::Cell::new(
+            ch.to_string(),
+            crate::models::ElementKind::PitchedElement,
+            idx
+        );
+        ornament_cells.push(cell);
+    }
+
+    if ornament_cells.is_empty() {
+        return Err(JsValue::from_str("No valid notes in ornament notation"));
+    }
+
+    // Create ornament and attach to cell
+    let ornament = crate::models::Ornament {
+        cells: ornament_cells,
+        placement: ornament_placement,
+    };
+
+    cells[cell_index].ornament = Some(ornament);
+    wasm_info!("  Pasted ornament to cell {}: {} cells, placement={:?}",
+               cell_index, cells[cell_index].ornament.as_ref().unwrap().cells.len(),
+               cells[cell_index].ornament.as_ref().unwrap().placement);
+
+    // Convert back to JavaScript array
+    let result = js_sys::Array::new();
+    for cell in cells {
+        let cell_js = serde_wasm_bindgen::to_value(&cell)
+            .map_err(|e| {
+                wasm_error!("Serialization error: {}", e);
+                JsValue::from_str(&format!("Serialization error: {}", e))
+            })?;
+        result.push(&cell_js);
+    }
+
+    wasm_info!("pasteOrnamentToCell completed successfully");
+    Ok(result)
+}
+
+/// Clear ornament from a specific cell
+///
+/// # Parameters
+/// - `cells_js`: JavaScript array of Cell objects
+/// - `cell_index`: Index of the cell to clear ornament from
+///
+/// # Returns
+/// Updated JavaScript array of Cell objects with ornament cleared
+#[wasm_bindgen(js_name = clearOrnamentFromCell)]
+pub fn clear_ornament_from_cell(
+    cells_js: JsValue,
+    cell_index: usize,
+) -> Result<js_sys::Array, JsValue> {
+    wasm_info!("clearOrnamentFromCell called: cell_index={}", cell_index);
+
+    // Deserialize cells from JavaScript
+    let mut cells: Vec<Cell> = serde_wasm_bindgen::from_value(cells_js)
+        .map_err(|e| {
+            wasm_error!("Deserialization error: {}", e);
+            JsValue::from_str(&format!("Deserialization error: {}", e))
+        })?;
+
+    if cell_index >= cells.len() {
+        return Err(JsValue::from_str("Cell index out of bounds"));
+    }
+
+    cells[cell_index].ornament = None;
+    wasm_info!("  Cleared ornament from cell {}", cell_index);
+
+    // Convert back to JavaScript array
+    let result = js_sys::Array::new();
+    for cell in cells {
+        let cell_js = serde_wasm_bindgen::to_value(&cell)
+            .map_err(|e| {
+                wasm_error!("Serialization error: {}", e);
+                JsValue::from_str(&format!("Serialization error: {}", e))
+            })?;
+        result.push(&cell_js);
+    }
+
+    wasm_info!("clearOrnamentFromCell completed successfully");
+    Ok(result)
+}
+
+/// Set ornament placement for a specific cell
+///
+/// # Parameters
+/// - `cells_js`: JavaScript array of Cell objects
+/// - `cell_index`: Index of the cell to update placement
+/// - `placement`: Placement string ("before" or "after")
+///
+/// # Returns
+/// Updated JavaScript array of Cell objects with placement updated
+#[wasm_bindgen(js_name = setOrnamentPlacementOnCell)]
+pub fn set_ornament_placement_on_cell(
+    cells_js: JsValue,
+    cell_index: usize,
+    placement: &str,
+) -> Result<js_sys::Array, JsValue> {
+    wasm_info!("setOrnamentPlacementOnCell called: cell_index={}, placement='{}'",
+               cell_index, placement);
+
+    // Deserialize cells from JavaScript
+    let mut cells: Vec<Cell> = serde_wasm_bindgen::from_value(cells_js)
+        .map_err(|e| {
+            wasm_error!("Deserialization error: {}", e);
+            JsValue::from_str(&format!("Deserialization error: {}", e))
+        })?;
+
+    if cell_index >= cells.len() {
+        return Err(JsValue::from_str("Cell index out of bounds"));
+    }
+
+    // Parse placement
+    let ornament_placement = match placement {
+        "before" => crate::models::OrnamentPlacement::Before,
+        "after" => crate::models::OrnamentPlacement::After,
+        _ => return Err(JsValue::from_str(&format!("Invalid placement: {}", placement))),
+    };
+
+    // Update placement if ornament exists
+    if let Some(ref mut ornament) = cells[cell_index].ornament {
+        let placement_copy = ornament_placement.clone();
+        ornament.placement = ornament_placement;
+        wasm_info!("  Updated ornament placement on cell {} to {:?}", cell_index, placement_copy);
+    } else {
+        return Err(JsValue::from_str("No ornament on this cell"));
+    }
+
+    // Convert back to JavaScript array
+    let result = js_sys::Array::new();
+    for cell in cells {
+        let cell_js = serde_wasm_bindgen::to_value(&cell)
+            .map_err(|e| {
+                wasm_error!("Serialization error: {}", e);
+                JsValue::from_str(&format!("Serialization error: {}", e))
+            })?;
+        result.push(&cell_js);
+    }
+
+    wasm_info!("setOrnamentPlacementOnCell completed successfully");
+    Ok(result)
+}
+
 // Note: Unit tests for deletion protection are verified via Playwright E2E tests
 // (tests/e2e-pw/tests/ornament-*.spec.js) because WASM functions require a browser
 // environment to run. The logic is tested by attempting to delete ornament cells

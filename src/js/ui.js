@@ -73,6 +73,9 @@ class UI {
     // Setup Line menu
     this.setupLineMenu();
 
+    // Setup Ornament menu
+    this.setupOrnamentMenu();
+
     // Add menu toggle listeners
     document.getElementById('file-menu-button').addEventListener('click', (event) => {
       this.handleMenuToggle('file', event);
@@ -84,6 +87,10 @@ class UI {
 
     document.getElementById('line-menu-button').addEventListener('click', (event) => {
       this.handleMenuToggle('line', event);
+    });
+
+    document.getElementById('ornament-menu-button').addEventListener('click', (event) => {
+      this.handleMenuToggle('ornament', event);
     });
   }
 
@@ -225,6 +232,60 @@ class UI {
         menuItem.textContent = item.label;
         menuItem.addEventListener('click', this.handleMenuItemClick);
         lineMenu.appendChild(menuItem);
+      }
+    });
+  }
+
+  /**
+   * Setup Ornament menu
+   */
+  setupOrnamentMenu() {
+    const menuItems = [
+      { id: 'menu-ornament-before', label: 'Before', action: 'ornament-position-before', checkable: true, checked: true },
+      { id: 'menu-ornament-ontop', label: 'On top', action: 'ornament-position-ontop', checkable: true, checked: false },
+      { id: 'menu-ornament-after', label: 'After', action: 'ornament-position-after', checkable: true, checked: false },
+      { id: 'menu-separator-0', label: null, separator: true },
+      { id: 'menu-ornament-copy', label: 'Copy', action: 'ornament-copy', testid: 'menu-ornament-copy' },
+      { id: 'menu-ornament-paste', label: 'Paste', action: 'ornament-paste', testid: 'menu-ornament-paste' },
+      { id: 'menu-ornament-clear', label: 'Clear', action: 'ornament-clear', testid: 'menu-ornament-clear' }
+    ];
+
+    const ornamentMenu = document.getElementById('ornament-menu');
+    ornamentMenu.innerHTML = '';
+
+    menuItems.forEach(item => {
+      if (item.separator) {
+        const separator = document.createElement('div');
+        separator.className = 'menu-separator';
+        ornamentMenu.appendChild(separator);
+      } else {
+        const menuItem = document.createElement('div');
+        menuItem.id = item.id;
+        menuItem.className = 'menu-item';
+        menuItem.dataset.action = item.action;
+
+        // Add data-testid attributes (for E2E tests)
+        if (item.testid) {
+          menuItem.dataset.testid = item.testid;
+        }
+
+        if (item.checkable) {
+          // Add checkbox indicator for checkable items (radio-style for positions)
+          const checkbox = document.createElement('span');
+          checkbox.className = 'menu-checkbox';
+          checkbox.textContent = item.checked ? '✓ ' : '  '; // Checkmark or empty
+          checkbox.dataset.checked = item.checked ? 'true' : 'false';
+          menuItem.appendChild(checkbox);
+
+          const label = document.createElement('span');
+          label.textContent = item.label;
+          menuItem.appendChild(label);
+        } else {
+          menuItem.textContent = item.label;
+        }
+
+        menuItem.addEventListener('click', this.handleMenuItemClick);
+        ornamentMenu.appendChild(menuItem);
       }
     });
   }
@@ -516,6 +577,24 @@ class UI {
         break;
       case 'edit-ornaments':
         this.toggleOrnamentEditMode();
+        break;
+      case 'ornament-position-before':
+        this.setOrnamentPosition('before');
+        break;
+      case 'ornament-position-ontop':
+        this.setOrnamentPosition('ontop');
+        break;
+      case 'ornament-position-after':
+        this.setOrnamentPosition('after');
+        break;
+      case 'ornament-copy':
+        this.copyOrnament();
+        break;
+      case 'ornament-paste':
+        this.pasteOrnament();
+        break;
+      case 'ornament-clear':
+        this.clearOrnament();
         break;
       case 'apply-slur':
         this.applySlur();
@@ -1457,6 +1536,239 @@ class UI {
       .replace(/[\s-]+/g, '_')  // Replace spaces and hyphens with underscore
       .replace(/_+/g, '_')      // Replace multiple underscores with single
       .replace(/^_|_$/g, '');   // Remove leading/trailing underscores
+  }
+
+  /**
+   * Ornament Copy/Paste Methods
+   */
+
+  /**
+   * Set ornament position and update menu checkmarks
+   */
+  setOrnamentPosition(position) {
+    console.log('[UI] setOrnamentPosition:', position);
+
+    // Store pending position for next paste
+    this.pendingOrnamentPosition = position;
+
+    // Update menu checkmarks (radio-style)
+    const beforeItem = document.getElementById('menu-ornament-before');
+    const ontopItem = document.getElementById('menu-ornament-ontop');
+    const afterItem = document.getElementById('menu-ornament-after');
+
+    if (beforeItem && ontopItem && afterItem) {
+      const beforeCheck = beforeItem.querySelector('.menu-checkbox');
+      const ontopCheck = ontopItem.querySelector('.menu-checkbox');
+      const afterCheck = afterItem.querySelector('.menu-checkbox');
+
+      // Clear all checkmarks
+      if (beforeCheck) beforeCheck.textContent = '  ';
+      if (ontopCheck) ontopCheck.textContent = '  ';
+      if (afterCheck) afterCheck.textContent = '  ';
+
+      // Set checkmark on selected position
+      if (position === 'before' && beforeCheck) {
+        beforeCheck.textContent = '✓ ';
+      } else if (position === 'ontop' && ontopCheck) {
+        ontopCheck.textContent = '✓ ';
+      } else if (position === 'after' && afterCheck) {
+        afterCheck.textContent = '✓ ';
+      }
+    }
+
+    // If there's a selected cell with an ornament, update its placement
+    // Cells-array pattern (like octave operations)
+    if (this.editor) {
+      try {
+        const cursor = this.editor.theDocument.state.cursor;
+        const line = this.editor.theDocument.lines[cursor.line];
+
+        // Effective selection logic: cursor.col - 1
+        if (cursor.col > 0 && cursor.col - 1 < line.cells.length) {
+          const cellIndex = cursor.col - 1;
+
+          // Call WASM with cells array + cell_index + placement (cells-array pattern)
+          const updatedCells = this.editor.wasmModule.setOrnamentPlacementOnCell(
+            line.cells,
+            cellIndex,
+            position
+          );
+
+          // Update line.cells with modified array (same as octave operations)
+          line.cells = updatedCells;
+
+          // Render
+          this.editor.renderAndUpdate();
+          this.editor.addToConsoleLog(`Ornament position set to: ${position}`);
+        }
+      } catch (error) {
+        // Ornament doesn't exist yet, that's okay - position will be used for next paste
+        console.log('[UI] No ornament to update position:', error.message);
+      }
+    }
+  }
+
+  /**
+   * Copy ornament from selected cell to clipboard
+   *
+   * Cells-array pattern (like octave operations):
+   * - JS calculates cell_index from cursor position
+   * - JS passes cells array to WASM
+   * - WASM returns ornament notation string
+   * - JS writes to clipboard (Platform API)
+   */
+  async copyOrnament() {
+    console.log('[UI] copyOrnament');
+
+    if (!this.editor) {
+      alert('No editor available');
+      return;
+    }
+
+    try {
+      // Get cursor position and calculate target cell index
+      const cursor = this.editor.theDocument.state.cursor;
+      const line = this.editor.theDocument.lines[cursor.line];
+
+      // Effective selection logic: cursor.col - 1
+      if (cursor.col === 0) {
+        alert('No cell selected (cursor at start of line)');
+        return;
+      }
+
+      const cellIndex = cursor.col - 1;
+
+      if (cellIndex >= line.cells.length) {
+        alert('Invalid cell index');
+        return;
+      }
+
+      // Call WASM with cells array + cell_index (cells-array pattern)
+      const notation = this.editor.wasmModule.copyOrnamentFromCell(line.cells, cellIndex);
+
+      // JavaScript Platform API: Write to clipboard
+      await navigator.clipboard.writeText(notation);
+      this.editor.addToConsoleLog(`Ornament copied: ${notation}`);
+    } catch (error) {
+      console.error('[UI] Copy ornament error:', error);
+      alert(`Failed to copy ornament: ${error.message || error}`);
+    }
+  }
+
+  /**
+   * Paste ornament from clipboard to selected cell
+   *
+   * Cells-array pattern (like octave operations):
+   * - JS reads from clipboard (Platform API)
+   * - JS calculates cell_index from cursor position
+   * - JS passes cells array + notation + placement to WASM
+   * - WASM returns updated cells array
+   * - JS updates line.cells and renders
+   */
+  async pasteOrnament() {
+    console.log('[UI] pasteOrnament');
+
+    if (!this.editor) {
+      alert('No editor available');
+      return;
+    }
+
+    try {
+      // JavaScript Platform API: Read from clipboard
+      const clipboardText = await navigator.clipboard.readText();
+
+      if (!clipboardText || clipboardText.trim().length === 0) {
+        alert('Clipboard is empty');
+        return;
+      }
+
+      const placement = this.pendingOrnamentPosition || 'before';
+
+      // Get cursor position and calculate target cell index
+      const cursor = this.editor.theDocument.state.cursor;
+      const line = this.editor.theDocument.lines[cursor.line];
+
+      // Effective selection logic: cursor.col - 1
+      if (cursor.col === 0) {
+        alert('No cell selected (cursor at start of line)');
+        return;
+      }
+
+      const cellIndex = cursor.col - 1;
+
+      if (cellIndex >= line.cells.length) {
+        alert('Invalid cell index');
+        return;
+      }
+
+      // Call WASM with cells array + cell_index + notation + placement (cells-array pattern)
+      const updatedCells = this.editor.wasmModule.pasteOrnamentToCell(
+        line.cells,
+        cellIndex,
+        clipboardText.trim(),
+        placement
+      );
+
+      // Update line.cells with modified array (same as octave operations)
+      line.cells = updatedCells;
+
+      // Render
+      await this.editor.renderAndUpdate();
+      this.editor.addToConsoleLog(`Ornament pasted: ${clipboardText.trim()} (${placement})`);
+    } catch (error) {
+      console.error('[UI] Paste ornament error:', error);
+      alert(`Failed to paste ornament: ${error.message || error}`);
+    }
+  }
+
+  /**
+   * Clear ornament from selected cell
+   *
+   * Cells-array pattern (like octave operations):
+   * - JS calculates cell_index from cursor position
+   * - JS passes cells array to WASM
+   * - WASM returns updated cells array with ornament cleared
+   * - JS updates line.cells and renders
+   */
+  async clearOrnament() {
+    console.log('[UI] clearOrnament');
+
+    if (!this.editor) {
+      alert('No editor available');
+      return;
+    }
+
+    try {
+      // Get cursor position and calculate target cell index
+      const cursor = this.editor.theDocument.state.cursor;
+      const line = this.editor.theDocument.lines[cursor.line];
+
+      // Effective selection logic: cursor.col - 1
+      if (cursor.col === 0) {
+        alert('No cell selected (cursor at start of line)');
+        return;
+      }
+
+      const cellIndex = cursor.col - 1;
+
+      if (cellIndex >= line.cells.length) {
+        alert('Invalid cell index');
+        return;
+      }
+
+      // Call WASM with cells array + cell_index (cells-array pattern)
+      const updatedCells = this.editor.wasmModule.clearOrnamentFromCell(line.cells, cellIndex);
+
+      // Update line.cells with modified array (same as octave operations)
+      line.cells = updatedCells;
+
+      // Render
+      await this.editor.renderAndUpdate();
+      this.editor.addToConsoleLog('Ornament cleared');
+    } catch (error) {
+      console.error('[UI] Clear ornament error:', error);
+      alert(`Failed to clear ornament: ${error.message || error}`);
+    }
   }
 }
 
