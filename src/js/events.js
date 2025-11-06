@@ -28,12 +28,36 @@ class EventManager {
     this.handleGlobalFocus = this.handleGlobalFocus.bind(this);
     this.handleGlobalBlur = this.handleGlobalBlur.bind(this);
     this.handleGlobalClick = this.handleGlobalClick.bind(this);
+
+    // Track if early keyboard listeners have been attached
+    this.earlyKeyboardListenersAttached = false;
+  }
+
+  /**
+     * Attach keyboard listeners EARLY (before WASM initialization)
+     * This ensures keyboard events are captured even if users type immediately on page load
+     * Safe to call multiple times (addEventListener is idempotent)
+     */
+  attachEarlyKeyboardListeners() {
+    if (this.earlyKeyboardListenersAttached) {
+      return; // Already attached
+    }
+
+    // Global keyboard events - use capture phase to intercept before other handlers
+    document.addEventListener('keydown', this.handleGlobalKeyDown, { capture: true });
+    this.earlyKeyboardListenersAttached = true;
+
+    console.log('⚡ Early keyboard listeners attached (before WASM initialization)');
   }
 
   /**
      * Initialize the event management system
      */
   initialize() {
+    // Ensure early keyboard listeners are attached (may already be attached)
+    this.attachEarlyKeyboardListeners();
+
+    // Attach remaining global listeners
     this.setupGlobalListeners();
     this.setupFocusManagement();
     this.setupKeyboardShortcuts();
@@ -43,10 +67,11 @@ class EventManager {
 
   /**
      * Setup global event listeners
+     * Note: Keyboard listeners are already attached via attachEarlyKeyboardListeners()
      */
   setupGlobalListeners() {
-    // Global keyboard events - use capture phase to intercept before other handlers
-    document.addEventListener('keydown', this.handleGlobalKeyDown, { capture: true });
+    // Note: Keyboard listener (keydown) is already attached via attachEarlyKeyboardListeners()
+    // Re-attaching here would be a no-op (addEventListener is idempotent), but we skip for clarity
 
     // Global focus events
     document.addEventListener('focusin', this.handleGlobalFocus);

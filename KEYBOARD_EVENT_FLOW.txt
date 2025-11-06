@@ -1,0 +1,287 @@
+╔════════════════════════════════════════════════════════════════════════════╗
+║          KEYBOARD INPUT FLOW - Music Notation Editor                       ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ PHASE 1: EVENT CAPTURE (Browser → Document)                                │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+    User presses key (e.g., "a")
+              ↓
+    Browser fires keydown event
+              ↓
+    ┌──────────────────────────────────────────────────────────┐
+    │ document.addEventListener('keydown', ..., {capture: true})
+    │ File: src/js/events.js:49
+    │ Handler: EventManager.handleGlobalKeyDown()
+    └──────────────────────────────────────────────────────────┘
+              ↓
+    ✓ Event captured in capture phase (before bubbling)
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ PHASE 2: EVENT FILTERING (EventManager)                                    │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+    EventManager.handleGlobalKeyDown()
+    File: src/js/events.js:140
+              ↓
+    ┌─ Filter bare modifier keys
+    │  (Alt, Ctrl, Shift alone → ignore)
+    └─────────────────────────────→ Return early
+              ↓
+    ┌─ Check for global shortcuts
+    │  (Tab, Escape, F1, etc.)
+    └─────────────────────────────→ Handle & stop propagation
+              ↓
+    ┌─ Call editorFocus() to verify editor has focus
+    │  If NO focus → return early
+    │  If YES focus → continue
+    └─────────────────────────────→ Continue processing
+              ↓
+    ┌─ Prevent default for certain keys when editor focused
+    │  (Space, arrows, Alt+*, Ctrl+*)
+    └─────────────────────────────→ event.preventDefault()
+              ↓
+    ✓ Event passes all filters
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ PHASE 3: ROUTING TO EDITOR (EventManager → Editor)                         │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+    EventManager.handleGlobalKeyDown()
+    File: src/js/events.js:202
+              ↓
+    if (this.editor && this.editor.handleKeyboardEvent) {
+      this.editor.handleKeyboardEvent(event)
+    }
+              ↓
+    ┌──────────────────────────────────────────────────────────┐
+    │ Editor.handleKeyboardEvent(event)
+    │ File: src/js/editor.js:856
+    │ Body: this.keyboardHandler.handleKeyboardEvent(event)
+    └──────────────────────────────────────────────────────────┘
+              ↓
+    ✓ Routed to KeyboardHandler
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ PHASE 4: COMMAND DISPATCH (KeyboardHandler)                                │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+    KeyboardHandler.handleKeyboardEvent(event)
+    File: src/js/handlers/KeyboardHandler.js:21
+              ↓
+    Extract modifiers:
+      alt: event.altKey
+      ctrl: event.ctrlKey
+      shift: event.shiftKey
+              ↓
+    ╔════════════════════════════════════════════╗
+    ║ ROUTING DECISION TREE                      ║
+    ╠════════════════════════════════════════════╣
+    ║ 1. Ctrl+key (no Alt)                       ║
+    ║    → handleCtrlCommand() [Copy/Paste/Undo]║
+    ║                                            ║
+    ║ 2. Alt+Shift+key (no Ctrl)                 ║
+    ║    → handleAltShiftCommand() [Mode toggles]║
+    ║                                            ║
+    ║ 3. Alt+key (no Ctrl/Shift)                 ║
+    ║    → handleAltCommand() [Musical commands] ║
+    ║                                            ║
+    ║ 4. Shift+Arrow (no Alt/Ctrl)               ║
+    ║    → handleShiftCommand() [Selection ext.] ║
+    ║                                            ║
+    ║ 5. Normal key (no modifiers)               ║
+    ║    → handleNormalKey() [Typing/Navigation] ║
+    ╚════════════════════════════════════════════╝
+              ↓
+    ✓ Routed to specific handler
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ PHASE 5: COMMAND EXECUTION (Example: Normal key 'a')                       │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+    KeyboardHandler.handleNormalKey(key='a')
+    File: src/js/handlers/KeyboardHandler.js:201
+              ↓
+    switch(key) {
+      case 'a':
+        this.editor.insertText('a')
+    }
+              ↓
+    ┌──────────────────────────────────────────────────────────┐
+    │ Editor.insertText('a')
+    │ File: src/js/editor.js:225
+    │
+    │ 1. Clear selection if any
+    │ 2. Call WASM: this.wasmModule.insertText('a')
+    │ 3. Apply dirty lines to JavaScript document
+    │ 4. Update cursor position
+    │ 5. await renderAndUpdate()
+    │ 6. updateCursorPositionDisplay()
+    │ 7. showCursor()
+    └──────────────────────────────────────────────────────────┘
+              ↓
+    ✓ Text inserted and displayed
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ PHASE 6: WASM EXECUTION (JavaScript → WASM)                                │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+    this.wasmModule.insertText('a')
+    Maps to: WASMBridge.insertText [src/js/core/WASMBridge.js:67]
+              ↓
+              ↓
+    ┌──────────────────────────────────────────────────────────┐
+    │ WASM: insert_text(text: &str)
+    │ File: src/api/core.rs:1127
+    │
+    │ Returns: EditResult {
+    │   dirty_lines: Vec<DirtyLine>,
+    │   new_cursor_row: usize,
+    │   new_cursor_col: usize
+    │ }
+    └──────────────────────────────────────────────────────────┘
+              ↓
+    ✓ Document mutated in WASM
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ PHASE 7: RESULT APPLICATION (WASM → JavaScript)                            │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+    Editor.insertText() receives EditResult from WASM
+    File: src/js/editor.js:246-296
+              ↓
+    Apply dirty lines:
+      for (const dirtyLine of result.dirty_lines) {
+        this.theDocument.lines[dirtyLine.row].cells = dirtyLine.cells
+      }
+              ↓
+    Update cursor:
+      this.theDocument.state.cursor.line = result.new_cursor_row
+      this.theDocument.state.cursor.col = result.new_cursor_col
+              ↓
+    Re-render affected lines:
+      await this.renderAndUpdate(dirtyLineIndices)
+              ↓
+    Update displays:
+      updateCursorPositionDisplay()
+      showCursor()
+              ↓
+    ✓ UI updated with changes
+
+
+╔════════════════════════════════════════════════════════════════════════════╗
+║ EXAMPLE: NAVIGATION (Arrow Key)                                           ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+    User presses: ArrowLeft
+              ↓
+    EventManager.handleGlobalKeyDown() [capture phase]
+              ↓
+    editorFocus() → true (editor has focus)
+              ↓
+    event.preventDefault() (space/arrows prevent default)
+              ↓
+    Editor.handleKeyboardEvent(event)
+              ↓
+    KeyboardHandler.handleKeyboardEvent(event)
+              ↓
+    handleNormalKey('ArrowLeft')
+              ↓
+    handleNavigation('ArrowLeft') [line 236]
+              ↓
+    ┌──────────────────────────────────────────────────────────┐
+    │ this.editor.wasmModule.moveLeft(false)
+    │ File: src/js/handlers/KeyboardHandler.js:253
+    │
+    │ Returns: CaretInfo {
+    │   caret: Pos { line, col },
+    │   desired_col: u32
+    │ }
+    └──────────────────────────────────────────────────────────┘
+              ↓
+    Editor.updateCursorFromWASM(diff)
+              ↓
+    Update cursor display and re-render
+              ↓
+    ✓ Cursor moved left
+
+
+╔════════════════════════════════════════════════════════════════════════════╗
+║ FILE LOCATIONS SUMMARY                                                     ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+JAVASCRIPT LAYER:
+  ├─ Global Event Capture
+  │  └─ src/js/events.js (EventManager class)
+  │     └─ handleGlobalKeyDown() @ line 140
+  │        └─ editorFocus() checks if editor has focus
+  │
+  ├─ Editor Integration
+  │  └─ src/js/editor.js (MusicNotationEditor class)
+  │     └─ handleKeyboardEvent() @ line 856
+  │        └─ setupEventHandlers() @ line 1920
+  │
+  ├─ Command Routing
+  │  └─ src/js/handlers/KeyboardHandler.js (KeyboardHandler class)
+  │     ├─ handleKeyboardEvent() @ line 21 (main dispatcher)
+  │     ├─ handleNormalKey() @ line 201 (text/navigation)
+  │     ├─ handleNavigation() @ line 236 (arrow keys)
+  │     ├─ handleCtrlCommand() @ line 126 (edit ops)
+  │     ├─ handleAltCommand() @ line 74 (musical commands)
+  │     └─ handleShiftCommand() @ line 155 (selection)
+  │
+  └─ WASM Bridge
+     └─ src/js/core/WASMBridge.js
+        └─ _initializeFunctionMappings() @ line 32
+
+RUST LAYER (WASM):
+  └─ src/api/core.rs
+     ├─ insert_text() @ line 1127
+     ├─ move_left() @ line 2736
+     ├─ move_right(), move_up(), move_down()
+     └─ move_home(), move_end()
+
+HTML/DOM:
+  └─ index.html
+     └─ Editor element @ lines 559-566
+        ├─ id="notation-editor"
+        ├─ tabindex="0"
+        ├─ role="textbox"
+        └─ aria-multiline="false"
+
+
+╔════════════════════════════════════════════════════════════════════════════╗
+║ KEY DESIGN DECISIONS                                                       ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+1. GLOBAL KEYDOWN LISTENER (not element-specific)
+   - Reason: Prevents conflicts with other elements, centralized control
+   - Implementation: document.addEventListener('keydown', ..., {capture: true})
+
+2. WASM-FIRST ARCHITECTURE
+   - Text mutations happen ONLY in WASM (Rust)
+   - JavaScript applies results from WASM
+   - Single source of truth for document state
+
+3. SEPARATE FOCUS MANAGEMENT
+   - Focus state tracked in EventManager
+   - Not stored in editor element directly
+   - Checked before processing keyboard events
+
+4. PERFORMANCE OPTIMIZATION
+   - Dirty line incremental rendering
+   - Timing logs for each operation
+   - Debounced hitbox updates
+
+5. ACCESSIBILITY
+   - Proper ARIA attributes (role="textbox")
+   - Semantic HTML (tabindex="0")
+   - Keyboard-only operation fully supported
+

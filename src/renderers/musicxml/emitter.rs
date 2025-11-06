@@ -39,39 +39,40 @@ pub fn emit_musicxml(
         return Ok(builder.finalize());
     }
 
-    // Process each line (staff/part)
-    for (line_index, export_line) in export_lines.iter().enumerate() {
-        // Start a new part for each line
-        let part_name = if export_line.label.is_empty() {
-            if line_index == 0 {
-                String::new()
-            } else {
-                format!("Part {}", line_index + 1)
-            }
-        } else {
-            export_line.label.clone()
-        };
-        builder.start_part(&part_name);
+    // TODO: Future multi-part support
+    // When we need separate parts (e.g., score with multiple instruments),
+    // use part boundaries similar to LilyPond's /break directive.
+    // For now, all lines go into a single part with system breaks between lines.
 
-        emit_line(&mut builder, export_line, line_index == 0)?;
+    // Start a single part containing all lines
+    // Use the first line's label as the part name if available
+    let part_name = if export_lines[0].label.is_empty() {
+        String::new()
+    } else {
+        export_lines[0].label.clone()
+    };
+    builder.start_part(&part_name);
+
+    // Process each line as a system break (not a new part)
+    for (line_index, export_line) in export_lines.iter().enumerate() {
+        let is_first_line = line_index == 0;
+        emit_line(&mut builder, export_line, is_first_line)?;
     }
 
     Ok(builder.finalize())
 }
 
-/// Emit a single line (staff/part)
+/// Emit a single line (system) within the part
+/// Each line represents a new system break in the layout
 fn emit_line(
     builder: &mut MusicXmlBuilder,
     export_line: &ExportLine,
     is_first_line: bool,
 ) -> Result<(), String> {
-    if !is_first_line {
-        builder.reset_context();
-    }
-
     // Process each measure in the line
     for (measure_index, measure) in export_line.measures.iter().enumerate() {
         let is_first_measure = measure_index == 0;
+        // System break occurs at the first measure of each line after the first
         let is_new_system = !is_first_line && is_first_measure;
         let beat_count = 4; // TODO: Extract from time signature
 
@@ -485,5 +486,47 @@ mod tests {
         assert_eq!(syllables[1].1, Syllabic::End);
         assert_eq!(syllables[2].0, "world");
         assert_eq!(syllables[2].1, Syllabic::Single);
+    }
+
+    #[test]
+    fn test_multiline_document_produces_single_part_with_system_breaks() {
+        // Create a document with 2 lines
+        let export_line1 = ExportLine {
+            label: "Line 1".to_string(),
+            key_signature: None,
+            time_signature: None,
+            clef: "treble".to_string(),
+            lyrics: String::new(),
+            measures: vec![ExportMeasure {
+                divisions: 4,
+                events: vec![ExportEvent::Rest { divisions: 4 }],
+            }],
+        };
+
+        let export_line2 = ExportLine {
+            label: "Line 2".to_string(),
+            key_signature: None,
+            time_signature: None,
+            clef: "treble".to_string(),
+            lyrics: String::new(),
+            measures: vec![ExportMeasure {
+                divisions: 4,
+                events: vec![ExportEvent::Rest { divisions: 4 }],
+            }],
+        };
+
+        let export_lines = vec![export_line1, export_line2];
+
+        // Emit MusicXML
+        let xml = emit_musicxml(&export_lines, Some("Test"), None)
+            .expect("Failed to emit MusicXML");
+
+        // Should have exactly one <part> element (not two)
+        let part_count = xml.matches("<part id=\"P1\">").count();
+        assert_eq!(part_count, 1, "Should have exactly one part for multi-line document");
+
+        // The second measure should have a system break
+        assert!(xml.contains("<print new-system=\"yes\"/>"),
+                "Second line should start with system break");
     }
 }

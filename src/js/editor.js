@@ -188,6 +188,9 @@ class MusicNotationEditor {
           }
         }
 
+        // CRITICAL: Sync document with WASM (needed for insertText and other WASM operations)
+        this.wasmModule.loadDocument(this.theDocument);
+
         await this.renderAndUpdate();
 
         // Update UI displays
@@ -3075,6 +3078,10 @@ class MusicNotationEditor {
       const copyResult = this.wasmModule.copyCells(startRow, startCol, endRow, endCol);
 
       if (copyResult && copyResult.text && copyResult.cells) {
+        // Update JS-side clipboard (same as Ctrl+C does in handleCopy)
+        this.clipboard.text = copyResult.text;
+        this.clipboard.cells = copyResult.cells || [];
+
         // Update primary selection in WASM
         this.wasmModule.updatePrimarySelection(startRow, startCol, endRow, endCol, copyResult.cells);
 

@@ -83,6 +83,26 @@ cargo test [ONLY COMMANDS FOR ACTIVE TECHNOLOGIES][ONLY COMMANDS FOR ACTIVE TECH
 ## Code Style
 Rust 1.75+ (WASM module), JavaScript ES2022+ (host application), Node.js 18+: Follow standard conventions
 
+## Testing Conventions
+
+**Use the Number System (1-7) as default for all test input.** The Number pitch system is the default pitch setting for the editor.
+
+### Test Input Guidelines
+
+- **All test data** (Rust unit tests, integration tests, E2E Playwright tests): Use number notation by default
+- **Examples:**
+  - Simple sequence: `1 2 3`
+  - With rhythmic notation: `| 1--2 -- 3 4 |`
+  - Single line: `1`
+  - Rests/extensions: `1-- 2-` (dash extends duration)
+
+- **Why:** Ensures tests work with default editor settings without requiring pitch system configuration
+- **Cross-layer consistency:** Same notation works from WASM tests to E2E browser tests
+
+### Exception: When Testing Pitch Systems
+
+If explicitly testing pitch system features (e.g., switching from Number to Western), use configurable input that adapts to the active system.
+
 ## Recent Changes
 - 006-music-notation-ornament: Added Rust 1.75+ (WASM module) + JavaScript ES2022+ (host application) + wasm-bindgen 0.2.92, OSMD 1.7.6, UnoCSS (styling)
 - 006-music-notation-ornament: Added Rust 1.75+ (WASM module) + JavaScript ES2022+ (host application) + wasm-bindgen 0.2.92, OSMD 1.7.6, serde 1.0.197, quick-xml 0.31, mustache 0.9

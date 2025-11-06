@@ -65,7 +65,11 @@ class MusicNotationApp {
       this.editor.eventManager = this.eventManager;
       this.editor.preferencesUI = this.preferencesUI;
 
-      // Initialize the editor
+      // ⚡ CRITICAL: Attach keyboard listeners EARLY (before WASM initialization)
+      // This ensures users can type immediately on page load without losing keystrokes
+      this.eventManager.attachEarlyKeyboardListeners();
+
+      // Initialize the editor (loads WASM module asynchronously)
       await this.editor.initialize();
 
       // Setup MIDI controls
