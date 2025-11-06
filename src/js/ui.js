@@ -34,30 +34,8 @@ class UI {
     this.setupEventListeners();
     this.updateCurrentPitchSystemDisplay();
     this.restoreTabPreference();
-    this.syncOrnamentEditModeUI();
 
     console.log('UI components initialized');
-  }
-
-  /**
-   * Sync ornament edit mode UI with document state
-   */
-  syncOrnamentEditModeUI() {
-    if (this.editor && this.editor.wasmModule && this.editor.theDocument) {
-      try {
-        const mode = this.editor.wasmModule.getOrnamentEditMode(this.editor.theDocument);
-        this.updateOrnamentEditModeCheckbox(mode);
-
-        // Update header display
-        const headerDisplay = document.getElementById('ornament-edit-mode-display');
-        if (headerDisplay) {
-          headerDisplay.textContent = `Edit Ornament Mode: ${mode ? 'ON' : 'OFF'}`;
-        }
-      } catch (e) {
-        // WASM function not available yet, will sync later
-        console.log('Ornament edit mode sync skipped (WASM not ready)');
-      }
-    }
   }
 
   /**
@@ -147,11 +125,7 @@ class UI {
       { id: 'menu-cut', label: 'Cut (Ctrl+X)', action: 'cut', testid: 'menu-cut' },
       { id: 'menu-paste', label: 'Paste (Ctrl+V)', action: 'paste', testid: 'menu-paste' },
       { id: 'menu-separator-1', label: null, separator: true },
-      { id: 'menu-apply-ornament', label: 'Ornament (Alt+0)', action: 'apply-ornament-after', testid: 'menu-apply-ornament' },
-      { id: 'menu-apply-ornament-before', label: 'Ornament Before', action: 'apply-ornament-before', testid: 'menu-apply-ornament-before' },
-      { id: 'menu-apply-ornament-top', label: 'Ornament Top', action: 'apply-ornament-top', testid: 'menu-apply-ornament-top' },
       { id: 'menu-apply-slur', label: 'Apply Slur (Alt+S)', action: 'apply-slur' },
-      { id: 'menu-edit-ornaments', label: 'Toggle Ornament Edit Mode (Alt+Shift+O)', action: 'edit-ornaments', checkable: true },
       { id: 'menu-separator-2', label: null, separator: true },
       { id: 'menu-octave-upper', label: 'Upper Octave (Alt+U)', action: 'octave-upper' },
       { id: 'menu-octave-middle', label: 'Middle Octave (Alt+M)', action: 'octave-middle' },
@@ -564,19 +538,6 @@ class UI {
         break;
       case 'paste':
         this.editor.handlePaste();
-        break;
-      case 'apply-ornament-after':
-        console.log('[UI] apply-ornament-after: calling editor.applyOrnament("after")');
-        this.editor.applyOrnament('after');
-        break;
-      case 'apply-ornament-before':
-        this.editor.applyOrnament('before');
-        break;
-      case 'apply-ornament-top':
-        this.editor.applyOrnament('top');
-        break;
-      case 'edit-ornaments':
-        this.toggleOrnamentEditMode();
         break;
       case 'ornament-position-before':
         this.setOrnamentPosition('before');
@@ -1381,29 +1342,6 @@ class UI {
   applySlur() {
     if (this.editor) {
       this.editor.applySlur();
-    }
-  }
-
-  /**
-   * Toggle ornament edit mode
-   */
-  toggleOrnamentEditMode() {
-    if (this.editor) {
-      this.editor.toggleOrnamentEditMode();
-    }
-  }
-
-  /**
-   * Update menu checkbox state for ornament edit mode
-   */
-  updateOrnamentEditModeCheckbox(isEnabled) {
-    const menuItem = document.getElementById('menu-edit-ornaments');
-    if (menuItem) {
-      const checkbox = menuItem.querySelector('.menu-checkbox');
-      if (checkbox) {
-        checkbox.textContent = isEnabled ? '☑ ' : '☐ ';
-        checkbox.dataset.checked = isEnabled.toString();
-      }
     }
   }
 

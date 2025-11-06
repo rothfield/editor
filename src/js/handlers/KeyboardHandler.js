@@ -91,17 +91,11 @@ export class KeyboardHandler {
       case 't':
         this.editor.showTalaDialog();
         break;
-      case 'o':
-        this.editor.applyOrnament('after');
-        break;
-      case '0':
-        this.editor.applyOrnament('after'); // Alt+0: Apply ornament (default "after" position)
-        break;
       default:
         console.log('Unknown Alt command:', key);
         this.editor.showWarning(`Unknown musical command: Alt+${key}`, {
           important: false,
-          details: `Available commands: Alt+S (slur), Alt+O (ornament), Alt+U (upper octave), Alt+M (middle octave), Alt+L (lower octave), Alt+T (tala)`
+          details: `Available commands: Alt+S (slur), Alt+U (upper octave), Alt+M (middle octave), Alt+L (lower octave), Alt+T (tala)`
         });
         return;
     }
@@ -115,15 +109,11 @@ export class KeyboardHandler {
     this.editor.addToConsoleLog(`Mode command: Alt+Shift+${key.toUpperCase()}`);
 
     switch (key.toLowerCase()) {
-      case 'o':
-        // Alt+Shift+O: Toggle ornament edit mode
-        this.editor.toggleOrnamentEditMode();
-        break;
       default:
         console.log('Unknown Alt+Shift command:', key);
         this.editor.showWarning(`Unknown mode command: Alt+Shift+${key.toUpperCase()}`, {
           important: false,
-          details: `Available commands: Alt+Shift+O (toggle ornament edit mode)`
+          details: `No mode commands currently available`
         });
         return;
     }

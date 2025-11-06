@@ -196,7 +196,6 @@ class MusicNotationEditor {
             this.ui.updateDocumentTitle(this.theDocument.title);
           }
           this.ui.updateCurrentPitchSystemDisplay();
-          this.ui.syncOrnamentEditModeUI();
         }
       }
     } catch (error) {
@@ -1649,41 +1648,6 @@ class MusicNotationEditor {
     line.cells = updatedCells;
 
     this.addToConsoleLog(`Removed slur via WASM: cells ${selection.start}..${selection.end}`);
-  }
-
-  /**
-   * Apply ornament styling to current selection (WYSIWYG "select and apply" pattern)
-   * @param {string} positionType - Position type: "before", "after", or "top"
-   */
-  /**
-   * Toggle ornament edit mode
-   * When enabled, ornaments are displayed in normal position with superscript styling
-   * When disabled, ornaments are attached to adjacent notes
-   */
-  toggleOrnamentEditMode() {
-    // Get current mode from document
-    const currentMode = this.wasmModule.getOrnamentEditMode(this.theDocument);
-    const newMode = !currentMode;
-
-    // Update document via WASM API
-    this.theDocument = this.wasmModule.setOrnamentEditMode(this.theDocument, newMode);
-
-    console.log(`🎨 Ornament edit mode: ${newMode ? 'ON' : 'OFF'}`);
-    this.addToConsoleLog(`Ornament edit mode: ${newMode ? 'ON' : 'OFF'}`);
-
-    // Update header display
-    const headerDisplay = document.getElementById('ornament-edit-mode-display');
-    if (headerDisplay) {
-      headerDisplay.textContent = `Edit Ornament Mode: ${newMode ? 'ON' : 'OFF'}`;
-    }
-
-    // Update menu checkbox
-    if (this.ui) {
-      this.ui.updateOrnamentEditModeCheckbox(newMode);
-    }
-
-    // Re-render to apply the new mode
-    this.renderAndUpdate();
   }
 
   /**
