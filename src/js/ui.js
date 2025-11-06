@@ -12,6 +12,7 @@ class UI {
     this.preferencesUI = preferencesUI;
     this.activeMenu = null;
     this.activeTab = 'staff-notation';
+    this.isInitialized = false; // Track initialization state to prevent timer scheduling during init
     this.menuListeners = new Map();
 
     // localStorage settings
@@ -34,6 +35,10 @@ class UI {
     this.setupEventListeners();
     this.updateCurrentPitchSystemDisplay();
     this.restoreTabPreference();
+
+    // Mark UI as initialized - this prevents staff notation timer scheduling during init
+    // (prevents double-render: one from autosave timer, one from switchTab)
+    this.isInitialized = true;
 
     console.log('UI components initialized');
   }
@@ -275,8 +280,8 @@ class UI {
       button.addEventListener('click', this.handleTabClick);
     });
 
-    // Set initial active tab
-    this.switchTab('staff-notation');
+    // Note: Initial tab is set by restoreTabPreference() below in initialize()
+    // Do NOT call switchTab() here - it causes duplicate rendering on initial load
   }
 
   /**
@@ -401,6 +406,14 @@ class UI {
 
     // Render staff notation if switching to staff notation tab
     if (tabName === 'staff-notation' && this.editor) {
+      // **CRITICAL FIX**: Cancel any debounced staff notation update
+      // This prevents double-rendering: one from the debounced timer + one from switchTab
+      // (The debounced timer is set by editor.render() when createNewDocument() is called during init)
+      if (this.editor.staffNotationTimer) {
+        clearTimeout(this.editor.staffNotationTimer);
+        this.editor.staffNotationTimer = null;
+      }
+
       // Clear the OSMD renderer's hash cache to force a fresh render
       // This ensures that switching back to the tab triggers a re-render even if MusicXML hash is the same
       if (this.editor.osmdRenderer) {

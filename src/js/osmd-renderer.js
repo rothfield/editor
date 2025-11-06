@@ -154,18 +154,32 @@ export class OSMDRenderer {
         }
 
         try {
+            // **CRITICAL**: Clear container at the START to prevent duplication
+            // This prevents accumulated renders if multiple render() calls are queued
+            const container = document.getElementById(this.containerId);
+            if (container) {
+                container.innerHTML = '';
+            }
+
             // Check cache first (FR-032a: display cached preview on load)
             const cachedSvg = await this.getCachedRender(hash);
             if (cachedSvg) {
                 if (myToken !== this.renderToken) return; // canceled by newer update
-                document.getElementById(this.containerId).innerHTML = cachedSvg;
-                this.lastMusicXmlHash = hash; // Track what we rendered
-                console.log('[OSMD] Rendered from cache (<50ms)');
 
-                // Still need to load MusicXML for audio playback even when using cached visual
+                // **CRITICAL FIX**: Initialize OSMD first (for audio playback)
+                // We MUST do this BEFORE setting cached SVG, then clear the DOM it adds
                 await this.init();
+                // Clear any DOM elements that init() may have added
+                container.innerHTML = '';
+                // Set cached SVG
+                container.innerHTML = cachedSvg;
+
+                // Load MusicXML into OSMD for audio processing (without re-rendering)
                 await this.osmd.load(musicxml);
                 if (myToken !== this.renderToken) return; // canceled by newer update
+
+                this.lastMusicXmlHash = hash; // Track what we rendered
+                console.log('[OSMD] Rendered from cache (<50ms)');
 
                 // Reload audio player with new score if it exists
                 await this.reloadAudioPlayerIfNeeded();
@@ -174,6 +188,7 @@ export class OSMDRenderer {
 
             // Cache miss - perform full render (FR-032c: invalidate on content change)
             console.log('[OSMD] Cache miss, rendering...');
+
             await this.init();
             await this.osmd.load(musicxml);
             if (myToken !== this.renderToken) return; // canceled by newer update
@@ -182,7 +197,7 @@ export class OSMDRenderer {
             await this.osmd.render();
 
             // Store rendered SVG in cache
-            const container = document.getElementById(this.containerId);
+            // (container already obtained above before clearing)
             const renderedSvg = container.innerHTML;
             await this.setCachedRender(hash, renderedSvg);
 

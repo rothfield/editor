@@ -72,6 +72,10 @@ export class WASMBridge {
     this.copyCells = wasm.copyCells;
     this.pasteCells = wasm.pasteCells;
 
+    // Primary Selection API (X11 style - middle-click paste)
+    this.getPrimarySelection = wasm.getPrimarySelection;
+    this.updatePrimarySelection = wasm.updatePrimarySelection;
+
     // Undo/Redo API
     this.undo = wasm.undo;
     this.redo = wasm.redo;

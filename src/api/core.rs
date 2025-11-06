@@ -1948,6 +1948,77 @@ pub fn paste_cells(
 }
 
 // ============================================================================
+// Primary Selection (X11 style - for middle-click paste)
+// ============================================================================
+
+/// Get the current primary selection register
+/// Returns { text: String, cells: Cell[] } or null if empty
+#[wasm_bindgen(js_name = getPrimarySelection)]
+pub fn get_primary_selection() -> Result<JsValue, JsValue> {
+    let doc_guard = DOCUMENT.lock().unwrap();
+    let doc = doc_guard.as_ref()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    let primary = &doc.state.primary_selection;
+
+    if primary.is_empty() {
+        return Ok(JsValue::null());
+    }
+
+    let result = serde_json::json!({
+        "text": &primary.text,
+        "cells": &primary.cells,
+    });
+
+    serde_wasm_bindgen::to_value(&result)
+        .map_err(|e| {
+            wasm_error!("PrimarySelection serialization error: {}", e);
+            JsValue::from_str(&format!("PrimarySelection serialization error: {}", e))
+        })
+}
+
+/// Update primary selection register
+/// Called automatically when selection changes (for X11 select-to-copy)
+#[wasm_bindgen(js_name = updatePrimarySelection)]
+pub fn update_primary_selection(
+    start_row: usize,
+    start_col: usize,
+    end_row: usize,
+    end_col: usize,
+    cells_json: JsValue,
+) -> Result<(), JsValue> {
+    wasm_info!("updatePrimarySelection: ({},{})-({},{})", start_row, start_col, end_row, end_col);
+
+    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let doc = doc_guard.as_mut()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    // Deserialize cells from JSON
+    let cells: Vec<Cell> = serde_wasm_bindgen::from_value(cells_json)
+        .map_err(|e| {
+            wasm_error!("Cell deserialization error: {}", e);
+            JsValue::from_str(&format!("Cell deserialization error: {}", e))
+        })?;
+
+    // Build text from cells
+    let mut text = String::new();
+    for cell in &cells {
+        text.push_str(&cell.char);
+    }
+
+    // Create selection record
+    let selection = crate::models::Selection {
+        anchor: Pos { line: start_row, col: start_col },
+        head: Pos { line: end_row, col: end_col },
+    };
+
+    // Update primary selection in document state
+    doc.state.update_primary_selection(text, cells, selection);
+
+    Ok(())
+}
+
+// ============================================================================
 // Undo/Redo operations
 // ============================================================================
 

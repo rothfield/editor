@@ -8,7 +8,7 @@ use std::collections::VecDeque;
 
 // Re-export from other modules
 pub use super::elements::{ElementKind, OrnamentIndicator, OrnamentPositionType, PitchSystem, SlurIndicator};
-pub use super::notation::{BeatSpan, SlurSpan, Position, Selection, Range, CursorPosition, Pos, CaretInfo, SelectionInfo, EditorDiff, DocDiff};
+pub use super::notation::{BeatSpan, SlurSpan, Position, Selection, PrimarySelection, Range, CursorPosition, Pos, CaretInfo, SelectionInfo, EditorDiff, DocDiff};
 pub use super::pitch_code::PitchCode;
 
 /// The fundamental unit representing one character in musical notation
@@ -624,6 +624,10 @@ pub struct DocumentState {
     #[serde(default)]
     pub selection_manager: SelectionManager,
 
+    /// Primary selection register (X11 style - for middle-click paste)
+    #[serde(default)]
+    pub primary_selection: PrimarySelection,
+
     /// Currently focused element ID
     #[serde(default)]
     pub focused_element: Option<String>,
@@ -649,6 +653,7 @@ impl DocumentState {
         Self {
             cursor: Pos::origin(),
             selection_manager: SelectionManager::new(),
+            primary_selection: PrimarySelection::default(),
             focused_element: None,
             has_focus: false,
             history: VecDeque::new(),
@@ -690,6 +695,20 @@ impl DocumentState {
     /// Get selected text from document
     pub fn get_selected_text(&self, document: &Document) -> String {
         self.selection_manager.get_selected_text(document)
+    }
+
+    /// Update primary selection register with new content
+    pub fn update_primary_selection(&mut self, text: String, cells: Vec<Cell>, selection: Selection) {
+        self.primary_selection = PrimarySelection {
+            text,
+            cells,
+            selection,
+        };
+    }
+
+    /// Get current primary selection
+    pub fn get_primary_selection(&self) -> &PrimarySelection {
+        &self.primary_selection
     }
 
     /// Add an action to the history

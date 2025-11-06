@@ -319,6 +319,46 @@ impl Default for Selection {
     }
 }
 
+/// Primary selection register (X11 style - persists independently of clipboard)
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct PrimarySelection {
+    /// Plain text representation of selected content
+    pub text: String,
+
+    /// Structured Cell data preserving music notation
+    #[serde(default)]
+    pub cells: Vec<super::core::Cell>,
+
+    /// Selection range that was copied
+    pub selection: Selection,
+}
+
+impl PrimarySelection {
+    /// Create a new primary selection
+    pub fn new(text: String, cells: Vec<super::core::Cell>, selection: Selection) -> Self {
+        Self {
+            text,
+            cells,
+            selection,
+        }
+    }
+
+    /// Check if primary selection is empty
+    pub fn is_empty(&self) -> bool {
+        self.text.is_empty() || self.selection.is_empty()
+    }
+}
+
+impl Default for PrimarySelection {
+    fn default() -> Self {
+        Self {
+            text: String::new(),
+            cells: Vec::new(),
+            selection: Selection::default(),
+        }
+    }
+}
+
 /// Range representation for serialization
 #[wasm_bindgen]
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]

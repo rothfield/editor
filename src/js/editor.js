@@ -806,6 +806,9 @@ class MusicNotationEditor {
     this.updateCursorVisualPosition();
     this.showCursor();
     this.updateSelectionDisplay();
+
+    // Update primary selection register when selection changes (X11 select-to-copy)
+    this.updatePrimarySelection();
   }
 
 
@@ -1835,6 +1838,13 @@ class MusicNotationEditor {
      * Only updates if the staff notation tab is currently active
      */
   scheduleStaffNotationUpdate() {
+    // **CRITICAL FIX**: Skip scheduling timer during UI initialization
+    // This prevents double-render: one from the autosave timer, one from switchTab() immediate render
+    // Check this.ui.isInitialized (set to true at end of ui.initialize())
+    if (!this.ui || !this.ui.isInitialized) {
+      return;
+    }
+
     // Clear any pending update
     if (this.staffNotationTimer) {
       clearTimeout(this.staffNotationTimer);
@@ -1932,6 +1942,11 @@ class MusicNotationEditor {
 
     // Mouse selection events
     this.element.addEventListener('mousedown', (event) => {
+      // Check for middle-click (button === 1 for middle, not right)
+      if (event.button === 1) {
+        this.handleMiddleClick(event);
+        return;
+      }
       this.handleMouseDown(event);
     });
 
@@ -3007,11 +3022,129 @@ class MusicNotationEditor {
           console.warn('Failed to copy to system clipboard:', err);
         });
 
+        // Sync primary selection register with Ctrl+C (keeps both in sync)
+        try {
+          this.wasmModule.updatePrimarySelection(startRow, startCol, endRow, endCol, copyResult.cells);
+        } catch (e) {
+          console.warn('Failed to update primary selection:', e);
+        }
+
         this.addToConsoleLog(`Copied ${copyResult.cells?.length || 0} cells`);
       }
     } catch (error) {
       console.error('Copy failed:', error);
       this.showError('Copy failed', { details: error.message });
+    }
+  }
+
+  /**
+   * Update primary selection register (X11 style)
+   * Called automatically when selection changes to support select-to-copy
+   */
+  updatePrimarySelection() {
+    if (!this.theDocument || !this.wasmModule) {
+      return;
+    }
+
+    // Check if there's a selection
+    if (!this.hasSelection()) {
+      return; // Keep last selection if selection is cleared
+    }
+
+    try {
+      // Ensure WASM document is in sync
+      try {
+        this.wasmModule.loadDocument(this.theDocument);
+      } catch (e) {
+        console.warn('Failed to sync document with WASM before primary selection update:', e);
+      }
+
+      // Get selection from WASM
+      const selection = this.getSelection();
+      if (!selection) {
+        return;
+      }
+
+      // Get selected cells
+      const startRow = selection.start.line;
+      const startCol = selection.start.col;
+      const endRow = selection.end.line;
+      const endCol = selection.end.col;
+
+      // Copy cells (same as Ctrl+C)
+      const copyResult = this.wasmModule.copyCells(startRow, startCol, endRow, endCol);
+
+      if (copyResult && copyResult.text && copyResult.cells) {
+        // Update primary selection in WASM
+        this.wasmModule.updatePrimarySelection(startRow, startCol, endRow, endCol, copyResult.cells);
+
+        // Also sync to system clipboard (Linux select-to-copy behavior)
+        navigator.clipboard.writeText(copyResult.text).catch(err => {
+          // Silently fail - clipboard permission may be restricted
+        });
+      }
+    } catch (error) {
+      console.error('Primary selection update failed:', error);
+    }
+  }
+
+  /**
+   * Handle middle-click paste (X11 style primary selection)
+   * Pastes from the primary selection register at the clicked position
+   */
+  async handleMiddleClick(event) {
+    if (!this.theDocument || !this.wasmModule) {
+      console.warn('Cannot middle-click paste: document or WASM not ready');
+      return;
+    }
+
+    event.preventDefault(); // Prevent default scroll paste behavior
+
+    try {
+      // Ensure WASM has the latest document state
+      this.wasmModule.loadDocument(this.theDocument);
+
+      // Get the primary selection from WASM
+      const primarySelection = this.wasmModule.getPrimarySelection();
+      if (!primarySelection) {
+        console.warn('No primary selection to paste');
+        return;
+      }
+
+      // Calculate position from mouse click
+      const rect = this.element.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+
+      // Determine which line was clicked
+      const lineIndex = this.mouseHandler?.calculateLineFromY(y);
+      const col = this.mouseHandler?.calculateCellPosition(x, y);
+
+      if (lineIndex === null || col === null) {
+        console.warn('Could not determine paste position from click');
+        return;
+      }
+
+      // Get cursor position
+      const startRow = Math.floor(lineIndex);
+      const startCol = Math.floor(col);
+
+      // For primary paste, we paste at the cursor position
+      // The end position is the same as start (no selection deleted)
+      const endRow = startRow;
+      const endCol = startCol;
+
+      // Call WASM to paste cells from primary selection
+      const diff = await this.wasmModule.pasteCells(startRow, startCol, endRow, endCol, primarySelection.cells);
+
+      // Update document from WASM result
+      await this.updateDocumentFromWASM(diff);
+      await this.updateCursorFromWASM(diff);
+
+      this.addToConsoleLog(`Pasted ${primarySelection.cells?.length || 0} cells from primary selection`);
+    } catch (error) {
+      console.error('Middle-click paste failed:', error);
+      this.showError('Paste failed', { details: error.message });
     }
   }
 
