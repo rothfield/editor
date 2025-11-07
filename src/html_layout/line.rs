@@ -66,15 +66,10 @@ impl<'a> LayoutLineComputer<'a> {
             HashMap::new()
         };
 
-        // Extract ornaments from indicators and attach to anchor cells when mode is OFF
-        let (working_cells, cell_index_map) = if !ornament_edit_mode {
-            self.extract_ornaments_from_indicators(&line.cells)
-        } else {
-            // Just copy cells when mode is ON, with identity mapping
-            let cells = line.cells.to_vec();
-            let map: Vec<usize> = (0..cells.len()).collect();
-            (cells, map)
-        };
+        // NOTE: ornament_indicator removed - ornaments now stored directly in cell.ornament field
+        // Always use identity mapping (no extraction needed)
+        let working_cells = line.cells.to_vec();
+        let cell_index_map: Vec<usize> = (0..working_cells.len()).collect();
 
         // Render cells with cumulative X positioning
         let mut cells = Vec::new();
@@ -307,7 +302,7 @@ impl<'a> LayoutLineComputer<'a> {
         original_cells: &[Cell],
         render_cells: &[RenderCell],
         _effective_widths: &[f32],
-        _config: &LayoutConfig,
+        config: &LayoutConfig,
         _line_y_offset: f32,
     ) -> Vec<RenderArc> {
         let mut arcs = Vec::new();
@@ -335,8 +330,33 @@ impl<'a> LayoutLineComputer<'a> {
             let ornament_start_x = parent_cell.x + parent_cell.w;
             let ornament_end_x = ornament_start_x + total_ornament_width;
 
-            // Arc Y is at the TOP of the parent note's bounding box
-            let arc_y = parent_cell.y;
+            // Check if collision avoidance applies to this ornament
+            let has_following_notes = Self::has_significant_following_chars(original_cells, cell_idx);
+            let has_upper_octave_dot = cell.octave > 0;
+
+            // Determine arc starting Y position
+            // If collision avoidance is active, start arc ABOVE the note top
+            // Otherwise, start from the note top
+            let arc_y = if has_following_notes || has_upper_octave_dot {
+                let base_avoidance = if has_following_notes {
+                    config.font_size * 0.4  // 0.4x font size for following notes
+                } else {
+                    0.0
+                };
+
+                let octave_avoidance = if has_upper_octave_dot {
+                    12.0 * 0.5 + 2.0  // Octave dot offset (6px) + 2px margin
+                } else {
+                    0.0
+                };
+
+                // Apply the larger avoidance distance
+                let total_avoidance = base_avoidance.max(octave_avoidance);
+                parent_cell.y - total_avoidance
+            } else {
+                // Standard arc: start from top of parent note
+                parent_cell.y
+            };
 
             // Create arc from parent to ornament span (horizontal with upward curve)
             let arc = self.create_ornament_arc_positioned(
@@ -756,8 +776,31 @@ impl<'a> LayoutLineComputer<'a> {
         octave_dots
     }
 
+    /// Helper: Check if a character requires collision avoidance
+    /// Returns true if the character is NOT a space, nbsp, or dash
+    /// i.e., it's an actual note or other significant character
+    fn char_requires_collision_avoidance(ch: &str) -> bool {
+        match ch {
+            " " | "\u{00A0}" | "-" => false, // space, nbsp, dash - no collision avoidance
+            _ => true,                         // all other chars need avoidance
+        }
+    }
+
+    /// Helper: Check if any following cells have significant characters
+    /// Returns true if there are non-space/non-dash characters following this position
+    fn has_significant_following_chars(cells: &[Cell], start_idx: usize) -> bool {
+        // Look at the next few cells to see if there are significant characters
+        for cell in cells.iter().skip(start_idx + 1).take(3) {
+            if Self::char_requires_collision_avoidance(&cell.char) {
+                return true;
+            }
+        }
+        false
+    }
+
     /// Position ornaments from cell.ornaments (when ornament_edit_mode is OFF)
     /// Ornaments are positioned to the RIGHT and UP from their parent note
+    /// With collision avoidance: ornaments move UP further if following cells have notes
     fn position_ornaments_from_cells(
         &self,
         original_cells: &[Cell],
@@ -792,6 +835,35 @@ impl<'a> LayoutLineComputer<'a> {
                 continue;
             };
 
+            // Check if following cells have significant characters (collision detection)
+            let has_following_notes = Self::has_significant_following_chars(original_cells, cell_idx);
+
+            // Check if the parent note has an upper octave dot (raised above the note)
+            let has_upper_octave_dot = cell.octave > 0;
+
+            // Calculate collision avoidance distance
+            // If there are significant following characters, move up by 0.4x font size
+            // If there's also an upper octave dot, add extra spacing to avoid it (octave dot is ~6px above)
+            let adjusted_ornament_y = if has_following_notes || has_upper_octave_dot {
+                let base_avoidance = if has_following_notes {
+                    config.font_size * 0.4  // 0.4x font size for following notes
+                } else {
+                    0.0
+                };
+
+                let octave_avoidance = if has_upper_octave_dot {
+                    12.0 * 0.5 + 2.0  // Octave dot offset (6px) + 2px margin
+                } else {
+                    0.0
+                };
+
+                // Apply the larger avoidance distance
+                let total_avoidance = base_avoidance.max(octave_avoidance);
+                ornament_y - total_avoidance
+            } else {
+                ornament_y
+            };
+
             // Position ornaments to the RIGHT of parent note
             // Start position is at the right edge of parent
             let mut ornament_x = parent_cell.x + parent_cell.w;
@@ -806,7 +878,7 @@ impl<'a> LayoutLineComputer<'a> {
                     ornaments.push(RenderOrnament {
                         text: ornament_cell.char.clone(),
                         x: ornament_x,
-                        y: ornament_y,
+                        y: adjusted_ornament_y,
                         classes: vec!["ornament-char".to_string()],
                     });
 
@@ -818,86 +890,6 @@ impl<'a> LayoutLineComputer<'a> {
 
         ornaments
     }
-
-    /// Extract ornaments from inline indicator cells and attach them to anchor cells
-    ///
-    /// When ornament_edit_mode is OFF, this function:
-    /// - Scans for OrnamentStart/OrnamentEnd indicator pairs
-    /// - Extracts cells between indicators (the ornament content)
-    /// - Creates Ornament objects and attaches them to the anchor cell
-    /// - Removes the indicator cells from the returned vector
-    ///
-    /// Returns a tuple of (modified cell vector, index mapping)
-    /// where the mapping maps result indices to original cell indices
-    fn extract_ornaments_from_indicators(&self, cells: &[Cell]) -> (Vec<Cell>, Vec<usize>) {
-        let mut result: Vec<Cell> = Vec::new();
-        let mut index_map: Vec<usize> = Vec::new();
-        let mut i = 0;
-
-        while i < cells.len() {
-            let cell = &cells[i];
-
-            // Check if this cell has an ornament start indicator
-            if cell.ornament_indicator.is_start() {
-                let start_idx = i;
-                let position_type = cell.ornament_indicator.position_type();
-
-                // Find the matching end indicator
-                let mut end_idx = None;
-                for j in (start_idx + 1)..cells.len() {
-                    if cells[j].ornament_indicator.is_end()
-                        && cell.ornament_indicator.matches(&cells[j].ornament_indicator) {
-                        end_idx = Some(j);
-                        break;
-                    }
-                }
-
-                if let Some(end_idx) = end_idx {
-                    // Extract ornament cells (from start to end, inclusive)
-                    let ornament_cells: Vec<Cell> = cells[(start_idx)..=end_idx]
-                        .iter()
-                        .cloned()
-                        .collect();
-
-                    // Create the Ornament object
-                    let placement = match position_type {
-                        crate::models::elements::OrnamentPositionType::Before => {
-                            crate::models::elements::OrnamentPlacement::Before
-                        }
-                        crate::models::elements::OrnamentPositionType::After |
-                        crate::models::elements::OrnamentPositionType::OnTop => {
-                            crate::models::elements::OrnamentPlacement::After
-                        }
-                    };
-
-                    let ornament = crate::models::elements::Ornament {
-                        cells: ornament_cells,
-                        placement,
-                    };
-
-                    // Find the anchor cell (the cell immediately before the start indicator)
-                    if start_idx > 0 {
-                        // Attach ornament to the anchor cell
-                        if let Some(anchor_cell) = result.last_mut() {
-                            anchor_cell.ornament = Some(ornament);
-                        }
-                    }
-
-                    // Skip past all the ornament cells (including the end indicator)
-                    i = end_idx + 1;
-                    continue;
-                }
-            }
-
-            // Regular cell - add it to result with its original index
-            result.push(cell.clone());
-            index_map.push(i);
-            i += 1;
-        }
-
-        (result, index_map)
-    }
-
 
     /// Calculate line height based on actual content
     ///
@@ -950,5 +942,59 @@ impl<'a> LayoutLineComputer<'a> {
         }
 
         total_height
+    }
+}
+
+#[cfg(test)]
+mod ornament_collision_tests {
+    use super::*;
+
+    #[test]
+    fn test_char_requires_collision_avoidance_spaces() {
+        // Spaces should NOT require collision avoidance
+        assert!(!LayoutLineComputer::char_requires_collision_avoidance(" "));
+    }
+
+    #[test]
+    fn test_char_requires_collision_avoidance_nbsp() {
+        // Non-breaking space should NOT require collision avoidance
+        assert!(!LayoutLineComputer::char_requires_collision_avoidance("\u{00A0}"));
+    }
+
+    #[test]
+    fn test_char_requires_collision_avoidance_dash() {
+        // Dash should NOT require collision avoidance
+        assert!(!LayoutLineComputer::char_requires_collision_avoidance("-"));
+    }
+
+    #[test]
+    fn test_char_requires_collision_avoidance_note() {
+        // Notes should require collision avoidance
+        assert!(LayoutLineComputer::char_requires_collision_avoidance("C"));
+        assert!(LayoutLineComputer::char_requires_collision_avoidance("1"));
+        assert!(LayoutLineComputer::char_requires_collision_avoidance("S"));
+        assert!(LayoutLineComputer::char_requires_collision_avoidance("r"));
+    }
+
+    #[test]
+    fn test_char_requires_collision_avoidance_special() {
+        // Special characters should require collision avoidance
+        assert!(LayoutLineComputer::char_requires_collision_avoidance("#"));
+        assert!(LayoutLineComputer::char_requires_collision_avoidance("b"));
+        assert!(LayoutLineComputer::char_requires_collision_avoidance("|"));
+    }
+
+    #[test]
+    fn test_char_requires_collision_avoidance_lowercase_letters() {
+        // Lowercase letters should require collision avoidance
+        assert!(LayoutLineComputer::char_requires_collision_avoidance("a"));
+        assert!(LayoutLineComputer::char_requires_collision_avoidance("z"));
+    }
+
+    #[test]
+    fn test_char_requires_collision_avoidance_accidentals() {
+        // Accidentals should require collision avoidance
+        assert!(LayoutLineComputer::char_requires_collision_avoidance("2")); // "b" (flat in some systems)
+        assert!(LayoutLineComputer::char_requires_collision_avoidance("3")); // "#" (sharp in some systems)
     }
 }

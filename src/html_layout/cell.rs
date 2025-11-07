@@ -68,14 +68,6 @@ impl CellStyleBuilder {
         dataset.insert("glyphLength".to_string(), cell.char.chars().count().to_string());
         dataset.insert("continuation".to_string(), cell.continuation.to_string());
 
-        // Ornament indicator classes for visual styling
-        // T026: Add "ornament-cell" CSS class when cell is rhythm-transparent
-        if cell.is_rhythm_transparent() {
-            classes.push("ornament-cell".to_string());
-            // Add testid for E2E tests
-            dataset.insert("testid".to_string(), "ornament-cell".to_string());
-        }
-
         // Pitch system class
         if let Some(pitch_system) = cell.pitch_system {
             classes.push(format!("pitch-system-{}", self.pitch_system_to_css(pitch_system)));
@@ -240,32 +232,10 @@ impl CellStyleBuilder {
     }
 
     /// Build map of cell index to ornament role class
-    pub fn build_ornament_role_map(&self, cells: &[Cell]) -> HashMap<usize, String> {
-        let mut map = HashMap::new();
-        let mut ornament_start: Option<usize> = None;
-
-        for (idx, cell) in cells.iter().enumerate() {
-            if cell.ornament_indicator.is_start() {
-                ornament_start = Some(idx);
-            } else if cell.ornament_indicator.is_end() {
-                if let Some(start) = ornament_start {
-                    // Mark all cells in the ornament span
-                    for i in start..=idx {
-                        let role = if i == start {
-                            "ornament-first"
-                        } else if i == idx {
-                            "ornament-last"
-                        } else {
-                            "ornament-middle"
-                        };
-                        map.insert(i, role.to_string());
-                    }
-                    ornament_start = None;
-                }
-            }
-        }
-
-        map
+    /// Deprecated: ornament indicators have been removed
+    pub fn build_ornament_role_map(&self, _cells: &[Cell]) -> HashMap<usize, String> {
+        // With the new system, ornaments are stored inline with cells, not as separate indicator cells
+        HashMap::new()
     }
 
     /// Convert ElementKind to CSS class name

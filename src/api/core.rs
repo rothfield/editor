@@ -4,7 +4,7 @@
 //! and token combination using the recursive descent parser.
 
 use wasm_bindgen::prelude::*;
-use crate::models::{Cell, PitchSystem, Document, Line, OrnamentIndicator, OrnamentPositionType, Pos, EditorDiff, CaretInfo, SelectionInfo, ElementKind};
+use crate::models::{Cell, PitchSystem, Document, Line, Pos, EditorDiff, CaretInfo, SelectionInfo, ElementKind};
 use crate::parse::grammar::{parse_single, mark_continuations};
 
 #[cfg(test)]
@@ -500,112 +500,17 @@ pub fn set_document_pitch_system(pitch_system: u8) -> Result<(), JsValue> {
 }
 
 /// Expand ornaments from cell.ornaments into the cells vector
-/// This is called when turning edit mode ON
-fn expand_ornaments_to_cells(line: &mut Line) {
-    use crate::models::elements::OrnamentPlacement;
-
-    let mut new_cells = Vec::new();
-
-    for cell in line.cells.drain(..) {
-        // Add the parent cell
-        let mut parent_cell = cell.clone();
-        let ornament_to_expand = parent_cell.ornament.take(); // Take ornament, leaving None
-        new_cells.push(parent_cell);
-
-        // Expand ornament into cells (if present)
-        if let Some(ornament) = ornament_to_expand {
-            let ornament_cells = ornament.cells;
-            if !ornament_cells.is_empty() {
-                // Determine position type from ornament placement (default to Before)
-                let position = match ornament.placement {
-                    OrnamentPlacement::Before => OrnamentPositionType::Before,
-                    OrnamentPlacement::After => OrnamentPositionType::After,
-                };
-
-                // Mark first cell with appropriate OrnamentStart variant
-                let mut first_cell = ornament_cells[0].clone();
-                first_cell.set_ornament_start_with_position(position);
-                new_cells.push(first_cell);
-
-                // Add middle cells (no indicator)
-                for middle_cell in ornament_cells.iter().skip(1).take(ornament_cells.len().saturating_sub(2)) {
-                    new_cells.push(middle_cell.clone());
-                }
-
-                // Mark last cell with appropriate OrnamentEnd variant (if more than one cell)
-                if ornament_cells.len() > 1 {
-                    let mut last_cell = ornament_cells[ornament_cells.len() - 1].clone();
-                    last_cell.set_ornament_end_with_position(position);
-                    new_cells.push(last_cell);
-                }
-            }
-        }
-    }
-
-    line.cells = new_cells;
+/// Deprecated: ornament indicators have been removed. This is now a no-op.
+fn expand_ornaments_to_cells(_line: &mut Line) {
+    // With the new system, ornaments are stored inline with cells
+    // No expansion/collapse logic is needed
 }
 
 /// Collapse ornament cells back into cell.ornaments
-/// This is called when turning edit mode OFF
-fn collapse_ornaments_from_cells(line: &mut Line) {
-    use crate::models::elements::{Ornament, OrnamentPlacement};
-
-    let mut new_cells: Vec<Cell> = Vec::new();
-    let mut i = 0;
-
-    while i < line.cells.len() {
-        let cell = &line.cells[i];
-
-        // Check if this cell starts an ornament
-        if cell.ornament_indicator.is_start() {
-            // Find the parent cell (previous cell)
-            if let Some(parent_cell) = new_cells.last_mut() {
-                // Collect ornament cells
-                let mut ornament_cells = Vec::new();
-                let mut j = i;
-
-                // Get the position type from the first ornament cell
-                let position_type = cell.ornament_indicator.position_type();
-                let placement = match position_type {
-                    OrnamentPositionType::Before => OrnamentPlacement::Before,
-                    OrnamentPositionType::After => OrnamentPlacement::After,
-                    OrnamentPositionType::OnTop => OrnamentPlacement::Before, // Default to Before for OnTop
-                };
-
-                loop {
-                    let ornament_cell = &line.cells[j];
-                    let mut clean_cell = ornament_cell.clone();
-                    clean_cell.ornament_indicator = OrnamentIndicator::None;
-                    ornament_cells.push(clean_cell);
-
-                    if ornament_cell.ornament_indicator.is_end() {
-                        break;
-                    }
-
-                    j += 1;
-                    if j >= line.cells.len() {
-                        break;
-                    }
-                }
-
-                // Create ornament and attach to parent
-                let ornament = Ornament {
-                    cells: ornament_cells,
-                    placement,
-                };
-                parent_cell.ornament = Some(ornament);
-
-                i = j + 1; // Skip past the ornament cells
-                continue;
-            }
-        }
-
-        // Regular cell - just add it
-        new_cells.push(cell.clone());
-        i += 1;
-    }
-
-    line.cells = new_cells;
+/// Deprecated: ornament indicators have been removed. This is now a no-op.
+fn collapse_ornaments_from_cells(_line: &mut Line) {
+    // With the new system, ornaments are stored inline with cells
+    // No expansion/collapse logic is needed
 }
 
 /// Set the ornament edit mode for the document
@@ -1283,34 +1188,55 @@ pub fn delete_at_cursor() -> Result<JsValue, JsValue> {
             wasm_info!("  Deleted cell at column {}", cursor_col - 1);
         }
     } else {
-        // Cursor at start of line - join with previous line
+        // Cursor at start of line - join with previous line or delete if empty
         if cursor_line > 0 {
-            let prev_line = &doc.lines[cursor_line - 1];
-            let join_position = prev_line.cells.len();
+            let current_line = &doc.lines[cursor_line];
 
-            // Get cells from current line
-            let mut current_cells = doc.lines[cursor_line].cells.clone();
+            // If current line is empty, just delete it
+            if current_line.cells.is_empty() {
+                // Remove current (empty) line
+                doc.lines.remove(cursor_line);
 
-            // Update column indices for cells being moved
-            for cell in &mut current_cells {
-                cell.col += join_position;
+                // Move cursor to end of previous line
+                let prev_line = &doc.lines[cursor_line - 1];
+                new_cursor_row = cursor_line - 1;
+                new_cursor_col = prev_line.cells.len();
+
+                dirty_lines.push(DirtyLine {
+                    row: cursor_line - 1,
+                    cells: prev_line.cells.clone(),
+                });
+
+                wasm_info!("  Deleted empty line {}", cursor_line);
+            } else {
+                // Current line has content - join with previous line
+                let prev_line = &doc.lines[cursor_line - 1];
+                let join_position = prev_line.cells.len();
+
+                // Get cells from current line
+                let mut current_cells = doc.lines[cursor_line].cells.clone();
+
+                // Update column indices for cells being moved
+                for cell in &mut current_cells {
+                    cell.col += join_position;
+                }
+
+                // Append to previous line
+                doc.lines[cursor_line - 1].cells.extend(current_cells);
+
+                // Remove current line
+                doc.lines.remove(cursor_line);
+
+                new_cursor_row = cursor_line - 1;
+                new_cursor_col = join_position;
+
+                dirty_lines.push(DirtyLine {
+                    row: cursor_line - 1,
+                    cells: doc.lines[cursor_line - 1].cells.clone(),
+                });
+
+                wasm_info!("  Joined line {} with line {}", cursor_line, cursor_line - 1);
             }
-
-            // Append to previous line
-            doc.lines[cursor_line - 1].cells.extend(current_cells);
-
-            // Remove current line
-            doc.lines.remove(cursor_line);
-
-            new_cursor_row = cursor_line - 1;
-            new_cursor_col = join_position;
-
-            dirty_lines.push(DirtyLine {
-                row: cursor_line - 1,
-                cells: doc.lines[cursor_line - 1].cells.clone(),
-            });
-
-            wasm_info!("  Joined line {} with line {}", cursor_line, cursor_line - 1);
         }
     }
 

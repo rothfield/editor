@@ -3111,10 +3111,21 @@ class MusicNotationEditor {
       // Ensure WASM has the latest document state
       this.wasmModule.loadDocument(this.theDocument);
 
-      // Get the primary selection from WASM
+      // Try to get primary selection (X11 style - from previous selection)
       const primarySelection = this.wasmModule.getPrimarySelection();
-      if (!primarySelection) {
-        console.warn('No primary selection to paste');
+
+      // Fall back to system clipboard if no primary selection
+      let cellsToPaste = [];
+      let pasteSource = 'unknown';
+
+      if (primarySelection && primarySelection.cells && primarySelection.cells.length > 0) {
+        cellsToPaste = primarySelection.cells;
+        pasteSource = 'primary selection';
+      } else if (this.clipboard.cells && this.clipboard.cells.length > 0) {
+        cellsToPaste = this.clipboard.cells;
+        pasteSource = 'system clipboard';
+      } else {
+        console.warn('Nothing to paste (no primary selection or clipboard content)');
         return;
       }
 
@@ -3136,19 +3147,36 @@ class MusicNotationEditor {
       const startRow = Math.floor(lineIndex);
       const startCol = Math.floor(col);
 
-      // For primary paste, we paste at the cursor position
+      // For middle-click paste, we paste at the clicked position
       // The end position is the same as start (no selection deleted)
       const endRow = startRow;
       const endCol = startCol;
 
-      // Call WASM to paste cells from primary selection
-      const diff = await this.wasmModule.pasteCells(startRow, startCol, endRow, endCol, primarySelection.cells);
+      // Call WASM to paste cells (handles document mutation, undo tracking)
+      const result = this.wasmModule.pasteCells(startRow, startCol, endRow, endCol, cellsToPaste);
 
       // Update document from WASM result
-      await this.updateDocumentFromWASM(diff);
-      await this.updateCursorFromWASM(diff);
+      if (result && result.dirty_lines) {
+        for (const dirtyLine of result.dirty_lines) {
+          if (dirtyLine.row < this.theDocument.lines.length) {
+            this.theDocument.lines[dirtyLine.row].cells = dirtyLine.cells;
+          }
+        }
+      }
 
-      this.addToConsoleLog(`Pasted ${primarySelection.cells?.length || 0} cells from primary selection`);
+      // Update cursor position from WASM result
+      if (result && typeof result.new_cursor_col !== 'undefined') {
+        this.setCursorPosition(result.new_cursor_col);
+      } else {
+        // Fallback: position after pasted content
+        this.setCursorPosition(startCol + cellsToPaste.length);
+      }
+
+      // Clear selection
+      this.clearSelection();
+
+      this.addToConsoleLog(`Pasted ${cellsToPaste.length} cells from ${pasteSource}`);
+      this.render();
     } catch (error) {
       console.error('Middle-click paste failed:', error);
       this.showError('Paste failed', { details: error.message });

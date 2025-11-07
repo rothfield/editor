@@ -13,7 +13,7 @@
 //! - CollectingPitchInBeat: Collecting pitch + following dashes (represents note + extensions)
 //! - CollectingTrailingGraceNotes: Collecting grace notes after main element
 
-use crate::models::{Cell, ElementKind, PitchCode, OrnamentPositionType};
+use crate::models::{Cell, ElementKind, PitchCode};
 use crate::models::barlines::BarlineType;
 
 /// FSM state for beat processing
@@ -171,15 +171,14 @@ pub enum BeatElementKind {
         pitch_code: PitchCode,
         octave: i8,
         /// Grace notes attached before this note
-        grace_notes_before: Vec<(PitchCode, i8, OrnamentPositionType)>,
+        grace_notes_before: Vec<(PitchCode, i8)>,
         /// Grace notes attached after this note (trailing ornaments)
-        grace_notes_after: Vec<(PitchCode, i8, OrnamentPositionType)>,
+        grace_notes_after: Vec<(PitchCode, i8)>,
     },
     /// Grace note that doesn't contribute to beat rhythm
     GraceNote {
         pitch_code: PitchCode,
         octave: i8,
-        position: OrnamentPositionType,
     },
 }
 
@@ -190,9 +189,9 @@ pub struct BeatAccumulator {
     /// Current element divisions (dash micro-beats counter)
     pub current_element_divisions: usize,
     /// Pending grace notes to attach to next main element
-    pub pending_grace_notes_before: Vec<(PitchCode, i8, OrnamentPositionType)>,
+    pub pending_grace_notes_before: Vec<(PitchCode, i8)>,
     /// Grace notes collected in trailing ornament state
-    pub pending_grace_notes_after: Vec<(PitchCode, i8, OrnamentPositionType)>,
+    pub pending_grace_notes_after: Vec<(PitchCode, i8)>,
     /// Whether we've seen a pitched/unpitched main element in this beat
     pub has_main_element: bool,
 }
@@ -237,15 +236,15 @@ impl BeatAccumulator {
     }
 
     /// Add grace note to pending list
-    fn add_grace_note(&mut self, pitch_code: PitchCode, octave: i8, position: OrnamentPositionType) {
+    fn add_grace_note(&mut self, pitch_code: PitchCode, octave: i8) {
         if self.has_main_element {
             // Grace note after main element
             if let Some(BeatElement { kind: BeatElementKind::Note { grace_notes_after, .. }, .. }) = self.elements.last_mut() {
-                grace_notes_after.push((pitch_code, octave, position));
+                grace_notes_after.push((pitch_code, octave));
             }
         } else {
             // Grace note before main element
-            self.pending_grace_notes_before.push((pitch_code, octave, position));
+            self.pending_grace_notes_before.push((pitch_code, octave));
         }
     }
 
@@ -322,7 +321,7 @@ pub fn beat_transition(
                 BeatProcessingState::InBeat  // No pitch, skip
             }
         }
-        (BeatProcessingState::InBeat, ElementKind::PitchedElement) if !cell.is_rhythm_transparent() => {
+        (BeatProcessingState::InBeat, ElementKind::PitchedElement) if cell.ornament.is_none() => {
             if let Some(pitch_code) = &cell.pitch_code {
                 accum.start_pitch(*pitch_code, cell.octave);
                 BeatProcessingState::CollectingPitchInBeat
@@ -330,7 +329,7 @@ pub fn beat_transition(
                 BeatProcessingState::InBeat
             }
         }
-        (BeatProcessingState::CollectingPitchInBeat, ElementKind::PitchedElement) if !cell.is_rhythm_transparent() => {
+        (BeatProcessingState::CollectingPitchInBeat, ElementKind::PitchedElement) if cell.ornament.is_none() => {
             // New pitch → finish previous and start new
             accum.finish_pitch();
             if let Some(pitch_code) = &cell.pitch_code {
@@ -348,17 +347,17 @@ pub fn beat_transition(
         }
 
         // GRACE NOTES / ORNAMENTS
-        (BeatProcessingState::InBeat, ElementKind::PitchedElement) if cell.is_rhythm_transparent() => {
+        (BeatProcessingState::InBeat, ElementKind::PitchedElement) if cell.ornament.is_some() => {
             // Grace note before any main element
             if let Some(pitch_code) = &cell.pitch_code {
-                accum.add_grace_note(*pitch_code, cell.octave, cell.ornament_indicator.position_type());
+                accum.add_grace_note(*pitch_code, cell.octave);
             }
             BeatProcessingState::InBeat
         }
-        (BeatProcessingState::CollectingPitchInBeat, ElementKind::PitchedElement) if cell.is_rhythm_transparent() => {
+        (BeatProcessingState::CollectingPitchInBeat, ElementKind::PitchedElement) if cell.ornament.is_some() => {
             // Grace note after main element (trailing ornament)
             if let Some(pitch_code) = &cell.pitch_code {
-                accum.add_grace_note(*pitch_code, cell.octave, cell.ornament_indicator.position_type());
+                accum.add_grace_note(*pitch_code, cell.octave);
             }
             BeatProcessingState::CollectingTrailingGraceNotes
         }
@@ -470,7 +469,7 @@ pub fn transition(
                     beat_accum.start_dash();
                     MusicXMLState::CollectingDashesInBeat
                 }
-                ElementKind::PitchedElement if !cell.is_rhythm_transparent() => {
+                ElementKind::PitchedElement if cell.ornament.is_none() => {
                     let _ = measure_tracker.add_duration(1);
                     if let Some(pitch_code) = &cell.pitch_code {
                         beat_accum.start_pitch(*pitch_code, cell.octave);
@@ -479,10 +478,10 @@ pub fn transition(
                         MusicXMLState::InBeat
                     }
                 }
-                ElementKind::PitchedElement if cell.is_rhythm_transparent() => {
+                ElementKind::PitchedElement if cell.ornament.is_some() => {
                     // Grace note before main element
                     if let Some(pitch_code) = &cell.pitch_code {
-                        beat_accum.add_grace_note(*pitch_code, cell.octave, cell.ornament_indicator.position_type());
+                        beat_accum.add_grace_note(*pitch_code, cell.octave);
                     }
                     MusicXMLState::InBeat
                 }
@@ -518,7 +517,7 @@ pub fn transition(
                     beat_accum.increment_dash();
                     MusicXMLState::CollectingPitchInBeat
                 }
-                ElementKind::PitchedElement if !cell.is_rhythm_transparent() => {
+                ElementKind::PitchedElement if cell.ornament.is_none() => {
                     // New pitch → finish previous and start new
                     let _ = measure_tracker.add_duration(1);
                     beat_accum.finish_pitch();
@@ -529,10 +528,10 @@ pub fn transition(
                         MusicXMLState::InBeat
                     }
                 }
-                ElementKind::PitchedElement if cell.is_rhythm_transparent() => {
+                ElementKind::PitchedElement if cell.ornament.is_some() => {
                     // Grace note after main element
                     if let Some(pitch_code) = &cell.pitch_code {
-                        beat_accum.add_grace_note(*pitch_code, cell.octave, cell.ornament_indicator.position_type());
+                        beat_accum.add_grace_note(*pitch_code, cell.octave);
                     }
                     MusicXMLState::CollectingTrailingGraceNotes
                 }

@@ -7,6 +7,7 @@ use crate::models::pitch::Pitch;
 use crate::models::{PitchSystem, Accidental, PitchCode};
 use super::export_ir::*;
 use super::builder::MusicXmlBuilder;
+use super::grace_notes::ornament_position_to_placement;
 
 /// Emit a complete MusicXML document from export lines
 pub fn emit_musicxml(
@@ -296,6 +297,17 @@ fn emit_note(
     // Convert lyric data to the format expected by the builder
     let lyric_tuple = lyric.map(|l| (l.syllable, l.syllabic, l.number));
 
+    // Emit grace notes before the main note
+    for grace in &note.grace_notes_before {
+        let placement = ornament_position_to_placement(&grace.position);
+        builder.write_grace_note(
+            &grace.pitch.pitch_code,
+            grace.pitch.octave,
+            grace.slash,
+            placement,
+        )?;
+    }
+
     // Use write_note_with_beam_from_pitch_code_and_lyric which supports lyric inside note
     builder.write_note_with_beam_from_pitch_code_and_lyric(
         &note.pitch.pitch_code,
@@ -311,6 +323,17 @@ fn emit_note(
         None, // ornament_type
         lyric_tuple, // lyric data - now inside the note element
     )?;
+
+    // Emit grace notes after the main note
+    for grace in &note.grace_notes_after {
+        let placement = ornament_position_to_placement(&grace.position);
+        builder.write_grace_note(
+            &grace.pitch.pitch_code,
+            grace.pitch.octave,
+            grace.slash,
+            placement,
+        )?;
+    }
 
     Ok(())
 }
@@ -402,6 +425,7 @@ fn parse_lyrics_to_syllables(lyrics: &str) -> Vec<(String, Syllabic)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::OrnamentPositionType;
 
     #[test]
     fn test_parse_lyrics_single_syllable() {
@@ -529,4 +553,199 @@ mod tests {
         assert!(xml.contains("<print new-system=\"yes\"/>"),
                 "Second line should start with system break");
     }
+
+    #[test]
+    fn test_emit_note_with_grace_notes_before() {
+        // Test that grace notes before main note are emitted
+        let grace_notes = vec![
+            GraceNoteData {
+                pitch: PitchInfo::new(PitchCode::N2, 4),
+                position: OrnamentPositionType::OnTop,
+                slash: true,
+            },
+            GraceNoteData {
+                pitch: PitchInfo::new(PitchCode::N3, 4),
+                position: OrnamentPositionType::OnTop,
+                slash: true,
+            },
+        ];
+
+        let note = NoteData {
+            pitch: PitchInfo::new(PitchCode::N1, 4),
+            divisions: 4,
+            grace_notes_before: grace_notes,
+            grace_notes_after: Vec::new(),
+            lyrics: None,
+            slur: None,
+            articulations: Vec::new(),
+            beam: None,
+            tie: None,
+            tuplet: None,
+        };
+
+        let mut builder = MusicXmlBuilder::new();
+        builder.start_measure();
+
+        let syllables: Vec<(String, Syllabic)> = Vec::new();
+        let mut lyric_index = 0;
+        emit_note(&mut builder, &note, 4, &syllables, &mut lyric_index, true)
+            .expect("emit_note failed");
+
+        builder.end_measure();
+        let xml = builder.finalize();
+
+        // Should contain 2 grace notes with slash attribute
+        let grace_count = xml.matches("<grace slash=\"yes\"").count();
+        assert_eq!(grace_count, 2, "Should have 2 grace notes with slash");
+
+        // Grace notes should come before the main note
+        let first_grace_pos = xml.find("<grace slash=\"yes\"").expect("First grace note not found");
+        let main_note_pos = xml.find("<step>C</step>").expect("Main note not found");
+        assert!(first_grace_pos < main_note_pos, "Grace notes should come before main note");
+    }
+
+    #[test]
+    fn test_emit_note_with_grace_notes_after() {
+        // Test that grace notes after main note are emitted
+        let grace_notes = vec![
+            GraceNoteData {
+                pitch: PitchInfo::new(PitchCode::N2, 4),
+                position: OrnamentPositionType::After,
+                slash: false,
+            },
+        ];
+
+        let note = NoteData {
+            pitch: PitchInfo::new(PitchCode::N1, 4),
+            divisions: 4,
+            grace_notes_before: Vec::new(),
+            grace_notes_after: grace_notes,
+            lyrics: None,
+            slur: None,
+            articulations: Vec::new(),
+            beam: None,
+            tie: None,
+            tuplet: None,
+        };
+
+        let mut builder = MusicXmlBuilder::new();
+        builder.start_measure();
+
+        let syllables: Vec<(String, Syllabic)> = Vec::new();
+        let mut lyric_index = 0;
+        emit_note(&mut builder, &note, 4, &syllables, &mut lyric_index, true)
+            .expect("emit_note failed");
+
+        builder.end_measure();
+        let xml = builder.finalize();
+
+        // Should contain 1 grace note without slash attribute
+        // Look for <grace (with no slash= attribute)
+        let has_grace_no_slash = xml.contains("<grace ") && !xml.contains("<grace slash");
+        assert!(has_grace_no_slash, "Should have 1 grace note without slash");
+
+        // Main note should come before grace note
+        let main_note_pos = xml.find("<step>C</step>").expect("Main note not found");
+        let grace_pos = xml.find("<grace ").expect("Grace note not found");
+        assert!(main_note_pos < grace_pos, "Main note should come before after-grace note");
+    }
+
+    #[test]
+    fn test_grace_note_placement_mapping() {
+        // Test that OrnamentPositionType::OnTop maps to placement="above"
+        let grace_notes = vec![
+            GraceNoteData {
+                pitch: PitchInfo::new(PitchCode::N2, 4),
+                position: OrnamentPositionType::OnTop,
+                slash: true,
+            },
+        ];
+
+        let note = NoteData {
+            pitch: PitchInfo::new(PitchCode::N1, 4),
+            divisions: 4,
+            grace_notes_before: grace_notes,
+            grace_notes_after: Vec::new(),
+            lyrics: None,
+            slur: None,
+            articulations: Vec::new(),
+            beam: None,
+            tie: None,
+            tuplet: None,
+        };
+
+        let mut builder = MusicXmlBuilder::new();
+        builder.start_measure();
+
+        let syllables: Vec<(String, Syllabic)> = Vec::new();
+        let mut lyric_index = 0;
+        emit_note(&mut builder, &note, 4, &syllables, &mut lyric_index, true)
+            .expect("emit_note failed");
+
+        builder.end_measure();
+        let xml = builder.finalize();
+
+        // Grace note with OnTop position should have placement="above"
+        assert!(xml.contains("placement=\"above\""),
+                "Grace note with OnTop position should have placement=\"above\"");
+    }
+
+    #[test]
+    fn test_emit_note_with_grace_notes_before_and_after() {
+        // Test that both before and after grace notes are emitted
+        let grace_before = vec![
+            GraceNoteData {
+                pitch: PitchInfo::new(PitchCode::N3, 4),
+                position: OrnamentPositionType::Before,
+                slash: true,
+            },
+        ];
+
+        let grace_after = vec![
+            GraceNoteData {
+                pitch: PitchInfo::new(PitchCode::N2, 4),
+                position: OrnamentPositionType::After,
+                slash: false,
+            },
+        ];
+
+        let note = NoteData {
+            pitch: PitchInfo::new(PitchCode::N1, 4),
+            divisions: 4,
+            grace_notes_before: grace_before,
+            grace_notes_after: grace_after,
+            lyrics: None,
+            slur: None,
+            articulations: Vec::new(),
+            beam: None,
+            tie: None,
+            tuplet: None,
+        };
+
+        let mut builder = MusicXmlBuilder::new();
+        builder.start_measure();
+
+        let syllables: Vec<(String, Syllabic)> = Vec::new();
+        let mut lyric_index = 0;
+        emit_note(&mut builder, &note, 4, &syllables, &mut lyric_index, true)
+            .expect("emit_note failed");
+
+        builder.end_measure();
+        let xml = builder.finalize();
+
+        // Should contain both types of grace notes
+        assert!(xml.contains("<grace slash=\"yes\""), "Should have before-grace note with slash");
+        // After-grace should have <grace but NOT <grace slash
+        let has_grace_no_slash = xml.matches("<grace ").count() > 1;  // At least 2 grace notes
+        assert!(has_grace_no_slash, "Should have grace note without slash");
+
+        // Verify ordering: before-grace -> main note -> after-grace
+        let before_grace_pos = xml.find("<grace slash=\"yes\"").expect("Before grace not found");
+        let main_note_pos = xml.find("<step>C</step>").expect("Main note not found");
+        let after_grace_pos = xml.rfind("<grace ").expect("After grace not found");
+
+        assert!(before_grace_pos < main_note_pos, "Before-grace should come before main note");
+        assert!(main_note_pos < after_grace_pos, "Main note should come before after-grace");
+    }
+
 }

@@ -5,7 +5,7 @@
 
 use wasm_bindgen::prelude::*;
 use serde::{Deserialize, Serialize};
-use crate::models::{Document, OrnamentIndicator};
+use crate::models::Document;
 use crate::renderers::display_list::DisplayList;
 
 // Constant for left margin (matches JavaScript constant)
@@ -41,10 +41,7 @@ pub fn get_max_char_position(doc_js: JsValue) -> Result<usize, JsValue> {
     // Sum up lengths of all navigable cell glyphs
     let mut total_chars = 0;
     for cell in &line.cells {
-        // In normal mode, skip ornament cells (they're out of the flow)
-        if !edit_mode && cell.ornament_indicator != OrnamentIndicator::None {
-            continue;
-        }
+        // All cells are now in the flow (ornaments are inline, not separate marker cells)
         total_chars += cell.char.chars().count();
     }
 
@@ -72,11 +69,7 @@ pub fn char_pos_to_cell_index(doc_js: JsValue, char_pos: usize) -> Result<JsValu
     // Accumulate character counts and find the target cell
     let mut accumulated_chars = 0;
     for (cell_index, cell) in line.cells.iter().enumerate() {
-        // In normal mode, skip ornament cells (they're out of the flow)
-        if !edit_mode && cell.ornament_indicator != OrnamentIndicator::None {
-            continue;
-        }
-
+        // All cells are now in the flow (ornaments are inline, not separate marker cells)
         let cell_length = cell.char.chars().count();
 
         if char_pos <= accumulated_chars + cell_length {
@@ -128,11 +121,7 @@ pub fn cell_index_to_char_pos(doc_js: JsValue, cell_index: usize) -> Result<usiz
     for i in 0..=cell_index.min(line.cells.len() - 1) {
         let cell = &line.cells[i];
 
-        // In normal mode, skip ornament cells (they're out of the flow)
-        if !edit_mode && cell.ornament_indicator != OrnamentIndicator::None {
-            continue;
-        }
-
+        // All cells are now in the flow (ornaments are inline, not separate marker cells)
         char_pos += cell.char.chars().count();
     }
 
@@ -222,7 +211,7 @@ pub fn char_pos_to_pixel(
 mod tests {
     use super::*;
     use crate::models::{
-        Cell, ElementKind, Line, OrnamentIndicator, Document, DocumentState, Cursor, PitchSystem,
+        Cell, ElementKind, Line, Document, DocumentState, Cursor, PitchSystem,
     };
 
     fn create_test_document(cells: Vec<Cell>, edit_mode: bool) -> Document {
@@ -252,17 +241,12 @@ mod tests {
         }
     }
 
-    fn create_cell(char: &str, is_ornament: bool) -> Cell {
+    fn create_cell(char: &str, _is_ornament: bool) -> Cell {
         Cell {
             char: char.to_string(),
             kind: ElementKind::PitchedElement,
             col: 0,
             continuation: false,
-            ornament_indicator: if is_ornament {
-                OrnamentIndicator::OrnamentBeforeStart
-            } else {
-                OrnamentIndicator::None
-            },
             ..Default::default()
         }
     }

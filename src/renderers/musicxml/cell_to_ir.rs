@@ -19,7 +19,7 @@
 //! 4. Continuation cells never appear as standalone elements
 //! 5. sum(event_divisions) == measure_divisions for each measure
 
-use crate::models::{Cell, ElementKind, OrnamentPositionType, SlurIndicator, Line, Document};
+use crate::models::{Cell, ElementKind, SlurIndicator, Line, Document};
 use super::export_ir::{
     ExportLine, ExportMeasure, ExportEvent, NoteData, GraceNoteData, PitchInfo,
     LyricData, Syllabic, SlurData, SlurPlacement, SlurType, TupletInfo,
@@ -98,10 +98,11 @@ impl BeatAccumulator {
     }
 
     /// Add grace note to pending list
-    fn add_grace_note(&mut self, pitch: PitchInfo, position: OrnamentPositionType) {
+    fn add_grace_note(&mut self, pitch: PitchInfo) {
+        // Default to After placement for ornaments
         let grace = GraceNoteData {
             pitch,
-            position,
+            position: crate::models::OrnamentPositionType::After,
             slash: false, // TODO: wire up slash notation
         };
 
@@ -157,7 +158,6 @@ impl BeatAccumulator {
                 pitch_system: None,
                 octave: pitch.octave,
                 slur_indicator,
-                ornament_indicator: Default::default(),
                 ornament: None,
                 x: 0.0,
                 y: 0.0,
@@ -221,7 +221,7 @@ pub fn beat_transition(
         }
 
         // PITCH → transition from InBeat or CollectingDashes
-        (CellGroupingState::InBeat, ElementKind::PitchedElement) if !cell.is_rhythm_transparent() => {
+        (CellGroupingState::InBeat, ElementKind::PitchedElement) if cell.ornament.is_none() => {
             if let Some(pitch_code) = cell.pitch_code {
                 let pitch = PitchInfo::new(pitch_code, cell.octave);
                 accum.start_pitch(pitch);
@@ -245,7 +245,7 @@ pub fn beat_transition(
                 CellGroupingState::InBeat
             }
         }
-        (CellGroupingState::CollectingPitchInBeat, ElementKind::PitchedElement) if !cell.is_rhythm_transparent() => {
+        (CellGroupingState::CollectingPitchInBeat, ElementKind::PitchedElement) if cell.ornament.is_none() => {
             // New pitch → finish previous and start new
             accum.finish_pitch();
             if let Some(pitch_code) = cell.pitch_code {
@@ -268,22 +268,22 @@ pub fn beat_transition(
 
         // GRACE NOTES / ORNAMENTS
         (CellGroupingState::InBeat, ElementKind::PitchedElement)
-            if cell.is_rhythm_transparent() =>
+            if cell.ornament.is_some() =>
         {
             // Grace note before any main element
             if let Some(pitch_code) = cell.pitch_code {
                 let pitch = PitchInfo::new(pitch_code, cell.octave);
-                accum.add_grace_note(pitch, cell.ornament_indicator.position_type());
+                accum.add_grace_note(pitch);
             }
             CellGroupingState::InBeat
         }
         (CellGroupingState::CollectingPitchInBeat, ElementKind::PitchedElement)
-            if cell.is_rhythm_transparent() =>
+            if cell.ornament.is_some() =>
         {
             // Grace note after main element (trailing ornament)
             if let Some(pitch_code) = cell.pitch_code {
                 let pitch = PitchInfo::new(pitch_code, cell.octave);
-                accum.add_grace_note(pitch, cell.ornament_indicator.position_type());
+                accum.add_grace_note(pitch);
             }
             CellGroupingState::CollectingTrailingGraceNotes
         }
@@ -579,8 +579,8 @@ pub fn calculate_beat_subdivisions(beat_cells_refs: &[&Cell]) -> usize {
     while i < beat_cells_refs.len() {
         let cell = beat_cells_refs[i];
 
-        // Skip continuation cells and rhythm-transparent cells
-        if cell.continuation || cell.is_rhythm_transparent() {
+        // Skip continuation cells and ornament cells (rhythm-transparent)
+        if cell.continuation || cell.ornament.is_some() {
             i += 1;
             continue;
         }
@@ -601,7 +601,8 @@ pub fn calculate_beat_subdivisions(beat_cells_refs: &[&Cell]) -> usize {
                 if beat_cells_refs[j].kind == ElementKind::UnpitchedElement && beat_cells_refs[j].char == "-" {
                     slot_count += 1;
                     j += 1;
-                } else if beat_cells_refs[j].is_rhythm_transparent() {
+                } else if beat_cells_refs[j].ornament.is_some() {
+                    // Skip ornament cells (rhythm-transparent)
                     j += 1;
                 } else {
                     break;
@@ -972,7 +973,6 @@ mod tests {
             pitch_system: None,
             octave: 4,
             slur_indicator: Default::default(),
-            ornament_indicator: Default::default(),
             ornament: None,
             x: 0.0,
             y: 0.0,

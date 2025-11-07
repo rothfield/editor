@@ -74,12 +74,7 @@ impl BeatDeriver {
         let mut current_duration = 1.0;
 
         for (index, cell) in cells.iter().enumerate() {
-            // Skip rhythm-transparent cells (ornaments/grace notes)
-            // Per FR-006: Ornaments are non-metrical and excluded from beat derivation
-            if cell.is_rhythm_transparent() {
-                continue;
-            }
-
+            // Check if this cell is a beat element
             let is_beat = self.is_beat_element(cell);
 
             if is_beat {
