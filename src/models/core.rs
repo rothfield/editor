@@ -167,6 +167,32 @@ impl Cell {
         self.slur_indicator = SlurIndicator::None;
     }
 
+    /// Check if this cell has an ornament indicator (stub - ornament system refactored)
+    /// DEPRECATED: Ornament indicators have been replaced with cell.ornament field
+    /// Returns false always for compatibility during refactoring
+    #[allow(dead_code)]
+    pub fn has_ornament_indicator(&self) -> bool {
+        false
+    }
+
+    /// Set ornament start (stub - ornament system refactored)
+    #[allow(dead_code)]
+    pub fn set_ornament_start(&mut self) {
+        // No-op: ornament_indicator field no longer exists
+    }
+
+    /// Set ornament end (stub - ornament system refactored)
+    #[allow(dead_code)]
+    pub fn set_ornament_end(&mut self) {
+        // No-op: ornament_indicator field no longer exists
+    }
+
+    /// Clear ornament (stub - ornament system refactored)
+    #[allow(dead_code)]
+    pub fn clear_ornament(&mut self) {
+        // No-op: ornament_indicator field no longer exists
+    }
+
     /// Check if this cell has a slur indicator
     pub fn has_slur(&self) -> bool {
         self.slur_indicator.has_slur()

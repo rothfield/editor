@@ -1215,16 +1215,21 @@ class MusicNotationEditor {
 
       logger.debug(LOG_CATEGORIES.EDITOR, 'deleteAtCursor result from WASM', result);
 
-      // Apply dirty lines to JavaScript document (for rendering only)
-      for (const dirtyLine of result.dirty_lines) {
-        if (dirtyLine.row < this.theDocument.lines.length) {
-          this.theDocument.lines[dirtyLine.row].cells = dirtyLine.cells;
-        }
-      }
+      // CRITICAL: Backspace can DELETE lines (not just edit them)
+      // When an empty line is deleted, we need to resync the entire document
+      // to get the updated line count. Applying dirty lines alone won't catch deletions.
+      const wasmDoc = this.wasmModule.getDocumentSnapshot();
 
-      // Update cursor position in JavaScript document (for display only)
+      // Full re-sync of document from WASM (single source of truth)
+      this.theDocument.lines = wasmDoc.lines;
       this.theDocument.state.cursor.line = result.new_cursor_row;
       this.theDocument.state.cursor.col = result.new_cursor_col;
+
+      logger.debug(LOG_CATEGORIES.EDITOR, 'Document resynced after backspace', {
+        lineCount: this.theDocument.lines.length,
+        cursorRow: result.new_cursor_row,
+        cursorCol: result.new_cursor_col
+      });
 
       // Recalculate beats after deletion
       await this.recalculateBeats();

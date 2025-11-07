@@ -151,7 +151,10 @@ impl LayoutEngine {
         // Build role maps for CSS classes
         let beat_roles = self.build_beat_role_map(&beats, &line.cells);
         let slur_roles = self.build_slur_role_map(&line.cells);
-        let ornament_roles = self.build_ornament_role_map(&line.cells);
+        // TODO: Ornament layout system refactored - ornament_indicator removed from Cell
+        // Ornaments are now stored in cell.ornament: Option<Ornament>
+        // For now, use empty map to avoid breaking builds
+        let ornament_roles = HashMap::new();
 
         // Distribute lyrics to cells
         let syllable_assignments = if !line.lyrics.is_empty() {
@@ -673,32 +676,14 @@ impl LayoutEngine {
     }
 
     /// Build map of cell index to ornament role class
-    fn build_ornament_role_map(&self, cells: &[Cell]) -> HashMap<usize, String> {
-        let mut map = HashMap::new();
-        let mut ornament_start: Option<usize> = None;
-
-        for (idx, cell) in cells.iter().enumerate() {
-            if cell.ornament_indicator.is_start() {
-                ornament_start = Some(idx);
-            } else if cell.ornament_indicator.is_end() {
-                if let Some(start) = ornament_start {
-                    // Mark all cells in the ornament span
-                    for i in start..=idx {
-                        let role = if i == start {
-                            "ornament-first"
-                        } else if i == idx {
-                            "ornament-last"
-                        } else {
-                            "ornament-middle"
-                        };
-                        map.insert(i, role.to_string());
-                    }
-                    ornament_start = None;
-                }
-            }
-        }
-
-        map
+    /// DISABLED: Ornament indicator system refactored - now using cell.ornament: Option<Ornament>
+    /// TODO: Reimplement using new ornament structure
+    #[allow(dead_code)]
+    fn build_ornament_role_map(&self, _cells: &[Cell]) -> HashMap<usize, String> {
+        // Temporarily return empty map
+        // When ornament layout is reimplemented, this should detect cells with
+        // ornament data and assign appropriate role classes
+        HashMap::new()
     }
 
     /// Position lyrics syllables below their cells
@@ -927,8 +912,11 @@ pub struct OrnamentSpan {
 
 impl OrnamentSpan {
     /// Create an OrnamentSpan from a slice of cells
+    /// DISABLED: Ornament indicator system refactored
+    #[allow(dead_code)]
     pub fn from_cells(cells: &[Cell], start_idx: usize, end_idx: usize) -> Self {
-        let position_type = cells[start_idx].ornament_indicator.position_type();
+        // Default to Before position type - ornament system being refactored
+        let position_type = OrnamentPositionType::Before;
         let span_cells: Vec<Cell> = cells[start_idx..=end_idx].to_vec();
 
         Self {
@@ -949,85 +937,20 @@ pub struct OrnamentGroups {
 }
 
 /// T031: Extract all ornament spans from a cell array
+/// DISABLED: Ornament indicator system refactored - now using cell.ornament: Option<Ornament>
 /// Scans cells for Start/End indicator pairs and returns OrnamentSpan structures
-pub fn extract_ornament_spans(cells: &[Cell]) -> Vec<OrnamentSpan> {
-    let mut spans = Vec::new();
-    let mut i = 0;
-
-    while i < cells.len() {
-        if cells[i].ornament_indicator.is_start() {
-            // Find matching end
-            let start_indicator = cells[i].ornament_indicator.clone();
-            let mut j = i + 1;
-
-            while j < cells.len() {
-                if cells[j].ornament_indicator.is_end()
-                    && start_indicator.matches(&cells[j].ornament_indicator) {
-                    spans.push(OrnamentSpan::from_cells(cells, i, j));
-                    i = j;
-                    break;
-                }
-                j += 1;
-            }
-        }
-        i += 1;
-    }
-
-    spans
+#[allow(dead_code)]
+pub fn extract_ornament_spans(_cells: &[Cell]) -> Vec<OrnamentSpan> {
+    // Return empty list - ornament system being refactored
+    Vec::new()
 }
 
 /// T033: Find the anchor cell for an ornament span based on position type
-///
-/// Attachment rules:
-/// - Before: Find first non-ornamental cell to the RIGHT
-/// - After: Find first non-ornamental cell to the LEFT
-/// - OnTop: Find NEAREST non-ornamental cell (prefer left if equidistant)
-///
-/// Returns None if no suitable anchor found (orphaned ornament)
-pub fn find_anchor_cell(cells: &[Cell], span: &OrnamentSpan) -> Option<usize> {
-    match span.position_type {
-        OrnamentPositionType::Before => {
-            // Find first non-ornamental cell to the RIGHT
-            for i in (span.end_idx + 1)..cells.len() {
-                if cells[i].ornament_indicator == OrnamentIndicator::None {
-                    return Some(i);
-                }
-            }
-            None  // Orphaned
-        }
-        OrnamentPositionType::After => {
-            // Find first non-ornamental cell to the LEFT
-            for i in (0..span.start_idx).rev() {
-                if cells[i].ornament_indicator == OrnamentIndicator::None {
-                    return Some(i);
-                }
-            }
-            None  // Orphaned
-        }
-        OrnamentPositionType::OnTop => {
-            // Find NEAREST non-ornamental cell
-            let left_dist = span.start_idx;
-            let right_dist = cells.len() - span.end_idx - 1;
-
-            if left_dist <= right_dist {
-                // Search left first (prefer left if equidistant)
-                for i in (0..span.start_idx).rev() {
-                    if cells[i].ornament_indicator == OrnamentIndicator::None {
-                        return Some(i);
-                    }
-                }
-            }
-
-            // Search right
-            for i in (span.end_idx + 1)..cells.len() {
-                if cells[i].ornament_indicator == OrnamentIndicator::None {
-                    return Some(i);
-                }
-            }
-
-            None  // Orphaned
-        }
-    }
+/// DISABLED: Ornament indicator system refactored - now using cell.ornament: Option<Ornament>
+#[allow(dead_code)]
+pub fn find_anchor_cell(_cells: &[Cell], _span: &OrnamentSpan) -> Option<usize> {
+    // Return None - ornament system being refactored
+    None
 }
 
 // ============================================================================
@@ -1091,7 +1014,8 @@ pub fn layout_with_collision_detection(
     let mut cumulative_x = 0.0;
 
     for (idx, cell) in cells.iter().enumerate() {
-        let is_ornament = cell.ornament_indicator != OrnamentIndicator::None;
+        // Check if cell has ornament - ornament system being refactored
+        let is_ornament = cell.ornament.is_some();
 
         // Zero width for ornaments in initial pass
         let width = if is_ornament {
