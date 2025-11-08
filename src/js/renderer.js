@@ -52,9 +52,9 @@ class DOMRenderer {
   }
 
   /**
-     * Setup CSS for octave dots and cell styling
-     * Note: Slurs and beat loops are now rendered using SVG overlay (see ArcRenderer)
-     */
+   * Setup CSS for octave dots and cell styling
+   * Note: Slurs and beat loops are now rendered using SVG overlay (see ArcRenderer)
+   */
   setupBeatLoopStyles() {
     const style = document.createElement('style');
     style.textContent = `
@@ -80,44 +80,42 @@ class DOMRenderer {
         color: transparent;
       }
 
-      /* Pitch accidentals using SMuFL music font - positioned like barlines */
-      /* Attach accidental glyphs to the right side of the pitch note */
+      /* ===== ACCIDENTAL RENDERING (WASM-FIRST ARCHITECTURE) ===== */
 
-      /* Base positioning for all pitch accidentals (same as barlines) */
-      .char-cell.pitch-accidental-sharp::after,
-      .char-cell.pitch-accidental-flat::after,
-      .char-cell.pitch-accidental-double-sharp::after,
-      .char-cell.pitch-accidental-double-flat::after {
-        font-family: 'Bravura', serif;
+      /* Pitched elements with accidentals: base character + accidental symbol rendered with CSS ::after */
+      .char-cell.kind-pitched {
+        font-family: 'NotationMonoDotted', monospace;
+        position: relative;
+      }
+
+      /* Render accidental symbols using ::after pseudo-element (Bravura music font) */
+      .char-cell[data-accidental="sharp"]::after,
+      .char-cell[data-accidental="flat"]::after,
+      .char-cell[data-accidental="dsharp"]::after,
+      .char-cell[data-accidental="dflat"]::after {
         position: absolute;
-        left: 100%; /* Attach to right side of note */
-        top: calc(50% + ${BRAVURA_VERTICAL_OFFSET}px - ${BRAVURA_FONT_SIZE * 0.5}px - ${BASE_FONT_SIZE * 0.2}px);
+        font-family: 'Bravura', serif;
+        font-size: 0.6em;
+        left: 1em;
+        top: 50%;
         transform: translateY(-50%);
-        color: #000;
-        font-size: ${BRAVURA_FONT_SIZE * 1.4}px;
         line-height: 1;
-        pointer-events: none;
-        z-index: 3;
       }
 
-      /* Sharp (♯) - SMuFL U+E262 */
-      .char-cell.pitch-accidental-sharp::after {
-        content: '\uE262';
+      .char-cell[data-accidental="sharp"]::after {
+        content: '\\u266F';
       }
 
-      /* Flat (♭) - SMuFL U+E260 */
-      .char-cell.pitch-accidental-flat::after {
-        content: '\uE260';
+      .char-cell[data-accidental="flat"]::after {
+        content: '\\u266D';
       }
 
-      /* Double sharp (𝄪) - SMuFL U+E263 */
-      .char-cell.pitch-accidental-double-sharp::after {
-        content: '\uE263';
+      .char-cell[data-accidental="dsharp"]::after {
+        content: '\\u266F\\u266F';
       }
 
-      /* Double flat (𝄫) - SMuFL U+E264 */
-      .char-cell.pitch-accidental-double-flat::after {
-        content: '\uE264';
+      .char-cell[data-accidental="dflat"]::after {
+        content: '\\u266D\\u266D';
       }
 
       /* All barline overlays using SMuFL music font */
@@ -315,6 +313,7 @@ class DOMRenderer {
     // OPTIMIZATION: Batch DOM operations to avoid forced layouts
     // First pass: Create all spans and add to DOM
     const spans = [];
+
     for (const line of doc.lines) {
       for (const cell of line.cells) {
         if (cell.continuation && cell.kind.name !== 'text') {
@@ -326,10 +325,14 @@ class DOMRenderer {
           span.className = 'char-cell';
           span.textContent = cell.char === ' ' ? '\u00A0' : cell.char;
 
-          // Apply proportional font and reduced size for text cells during measurement
+          // Apply fonts based on cell kind
           if (cell.kind && cell.kind.name === 'text') {
+            // Text cells use Inter at reduced size
             span.style.fontSize = `${BASE_FONT_SIZE * 0.6}px`; // 19.2px
             span.style.fontFamily = "'Inter', 'Segoe UI', 'Helvetica Neue', system-ui, sans-serif";
+          } else if (cell.kind && (cell.kind.name === 'pitched_element' || cell.kind.name === 'unpitched_element')) {
+            // Pitch and dash cells always use NotationMonoDotted
+            span.style.fontFamily = "'NotationMonoDotted', 'Inter'";
           }
 
           temp.appendChild(span);
@@ -794,12 +797,16 @@ class DOMRenderer {
         position: relative;
       `;
 
-      // Apply proportional font and reduced size for text cells (60% of base)
+      // Apply fonts based on cell kind
       if (cell && cell.kind && cell.kind.name === 'text') {
+        // Text cells use Inter at reduced size
         cellChar.style.fontSize = `${BASE_FONT_SIZE * 0.6}px`;
         cellChar.style.fontFamily = "'Inter', 'Segoe UI', 'Helvetica Neue', system-ui, sans-serif";
         cellChar.style.transform = 'translateY(40%)';
         cellChar.classList.add('text-cell');
+      } else if (cell && cell.kind && (cell.kind.name === 'pitched_element' || cell.kind.name === 'unpitched_element')) {
+        // Pitch and dash cells always use NotationMonoDotted
+        cellChar.style.fontFamily = "'NotationMonoDotted', 'Inter'";
       }
 
       // Set data attributes on cell-char
@@ -957,6 +964,7 @@ class DOMRenderer {
           left: ${ornament.x}px;
           top: ${ornamentRelativeY}px;
           font-size: ${BASE_FONT_SIZE * 0.6}px;
+          font-family: 'NotationMonoDotted', 'Inter', monospace;
           color: #1e40af;
           pointer-events: none;
           white-space: nowrap;
@@ -984,32 +992,8 @@ class DOMRenderer {
       line.appendChild(span);
     });
 
-    // Render octave dots (positioned overlay elements from WASM)
-    if (renderLine.octave_dots) {
-      renderLine.octave_dots.forEach(dot => {
-        const dotSpan = document.createElement('span');
-        dotSpan.className = 'octave-dot';
-        dotSpan.textContent = dot.text;
-
-        const dotRelativeY = dot.y - lineStartY;
-
-        dotSpan.style.cssText = `
-          position: absolute;
-          left: ${dot.x}px;
-          top: ${dotRelativeY}px;
-          transform: translateX(-50%);
-          font-size: ${SMALL_FONT_SIZE}px;
-          color: #000;
-          pointer-events: none;
-          z-index: 2;
-          line-height: 1;
-          white-space: nowrap;
-          ${dot.letter_spacing > 0 ? `letter-spacing: ${dot.letter_spacing}px;` : ''}
-        `;
-
-        line.appendChild(dotSpan);
-      });
-    }
+    // Octave dots are no longer rendered as separate overlay elements
+    // They are now embedded in font glyphs via glyph substitution in RenderCell
 
     return line;
   }
