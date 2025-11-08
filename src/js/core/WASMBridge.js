@@ -104,6 +104,10 @@ export class WASMBridge {
     this.exportMIDI = wasm.exportMIDI;
     this.generateIRJson = wasm.generateIRJson;
 
+    // Font Configuration API
+    // Returns font config from build.rs-generated constants
+    this.getFontConfig = wasm.getFontConfig;
+
     // Cursor/Selection API (anchor/head model)
     this.getCaretInfo = wasm.getCaretInfo;
     this.getSelectionInfo = wasm.getSelectionInfo;
