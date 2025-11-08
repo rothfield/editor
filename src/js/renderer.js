@@ -103,19 +103,19 @@ class DOMRenderer {
       }
 
       .char-cell[data-accidental="sharp"]::after {
-        content: '\\u266F';
+        content: '♯';
       }
 
       .char-cell[data-accidental="flat"]::after {
-        content: '\\u266D';
+        content: '♭';
       }
 
       .char-cell[data-accidental="dsharp"]::after {
-        content: '\\u266F\\u266F';
+        content: '♯♯';
       }
 
       .char-cell[data-accidental="dflat"]::after {
-        content: '\\u266D\\u266D';
+        content: '♭♭';
       }
 
       /* All barline overlays using SMuFL music font */
