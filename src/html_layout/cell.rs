@@ -7,6 +7,7 @@ use crate::models::*;
 use crate::models::pitch_code::AccidentalType;
 use super::display_list::*;
 use super::document::LayoutConfig;
+use crate::renderers::{get_glyph_codepoint, get_sharp_glyph_codepoint};
 use std::collections::HashMap;
 
 /// Builder for cell styling and layout
@@ -73,20 +74,16 @@ impl CellStyleBuilder {
             classes.push(format!("pitch-system-{}", self.pitch_system_to_css(pitch_system)));
         }
 
-        // Accidental rendering - attach glyph to the note cell (non-continuation only)
-        // For multi-char pitches like "1#", "1##", "c#", etc., the accidental class
-        // is applied to the note cell, and the continuation cells are hidden
-        if !cell.continuation && cell.kind == ElementKind::PitchedElement {
+        // Accidental rendering - extract accidental type for JavaScript to render
+        let accidental_type = if !cell.continuation && cell.kind == ElementKind::PitchedElement {
             if let Some(pitch_code) = cell.pitch_code {
-                match pitch_code.accidental_type() {
-                    AccidentalType::Sharp => classes.push("pitch-accidental-sharp".to_string()),
-                    AccidentalType::Flat => classes.push("pitch-accidental-flat".to_string()),
-                    AccidentalType::DoubleSharp => classes.push("pitch-accidental-double-sharp".to_string()),
-                    AccidentalType::DoubleFlat => classes.push("pitch-accidental-double-flat".to_string()),
-                    AccidentalType::None => {},
-                }
+                Some(pitch_code.accidental_type())
+            } else {
+                None
             }
-        }
+        } else {
+            None
+        };
 
         // Hide continuation cells of pitched elements (they're part of accidentals)
         if cell.continuation && cell.kind == ElementKind::PitchedElement {
@@ -148,8 +145,38 @@ impl CellStyleBuilder {
             _ => String::new(),
         };
 
+        // Substitute pitched element characters for octave display and accidentals
+        // WASM BUSINESS LOGIC:
+        // 1. For accidentals, substitute with accidental variant glyph from NotationMonoDotted font
+        // 2. For octave shift, substitute with octave dot variant
+        // 3. Otherwise, use the base character as-is
+        let char = if !cell.continuation && cell.kind == ElementKind::PitchedElement && !cell.char.is_empty() {
+            let base_char = cell.char.chars().next().unwrap_or(' ');
+
+            // For accidentals, substitute with the accidental variant glyph
+            if let Some(acc_type) = accidental_type {
+                let accidental_code = match acc_type {
+                    AccidentalType::None => 0,           // Natural, no accidental
+                    AccidentalType::Sharp => 1,          // Sharp
+                    AccidentalType::Flat => 2,           // Flat
+                    AccidentalType::DoubleSharp => 3,    // Double sharp
+                    AccidentalType::DoubleFlat => 4,     // Double flat
+                };
+                // Substitute character with the PUA glyph for this accidental
+                get_sharp_glyph_codepoint(base_char, accidental_code).to_string()
+            } else if cell.octave != 0 {
+                // Octave display (dots above/below)
+                get_glyph_codepoint(base_char, cell.octave).to_string()
+            } else {
+                cell.char.clone()
+            }
+        } else {
+            cell.char.clone()
+        };
+
+
         RenderCell {
-            char: cell.char.clone(),
+            char,
             x: cumulative_x,
             y,
             w: actual_cell_width,

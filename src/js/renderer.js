@@ -88,35 +88,8 @@ class DOMRenderer {
         position: relative;
       }
 
-      /* Render accidental symbols using ::after pseudo-element (Bravura music font) */
-      .char-cell[data-accidental="sharp"]::after,
-      .char-cell[data-accidental="flat"]::after,
-      .char-cell[data-accidental="dsharp"]::after,
-      .char-cell[data-accidental="dflat"]::after {
-        position: absolute;
-        font-family: 'Bravura', serif;
-        font-size: 0.6em;
-        left: 1em;
-        top: 50%;
-        transform: translateY(-50%);
-        line-height: 1;
-      }
-
-      .char-cell[data-accidental="sharp"]::after {
-        content: '♯';
-      }
-
-      .char-cell[data-accidental="flat"]::after {
-        content: '♭';
-      }
-
-      .char-cell[data-accidental="dsharp"]::after {
-        content: '♯♯';
-      }
-
-      .char-cell[data-accidental="dflat"]::after {
-        content: '♭♭';
-      }
+      /* Accidentals are now rendered as single pre-composed glyphs from NotationMonoDotted font */
+      /* The character itself includes the accidental marker - no CSS ::after needed */
 
       /* All barline overlays using SMuFL music font */
       /* Hide underlying ASCII text and show fancy glyph overlay */
