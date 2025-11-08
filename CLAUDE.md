@@ -116,6 +116,72 @@ If explicitly testing pitch system features (e.g., switching from Number to West
 - The processing algorithm for converting spatial layout to precise durations
 - LilyPond and MusicXML mapping
 
+## Music Notation Font System
+
+### NotationFont - Custom Font Based on Google Noto Music
+
+The main line of music uses a **custom font called NotationFont** derived from [Google Noto Music](https://github.com/notofonts/music).
+
+**Font Architecture:**
+- **Single source of truth:** `tools/fontgen/atoms.yaml` defines all characters, code points, and allocations
+- **Build-time generation:** `build.rs` generates Rust constants from atoms.yaml at compile time
+- **Runtime integration:** JavaScript loads code points from WASM via `getFontConfig()`
+- **Font location:** `static/fonts/NotationFont.ttf` (473 KB)
+
+**Glyph Coverage:**
+- **47 base characters:** Numbers (1-7), Western (C-B, c-b), Sargam (Sa Re Ga Ma Pa Dha Ni), Doremi (do re mi fa sol la ti)
+- **188 octave variants:** Each character has 4 variants with dots above/below:
+  - Variant 0: 1 dot above (octave +1) → U+E000-U+E02E
+  - Variant 1: 2 dots above (octave +2) → U+E001-U+E02F
+  - Variant 2: 1 dot below (octave -1) → U+E002-U+E030
+  - Variant 3: 2 dots below (octave -2) → U+E003-U+E031
+- **47 sharp accidentals:** Each character with # symbol → U+E1F0-U+E21E
+- **Musical symbols:** Accidentals (flat, natural, sharp, double-sharp, double-flat), barlines (single, double, repeat), ornaments (trill, turn, mordent) → U+E220+
+
+**Code Point Allocation (Private Use Area):**
+```
+0xE000 - 0xE0BB: 188 octave variants (47 chars × 4 variants)
+0xE1F0 - 0xE21E: 47 sharp accidentals
+0xE220+:         Musical symbols (barlines, ornaments, etc.)
+```
+
+**Formula:** `codepoint = PUA_START + (character_index × CHARS_PER_VARIANT) + variant_index`
+
+### Verifying Font Changes
+
+**⚠️ IMPORTANT:** Any changes to the font require **visual verification by AI using the Font Test tab**.
+
+**Steps to verify new font versions:**
+1. Run the application: `npm run dev`
+2. Navigate to the **Font Test** tab in the Inspector panel
+3. Click through the tabs:
+   - **Show All:** Displays octave variants, accidentals, and symbols
+   - **Sharp Accidentals:** Shows all 47 sharp variants
+   - **Octave Variants:** Shows all 188 octave variants (check for visible dots!)
+   - **Barlines & Symbols:** Shows musical symbols
+4. Verify glyphs are **visually correct** - dots should be visible above/below characters
+5. Confirm code points match expected values (shown in small blue text under each glyph)
+
+**Example verification task:**
+```
+User: "I updated the font file. Can you verify the new dots are visible?"
+
+You:
+1. Take screenshot of Font Test tab (Octave Variants section)
+2. Visually inspect if dots above/below characters are visible
+3. Check code points: U+E000 (1 with dot), U+E001 (1 with 2 dots), etc.
+4. Report: "✅ Dots visible on all variants" or "❌ Dots not visible, investigate..."
+```
+
+**Related files:**
+- `src/js/font-test.js` - Font Test UI component
+- `src/renderers/font_utils.rs` - Glyph code point calculation (exports `getFontConfig()`)
+- `src/js/core/WASMBridge.js` - Exposes font config to JavaScript
+- `tools/fontgen/atoms.yaml` - Single source of truth for font configuration
+- `build.rs` - Compile-time code generation from atoms.yaml
+- `FONT_MIGRATION_NOTO_MUSIC.md` - Complete migration guide
+- `FONT_ARCHITECTURE_NOTO.md` - Technical deep-dive on font system
+
 ## Export Architecture: From Document Model to Multiple Formats
 
 The editor uses a **three-layer export pipeline** to support multiple output formats:
