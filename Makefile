@@ -1,7 +1,7 @@
 # Music Notation Editor POC - Build Orchestration
 # Supports development, production, and testing workflows
 
-.PHONY: help setup build build-dev build-prod build-wasm build-js build-css clean serve serve-prod kill test test-e2e test-headless test-coverage lint format type-check pre-commit install-tools lilypond-start lilypond-stop lilypond-logs lilypond-health lilypond-test lilypond-build lilypond-clean lilypond-restart lilypond-install-docker-arch build-fast build-wasm-fast build-profile-analyze
+.PHONY: help setup build build-dev build-prod build-wasm build-js build-css clean serve serve-prod kill test test-e2e test-headless test-coverage lint format type-check pre-commit install-tools lilypond-start lilypond-stop lilypond-logs lilypond-health lilypond-test lilypond-build lilypond-clean lilypond-restart lilypond-install-docker-arch build-fast build-wasm-fast build-profile-analyze fonts fonts-validate fonts-debug fonts-test
 
 # Default target
 help:
@@ -22,6 +22,12 @@ help:
 	@echo "  build-js       - Bundle JavaScript only"
 	@echo "  build-css      - Generate CSS only"
 	@echo "  build-profile-analyze - Show build profile information"
+	@echo ""
+	@echo "Font Generation:"
+	@echo "  fonts          - Generate notation fonts (strict mode, fail on errors)"
+	@echo "  fonts-validate - Validate atoms.yaml only (no FontForge needed)"
+	@echo "  fonts-debug    - Generate visual specimen (debug-notation-font.html)"
+	@echo "  fonts-test     - Run font generator tests (pytest)"
 	@echo ""
 	@echo "Development:"
 	@echo "  dev            - Start dev server with auto-rebuild + hot reload ⚡"
@@ -59,29 +65,30 @@ setup:
 	@echo "Setting up development environment..."
 	npm install
 	cargo install wasm-pack
-	python3 -m pip install --user playwright pytest pytest-cov
+	python3 -m pip install --user playwright pytest pytest-cov PyYAML
 	playwright install
 	@echo "Setup complete!"
 
 install-tools:
 	@echo "Installing development tools..."
 	cargo install wasm-pack
-	python3 -m pip install --user playwright pytest pytest-cov
+	python3 -m pip install --user playwright pytest pytest-cov PyYAML
 	playwright install
 	@echo "Tools installed!"
 
 # Build Commands
-build: build-wasm build-js build-css
+build: fonts-validate build-wasm build-js build-css
 	@echo "Build complete!"
 
 build-dev:
 	@echo "Building development version..."
+	$(MAKE) fonts-validate
 	$(MAKE) build-wasm
 	$(MAKE) build-js
 	$(MAKE) build-css
 	@echo "Development build complete!"
 
-build-prod:
+build-prod: fonts
 	@echo "Building production version..."
 	# Canonical WASM output location: dist/pkg (referenced in index.html)
 	wasm-pack build . --target web --out-dir dist/pkg --release
@@ -105,6 +112,17 @@ build-css:
 	@echo "Generating CSS..."
 	npm run build-css
 	@echo "CSS generation complete!"
+
+# Font Generation (Notation Font with Dot Variants)
+fonts:
+	@echo "Generating notation fonts..."
+	@python3 scripts/fonts/generate.py
+	@echo "Fonts generated: static/fonts/NotationMonoDotted.ttf"
+
+fonts-validate:
+	@echo "Validating fonts can be generated..."
+	@python3 scripts/fonts/generate.py
+	@echo "Validation complete!"
 
 # Development
 dev: build-wasm build-css
@@ -205,7 +223,7 @@ quick-build: build-wasm build-js
 	@echo "Quick build complete (CSS skipped)!"
 
 # Advanced targets for CI/CD
-ci-build: clean build-prod lint test-e2e
+ci-build: clean fonts-test build-prod lint test-e2e
 	@echo "CI build complete!"
 
 package: build-prod
