@@ -5,6 +5,7 @@ edition = "2021"
 description = "Music Notation Editor WASM module with Cell architecture"
 license = "MIT"
 repository = "https://github.com/rothfield/editor"
+build = "build.rs"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -39,6 +40,9 @@ midly = "0.5"
 num-rational = "0.4"
 thiserror = "1.0"
 mustache = "0.9"
+
+[build-dependencies]
+serde_yaml = "0.9"
 
 [profile.release]
 # Size optimization with some speed (WASM size matters for web)

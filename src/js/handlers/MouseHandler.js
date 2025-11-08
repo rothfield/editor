@@ -31,6 +31,11 @@ export class MouseHandler {
   async handleMouseDown(event) {
     this.editor.element.focus({ preventScroll: true });
 
+    // Close any open menus when clicking in editor
+    if (this.editor?.ui?.activeMenu) {
+      this.editor.ui.closeAllMenus();
+    }
+
     try {
       // Ensure WASM has the latest document state
       if (!this.editor.theDocument) {

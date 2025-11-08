@@ -1,0 +1,364 @@
+# Notation Atoms - Canonical definition of all supported notation systems
+# This file is the single source of truth for:
+# - Which notation systems are supported
+# - What characters/syllables exist in each system
+# - Character ordering (CRITICAL: must match everywhere)
+# - Noto Music font source configuration
+#
+# The font generator reads this file to determine:
+# - How many base characters to create (notes from Noto Music)
+# - How to assign codepoints in the Private Use Area (PUA)
+# - Which musical glyphs to extract from Noto Music (accidentals, symbols)
+# - The JSON mapping file structure
+#
+# Generated from atoms.yaml by build.rs at compile time for Rust constants
+
+notation_systems:
+  # Number System: 1-7 (default in editor)
+  # Usage: "1" means first scale degree, "2" means second, etc.
+  # NOTE: v1.0 - accidentals not yet implemented; all notes are naturals
+  - system_name: number
+    display_name: "Number System"
+    description: "Numerical scale degrees (1-7)"
+    characters:
+      - char: "1"
+        label: "1 (first degree)"
+        accidentals: []  # v1.0: DEFERRED - accidentals not yet implemented
+      - char: "2"
+        label: "2 (second degree)"
+        accidentals: []
+      - char: "3"
+        label: "3 (third degree)"
+        accidentals: []
+      - char: "4"
+        label: "4 (fourth degree)"
+        accidentals: []
+      - char: "5"
+        label: "5 (fifth degree)"
+        accidentals: []
+      - char: "6"
+        label: "6 (sixth degree)"
+        accidentals: []
+      - char: "7"
+        label: "7 (seventh degree)"
+        accidentals: []
+
+  # Western System: A-G (uppercase + lowercase)
+  # Usage: "C" = middle C, "c" = lower c, "D" = D above middle C, etc.
+  - system_name: western
+    display_name: "Western Letter Names"
+    description: "Standard A-B-C-D-E-F-G notation (uppercase + lowercase)"
+    characters:
+      - char: "C"
+        label: "C (uppercase)"
+        accidentals: []
+      - char: "D"
+        label: "D (uppercase)"
+        accidentals: []
+      - char: "E"
+        label: "E (uppercase)"
+        accidentals: []
+      - char: "F"
+        label: "F (uppercase)"
+        accidentals: []
+      - char: "G"
+        label: "G (uppercase)"
+        accidentals: []
+      - char: "A"
+        label: "A (uppercase)"
+        accidentals: []
+      - char: "B"
+        label: "B (uppercase)"
+        accidentals: []
+      - char: "c"
+        label: "c (lowercase)"
+        accidentals: []
+      - char: "d"
+        label: "d (lowercase)"
+        accidentals: []
+      - char: "e"
+        label: "e (lowercase)"
+        accidentals: []
+      - char: "f"
+        label: "f (lowercase)"
+        accidentals: []
+      - char: "g"
+        label: "g (lowercase)"
+        accidentals: []
+      - char: "a"
+        label: "a (lowercase)"
+        accidentals: []
+      - char: "b"
+        label: "b (lowercase)"
+        accidentals: []
+
+  # Sargam System: Indian classical notation
+  # Usage: S=Sa, r=re(lower), R=Re(upper), g=ga(lower), G=Ga(upper), etc.
+  - system_name: sargam
+    display_name: "Sargam (Indian Classical)"
+    description: "Indian classical music notation (Sa Re Ga Ma Pa Dha Ni)"
+    characters:
+      - char: "S"
+        label: "S (Sa - root)"
+        accidentals: []
+      - char: "r"
+        label: "r (re - lower)"
+        accidentals: []
+      - char: "R"
+        label: "R (Re - upper)"
+        accidentals: []
+      - char: "g"
+        label: "g (ga - lower)"
+        accidentals: []
+      - char: "G"
+        label: "G (Ga - upper)"
+        accidentals: []
+      - char: "m"
+        label: "m (ma - lower)"
+        accidentals: []
+      - char: "M"
+        label: "M (Ma - upper)"
+        accidentals: []
+      - char: "P"
+        label: "P (Pa - perfect fifth)"
+        accidentals: []
+      - char: "d"
+        label: "d (dha - lower)"
+        accidentals: []
+      - char: "D"
+        label: "D (Dha - upper)"
+        accidentals: []
+      - char: "n"
+        label: "n (ni - lower)"
+        accidentals: []
+      - char: "N"
+        label: "N (Ni - upper)"
+        accidentals: []
+
+  # Doremi System: Solfège notation (includes 'f' for Fa)
+  # Usage: d=do, r=re, m=mi, f=fa, s=sol, l=la, t=ti
+  # NOTE: Both lowercase (d-t) and UPPERCASE (D-T) are supported
+  - system_name: doremi
+    display_name: "Doremi (Solfège)"
+    description: "Solfège notation (do-re-mi-fa-sol-la-ti), includes 'f' for Fa note"
+    characters:
+      - char: "d"
+        label: "d (do - lowercase)"
+        accidentals: []
+      - char: "r"
+        label: "r (re - lowercase)"
+        accidentals: []
+      - char: "m"
+        label: "m (mi - lowercase)"
+        accidentals: []
+      - char: "f"
+        label: "f (fa - lowercase) ★ Includes 'f' for Fa note"
+        accidentals: []
+      - char: "s"
+        label: "s (sol - lowercase)"
+        accidentals: []
+      - char: "l"
+        label: "l (la - lowercase)"
+        accidentals: []
+      - char: "t"
+        label: "t (ti - lowercase)"
+        accidentals: []
+      - char: "D"
+        label: "D (DO - uppercase)"
+        accidentals: []
+      - char: "R"
+        label: "R (RE - uppercase)"
+        accidentals: []
+      - char: "M"
+        label: "M (MI - uppercase)"
+        accidentals: []
+      - char: "F"
+        label: "F (FA - uppercase) ★ Includes 'F' for Fa note"
+        accidentals: []
+      - char: "S"
+        label: "S (SOL - uppercase)"
+        accidentals: []
+      - char: "L"
+        label: "L (LA - uppercase)"
+        accidentals: []
+      - char: "T"
+        label: "T (TI - uppercase)"
+        accidentals: []
+
+# Source Fonts - Noto Music as single source of truth
+# Replaces Inter.ttc and Bravura.otf from previous implementation
+source_fonts:
+  base_font:
+    path: "tools/fontgen/sources/NotoMusic.ttf"
+    name: "Noto Music"
+    version: "2.001"
+    license: "SIL OFL 1.1"
+    url: "https://github.com/notofonts/music"
+    purpose: "Base glyphs for pitch characters, octave variants, and musical symbols"
+    expected_size: "~292 KB"
+    notes: |
+      Single source of truth for all font data. Provides:
+      - Basic Latin characters (0-9, A-Z, a-z) for pitch notation
+      - Period (U+002E) for octave shift dots
+      - SMuFL musical symbols (accidentals, barlines, ornaments)
+      - Full SMuFL specification compliance
+
+# Glyph Variants - How many dot variants each character gets
+# Each base character can have:
+# - variant 0: 1 dot above
+# - variant 1: 2 dots above
+# - variant 2: 1 dot below
+# - variant 3: 2 dots below
+glyph_variants:
+  count_per_character: 4
+  variant_indices:
+    0: "1 dot above"
+    1: "2 dots above"
+    2: "1 dot below"
+    3: "2 dots below"
+
+# PUA (Private Use Area) Mapping
+# Where codepoints are assigned in Unicode Private Use Area
+pua:
+  start: 0xE000
+  formula: "codepoint = pua_start + (character_index × 4) + variant_index"
+  explanation: |
+    Each base character gets 4 consecutive codepoints in the PUA.
+    Example for character at index 0 (first char in number system):
+      - variant 0 (1 dot above):  0xE000 + (0 × 4) + 0 = 0xE000
+      - variant 1 (2 dots above): 0xE000 + (0 × 4) + 1 = 0xE001
+      - variant 2 (1 dot below):  0xE000 + (0 × 4) + 2 = 0xE002
+      - variant 3 (2 dots below): 0xE000 + (0 × 4) + 3 = 0xE003
+
+# Character Order (CRITICAL!)
+# This exact order must be preserved in:
+# - Font generator output
+# - JSON mapping file
+# - JavaScript/Rust code that looks up characters
+# - Any code that assumes character indices
+character_order: "1234567CDEFGABcdefgabSrRgGmMPdDnNdrmfsltDRMFSLT"
+character_order_by_system:
+  number: "1234567"       # indices 0-6
+  western: "CDEFGABcdefgab"  # indices 7-20
+  sargam: "SrRgGmMPdDnN"  # indices 21-32
+  doremi: "drmfsltDRMFSLT"   # indices 33-46
+
+# Geometry Configuration - Knobs for dot and symbol positioning
+# CRITICAL: All positioning is configurable, not hardcoded in Python
+# Adjust these values to tweak visual appearance without touching generate.py
+geometry:
+  dots:
+    above_gap: 50        # Distance from character bbox top to first dot above
+    below_gap: 50        # Distance from character bbox bottom to first dot below
+    vertical_step: 100   # Spacing between first and second dot (1-dot vs 2-dot)
+    horizontal_center: true  # Always center dots horizontally over character
+
+  symbols:
+    # Future: scaling and positioning for Bravura symbols
+    accidental_scale: 1.0      # Scale factor for # ♭ symbols (when accidentals added)
+    accidental_x_offset: 0     # Horizontal positioning relative to base note
+    accidental_y_offset: 0     # Vertical positioning relative to base note
+    barline_scale: 1.0         # Scale factor for barlines
+    ornament_scale: 1.0        # Scale factor for mordent/trill/turn
+
+# Bravura Symbols - Musical articulations and symbols extracted from Bravura font
+# These are composited into the final NotationMonoDotted.ttf
+# Bravura is the standard music notation font used by Finale, Dorico, MuseScore
+# Reference: https://w3c.github.io/smufl/latest/tables/common-ornaments.html
+#
+# Each symbol has:
+# - glyph_name: SMuFL glyph name (e.g., "ornamentMordent")
+# - label: Human-readable description
+# - smufl_codepoint: Unicode codepoint in SMuFL standard (e.g., U+E56D)
+# - codepoint_offset: Ordinal position in symbol array (symbols start after all notes)
+bravura_symbols:
+  # Accidentals (SMuFL PUA range E260-E264)
+  # CRITICAL: Use SMuFL names + PUA codepoints, NOT Unicode codepoints
+  - glyph_name: "accidentalSharp"
+    label: "Sharp (#)"
+    smufl_codepoint: 0xE262  # SMuFL U+E262 (PUA)
+    codepoint_offset: 0      # First symbol, allocated after 188 notes
+
+  - glyph_name: "accidentalNatural"
+    label: "Natural (♮)"
+    smufl_codepoint: 0xE261  # SMuFL U+E261 (PUA)
+    codepoint_offset: 1
+
+  - glyph_name: "accidentalFlat"
+    label: "Flat (♭)"
+    smufl_codepoint: 0xE260  # SMuFL U+E260 (PUA)
+    codepoint_offset: 2
+
+  - glyph_name: "accidentalDoubleSharp"
+    label: "Double sharp (𝄪)"
+    smufl_codepoint: 0xE263  # SMuFL U+E263 (PUA)
+    codepoint_offset: 3
+
+  - glyph_name: "accidentalDoubleFlat"
+    label: "Double flat (𝄫)"
+    smufl_codepoint: 0xE264  # SMuFL U+E264 (PUA)
+    codepoint_offset: 4
+
+  # Barlines (SMuFL common ornaments range)
+  - glyph_name: "barlineSingle"
+    label: "Barline (single)"
+    smufl_codepoint: 0xE030  # SMuFL U+E030
+    codepoint_offset: 5
+
+  - glyph_name: "barlineDouble"
+    label: "Barline (double)"
+    smufl_codepoint: 0xE031  # SMuFL U+E031
+    codepoint_offset: 6
+
+  - glyph_name: "barlineRepeatLeft"
+    label: "Barline (repeat left)"
+    smufl_codepoint: 0xE040  # SMuFL U+E040 (PUA)
+    codepoint_offset: 7
+
+  - glyph_name: "barlineRepeatRight"
+    label: "Barline (repeat right)"
+    smufl_codepoint: 0xE041  # SMuFL U+E041 (PUA)
+    codepoint_offset: 8
+
+  - glyph_name: "barlineRepeatBoth"
+    label: "Barline (repeat both)"
+    smufl_codepoint: 0xE042  # SMuFL U+E042 (PUA)
+    codepoint_offset: 9
+
+  # Ornaments (SMuFL common ornaments range)
+  - glyph_name: "ornamentMordent"
+    label: "Mordent"
+    smufl_codepoint: 0xE56D  # SMuFL U+E56D
+    codepoint_offset: 10
+
+  - glyph_name: "ornamentInvertedMordent"
+    label: "Inverted mordent"
+    smufl_codepoint: 0xE56E  # SMuFL U+E56E
+    codepoint_offset: 11
+
+  - glyph_name: "ornamentTurn"
+    label: "Turn"
+    smufl_codepoint: 0xE567  # SMuFL U+E567
+    codepoint_offset: 12
+
+  - glyph_name: "ornamentTrill"
+    label: "Trill"
+    smufl_codepoint: 0xE566  # SMuFL U+E566
+    codepoint_offset: 13
+
+# Summary Statistics
+summary:
+  total_systems: 4
+  total_base_characters: 47
+  total_glyphs: 188  # 47 characters × 4 variants each (base + octave shifts)
+  total_symbols: 14  # Accidentals, barlines, ornaments
+  total_glyphs_with_symbols: 202  # 188 + 14 symbols
+  pua_range_octave_variants: "0xE000 - 0xE0BB"  # Base chars + 4 octave variants each
+  pua_range_symbols: "0xE0BC onwards"           # Musical symbols (accidentals, barlines, ornaments)
+  pua_total_range: "0xE000 - 0xE0D9"
+  source_font_single: "Noto Music (complete replacement for Inter + Bravura)"
+  notes: |
+    - Noto Music provides ALL glyphs (pitch chars + musical symbols) in one font
+    - Replaces previous two-font approach (Inter + Bravura)
+    - SMuFL compliant for standard music symbol mappings
+    - Font generation from atoms.yaml ensures compile-time consistency (build.rs)

@@ -75,21 +75,48 @@ class DOMRenderer {
         font-weight: 500;
       }
 
-      /* Hide pitch continuation cells (raw '#', 'b' characters that are part of accidentals) */
+      /* Pitch continuation cells contain non-breaking space (invisible but takes space) */
       .char-cell.pitch-continuation {
-        color: transparent;
+        /* No special styling needed - contains U+00A0 (non-breaking space) */
       }
 
       /* ===== ACCIDENTAL RENDERING (WASM-FIRST ARCHITECTURE) ===== */
 
       /* Pitched elements with accidentals: base character + accidental symbol rendered with CSS ::after */
       .char-cell.kind-pitched {
-        font-family: 'NotationMonoDotted', monospace;
+        font-family: 'NotationFont', monospace;
         position: relative;
       }
 
-      /* Accidentals are now rendered as single pre-composed glyphs from NotationMonoDotted font */
-      /* The character itself includes the accidental marker - no CSS ::after needed */
+      /* Render accidental symbols using ::after pseudo-element */
+      .char-cell[data-accidental="sharp"]::after,
+      .char-cell[data-accidental="flat"]::after,
+      .char-cell[data-accidental="dsharp"]::after,
+      .char-cell[data-accidental="dflat"]::after {
+        position: absolute;
+        font-family: 'NotationFont';
+        font-size: 1em;
+        left: 1em;
+        top: 50%;
+        transform: translateY(-50%);
+        line-height: 1;
+      }
+
+      .char-cell[data-accidental="sharp"]::after {
+        content: '#';
+      }
+
+      .char-cell[data-accidental="flat"]::after {
+        content: 'b';
+      }
+
+      .char-cell[data-accidental="dsharp"]::after {
+        content: '##';
+      }
+
+      .char-cell[data-accidental="dflat"]::after {
+        content: 'bb';
+      }
 
       /* All barline overlays using SMuFL music font */
       /* Hide underlying ASCII text and show fancy glyph overlay */
@@ -110,7 +137,7 @@ class DOMRenderer {
       .char-cell.repeat-right-start::after,
       .char-cell.double-bar-start::after,
       .char-cell.single-bar::after {
-        font-family: 'Bravura', serif;
+        font-family: 'NotationFont';
         position: absolute;
         left: 0;
         top: ${BASE_FONT_SIZE * 0.75}px;
@@ -300,12 +327,12 @@ class DOMRenderer {
 
           // Apply fonts based on cell kind
           if (cell.kind && cell.kind.name === 'text') {
-            // Text cells use Inter at reduced size
+            // Text cells use system fonts at reduced size
             span.style.fontSize = `${BASE_FONT_SIZE * 0.6}px`; // 19.2px
-            span.style.fontFamily = "'Inter', 'Segoe UI', 'Helvetica Neue', system-ui, sans-serif";
+            span.style.fontFamily = "'Segoe UI', 'Helvetica Neue', system-ui, sans-serif";
           } else if (cell.kind && (cell.kind.name === 'pitched_element' || cell.kind.name === 'unpitched_element')) {
-            // Pitch and dash cells always use NotationMonoDotted
-            span.style.fontFamily = "'NotationMonoDotted', 'Inter'";
+            // Pitch and dash cells always use NotationFont (from Noto Music)
+            span.style.fontFamily = "'NotationFont'";
           }
 
           temp.appendChild(span);
@@ -467,7 +494,7 @@ class DOMRenderer {
           // Cache the kind check once per cell (not per character!)
           const isTextCell = cell.kind && cell.kind.name === 'text';
           const fontSize = isTextCell ? `${BASE_FONT_SIZE * 0.6}px` : null;
-          const fontFamily = isTextCell ? "'Inter', 'Segoe UI', 'Helvetica Neue', system-ui, sans-serif" : null;
+          const fontFamily = isTextCell ? "'Segoe UI', 'Helvetica Neue', system-ui, sans-serif" : null;
 
           for (const char of cell.char) {
             const span = document.createElement('span');
@@ -772,14 +799,14 @@ class DOMRenderer {
 
       // Apply fonts based on cell kind
       if (cell && cell.kind && cell.kind.name === 'text') {
-        // Text cells use Inter at reduced size
+        // Text cells use system fonts at reduced size
         cellChar.style.fontSize = `${BASE_FONT_SIZE * 0.6}px`;
-        cellChar.style.fontFamily = "'Inter', 'Segoe UI', 'Helvetica Neue', system-ui, sans-serif";
+        cellChar.style.fontFamily = "'Segoe UI', 'Helvetica Neue', system-ui, sans-serif";
         cellChar.style.transform = 'translateY(40%)';
         cellChar.classList.add('text-cell');
       } else if (cell && cell.kind && (cell.kind.name === 'pitched_element' || cell.kind.name === 'unpitched_element')) {
-        // Pitch and dash cells always use NotationMonoDotted
-        cellChar.style.fontFamily = "'NotationMonoDotted', 'Inter'";
+        // Pitch and dash cells always use NotationFont (from Noto Music)
+        cellChar.style.fontFamily = "'NotationFont'";
       }
 
       // Set data attributes on cell-char
@@ -937,7 +964,7 @@ class DOMRenderer {
           left: ${ornament.x}px;
           top: ${ornamentRelativeY}px;
           font-size: ${BASE_FONT_SIZE * 0.6}px;
-          font-family: 'NotationMonoDotted', 'Inter', monospace;
+          font-family: 'NotationFont', monospace;
           color: #1e40af;
           pointer-events: none;
           white-space: nowrap;

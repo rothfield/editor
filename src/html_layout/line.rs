@@ -134,8 +134,9 @@ impl<'a> LayoutLineComputer<'a> {
         // Position tala characters
         let tala = self.position_tala(&line.tala, &line.cells, &cells, config, line_y_offset);
 
-        // Position octave dots
-        let octave_dots = self.position_octave_dots(&line.cells, &cells, config);
+        // Octave dots are no longer generated as separate overlays
+        // They are now embedded in the font glyphs via glyph substitution in RenderCell
+        let octave_dots = Vec::new();
 
         // Compute slur arcs from slur indicators in cells
         let slurs = self.compute_slur_arcs(&line.cells, &cells, &ornament_anchors, config);
@@ -723,58 +724,6 @@ impl<'a> LayoutLineComputer<'a> {
             .collect()
     }
 
-    /// Position octave dots for cells with octave markings
-    fn position_octave_dots(
-        &self,
-        cells: &[Cell],
-        render_cells: &[RenderCell],
-        config: &LayoutConfig,
-    ) -> Vec<RenderOctaveDot> {
-        use super::display_list::RenderOctaveDot;
-
-        let mut octave_dots = Vec::new();
-
-        // Constants from JS: SMALL_FONT_SIZE = 12, BASE_FONT_SIZE = 32
-        let dot_font_size = 12.0;
-        let upper_offset = dot_font_size * 0.5; // -0.5em
-        let lower_offset = dot_font_size * 0.35; // -0.35em (from bottom)
-
-        for (cell, render_cell) in cells.iter().zip(render_cells.iter()) {
-            // Skip cells without octave markings or continuation cells
-            if cell.octave == 0 || cell.continuation {
-                continue;
-            }
-
-            let text = match cell.octave.abs() {
-                1 => "•",
-                2 => "••",
-                _ => continue, // Invalid octave value
-            };
-
-            let letter_spacing = if cell.octave.abs() == 2 { 2.0 } else { 0.0 };
-
-            // Center horizontally over cell
-            let x = render_cell.x + (render_cell.w / 2.0);
-
-            // Position vertically based on octave sign (absolute coordinates)
-            let y = if cell.octave > 0 {
-                // Upper octave: above cell
-                render_cell.y - upper_offset
-            } else {
-                // Lower octave: below cell (bottom + offset)
-                render_cell.y + config.cell_height + lower_offset
-            };
-
-            octave_dots.push(RenderOctaveDot {
-                text: text.to_string(),
-                x,
-                y,
-                letter_spacing,
-            });
-        }
-
-        octave_dots
-    }
 
     /// Helper: Check if a character requires collision avoidance
     /// Returns true if the character is NOT a space, nbsp, or dash
@@ -875,8 +824,20 @@ impl<'a> LayoutLineComputer<'a> {
                     // Use default cell width of 12.0
                     let ornament_width = 12.0 * 0.6;
 
+                    // Apply glyph substitution for octave shifts (same as regular cells)
+                    let ornament_char = if ornament_cell.kind == ElementKind::PitchedElement
+                        && ornament_cell.octave != 0
+                        && !ornament_cell.char.is_empty()
+                    {
+                        let base_char = ornament_cell.char.chars().next().unwrap_or(' ');
+                        use crate::renderers::get_glyph_codepoint;
+                        get_glyph_codepoint(base_char, ornament_cell.octave).to_string()
+                    } else {
+                        ornament_cell.char.clone()
+                    };
+
                     ornaments.push(RenderOrnament {
-                        text: ornament_cell.char.clone(),
+                        text: ornament_char,
                         x: ornament_x,
                         y: adjusted_ornament_y,
                         classes: vec!["ornament-char".to_string()],

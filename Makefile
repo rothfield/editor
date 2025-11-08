@@ -1,7 +1,7 @@
 # Music Notation Editor POC - Build Orchestration
 # Supports development, production, and testing workflows
 
-.PHONY: help setup build build-dev build-prod build-wasm build-js build-css clean serve serve-prod kill test test-e2e test-headless test-coverage lint format type-check pre-commit install-tools lilypond-start lilypond-stop lilypond-logs lilypond-health lilypond-test lilypond-build lilypond-clean lilypond-restart lilypond-install-docker-arch build-fast build-wasm-fast build-profile-analyze fonts fonts-validate fonts-debug fonts-test
+.PHONY: help setup build build-dev build-prod build-wasm build-js build-css clean serve serve-prod kill test test-e2e test-headless test-coverage lint format type-check pre-commit install-tools lilypond-start lilypond-stop lilypond-logs lilypond-health lilypond-test lilypond-build lilypond-clean lilypond-restart lilypond-install-docker-arch build-fast build-wasm-fast build-profile-analyze fonts fonts-validate fonts-debug fonts-test fonts-install
 
 # Default target
 help:
@@ -28,6 +28,7 @@ help:
 	@echo "  fonts-validate - Validate atoms.yaml only (no FontForge needed)"
 	@echo "  fonts-debug    - Generate visual specimen (debug-notation-font.html)"
 	@echo "  fonts-test     - Run font generator tests (pytest)"
+	@echo "  fonts-install  - Install Bravura and NotationMono fonts locally (Arch Linux/Wayland)"
 	@echo ""
 	@echo "Development:"
 	@echo "  dev            - Start dev server with auto-rebuild + hot reload ⚡"
@@ -113,16 +114,27 @@ build-css:
 	npm run build-css
 	@echo "CSS generation complete!"
 
-# Font Generation (Notation Font with Dot Variants)
+# Font Generation (NotationFont from Noto Music)
 fonts:
-	@echo "Generating notation fonts..."
-	@python3 scripts/fonts/generate.py
-	@echo "Fonts generated: static/fonts/NotationMonoDotted.ttf"
+	@echo "Generating NotationFont.ttf from Noto Music..."
+	@python3 scripts/fonts/generate_noto.py
+	@echo "Fonts generated: static/fonts/NotationFont.ttf"
 
 fonts-validate:
 	@echo "Validating fonts can be generated..."
-	@python3 scripts/fonts/generate.py
+	@python3 scripts/fonts/generate_noto.py --output /tmp/NotationFont-validate.ttf
 	@echo "Validation complete!"
+	@rm -f /tmp/NotationFont-validate.ttf
+
+fonts-install:
+	@echo "Installing NotationFont locally (Arch Linux/Wayland)..."
+	@mkdir -p ~/.local/share/fonts
+	@echo "  Installing NotationFont.ttf..."
+	@cp static/fonts/NotationFont.ttf ~/.local/share/fonts/
+	@echo "  Rebuilding font cache..."
+	@fc-cache -fv ~/.local/share/fonts > /dev/null 2>&1 || true
+	@echo "✓ NotationFont installed to ~/.local/share/fonts"
+	@echo "  Run 'fc-list | grep -i notation' to verify installation"
 
 # Development
 dev: build-wasm build-css

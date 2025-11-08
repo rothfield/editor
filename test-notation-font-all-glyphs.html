@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NotationMono Font - All Glyphs Test</title>
+    <style>
+        @font-face {
+            font-family: 'NotationMono';
+            src: url('/static/fonts/NotationMono.ttf') format('truetype');
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #0066cc;
+            padding-bottom: 10px;
+        }
+
+        .section {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .section h2 {
+            margin-top: 0;
+            color: #0066cc;
+            font-size: 18px;
+        }
+
+        .glyph-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .glyph-item {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: center;
+            font-family: NotationMono, monospace;
+            font-size: 32px;
+            background: #fafafa;
+            border-radius: 4px;
+            min-height: 60px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .glyph-item .label {
+            font-family: Arial, sans-serif;
+            font-size: 11px;
+            color: #666;
+            margin-top: 5px;
+            word-break: break-all;
+        }
+
+        .glyph-item .codepoint {
+            font-family: monospace;
+            font-size: 10px;
+            color: #999;
+            margin-top: 2px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+
+        th, td {
+            padding: 8px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        th {
+            background: #f0f0f0;
+            font-weight: bold;
+        }
+
+        .char-name {
+            font-family: monospace;
+            font-weight: bold;
+        }
+
+        .char-glyph {
+            font-family: NotationMono, monospace;
+            font-size: 24px;
+            width: 50px;
+            text-align: center;
+        }
+
+        .codepoint-hex {
+            font-family: monospace;
+            color: #0066cc;
+            font-weight: bold;
+        }
+
+        .info-box {
+            background: #e3f2fd;
+            border-left: 4px solid #0066cc;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <h1>NotationMono Font - Complete Glyph Inventory</h1>
+
+    <div class="info-box">
+        <strong>Font File:</strong> /static/fonts/NotationMono.ttf<br>
+        <strong>Purpose:</strong> Music notation symbols for pitch and accidentals<br>
+        <strong>Total Glyphs:</strong> ~235 custom glyphs in Private Use Area (PUA)
+    </div>
+
+    <!-- Base Characters -->
+    <div class="section">
+        <h2>Base Pitch Characters (ALL_CHARS: "1234567CDEFGABcdefgabSrRgGmMPdDnNdrmfsltDRMFSLT")</h2>
+        <p>These are the base characters that form the notation system.</p>
+        <table>
+            <thead>
+                <tr>
+                    <th>System</th>
+                    <th>Characters</th>
+                    <th>Count</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Number</td>
+                    <td class="char-name">1 2 3 4 5 6 7</td>
+                    <td>7</td>
+                </tr>
+                <tr>
+                    <td>Western</td>
+                    <td class="char-name">C D E F G A B c d e f g a b</td>
+                    <td>14</td>
+                </tr>
+                <tr>
+                    <td>Sargam</td>
+                    <td class="char-name">S r R g G m M P d D n N</td>
+                    <td>12</td>
+                </tr>
+                <tr>
+                    <td>Doremi</td>
+                    <td class="char-name">d r m f s l t D R M F S L T</td>
+                    <td>14</td>
+                </tr>
+            </tbody>
+        </table>
+        <p><strong>Total base characters:</strong> 47</p>
+    </div>
+
+    <!-- Octave Variants -->
+    <div class="section">
+        <h2>Octave Variants (U+E000 to U+E0BB)</h2>
+        <p>Base characters with octave dots (±1, ±2 octaves). Each base character has 4 variants.</p>
+
+        <h3>Number System Octave Variants for '1'</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Octave Shift</th>
+                    <th>Variant</th>
+                    <th>Codepoint</th>
+                    <th>Display</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>+1 (1 dot above)</td>
+                    <td>0</td>
+                    <td class="codepoint-hex">U+E000</td>
+                    <td><span class="char-glyph" data-cp="0xE000"></span></td>
+                </tr>
+                <tr>
+                    <td>+2 (2 dots above)</td>
+                    <td>1</td>
+                    <td class="codepoint-hex">U+E001</td>
+                    <td><span class="char-glyph" data-cp="0xE001"></span></td>
+                </tr>
+                <tr>
+                    <td>-1 (1 dot below)</td>
+                    <td>2</td>
+                    <td class="codepoint-hex">U+E002</td>
+                    <td><span class="char-glyph" data-cp="0xE002"></span></td>
+                </tr>
+                <tr>
+                    <td>-2 (2 dots below)</td>
+                    <td>3</td>
+                    <td class="codepoint-hex">U+E003</td>
+                    <td><span class="char-glyph" data-cp="0xE003"></span></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h3>All Octave Variants Grid (First 20)</h3>
+        <div class="glyph-grid" id="octave-grid"></div>
+    </div>
+
+    <!-- Sharp Accidentals -->
+    <div class="section">
+        <h2>Sharp Accidentals (U+E1F0 to U+E21E)</h2>
+        <p>47 sharp glyphs (one for each base character), sequentially allocated.</p>
+        <table>
+            <thead>
+                <tr>
+                    <th>Notation</th>
+                    <th>Index</th>
+                    <th>Codepoint</th>
+                    <th>Display</th>
+                </tr>
+            </thead>
+            <tbody id="sharp-table-body">
+            </tbody>
+        </table>
+        <div class="glyph-grid" id="sharp-grid"></div>
+    </div>
+
+    <!-- ASCII Range Test -->
+    <div class="section">
+        <h2>Standard ASCII Characters (Fallback)</h2>
+        <p>These should render in the font if it includes ASCII characters.</p>
+        <div class="glyph-grid" id="ascii-grid"></div>
+    </div>
+
+    <script>
+        // Initialize all codepoint glyphs
+        document.querySelectorAll('.char-glyph[data-cp]').forEach(el => {
+            const cp = parseInt(el.getAttribute('data-cp'), 16);
+            el.textContent = String.fromCodePoint(cp);
+        });
+
+        // Base characters in order
+        const ALL_CHARS = "1234567CDEFGABcdefgabSrRgGmMPdDnNdrmfsltDRMFSLT";
+        const OCTAVE_START = 0xE000;
+        const SHARP_START = 0xE1F0;
+
+        // Generate octave variants grid
+        const octaveGrid = document.getElementById('octave-grid');
+        for (let i = 0; i < 20; i++) {
+            const cp = OCTAVE_START + i;
+            const baseChar = ALL_CHARS[Math.floor(i / 4)];
+            const variant = i % 4;
+            const octaveStr = ['+1', '+2', '-1', '-2'][variant];
+
+            const item = document.createElement('div');
+            item.className = 'glyph-item';
+            item.innerHTML = `
+                ${String.fromCodePoint(cp)}
+                <div class="label">${baseChar} ${octaveStr}</div>
+                <div class="codepoint">U+${cp.toString(16).toUpperCase().padStart(4, '0')}</div>
+            `;
+            octaveGrid.appendChild(item);
+        }
+
+        // Generate sharp accidentals table
+        const sharpTableBody = document.getElementById('sharp-table-body');
+        for (let i = 0; i < 47; i++) {
+            const cp = SHARP_START + i;
+            const baseChar = ALL_CHARS[i];
+            const notation = `${baseChar}#`;
+
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td class="char-name">${notation}</td>
+                <td>${i}</td>
+                <td class="codepoint-hex">U+${cp.toString(16).toUpperCase().padStart(4, '0')}</td>
+                <td><span class="char-glyph">${String.fromCodePoint(cp)}</span></td>
+            `;
+            sharpTableBody.appendChild(row);
+        }
+
+        // Generate sharp grid
+        const sharpGrid = document.getElementById('sharp-grid');
+        for (let i = 0; i < 47; i++) {
+            const cp = SHARP_START + i;
+            const baseChar = ALL_CHARS[i];
+            const notation = `${baseChar}#`;
+
+            const item = document.createElement('div');
+            item.className = 'glyph-item';
+            item.innerHTML = `
+                ${String.fromCodePoint(cp)}
+                <div class="label">${notation}</div>
+                <div class="codepoint">U+${cp.toString(16).toUpperCase().padStart(4, '0')}</div>
+            `;
+            sharpGrid.appendChild(item);
+        }
+
+        // Generate ASCII test grid
+        const asciiGrid = document.getElementById('ascii-grid');
+        const asciiChars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!@#$%^&*()';
+        for (let i = 0; i < asciiChars.length; i++) {
+            const char = asciiChars[i];
+            const cp = char.charCodeAt(0);
+
+            const item = document.createElement('div');
+            item.className = 'glyph-item';
+            item.innerHTML = `
+                ${char}
+                <div class="label">${char}</div>
+                <div class="codepoint">U+${cp.toString(16).toUpperCase().padStart(4, '0')}</div>
+            `;
+            asciiGrid.appendChild(item);
+        }
+    </script>
+</body>
+</html>

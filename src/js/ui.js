@@ -219,13 +219,72 @@ class UI {
    * Setup Ornament menu
    */
   setupOrnamentMenu() {
+    // Helper: Get glyph for octave-shifted character (from font_utils.rs logic)
+    const getGlyph = (baseChar, octaveShift) => {
+      const ALL_CHARS = "1234567CDEFGABcdefgabSrRgGmMPdDnNdrmfsltDRMFSLT";
+      const PUA_START = 0xE000;
+
+      if (octaveShift === 0 || !baseChar) return baseChar;
+
+      const index = ALL_CHARS.indexOf(baseChar);
+      if (index === -1) return baseChar;
+
+      let variant;
+      switch (octaveShift) {
+        case 1: variant = 0; break;   // 1 dot above
+        case 2: variant = 1; break;   // 2 dots above
+        case -1: variant = 2; break;  // 1 dot below
+        case -2: variant = 3; break;  // 2 dots below
+        default: return baseChar;
+      }
+
+      const codepoint = PUA_START + (index * 4) + variant;
+      return String.fromCodePoint(codepoint);
+    };
+
+    // Get current cell's ornament (if any)
+    let currentOrnament = null;
+    if (this.editor && this.editor.theDocument) {
+      const cursor = this.editor.theDocument.state.cursor;
+      const line = this.editor.theDocument.lines[cursor.line];
+      if (line && cursor.col > 0) {
+        const cellIndex = cursor.col - 1;
+        if (cellIndex < line.cells.length) {
+          const cell = line.cells[cellIndex];
+          if (cell.ornament) {
+            const placement = cell.ornament.placement || 'before';
+            // Apply glyph substitution for octave shifts in ornament cells
+            const notation = cell.ornament.cells
+              .map(c => {
+                const baseChar = c.char.charAt(0);
+                const octaveShift = c.octave || 0;
+                return getGlyph(baseChar, octaveShift);
+              })
+              .join('');
+            currentOrnament = { placement, notation };
+          }
+        }
+      }
+    }
+
+    // Build labels for placement options, showing ornament if it exists
+    const beforeLabel = currentOrnament?.placement === 'before'
+      ? `Before - ${currentOrnament.notation}`
+      : 'Before';
+    const ontopLabel = currentOrnament?.placement === 'on-top'
+      ? `On top - ${currentOrnament.notation}`
+      : 'On top';
+    const afterLabel = currentOrnament?.placement === 'after'
+      ? `After - ${currentOrnament.notation}`
+      : 'After';
+
     const menuItems = [
-      { id: 'menu-ornament-before', label: 'Before', action: 'ornament-position-before', checkable: true, checked: true },
-      { id: 'menu-ornament-ontop', label: 'On top', action: 'ornament-position-ontop', checkable: true, checked: false },
-      { id: 'menu-ornament-after', label: 'After', action: 'ornament-position-after', checkable: true, checked: false },
+      { id: 'menu-ornament-before', label: beforeLabel, action: 'ornament-position-before', checkable: true, checked: currentOrnament?.placement === 'before' || !currentOrnament, hasOrnationNotation: !!currentOrnament?.placement === 'before' && currentOrnament },
+      { id: 'menu-ornament-ontop', label: ontopLabel, action: 'ornament-position-ontop', checkable: true, checked: currentOrnament?.placement === 'on-top', hasOrnationNotation: currentOrnament?.placement === 'on-top' && currentOrnament },
+      { id: 'menu-ornament-after', label: afterLabel, action: 'ornament-position-after', checkable: true, checked: currentOrnament?.placement === 'after', hasOrnationNotation: currentOrnament?.placement === 'after' && currentOrnament },
       { id: 'menu-separator-0', label: null, separator: true },
       { id: 'menu-ornament-copy', label: 'Copy', action: 'ornament-copy', testid: 'menu-ornament-copy' },
-      { id: 'menu-ornament-paste', label: 'Paste', action: 'ornament-paste', testid: 'menu-ornament-paste' },
+      { id: 'menu-ornament-paste', label: 'Ornament from Clipboard', action: 'ornament-paste', testid: 'menu-ornament-paste' },
       { id: 'menu-ornament-clear', label: 'Clear', action: 'ornament-clear', testid: 'menu-ornament-clear' }
     ];
 
@@ -258,6 +317,10 @@ class UI {
 
           const label = document.createElement('span');
           label.textContent = item.label;
+          // Apply NotationFont if label contains ornament notation
+          if (item.hasOrnationNotation) {
+            label.style.fontFamily = "'NotationFont', monospace";
+          }
           menuItem.appendChild(label);
         } else {
           menuItem.textContent = item.label;
@@ -319,6 +382,11 @@ class UI {
     const isHidden = menu.classList.contains('hidden');
 
     if (isHidden) {
+      // Refresh ornament menu before showing (to display current ornament text)
+      if (menuName === 'ornament') {
+        this.setupOrnamentMenu();
+      }
+
       // Show menu
       menu.classList.remove('hidden');
       button.classList.add('bg-ui-active');
@@ -1113,14 +1181,19 @@ class UI {
      * Return focus to editor element
      */
   returnFocusToEditor() {
-    // Use setTimeout to ensure any dialogs/prompts have closed first
-    setTimeout(() => {
-      const editorElement = document.getElementById('notation-editor');
-      const editorContainer = document.getElementById('editor-container');
-      if (editorElement) {
-        editorElement.focus();
+    // Focus immediately so keyboard input works right away
+    const editorElement = document.getElementById('notation-editor');
+    if (!editorElement) return;
+
+    // Set focus immediately
+    editorElement.focus({ preventScroll: true });
+
+    // Also verify focus is set after a microtask (backup for edge cases)
+    Promise.resolve().then(() => {
+      if (document.activeElement !== editorElement) {
+        editorElement.focus({ preventScroll: true });
       }
-    }, 50);
+    });
   }
 
   /**
@@ -1146,16 +1219,24 @@ class UI {
 
     switch (event.key) {
       case 'Escape':
+        event.preventDefault();
+        event.stopPropagation();
         this.closeAllMenus();
         this.returnFocusToEditor();
         break;
       case 'ArrowDown':
+        event.preventDefault();
+        event.stopPropagation();
         this.navigateMenu('down');
         break;
       case 'ArrowUp':
+        event.preventDefault();
+        event.stopPropagation();
         this.navigateMenu('up');
         break;
       case 'Enter':
+        event.preventDefault();
+        event.stopPropagation();
         this.activateCurrentMenuItem();
         break;
     }
@@ -1560,13 +1641,12 @@ class UI {
   }
 
   /**
-   * Copy ornament from selected cell to clipboard
+   * Copy ornament from selected cell
    *
-   * Cells-array pattern (like octave operations):
+   * KISS logic: Store the cell and its ornament in the object clipboard.
    * - JS calculates cell_index from cursor position
-   * - JS passes cells array to WASM
-   * - WASM returns ornament notation string
-   * - JS writes to clipboard (Platform API)
+   * - JS stores the cell in this.clipboard.cells (same as regular cell copy)
+   * When pasted, the ornament property of this cell will replace the target's ornament
    */
   async copyOrnament() {
     console.log('[UI] copyOrnament');
@@ -1594,12 +1674,9 @@ class UI {
         return;
       }
 
-      // Call WASM with cells array + cell_index (cells-array pattern)
-      const notation = this.editor.wasmModule.copyOrnamentFromCell(line.cells, cellIndex);
-
-      // JavaScript Platform API: Write to clipboard
-      await navigator.clipboard.writeText(notation);
-      this.editor.addToConsoleLog(`Ornament copied: ${notation}`);
+      // Store cell in object clipboard
+      this.editor.clipboard.cells = [line.cells[cellIndex]];
+      this.editor.addToConsoleLog(`Ornament copied to clipboard`);
     } catch (error) {
       console.error('[UI] Copy ornament error:', error);
       alert(`Failed to copy ornament: ${error.message || error}`);
@@ -1607,13 +1684,13 @@ class UI {
   }
 
   /**
-   * Paste ornament from clipboard to selected cell
+   * Paste ornament from object clipboard to selected cell
    *
-   * Cells-array pattern (like octave operations):
-   * - JS reads from clipboard (Platform API)
+   * KISS logic: Replace the target cell's ornament with the cells from the clipboard.
+   * - JS reads from object clipboard (this.clipboard.cells, not system clipboard)
    * - JS calculates cell_index from cursor position
-   * - JS passes cells array + notation + placement to WASM
-   * - WASM returns updated cells array
+   * - JS calls WASM pasteOrnamentCells() to handle the logic
+   * - WASM creates ornament object and attaches to target cell
    * - JS updates line.cells and renders
    */
   async pasteOrnament() {
@@ -1625,11 +1702,9 @@ class UI {
     }
 
     try {
-      // JavaScript Platform API: Read from clipboard
-      const clipboardText = await navigator.clipboard.readText();
-
-      if (!clipboardText || clipboardText.trim().length === 0) {
-        alert('Clipboard is empty');
+      // Read from object clipboard (same as cell paste)
+      if (!this.editor.clipboard.cells || this.editor.clipboard.cells.length === 0) {
+        alert('No cell in clipboard');
         return;
       }
 
@@ -1652,20 +1727,20 @@ class UI {
         return;
       }
 
-      // Call WASM with cells array + cell_index + notation + placement (cells-array pattern)
-      const updatedCells = this.editor.wasmModule.pasteOrnamentToCell(
+      // Call WASM to handle ornament pasting logic
+      const updatedCells = this.editor.wasmModule.pasteOrnamentCells(
         line.cells,
         cellIndex,
-        clipboardText.trim(),
+        this.editor.clipboard.cells,
         placement
       );
 
-      // Update line.cells with modified array (same as octave operations)
+      // Update line.cells with modified array
       line.cells = updatedCells;
 
       // Render
       await this.editor.renderAndUpdate();
-      this.editor.addToConsoleLog(`Ornament pasted: ${clipboardText.trim()} (${placement})`);
+      this.editor.addToConsoleLog(`Ornament pasted: ${this.editor.clipboard.cells.length} cells (${placement})`);
     } catch (error) {
       console.error('[UI] Paste ornament error:', error);
       alert(`Failed to paste ornament: ${error.message || error}`);

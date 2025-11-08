@@ -46,6 +46,8 @@ pub struct BeatAccumulator {
     pub current_divisions: usize,
     /// Pending grace notes to attach before next main element
     pub pending_grace_notes_before: Vec<GraceNoteData>,
+    /// Pending grace notes to attach after the main element (ornaments with After placement)
+    pub pending_grace_notes_after: Vec<GraceNoteData>,
     /// Pitch being collected (if in CollectingPitchInBeat)
     pub pending_pitch: Option<PitchInfo>,
     /// Whether we've seen a main element (pitch or rest) in this beat
@@ -62,6 +64,7 @@ impl BeatAccumulator {
             events: Vec::new(),
             current_divisions: 0,
             pending_grace_notes_before: Vec::new(),
+            pending_grace_notes_after: Vec::new(),
             pending_pitch: None,
             has_main_element: false,
             pending_slur_indicator: SlurIndicator::None,
@@ -118,6 +121,42 @@ impl BeatAccumulator {
         }
     }
 
+    /// Process ornament cells and convert them to grace notes
+    fn process_ornament(&mut self, ornament: &crate::models::Ornament) {
+        use crate::models::OrnamentPlacement;
+
+        // Determine the position based on ornament placement
+        let position = match ornament.placement {
+            OrnamentPlacement::Before => crate::models::OrnamentPositionType::Before,
+            OrnamentPlacement::After => crate::models::OrnamentPositionType::After,
+        };
+
+        // Extract pitches from ornament cells
+        for cell in &ornament.cells {
+            if let Some(pitch_code) = cell.pitch_code {
+                let pitch = PitchInfo::new(pitch_code, cell.octave);
+                let grace = GraceNoteData {
+                    pitch,
+                    position,
+                    slash: false, // TODO: wire up slash notation from cell
+                };
+
+                // Add to appropriate grace notes list based on placement
+                match position {
+                    crate::models::OrnamentPositionType::Before => {
+                        // Grace notes before main element - add to pending
+                        self.pending_grace_notes_before.push(grace);
+                    }
+                    crate::models::OrnamentPositionType::After | crate::models::OrnamentPositionType::OnTop => {
+                        // Grace notes after main element - add to pending after list
+                        // These will be attached to the note when finish_pitch() is called
+                        self.pending_grace_notes_after.push(grace);
+                    }
+                }
+            }
+        }
+    }
+
     /// Finalize dash element (create rest)
     fn finish_dashes(&mut self) {
         if self.current_divisions > 0 {
@@ -135,7 +174,7 @@ impl BeatAccumulator {
                 pitch,
                 divisions: self.current_divisions,
                 grace_notes_before: self.pending_grace_notes_before.clone(),
-                grace_notes_after: Vec::new(),
+                grace_notes_after: self.pending_grace_notes_after.clone(),
                 lyrics: None,
                 slur: None,
                 articulations: Vec::new(),
@@ -184,6 +223,7 @@ impl BeatAccumulator {
 
             self.events.push(ExportEvent::Note(note));
             self.pending_grace_notes_before.clear();
+            self.pending_grace_notes_after.clear();
             self.current_divisions = 0;
         }
     }
@@ -221,12 +261,18 @@ pub fn beat_transition(
         }
 
         // PITCH → transition from InBeat or CollectingDashes
-        (CellGroupingState::InBeat, ElementKind::PitchedElement) if cell.ornament.is_none() => {
+        (CellGroupingState::InBeat, ElementKind::PitchedElement) => {
             if let Some(pitch_code) = cell.pitch_code {
                 let pitch = PitchInfo::new(pitch_code, cell.octave);
                 accum.start_pitch(pitch);
                 // Slur indicator already extracted at top of beat_transition
                 accum.has_main_element = true;
+
+                // Process ornament if present
+                if let Some(ornament) = &cell.ornament {
+                    accum.process_ornament(ornament);
+                }
+
                 CellGroupingState::CollectingPitchInBeat
             } else {
                 CellGroupingState::InBeat
@@ -245,13 +291,19 @@ pub fn beat_transition(
                 CellGroupingState::InBeat
             }
         }
-        (CellGroupingState::CollectingPitchInBeat, ElementKind::PitchedElement) if cell.ornament.is_none() => {
+        (CellGroupingState::CollectingPitchInBeat, ElementKind::PitchedElement) => {
             // New pitch → finish previous and start new
             accum.finish_pitch();
             if let Some(pitch_code) = cell.pitch_code {
                 let pitch = PitchInfo::new(pitch_code, cell.octave);
                 accum.start_pitch(pitch);
                 // Slur indicator already extracted at top of beat_transition
+
+                // Process ornament if present
+                if let Some(ornament) = &cell.ornament {
+                    accum.process_ornament(ornament);
+                }
+
                 CellGroupingState::CollectingPitchInBeat
             } else {
                 CellGroupingState::InBeat
@@ -266,27 +318,8 @@ pub fn beat_transition(
             CellGroupingState::CollectingPitchInBeat
         }
 
-        // GRACE NOTES / ORNAMENTS
-        (CellGroupingState::InBeat, ElementKind::PitchedElement)
-            if cell.ornament.is_some() =>
-        {
-            // Grace note before any main element
-            if let Some(pitch_code) = cell.pitch_code {
-                let pitch = PitchInfo::new(pitch_code, cell.octave);
-                accum.add_grace_note(pitch);
-            }
-            CellGroupingState::InBeat
-        }
-        (CellGroupingState::CollectingPitchInBeat, ElementKind::PitchedElement)
-            if cell.ornament.is_some() =>
-        {
-            // Grace note after main element (trailing ornament)
-            if let Some(pitch_code) = cell.pitch_code {
-                let pitch = PitchInfo::new(pitch_code, cell.octave);
-                accum.add_grace_note(pitch);
-            }
-            CellGroupingState::CollectingTrailingGraceNotes
-        }
+        // Note: Grace notes / ornaments are now handled within the pitched element rules above
+        // A cell with an ornament is treated as a main note with grace notes attached
 
         // Default: skip unhandled element kinds
         _ => state,
@@ -579,8 +612,8 @@ pub fn calculate_beat_subdivisions(beat_cells_refs: &[&Cell]) -> usize {
     while i < beat_cells_refs.len() {
         let cell = beat_cells_refs[i];
 
-        // Skip continuation cells and ornament cells (rhythm-transparent)
-        if cell.continuation || cell.ornament.is_some() {
+        // Skip continuation cells only (ornament cells are rhythm-transparent but the main cell with ornament should be counted)
+        if cell.continuation {
             i += 1;
             continue;
         }
@@ -588,6 +621,8 @@ pub fn calculate_beat_subdivisions(beat_cells_refs: &[&Cell]) -> usize {
         if cell.kind == ElementKind::PitchedElement {
             seen_pitched_element = true;
             // Count this note + following dash extensions
+            // NOTE: cells with ornaments are treated as regular pitched elements for rhythm calculation
+            // The ornament metadata doesn't affect the beat subdivision
             let mut slot_count = 1;
             let mut j = i + 1;
 
@@ -600,9 +635,6 @@ pub fn calculate_beat_subdivisions(beat_cells_refs: &[&Cell]) -> usize {
             while j < beat_cells_refs.len() {
                 if beat_cells_refs[j].kind == ElementKind::UnpitchedElement && beat_cells_refs[j].char == "-" {
                     slot_count += 1;
-                    j += 1;
-                } else if beat_cells_refs[j].ornament.is_some() {
-                    // Skip ornament cells (rhythm-transparent)
                     j += 1;
                 } else {
                     break;

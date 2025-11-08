@@ -163,6 +163,12 @@ class EventManager {
      * Handle global keyboard events
      */
   handleGlobalKeyDown(event) {
+    // Close any open menus when user starts typing (except for menu navigation keys)
+    const menuNavigationKeys = ['Escape', 'ArrowUp', 'ArrowDown', 'Enter'];
+    if (this.editor?.ui?.activeMenu && !menuNavigationKeys.includes(event.key)) {
+      this.editor.ui.closeAllMenus();
+    }
+
     // Ignore bare modifier key presses (Alt, Ctrl, Shift, Meta by themselves)
     // We only want to process them when they're used WITH another key
     const modifierKeys = ['Alt', 'Control', 'Shift', 'Meta', 'AltGraph'];
@@ -205,6 +211,14 @@ class EventManager {
     }
 
     const key = this.getKeyString(event);
+
+    // Skip global shortcuts if a menu is open and it's a menu navigation key
+    // The UI's handleMenuKeyboard will handle these instead
+    const isMenuNavigationKey = menuNavigationKeys.includes(event.key);
+    if (this.editor?.ui?.activeMenu && isMenuNavigationKey) {
+      // Let the menu handle it - don't run global shortcuts
+      return;
+    }
 
     // Check for global shortcuts
     if (this.globalShortcuts[key]) {
@@ -275,6 +289,16 @@ class EventManager {
      */
   handleGlobalClick(event) {
     const target = event.target;
+
+    // Close any open menus on click
+    if (this.editor?.ui?.activeMenu) {
+      const isMenuButton = target.closest('[id$="-menu-button"]');
+      const isMenuDropdown = target.closest('[id$="-menu"]');
+
+      if (!isMenuButton && !isMenuDropdown) {
+        this.editor.ui.closeAllMenus();
+      }
+    }
 
     // Handle clicks outside editor
     if (!this.isEditorElement(target) && !target.closest('#editor-container')) {

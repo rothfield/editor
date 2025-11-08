@@ -1,0 +1,262 @@
+═══════════════════════════════════════════════════════════════════════════════
+NOTATION FONT - CODEPOINT QUICK REFERENCE
+═══════════════════════════════════════════════════════════════════════════════
+
+All characters are at these codepoints in NotationMonoDotted.ttf:
+
+codepoint = 0xE000 + (character_index × 4) + variant_index
+
+Where variant_index is:
+  0 = 1 dot above
+  1 = 2 dots above
+  2 = 1 dot below
+  3 = 2 dots below
+
+═══════════════════════════════════════════════════════════════════════════════
+NUMBER SYSTEM (indices 0-6)
+═══════════════════════════════════════════════════════════════════════════════
+
+Char │ Index │ No Dots │ Above1 │ Above2 │ Below1 │ Below2 │
+─────┼───────┼─────────┼────────┼────────┼────────┼────────┤
+  1  │   0   │    1    │ E000   │ E001   │ E002   │ E003   │
+  2  │   1   │    2    │ E004   │ E005   │ E006   │ E007   │
+  3  │   2   │    3    │ E008   │ E009   │ E00A   │ E00B   │
+  4  │   3   │    4    │ E00C   │ E00D   │ E00E   │ E00F   │
+  5  │   4   │    5    │ E010   │ E011   │ E012   │ E013   │
+  6  │   5   │    6    │ E014   │ E015   │ E016   │ E017   │
+  7  │   6   │    7    │ E018   │ E019   │ E01A   │ E01B   │
+
+═══════════════════════════════════════════════════════════════════════════════
+WESTERN SYSTEM (indices 7-20)
+═══════════════════════════════════════════════════════════════════════════════
+
+Char │ Index │ No Dots │ Above1 │ Above2 │ Below1 │ Below2 │
+─────┼───────┼─────────┼────────┼────────┼────────┼────────┤
+  C  │   7   │    C    │ E01C   │ E01D   │ E01E   │ E01F   │
+  D  │   8   │    D    │ E020   │ E021   │ E022   │ E023   │
+  E  │   9   │    E    │ E024   │ E025   │ E026   │ E027   │
+  F  │  10   │    F    │ E028   │ E029   │ E02A   │ E02B   │
+  G  │  11   │    G    │ E02C   │ E02D   │ E02E   │ E02F   │
+  A  │  12   │    A    │ E030   │ E031   │ E032   │ E033   │
+  B  │  13   │    B    │ E034   │ E035   │ E036   │ E037   │
+  c  │  14   │    c    │ E038   │ E039   │ E03A   │ E03B   │
+  d  │  15   │    d    │ E03C   │ E03D   │ E03E   │ E03F   │
+  e  │  16   │    e    │ E040   │ E041   │ E042   │ E043   │
+  f  │  17   │    f    │ E044   │ E045   │ E046   │ E047   │
+  g  │  18   │    g    │ E048   │ E049   │ E04A   │ E04B   │
+  a  │  19   │    a    │ E04C   │ E04D   │ E04E   │ E04F   │
+  b  │  20   │    b    │ E050   │ E051   │ E052   │ E053   │
+
+═══════════════════════════════════════════════════════════════════════════════
+SARGAM SYSTEM (indices 21-32)
+═══════════════════════════════════════════════════════════════════════════════
+
+Char │ Index │ No Dots │ Above1 │ Above2 │ Below1 │ Below2 │
+─────┼───────┼─────────┼────────┼────────┼────────┼────────┤
+  S  │  21   │    S    │ E054   │ E055   │ E056   │ E057   │
+  r  │  22   │    r    │ E058   │ E059   │ E05A   │ E05B   │
+  R  │  23   │    R    │ E05C   │ E05D   │ E05E   │ E05F   │
+  g  │  24   │    g    │ E060   │ E061   │ E062   │ E063   │
+  G  │  25   │    G    │ E064   │ E065   │ E066   │ E067   │
+  m  │  26   │    m    │ E068   │ E069   │ E06A   │ E06B   │
+  M  │  27   │    M    │ E06C   │ E06D   │ E06E   │ E06F   │
+  P  │  28   │    P    │ E070   │ E071   │ E072   │ E073   │
+  d  │  29   │    d    │ E074   │ E075   │ E076   │ E077   │
+  D  │  30   │    D    │ E078   │ E079   │ E07A   │ E07B   │
+  n  │  31   │    n    │ E07C   │ E07D   │ E07E   │ E07F   │
+  N  │  32   │    N    │ E080   │ E081   │ E082   │ E083   │
+
+═══════════════════════════════════════════════════════════════════════════════
+DOREMI SYSTEM (indices 33-46) - INCLUDES 'f' FOR FA NOTE ✓
+═══════════════════════════════════════════════════════════════════════════════
+
+Char │ Index │ No Dots │ Above1 │ Above2 │ Below1 │ Below2 │ Note
+─────┼───────┼─────────┼────────┼────────┼────────┼────────┼──────
+  d  │  33   │    d    │ E084   │ E085   │ E086   │ E087   │ do
+  r  │  34   │    r    │ E088   │ E089   │ E08A   │ E08B   │ re
+  m  │  35   │    m    │ E08C   │ E08D   │ E08E   │ E08F   │ mi
+  f  │  36   │    f    │ E090   │ E091   │ E092   │ E093   │ fa ★
+  s  │  37   │    s    │ E094   │ E095   │ E096   │ E097   │ sol
+  l  │  38   │    l    │ E098   │ E099   │ E09A   │ E09B   │ la
+  t  │  39   │    t    │ E09C   │ E09D   │ E09E   │ E09F   │ ti
+  D  │  40   │    D    │ E0A0   │ E0A1   │ E0A2   │ E0A3   │ DO
+  R  │  41   │    R    │ E0A4   │ E0A5   │ E0A6   │ E0A7   │ RE
+  M  │  42   │    M    │ E0A8   │ E0A9   │ E0AA   │ E0AB   │ MI
+  F  │  43   │    F    │ E0AC   │ E0AD   │ E0AE   │ E0AF   │ FA ★
+  S  │  44   │    S    │ E0B0   │ E0B1   │ E0B2   │ E0B3   │ SOL
+  L  │  45   │    L    │ E0B4   │ E0B5   │ E0B6   │ E0B7   │ LA
+  T  │  46   │    T    │ E0B8   │ E0B9   │ E0BA   │ E0BB   │ TI
+
+═══════════════════════════════════════════════════════════════════════════════
+QUICK LOOKUP BY CHARACTER
+═══════════════════════════════════════════════════════════════════════════════
+
+'1' 1 dot above  = E000
+'C' 2 dots above = E01D
+'S' 1 dot below  = E056 (WAIT - this is Sargam, not position correct)
+
+USE THE TABLE ABOVE or the formula:
+  idx = "1234567CDEFGABcdefgabSrRgGmMPdDnNdrmfsltDRMFSLT".indexOf(char)
+  cp = 0xE000 + (idx * 4) + variant
+  where variant: 0=dot_above, 1=2dots_above, 2=dot_below, 3=2dots_below
+
+═══════════════════════════════════════════════════════════════════════════════
+COPY-PASTE: CHARACTER ORDER (CRITICAL)
+═══════════════════════════════════════════════════════════════════════════════
+
+1234567CDEFGABcdefgabSrRgGmMPdDnNdrmfsltDRMFSLT
+
+This order MUST be identical in:
+  - Python: generate_notation_font.py (BASE_CHARS)
+  - JavaScript: your rendering code (ALL_CHARS)
+  - Rust: your WASM code (ALL_CHARS)
+
+═══════════════════════════════════════════════════════════════════════════════
+JAVASCRIPT IMPLEMENTATION (COPY-PASTE)
+═══════════════════════════════════════════════════════════════════════════════
+
+const ALL_CHARS = "1234567CDEFGABcdefgabSrRgGmMPdDnNdrmfsltDRMFSLT";
+
+function getGlyph(baseChar, octaveShift) {
+    const index = ALL_CHARS.indexOf(baseChar);
+    if (index === -1 || octaveShift === 0) return baseChar;
+
+    let variant;
+    switch (octaveShift) {
+        case 1:  variant = 0; break;  // 1 dot above
+        case 2:  variant = 1; break;  // 2 dots above
+        case -1: variant = 2; break;  // 1 dot below
+        case -2: variant = 3; break;  // 2 dots below
+        default: return baseChar;
+    }
+
+    const codepoint = 0xE000 + (index * 4) + variant;
+    return String.fromCodePoint(codepoint);
+}
+
+// Usage examples:
+// getGlyph('1', 1)   → '1' with 1 dot above
+// getGlyph('C', -1)  → 'C' with 1 dot below
+// getGlyph('f', 2)   → 'f' with 2 dots above (doremi fa)
+// getGlyph('d', 0)   → 'd' (no dots)
+
+═══════════════════════════════════════════════════════════════════════════════
+RUST IMPLEMENTATION (COPY-PASTE)
+═══════════════════════════════════════════════════════════════════════════════
+
+const ALL_CHARS: &str = "1234567CDEFGABcdefgabSrRgGmMPdDnNdrmfsltDRMFSLT";
+
+pub fn get_glyph(base_char: char, octave_shift: i8) -> char {
+    let index = match ALL_CHARS.find(base_char) {
+        Some(i) => i as u32,
+        None => return base_char,
+    };
+
+    if octave_shift == 0 {
+        return base_char;
+    }
+
+    let variant = match octave_shift {
+        1  => 0,  // 1 dot above
+        2  => 1,  // 2 dots above
+        -1 => 2,  // 1 dot below
+        -2 => 3,  // 2 dots below
+        _  => return base_char,
+    };
+
+    let codepoint = 0xE000 + (index * 4) + variant;
+    char::from_u32(codepoint).unwrap_or(base_char)
+}
+
+// Usage examples:
+// get_glyph('1', 1)   → '1' with 1 dot above
+// get_glyph('C', -1)  → 'C' with 1 dot below
+// get_glyph('f', 2)   → 'f' with 2 dots above (doremi fa)
+// get_glyph('d', 0)   → 'd' (no dots)
+
+═══════════════════════════════════════════════════════════════════════════════
+CSS SETUP (COPY-PASTE)
+═══════════════════════════════════════════════════════════════════════════════
+
+@font-face {
+    font-family: 'NotationMonoDotted';
+    src: url('/fonts/NotationMonoDotted.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+}
+
+.notation-char {
+    font-family: 'NotationMonoDotted', monospace;
+    font-size: 18px;
+    line-height: 1.4;
+    letter-spacing: 0.1em;
+}
+
+═══════════════════════════════════════════════════════════════════════════════
+HTML EXAMPLE (COPY-PASTE)
+═══════════════════════════════════════════════════════════════════════════════
+
+<span class="notation-char">&#xe000;</span>  <!-- 1 with 1 dot above -->
+<span class="notation-char">&#xe001;</span>  <!-- 1 with 2 dots above -->
+<span class="notation-char">&#xe090;</span>  <!-- f with 1 dot above -->
+<span class="notation-char">&#xe0ac;</span>  <!-- F with 1 dot above -->
+
+Or dynamically:
+
+<script>
+  const el = document.createElement('span');
+  el.className = 'notation-char';
+  el.textContent = String.fromCodePoint(0xE000);
+  document.body.appendChild(el);
+</script>
+
+═══════════════════════════════════════════════════════════════════════════════
+TEST CASES (VERIFY YOUR IMPLEMENTATION)
+═══════════════════════════════════════════════════════════════════════════════
+
+Number System:
+  getGlyph('1', 0)  should return '1' (no transformation)
+  getGlyph('1', 1)  should return char(0xE000)
+  getGlyph('7', 2)  should return char(0xE01B)
+
+Western System:
+  getGlyph('C', 1)  should return char(0xE01C)
+  getGlyph('c', 1)  should return char(0xE038)
+  getGlyph('F', -1) should return char(0xE02A)
+
+Sargam System:
+  getGlyph('S', 1)  should return char(0xE054)
+  getGlyph('P', 2)  should return char(0xE071)
+  getGlyph('n', -2) should return char(0xE07F)
+
+Doremi System (with 'f'):
+  getGlyph('d', 1)  should return char(0xE084)  ← do
+  getGlyph('f', 1)  should return char(0xE090)  ← fa (the 'f')
+  getGlyph('F', -1) should return char(0xE0AE)  ← FA (the 'F')
+  getGlyph('T', 2)  should return char(0xE0B9)  ← ti
+
+═══════════════════════════════════════════════════════════════════════════════
+KEY POINTS
+═══════════════════════════════════════════════════════════════════════════════
+
+✓ Character order is sacred - must match exactly everywhere
+✓ Formula: cp = 0xE000 + (idx * 4) + variant
+✓ Variant: 0=dot_above, 1=2dots_above, 2=dot_below, 3=2dots_below
+✓ Fallback: if octaveShift == 0, return base char unchanged
+✓ Doremi includes both 'f' (fa lowercase) and 'F' (FA uppercase)
+✓ All characters support 1-2 dots above AND below
+✓ Total: 47 base characters, 188 glyphs
+
+═══════════════════════════════════════════════════════════════════════════════
+FILE LOCATIONS
+═══════════════════════════════════════════════════════════════════════════════
+
+Font:            /static/fonts/NotationMonoDotted.ttf
+Mapping:         /notation_font_mapping.json
+Generator:       /generate_notation_font.py
+Quick Start:     /NOTATION_FONT_QUICK_START.md
+Implementation:  /NOTATION_FONT_IMPLEMENTATION.md
+
+═══════════════════════════════════════════════════════════════════════════════
+Generated: 2025-11-07
+═══════════════════════════════════════════════════════════════════════════════

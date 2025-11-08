@@ -1,0 +1,334 @@
+================================================================================
+FONT ARCHITECTURE OVERVIEW - Visual Diagram
+================================================================================
+
+COMPLETE RENDERING PIPELINE
+════════════════════════════════════════════════════════════════════════════════
+
+Document Model (WASM/Rust)
+    ├── Cell { kind, char, pitch_code, octave, ... }
+    │   └── pitch_code: PitchCode (N1, N1s, N1b, etc.)
+    │
+    ├─[src/html_layout/cell.rs]─────────────────────────────────────────┐
+    │  CellStyleBuilder::build_render_cell()                             │
+    │  ┌─────────────────────────────────────────────────────────────┐  │
+    │  │ 1. Analyze PitchCode → determine AccidentalType            │  │
+    │  │    - Sharp     → add "pitch-accidental-sharp"              │  │
+    │  │    - Flat      → add "pitch-accidental-flat"               │  │
+    │  │    - Double    → add "pitch-accidental-double-sharp"       │  │
+    │  │                                                             │  │
+    │  │ 2. Octave rendering: call get_glyph_codepoint()           │  │
+    │  │    if octave != 0:                                         │  │
+    │  │      char = U+E000 + (index*4) + variant  [PUA]           │  │
+    │  │    else:                                                    │  │
+    │  │      char = base_char (unchanged)                          │  │
+    │  │                                                             │  │
+    │  │ 3. Generate CSS classes & data attributes                  │  │
+    │  │    ["char-cell", "kind-pitched", "pitch-accidental-*"]    │  │
+    │  └─────────────────────────────────────────────────────────────┘  │
+    │                                                                     │
+    ├─ RenderCell { char, classes, x, y, w, h, ... }
+    │
+    └─[WASM → JS Serialization]───────────────────────────────────────────┘
+        Rust data passed to JavaScript renderer
+
+
+DOM Rendering (JavaScript)
+    ├─[src/js/renderer.js]──────────────────────────────────────────┐
+    │  DOMRenderer::renderDocument()                                 │
+    │  ┌───────────────────────────────────────────────────────────┐│
+    │  │ For each RenderCell:                                      ││
+    │  │   <span class="char-cell kind-pitched               ││
+    │  │         pitch-accidental-sharp pitch-system-number"  ││
+    │  │         data-line-index="0"                          ││
+    │  │         data-cell-index="0"                          ││
+    │  │         ...>                                          ││
+    │  │         char (may be PUA codepoint U+E000-U+E0FF)   ││
+    │  │   </span>                                            ││
+    │  └───────────────────────────────────────────────────────────┘│
+    └────────────────────────────────────────────────────────────────┘
+
+
+Font Rendering (Browser/CSS)
+    ├─[index.html @font-face declarations]──────────────────────────┐
+    │                                                                │
+    │  @font-face { font-family: 'Bravura';     [SMuFL - accidentals] }
+    │  @font-face { font-family: 'NotationMonoDotted'; [PUA - octave] }
+    │  @font-face { font-family: 'Inter';       [UI text] }
+    │                                                                │
+    └────────────────────────────────────────────────────────────────┘
+
+    ├─[src/js/renderer.js CSS Rules]──────────────────────────────────┐
+    │                                                                  │
+    │  .char-cell.pitch-accidental-sharp::after {                     │
+    │      font-family: 'Bravura', serif;                             │
+    │      position: absolute;                                        │
+    │      left: 100%;                                                │
+    │      content: '\uE262';  ← SMuFL sharp glyph                   │
+    │  }                                                              │
+    │                                                                  │
+    │  .char-cell.pitch-accidental-flat::after {                      │
+    │      content: '\uE260';  ← SMuFL flat glyph                    │
+    │  }                                                              │
+    │                                                                  │
+    └────────────────────────────────────────────────────────────────┘
+
+    ├─[Octave Glyph Substitution]──────────────────────────────────────┐
+    │                                                                   │
+    │  IF cell.char == U+E000 (from PUA):                              │
+    │    NotationMonoDotted font renders glyph with octave dots       │
+    │    (1 with 1 dot above, 2 with 2 dots above, etc.)             │
+    │                                                                   │
+    │  ELSE IF class has "pitch-accidental-sharp":                     │
+    │    Browser renders ::after content '\uE262' with Bravura        │
+    │                                                                   │
+    │  ELSE:                                                           │
+    │    Browser renders char as-is (Inter font)                     │
+    │                                                                   │
+    └────────────────────────────────────────────────────────────────┘
+
+
+Visual Output (Browser Rendering)
+    ┌────────────────────────────────────────┐
+    │  ① "1" (base pitch)          [Inter]   │
+    │     + ♯ (sharp glyph)       [Bravura] │
+    │     = "1♯" (natural note with sharp)   │
+    │                                        │
+    │  ② "1" + octave (+1) →       [PUA]    │
+    │     = "︻" (1 with dot above)           │
+    │                                        │
+    │  ③ "C" + octave (-1) →       [PUA]    │
+    │     = "︿" (C with dot below)           │
+    │                                        │
+    │  ④ "S#" (Sargam sharp)       [Inter+Bravura]
+    │     = "S♯"                             │
+    └────────────────────────────────────────┘
+
+
+================================================================================
+DATA FLOW: Cell → PitchCode → Glyphs
+================================================================================
+
+CELL MODEL (Rust)
+    struct Cell {
+        kind: ElementKind,           ← PitchedElement
+        char: String,                ← "1"
+        pitch_code: Option<PitchCode>, ← Some(N1s)
+        octave: i8,                  ← 1
+        continuation: bool,          ← false
+        ... other fields ...
+    }
+
+    PitchCode::N1s (variant)
+        degree() → 1
+        accidental_type() → AccidentalType::Sharp
+        to_string(PitchSystem::Number) → "1#"
+
+
+RUST LAYOUT ENGINE [cell.rs]
+    1. Check: cell.kind == PitchedElement? → YES
+    2. Check: cell.continuation? → NO
+    3. Get accidental_type():
+       - PitchCode::N1s → AccidentalType::Sharp
+    4. Add class: "pitch-accidental-sharp"
+    5. Check: cell.octave != 0? → YES (octave = 1)
+    6. Get PUA codepoint:
+       - get_glyph_codepoint('1', 1)
+       - index = 0 (position of '1' in ALL_CHARS)
+       - variant = 0 (for +1)
+       - codepoint = 0xE000 + (0*4) + 0 = 0xE000
+       - return char::from_u32(0xE000)
+
+
+RENDERCELL (Rust → JSON serialization)
+    {
+        "char": "\u{E000}",        ← PUA codepoint (renders 1 with dot)
+        "x": 50.0,
+        "y": 100.0,
+        "w": 20.0,
+        "h": 25.0,
+        "classes": [
+            "char-cell",
+            "kind-pitched",
+            "pitch-accidental-sharp",    ← CSS class for sharp
+            "pitch-system-number",
+            "selected"
+        ],
+        "dataset": {
+            "lineIndex": "0",
+            "cellIndex": "0",
+            ...
+        }
+    }
+
+
+DOM RENDERING [renderer.js]
+    <span class="char-cell kind-pitched pitch-accidental-sharp 
+                 pitch-system-number selected"
+          style="position: absolute; left: 50px; top: 100px;
+                 width: 20px; height: 25px;"
+          data-line-index="0"
+          data-cell-index="0">
+        ︻  ← Unicode character U+E000 (rendered with NotationMonoDotted)
+        <pseudoelement ::after content='\uE262'/> ← Sharp glyph (Bravura)
+    </span>
+
+
+BROWSER FONT RENDERING
+    Visual layers:
+    1. Base: NotationMonoDotted renders U+E000 as "1" with dot above
+    2. Overlay: CSS ::after rule renders '\uE262' (sharp) to the right
+    3. Result: "1̇ ♯" or similar visual representation
+
+
+================================================================================
+FONT INVENTORY
+================================================================================
+
+BRAVURA (SMuFL - Standard Music Font)
+────────────────────────────────────
+File: /static/fonts/Bravura.woff2 (242 KB)
+Use: Accidentals, barlines, musical symbols
+Characters:
+  - Sharps: U+E262 (♯)
+  - Flats: U+E260 (♭)
+  - Double sharps: U+E263 (𝄪)
+  - Double flats: U+E264 (𝄫)
+  - Single barline: U+E030 (|)
+  - Double barline: U+E031 (||)
+  - Repeat left: U+E040 (|:)
+  - Repeat right: U+E041 (:|)
+  - Microtonal: U+E280-U+E28F
+
+NOTATIONMONODOTTED (Custom Font - Octave Indicators)
+──────────────────────────────────────────────────
+File: /static/fonts/NotationMonoDotted.ttf (472 KB)
+Use: Pitch characters with octave dot variants
+Characters: 47 base chars × 4 variants each = 188 glyphs
+
+Character Mapping:
+  Base:     1 2 3 4 5 6 7 C D E F G A B c d e f g a b S r R g G m M P d D n N d r m f s l t D R M F S L T
+  Index:    0 1 2 3 4 5 6 7 8 9 ...                              46
+  PUA:      0xE000-0xE003 (1+octave) ...                         0xE0B8-0xE0BB
+
+Variants (per character):
+  +1 octave (1 dot above):    variant index 0
+  +2 octave (2 dots above):   variant index 1
+  -1 octave (1 dot below):    variant index 2
+  -2 octave (2 dots below):   variant index 3
+
+Formula: U+E000 + (char_index * 4) + variant_index
+
+Examples:
+  '1' with +1: U+E000 + (0*4) + 0 = U+E000
+  '1' with +2: U+E000 + (0*4) + 1 = U+E001
+  '1' with -1: U+E000 + (0*4) + 2 = U+E002
+  '1' with -2: U+E000 + (0*4) + 3 = U+E003
+  'C' with +1: U+E000 + (7*4) + 0 = U+E01C
+  'S' with +1: U+E000 + (21*4) + 0 = U+E054
+
+INTER (UI Font)
+───────────────
+File: /static/fonts/Inter.ttc (13 MB)
+Use: Regular text, UI components, base pitch characters
+
+================================================================================
+KEY CONSTANTS & FORMULAS
+================================================================================
+
+PUA Range (Private Use Area):
+  Base: U+E000 (57344 decimal)
+  Range: U+E000 - U+E0FF (256 codepoints available)
+  Current usage: 47 chars × 4 variants = 188 codepoints
+
+Character Order (CRITICAL - must match font):
+  ALL_CHARS = "1234567CDEFGABcdefgabSrRgGmMPdDnNdrmfsltDRMFSLT"
+  Length: 47 characters (some appear multiple times)
+
+Glyph Codepoint Formula:
+  codepoint = 0xE000 + (char_index * 4) + variant_index
+  
+  char_index = ALL_CHARS.find(base_char)
+  variant_index = match octave_shift {
+      1 => 0,   // 1 dot above
+      2 => 1,   // 2 dots above
+      -1 => 2,  // 1 dot below
+      -2 => 3,  // 2 dots below
+  }
+
+Octave Range: -2 to +2 (fallback to base char for out-of-range)
+
+================================================================================
+PITCH SYSTEM SUPPORT
+================================================================================
+
+Current Pitch Systems:
+  1. Number (1-7)        [Default]
+     Supports accidentals: YES (1#, 1b, 1##, 1bb)
+     Case-sensitive: NO
+
+  2. Western (C-B/c-b)   [Standard Western]
+     Supports accidentals: YES (c#, Cb, F##, Gbb)
+     Case-sensitive: YES
+
+  3. Sargam (S R G M P D N)  [Indian Classical]
+     Supports accidentals: CUSTOM (r=flat, R=natural, R#=sharp, M=sharp, m=natural)
+     Case-sensitive: YES
+
+  4. Bhatkhande          [Indian Rhythmic Cycle]
+     Supports accidentals: N/A (uses tala system)
+
+  5. Tabla               [Percussion]
+     Supports accidentals: N/A (strokes, not pitches)
+
+PitchCode Enum (all systems):
+  35 total variants = 7 degrees × 5 accidental types
+  System-agnostic representation
+  Can convert between any systems via MIDI
+
+Accidental Types:
+  Natural (0):     "" (no symbol)
+  Sharp (1):       "#" (1 semitone up)
+  DoubleSharp (2): "##" (2 semitones up)
+  Flat (3):        "b" (1 semitone down)
+  DoubleFlat (4):  "bb" (2 semitones down)
+
+================================================================================
+CSS CLASS HIERARCHY
+================================================================================
+
+Base Classes:
+  .char-cell                          ← Base styling for all cells
+
+Kind Classes:
+  .kind-pitched                       ← Pitched musical notes
+  .kind-unpitched                     ← Non-pitched elements
+  .kind-barline                       ← Barlines
+  .kind-text                          ← Text annotations
+  .kind-symbol                        ← Symbols (@, #, !, ?, etc.)
+
+Accidental Classes (with ::after SMuFL glyphs):
+  .pitch-accidental-sharp             ← content: '\uE262'
+  .pitch-accidental-flat              ← content: '\uE260'
+  .pitch-accidental-double-sharp      ← content: '\uE263'
+  .pitch-accidental-double-flat       ← content: '\uE264'
+
+Pitch System Classes:
+  .pitch-system-number                ← Number system (1-7)
+  .pitch-system-western               ← Western system (C-B)
+  .pitch-system-sargam                ← Sargam system (S R G M P D N)
+  .pitch-system-bhatkhande            ← Bhatkhande
+  .pitch-system-tabla                 ← Tabla
+
+Barline Classes:
+  .single-bar                         ← content: '\uE030'
+  .double-bar-start                   ← content: '\uE031'
+  .repeat-left-start                  ← content: '\uE040'
+  .repeat-right-start                 ← content: '\uE041'
+
+State Classes:
+  .selected                           ← User selection
+  .focused                            ← Focus indicator
+  .head-marker                        ← Selection anchor
+
+================================================================================

@@ -147,23 +147,48 @@ impl CellStyleBuilder {
 
         // Substitute pitched element characters for octave display and accidentals
         // WASM BUSINESS LOGIC:
-        // 1. For accidentals, substitute with accidental variant glyph from NotationMonoDotted font
+        // 1. For accidentals, substitute with accidental variant glyph from the font
         // 2. For octave shift, substitute with octave dot variant
-        // 3. Otherwise, use the base character as-is
-        let char = if !cell.continuation && cell.kind == ElementKind::PitchedElement && !cell.char.is_empty() {
+        // 3. For continuation cells, replace with non-breaking space (invisible but takes space)
+        // 4. Otherwise, use the base character as-is
+        let char = if cell.continuation && cell.kind == ElementKind::PitchedElement {
+            // Continuation cells (like the '#' in "1#") are rendered as non-breaking space
+            // This makes them invisible while preserving layout
+            "\u{00A0}".to_string()
+        } else if cell.kind == ElementKind::PitchedElement && !cell.char.is_empty() {
             let base_char = cell.char.chars().next().unwrap_or(' ');
 
-            // For accidentals, substitute with the accidental variant glyph
+            // For accidentals, use the accidental variant glyph from the font
             if let Some(acc_type) = accidental_type {
-                let accidental_code = match acc_type {
-                    AccidentalType::None => 0,           // Natural, no accidental
-                    AccidentalType::Sharp => 1,          // Sharp
-                    AccidentalType::Flat => 2,           // Flat
-                    AccidentalType::DoubleSharp => 3,    // Double sharp
-                    AccidentalType::DoubleFlat => 4,     // Double flat
-                };
-                // Substitute character with the PUA glyph for this accidental
-                get_sharp_glyph_codepoint(base_char, accidental_code).to_string()
+                match acc_type {
+                    AccidentalType::None => {
+                        // No accidental, proceed to octave check
+                        if cell.octave != 0 {
+                            get_glyph_codepoint(base_char, cell.octave).to_string()
+                        } else {
+                            cell.char.clone()
+                        }
+                    },
+                    AccidentalType::Sharp => {
+                        // Use the sharp variant glyph from NotationMono font (U+E1F0+)
+                        get_sharp_glyph_codepoint(base_char, 1).to_string()
+                    },
+                    AccidentalType::Flat => {
+                        // Flat accidentals not yet in font, keep base character for now
+                        dataset.insert("accidental".to_string(), "flat".to_string());
+                        cell.char.clone()
+                    },
+                    AccidentalType::DoubleSharp => {
+                        // Double sharp not yet in font, keep base character for now
+                        dataset.insert("accidental".to_string(), "dsharp".to_string());
+                        cell.char.clone()
+                    },
+                    AccidentalType::DoubleFlat => {
+                        // Double flat not yet in font, keep base character for now
+                        dataset.insert("accidental".to_string(), "dflat".to_string());
+                        cell.char.clone()
+                    },
+                }
             } else if cell.octave != 0 {
                 // Octave display (dots above/below)
                 get_glyph_codepoint(base_char, cell.octave).to_string()

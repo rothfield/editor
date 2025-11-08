@@ -47,6 +47,7 @@ export class WASMBridge {
     // Ornament Copy/Paste API (cells-array pattern, like applyCommand)
     this.copyOrnamentFromCell = wasm.copyOrnamentFromCell;
     this.pasteOrnamentToCell = wasm.pasteOrnamentToCell;
+    this.pasteOrnamentCells = wasm.pasteOrnamentCells;
     this.setOrnamentPlacementOnCell = wasm.setOrnamentPlacementOnCell;
     this.clearOrnamentFromCell = wasm.clearOrnamentFromCell;
 

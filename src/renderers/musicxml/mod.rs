@@ -8,7 +8,7 @@
 //! - **export_ir**: Intermediate representation (IR) types for Cell→XML pipeline
 //! - **measure**: Measure and segment processing (barline splitting, divisions calculation)
 //! - **beat**: Beat processing, normalization, and tuplet detection
-//! - **fsm**: Finite state machine for beat-level rhythm processing (explicit pattern)
+//! - **cell_to_ir**: Finite state machine for beat-level rhythm processing (explicit pattern)
 //! - **grace_notes**: Grace note and ornament type detection
 //! - **builder**: MusicXML XML structure building
 //! - **pitch**: Pitch code to MusicXML conversion

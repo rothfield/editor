@@ -11,6 +11,9 @@ pub mod utils;
 pub mod api;
 pub mod converters;
 
+// Include generated font constants from build.rs
+include!(concat!(env!("OUT_DIR"), "/font_constants.rs"));
+
 // Re-export commonly used types
 pub use models::core::*;
 pub use models::elements::*;

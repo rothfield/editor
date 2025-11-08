@@ -8,6 +8,7 @@ pub mod layout_engine;
 pub mod display_list;
 pub mod lyrics;
 pub mod curves;
+pub mod font_utils;
 
 // Re-export commonly used types
 pub use musicxml::*;
@@ -20,3 +21,4 @@ pub use layout_engine::{
     detect_collisions,
     layout_with_collision_detection,
 };
+pub use font_utils::{get_glyph_codepoint, get_sharp_glyph_codepoint};

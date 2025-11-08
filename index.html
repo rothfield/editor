@@ -11,20 +11,11 @@
 
     <!-- Custom UI styles -->
     <style>
-        /* Music Fonts */
+        /* Music Notation Font - Single source: Noto Music (via NotationFont.ttf) */
         @font-face {
-            font-family: 'Bravura';
-            src: url('/static/fonts/Bravura.woff2') format('woff2'),
-                 url('/static/fonts/Bravura.woff') format('woff');
+            font-family: 'NotationFont';
+            src: url('/static/fonts/NotationFont.ttf') format('truetype');
             font-weight: normal;
-            font-style: normal;
-            font-display: swap;
-        }
-
-        @font-face {
-            font-family: 'Inter';
-            src: url('/static/fonts/Inter.ttc') format('truetype-collection');
-            font-weight: 100 900;
             font-style: normal;
             font-display: swap;
         }
@@ -623,6 +614,9 @@
                         <button id="tab-html" class="tab" data-tab="html">
                             HTML
                         </button>
+                        <button id="tab-font-test" class="tab" data-tab="font-test" data-testid="tab-font-test" title="Font Testing - All custom glyphs">
+                            Font Test
+                        </button>
                     </div>
                 </div>
 
@@ -697,6 +691,20 @@
                     <!-- HTML Tab -->
                     <div id="tab-content-html" data-tab-content="html" class="tab-content hidden flex-1 flex flex-col p-4">
                         <pre id="html-content" class="flex-1 text-xs font-mono bg-white p-3 border-2 border-gray-300 rounded overflow-auto"></pre>
+                    </div>
+
+                    <!-- Font Test Tab -->
+                    <div id="tab-content-font-test" data-tab-content="font-test" class="tab-content hidden flex-1 flex flex-col p-4">
+                        <div class="mb-2">
+                            <h3 class="text-xs font-bold mb-2">NotationMono Font Glyphs</h3>
+                            <div class="flex gap-2 mb-2">
+                                <button id="font-test-show-all" class="px-2 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600">Show All</button>
+                                <button id="font-test-show-sharps" class="px-2 py-1 bg-green-500 text-white rounded text-xs hover:bg-green-600">Sharp Accidentals</button>
+                                <button id="font-test-show-octaves" class="px-2 py-1 bg-purple-500 text-white rounded text-xs hover:bg-purple-600">Octave Variants</button>
+                                <button id="font-test-show-symbols" class="px-2 py-1 bg-orange-500 text-white rounded text-xs hover:bg-orange-600">Barlines & Symbols</button>
+                            </div>
+                        </div>
+                        <div id="font-test-grid" class="flex-1 bg-white p-3 border-2 border-gray-300 rounded overflow-auto"></div>
                     </div>
                 </div>
             </aside>

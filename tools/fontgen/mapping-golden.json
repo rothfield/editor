@@ -1,0 +1,1588 @@
+{
+  "version": "1.0",
+  "locked_at": "2025-11-08",
+  "description": "Golden snapshot of codepoint assignments. Use to detect accidental codepoint reshuffling during development. See SPEC.md Section 11.2",
+  "note": "This file is checked into the repo and should not change unless FONT_MAP_BREAKING_CHANGE=true",
+  "notes": [
+    {
+      "id": 0,
+      "system": "number",
+      "character": "1",
+      "variant": "1_dot_above",
+      "codepoint": "0xe000",
+      "octave_shift": 1
+    },
+    {
+      "id": 1,
+      "system": "number",
+      "character": "1",
+      "variant": "2_dots_above",
+      "codepoint": "0xe001",
+      "octave_shift": 2
+    },
+    {
+      "id": 2,
+      "system": "number",
+      "character": "1",
+      "variant": "1_dot_below",
+      "codepoint": "0xe002",
+      "octave_shift": -1
+    },
+    {
+      "id": 3,
+      "system": "number",
+      "character": "1",
+      "variant": "2_dots_below",
+      "codepoint": "0xe003",
+      "octave_shift": -2
+    },
+    {
+      "id": 4,
+      "system": "number",
+      "character": "2",
+      "variant": "1_dot_above",
+      "codepoint": "0xe004",
+      "octave_shift": 1
+    },
+    {
+      "id": 5,
+      "system": "number",
+      "character": "2",
+      "variant": "2_dots_above",
+      "codepoint": "0xe005",
+      "octave_shift": 2
+    },
+    {
+      "id": 6,
+      "system": "number",
+      "character": "2",
+      "variant": "1_dot_below",
+      "codepoint": "0xe006",
+      "octave_shift": -1
+    },
+    {
+      "id": 7,
+      "system": "number",
+      "character": "2",
+      "variant": "2_dots_below",
+      "codepoint": "0xe007",
+      "octave_shift": -2
+    },
+    {
+      "id": 8,
+      "system": "number",
+      "character": "3",
+      "variant": "1_dot_above",
+      "codepoint": "0xe008",
+      "octave_shift": 1
+    },
+    {
+      "id": 9,
+      "system": "number",
+      "character": "3",
+      "variant": "2_dots_above",
+      "codepoint": "0xe009",
+      "octave_shift": 2
+    },
+    {
+      "id": 10,
+      "system": "number",
+      "character": "3",
+      "variant": "1_dot_below",
+      "codepoint": "0xe00a",
+      "octave_shift": -1
+    },
+    {
+      "id": 11,
+      "system": "number",
+      "character": "3",
+      "variant": "2_dots_below",
+      "codepoint": "0xe00b",
+      "octave_shift": -2
+    },
+    {
+      "id": 12,
+      "system": "number",
+      "character": "4",
+      "variant": "1_dot_above",
+      "codepoint": "0xe00c",
+      "octave_shift": 1
+    },
+    {
+      "id": 13,
+      "system": "number",
+      "character": "4",
+      "variant": "2_dots_above",
+      "codepoint": "0xe00d",
+      "octave_shift": 2
+    },
+    {
+      "id": 14,
+      "system": "number",
+      "character": "4",
+      "variant": "1_dot_below",
+      "codepoint": "0xe00e",
+      "octave_shift": -1
+    },
+    {
+      "id": 15,
+      "system": "number",
+      "character": "4",
+      "variant": "2_dots_below",
+      "codepoint": "0xe00f",
+      "octave_shift": -2
+    },
+    {
+      "id": 16,
+      "system": "number",
+      "character": "5",
+      "variant": "1_dot_above",
+      "codepoint": "0xe010",
+      "octave_shift": 1
+    },
+    {
+      "id": 17,
+      "system": "number",
+      "character": "5",
+      "variant": "2_dots_above",
+      "codepoint": "0xe011",
+      "octave_shift": 2
+    },
+    {
+      "id": 18,
+      "system": "number",
+      "character": "5",
+      "variant": "1_dot_below",
+      "codepoint": "0xe012",
+      "octave_shift": -1
+    },
+    {
+      "id": 19,
+      "system": "number",
+      "character": "5",
+      "variant": "2_dots_below",
+      "codepoint": "0xe013",
+      "octave_shift": -2
+    },
+    {
+      "id": 20,
+      "system": "number",
+      "character": "6",
+      "variant": "1_dot_above",
+      "codepoint": "0xe014",
+      "octave_shift": 1
+    },
+    {
+      "id": 21,
+      "system": "number",
+      "character": "6",
+      "variant": "2_dots_above",
+      "codepoint": "0xe015",
+      "octave_shift": 2
+    },
+    {
+      "id": 22,
+      "system": "number",
+      "character": "6",
+      "variant": "1_dot_below",
+      "codepoint": "0xe016",
+      "octave_shift": -1
+    },
+    {
+      "id": 23,
+      "system": "number",
+      "character": "6",
+      "variant": "2_dots_below",
+      "codepoint": "0xe017",
+      "octave_shift": -2
+    },
+    {
+      "id": 24,
+      "system": "number",
+      "character": "7",
+      "variant": "1_dot_above",
+      "codepoint": "0xe018",
+      "octave_shift": 1
+    },
+    {
+      "id": 25,
+      "system": "number",
+      "character": "7",
+      "variant": "2_dots_above",
+      "codepoint": "0xe019",
+      "octave_shift": 2
+    },
+    {
+      "id": 26,
+      "system": "number",
+      "character": "7",
+      "variant": "1_dot_below",
+      "codepoint": "0xe01a",
+      "octave_shift": -1
+    },
+    {
+      "id": 27,
+      "system": "number",
+      "character": "7",
+      "variant": "2_dots_below",
+      "codepoint": "0xe01b",
+      "octave_shift": -2
+    },
+    {
+      "id": 28,
+      "system": "western",
+      "character": "C",
+      "variant": "1_dot_above",
+      "codepoint": "0xe01c",
+      "octave_shift": 1
+    },
+    {
+      "id": 29,
+      "system": "western",
+      "character": "C",
+      "variant": "2_dots_above",
+      "codepoint": "0xe01d",
+      "octave_shift": 2
+    },
+    {
+      "id": 30,
+      "system": "western",
+      "character": "C",
+      "variant": "1_dot_below",
+      "codepoint": "0xe01e",
+      "octave_shift": -1
+    },
+    {
+      "id": 31,
+      "system": "western",
+      "character": "C",
+      "variant": "2_dots_below",
+      "codepoint": "0xe01f",
+      "octave_shift": -2
+    },
+    {
+      "id": 32,
+      "system": "western",
+      "character": "D",
+      "variant": "1_dot_above",
+      "codepoint": "0xe020",
+      "octave_shift": 1
+    },
+    {
+      "id": 33,
+      "system": "western",
+      "character": "D",
+      "variant": "2_dots_above",
+      "codepoint": "0xe021",
+      "octave_shift": 2
+    },
+    {
+      "id": 34,
+      "system": "western",
+      "character": "D",
+      "variant": "1_dot_below",
+      "codepoint": "0xe022",
+      "octave_shift": -1
+    },
+    {
+      "id": 35,
+      "system": "western",
+      "character": "D",
+      "variant": "2_dots_below",
+      "codepoint": "0xe023",
+      "octave_shift": -2
+    },
+    {
+      "id": 36,
+      "system": "western",
+      "character": "E",
+      "variant": "1_dot_above",
+      "codepoint": "0xe024",
+      "octave_shift": 1
+    },
+    {
+      "id": 37,
+      "system": "western",
+      "character": "E",
+      "variant": "2_dots_above",
+      "codepoint": "0xe025",
+      "octave_shift": 2
+    },
+    {
+      "id": 38,
+      "system": "western",
+      "character": "E",
+      "variant": "1_dot_below",
+      "codepoint": "0xe026",
+      "octave_shift": -1
+    },
+    {
+      "id": 39,
+      "system": "western",
+      "character": "E",
+      "variant": "2_dots_below",
+      "codepoint": "0xe027",
+      "octave_shift": -2
+    },
+    {
+      "id": 40,
+      "system": "western",
+      "character": "F",
+      "variant": "1_dot_above",
+      "codepoint": "0xe028",
+      "octave_shift": 1
+    },
+    {
+      "id": 41,
+      "system": "western",
+      "character": "F",
+      "variant": "2_dots_above",
+      "codepoint": "0xe029",
+      "octave_shift": 2
+    },
+    {
+      "id": 42,
+      "system": "western",
+      "character": "F",
+      "variant": "1_dot_below",
+      "codepoint": "0xe02a",
+      "octave_shift": -1
+    },
+    {
+      "id": 43,
+      "system": "western",
+      "character": "F",
+      "variant": "2_dots_below",
+      "codepoint": "0xe02b",
+      "octave_shift": -2
+    },
+    {
+      "id": 44,
+      "system": "western",
+      "character": "G",
+      "variant": "1_dot_above",
+      "codepoint": "0xe02c",
+      "octave_shift": 1
+    },
+    {
+      "id": 45,
+      "system": "western",
+      "character": "G",
+      "variant": "2_dots_above",
+      "codepoint": "0xe02d",
+      "octave_shift": 2
+    },
+    {
+      "id": 46,
+      "system": "western",
+      "character": "G",
+      "variant": "1_dot_below",
+      "codepoint": "0xe02e",
+      "octave_shift": -1
+    },
+    {
+      "id": 47,
+      "system": "western",
+      "character": "G",
+      "variant": "2_dots_below",
+      "codepoint": "0xe02f",
+      "octave_shift": -2
+    },
+    {
+      "id": 48,
+      "system": "western",
+      "character": "A",
+      "variant": "1_dot_above",
+      "codepoint": "0xe030",
+      "octave_shift": 1
+    },
+    {
+      "id": 49,
+      "system": "western",
+      "character": "A",
+      "variant": "2_dots_above",
+      "codepoint": "0xe031",
+      "octave_shift": 2
+    },
+    {
+      "id": 50,
+      "system": "western",
+      "character": "A",
+      "variant": "1_dot_below",
+      "codepoint": "0xe032",
+      "octave_shift": -1
+    },
+    {
+      "id": 51,
+      "system": "western",
+      "character": "A",
+      "variant": "2_dots_below",
+      "codepoint": "0xe033",
+      "octave_shift": -2
+    },
+    {
+      "id": 52,
+      "system": "western",
+      "character": "B",
+      "variant": "1_dot_above",
+      "codepoint": "0xe034",
+      "octave_shift": 1
+    },
+    {
+      "id": 53,
+      "system": "western",
+      "character": "B",
+      "variant": "2_dots_above",
+      "codepoint": "0xe035",
+      "octave_shift": 2
+    },
+    {
+      "id": 54,
+      "system": "western",
+      "character": "B",
+      "variant": "1_dot_below",
+      "codepoint": "0xe036",
+      "octave_shift": -1
+    },
+    {
+      "id": 55,
+      "system": "western",
+      "character": "B",
+      "variant": "2_dots_below",
+      "codepoint": "0xe037",
+      "octave_shift": -2
+    },
+    {
+      "id": 56,
+      "system": "western",
+      "character": "c",
+      "variant": "1_dot_above",
+      "codepoint": "0xe038",
+      "octave_shift": 1
+    },
+    {
+      "id": 57,
+      "system": "western",
+      "character": "c",
+      "variant": "2_dots_above",
+      "codepoint": "0xe039",
+      "octave_shift": 2
+    },
+    {
+      "id": 58,
+      "system": "western",
+      "character": "c",
+      "variant": "1_dot_below",
+      "codepoint": "0xe03a",
+      "octave_shift": -1
+    },
+    {
+      "id": 59,
+      "system": "western",
+      "character": "c",
+      "variant": "2_dots_below",
+      "codepoint": "0xe03b",
+      "octave_shift": -2
+    },
+    {
+      "id": 60,
+      "system": "western",
+      "character": "d",
+      "variant": "1_dot_above",
+      "codepoint": "0xe03c",
+      "octave_shift": 1
+    },
+    {
+      "id": 61,
+      "system": "western",
+      "character": "d",
+      "variant": "2_dots_above",
+      "codepoint": "0xe03d",
+      "octave_shift": 2
+    },
+    {
+      "id": 62,
+      "system": "western",
+      "character": "d",
+      "variant": "1_dot_below",
+      "codepoint": "0xe03e",
+      "octave_shift": -1
+    },
+    {
+      "id": 63,
+      "system": "western",
+      "character": "d",
+      "variant": "2_dots_below",
+      "codepoint": "0xe03f",
+      "octave_shift": -2
+    },
+    {
+      "id": 64,
+      "system": "western",
+      "character": "e",
+      "variant": "1_dot_above",
+      "codepoint": "0xe040",
+      "octave_shift": 1
+    },
+    {
+      "id": 65,
+      "system": "western",
+      "character": "e",
+      "variant": "2_dots_above",
+      "codepoint": "0xe041",
+      "octave_shift": 2
+    },
+    {
+      "id": 66,
+      "system": "western",
+      "character": "e",
+      "variant": "1_dot_below",
+      "codepoint": "0xe042",
+      "octave_shift": -1
+    },
+    {
+      "id": 67,
+      "system": "western",
+      "character": "e",
+      "variant": "2_dots_below",
+      "codepoint": "0xe043",
+      "octave_shift": -2
+    },
+    {
+      "id": 68,
+      "system": "western",
+      "character": "f",
+      "variant": "1_dot_above",
+      "codepoint": "0xe044",
+      "octave_shift": 1
+    },
+    {
+      "id": 69,
+      "system": "western",
+      "character": "f",
+      "variant": "2_dots_above",
+      "codepoint": "0xe045",
+      "octave_shift": 2
+    },
+    {
+      "id": 70,
+      "system": "western",
+      "character": "f",
+      "variant": "1_dot_below",
+      "codepoint": "0xe046",
+      "octave_shift": -1
+    },
+    {
+      "id": 71,
+      "system": "western",
+      "character": "f",
+      "variant": "2_dots_below",
+      "codepoint": "0xe047",
+      "octave_shift": -2
+    },
+    {
+      "id": 72,
+      "system": "western",
+      "character": "g",
+      "variant": "1_dot_above",
+      "codepoint": "0xe048",
+      "octave_shift": 1
+    },
+    {
+      "id": 73,
+      "system": "western",
+      "character": "g",
+      "variant": "2_dots_above",
+      "codepoint": "0xe049",
+      "octave_shift": 2
+    },
+    {
+      "id": 74,
+      "system": "western",
+      "character": "g",
+      "variant": "1_dot_below",
+      "codepoint": "0xe04a",
+      "octave_shift": -1
+    },
+    {
+      "id": 75,
+      "system": "western",
+      "character": "g",
+      "variant": "2_dots_below",
+      "codepoint": "0xe04b",
+      "octave_shift": -2
+    },
+    {
+      "id": 76,
+      "system": "western",
+      "character": "a",
+      "variant": "1_dot_above",
+      "codepoint": "0xe04c",
+      "octave_shift": 1
+    },
+    {
+      "id": 77,
+      "system": "western",
+      "character": "a",
+      "variant": "2_dots_above",
+      "codepoint": "0xe04d",
+      "octave_shift": 2
+    },
+    {
+      "id": 78,
+      "system": "western",
+      "character": "a",
+      "variant": "1_dot_below",
+      "codepoint": "0xe04e",
+      "octave_shift": -1
+    },
+    {
+      "id": 79,
+      "system": "western",
+      "character": "a",
+      "variant": "2_dots_below",
+      "codepoint": "0xe04f",
+      "octave_shift": -2
+    },
+    {
+      "id": 80,
+      "system": "western",
+      "character": "b",
+      "variant": "1_dot_above",
+      "codepoint": "0xe050",
+      "octave_shift": 1
+    },
+    {
+      "id": 81,
+      "system": "western",
+      "character": "b",
+      "variant": "2_dots_above",
+      "codepoint": "0xe051",
+      "octave_shift": 2
+    },
+    {
+      "id": 82,
+      "system": "western",
+      "character": "b",
+      "variant": "1_dot_below",
+      "codepoint": "0xe052",
+      "octave_shift": -1
+    },
+    {
+      "id": 83,
+      "system": "western",
+      "character": "b",
+      "variant": "2_dots_below",
+      "codepoint": "0xe053",
+      "octave_shift": -2
+    },
+    {
+      "id": 84,
+      "system": "sargam",
+      "character": "S",
+      "variant": "1_dot_above",
+      "codepoint": "0xe054",
+      "octave_shift": 1
+    },
+    {
+      "id": 85,
+      "system": "sargam",
+      "character": "S",
+      "variant": "2_dots_above",
+      "codepoint": "0xe055",
+      "octave_shift": 2
+    },
+    {
+      "id": 86,
+      "system": "sargam",
+      "character": "S",
+      "variant": "1_dot_below",
+      "codepoint": "0xe056",
+      "octave_shift": -1
+    },
+    {
+      "id": 87,
+      "system": "sargam",
+      "character": "S",
+      "variant": "2_dots_below",
+      "codepoint": "0xe057",
+      "octave_shift": -2
+    },
+    {
+      "id": 88,
+      "system": "sargam",
+      "character": "r",
+      "variant": "1_dot_above",
+      "codepoint": "0xe058",
+      "octave_shift": 1
+    },
+    {
+      "id": 89,
+      "system": "sargam",
+      "character": "r",
+      "variant": "2_dots_above",
+      "codepoint": "0xe059",
+      "octave_shift": 2
+    },
+    {
+      "id": 90,
+      "system": "sargam",
+      "character": "r",
+      "variant": "1_dot_below",
+      "codepoint": "0xe05a",
+      "octave_shift": -1
+    },
+    {
+      "id": 91,
+      "system": "sargam",
+      "character": "r",
+      "variant": "2_dots_below",
+      "codepoint": "0xe05b",
+      "octave_shift": -2
+    },
+    {
+      "id": 92,
+      "system": "sargam",
+      "character": "R",
+      "variant": "1_dot_above",
+      "codepoint": "0xe05c",
+      "octave_shift": 1
+    },
+    {
+      "id": 93,
+      "system": "sargam",
+      "character": "R",
+      "variant": "2_dots_above",
+      "codepoint": "0xe05d",
+      "octave_shift": 2
+    },
+    {
+      "id": 94,
+      "system": "sargam",
+      "character": "R",
+      "variant": "1_dot_below",
+      "codepoint": "0xe05e",
+      "octave_shift": -1
+    },
+    {
+      "id": 95,
+      "system": "sargam",
+      "character": "R",
+      "variant": "2_dots_below",
+      "codepoint": "0xe05f",
+      "octave_shift": -2
+    },
+    {
+      "id": 96,
+      "system": "sargam",
+      "character": "g",
+      "variant": "1_dot_above",
+      "codepoint": "0xe060",
+      "octave_shift": 1
+    },
+    {
+      "id": 97,
+      "system": "sargam",
+      "character": "g",
+      "variant": "2_dots_above",
+      "codepoint": "0xe061",
+      "octave_shift": 2
+    },
+    {
+      "id": 98,
+      "system": "sargam",
+      "character": "g",
+      "variant": "1_dot_below",
+      "codepoint": "0xe062",
+      "octave_shift": -1
+    },
+    {
+      "id": 99,
+      "system": "sargam",
+      "character": "g",
+      "variant": "2_dots_below",
+      "codepoint": "0xe063",
+      "octave_shift": -2
+    },
+    {
+      "id": 100,
+      "system": "sargam",
+      "character": "G",
+      "variant": "1_dot_above",
+      "codepoint": "0xe064",
+      "octave_shift": 1
+    },
+    {
+      "id": 101,
+      "system": "sargam",
+      "character": "G",
+      "variant": "2_dots_above",
+      "codepoint": "0xe065",
+      "octave_shift": 2
+    },
+    {
+      "id": 102,
+      "system": "sargam",
+      "character": "G",
+      "variant": "1_dot_below",
+      "codepoint": "0xe066",
+      "octave_shift": -1
+    },
+    {
+      "id": 103,
+      "system": "sargam",
+      "character": "G",
+      "variant": "2_dots_below",
+      "codepoint": "0xe067",
+      "octave_shift": -2
+    },
+    {
+      "id": 104,
+      "system": "sargam",
+      "character": "m",
+      "variant": "1_dot_above",
+      "codepoint": "0xe068",
+      "octave_shift": 1
+    },
+    {
+      "id": 105,
+      "system": "sargam",
+      "character": "m",
+      "variant": "2_dots_above",
+      "codepoint": "0xe069",
+      "octave_shift": 2
+    },
+    {
+      "id": 106,
+      "system": "sargam",
+      "character": "m",
+      "variant": "1_dot_below",
+      "codepoint": "0xe06a",
+      "octave_shift": -1
+    },
+    {
+      "id": 107,
+      "system": "sargam",
+      "character": "m",
+      "variant": "2_dots_below",
+      "codepoint": "0xe06b",
+      "octave_shift": -2
+    },
+    {
+      "id": 108,
+      "system": "sargam",
+      "character": "M",
+      "variant": "1_dot_above",
+      "codepoint": "0xe06c",
+      "octave_shift": 1
+    },
+    {
+      "id": 109,
+      "system": "sargam",
+      "character": "M",
+      "variant": "2_dots_above",
+      "codepoint": "0xe06d",
+      "octave_shift": 2
+    },
+    {
+      "id": 110,
+      "system": "sargam",
+      "character": "M",
+      "variant": "1_dot_below",
+      "codepoint": "0xe06e",
+      "octave_shift": -1
+    },
+    {
+      "id": 111,
+      "system": "sargam",
+      "character": "M",
+      "variant": "2_dots_below",
+      "codepoint": "0xe06f",
+      "octave_shift": -2
+    },
+    {
+      "id": 112,
+      "system": "sargam",
+      "character": "P",
+      "variant": "1_dot_above",
+      "codepoint": "0xe070",
+      "octave_shift": 1
+    },
+    {
+      "id": 113,
+      "system": "sargam",
+      "character": "P",
+      "variant": "2_dots_above",
+      "codepoint": "0xe071",
+      "octave_shift": 2
+    },
+    {
+      "id": 114,
+      "system": "sargam",
+      "character": "P",
+      "variant": "1_dot_below",
+      "codepoint": "0xe072",
+      "octave_shift": -1
+    },
+    {
+      "id": 115,
+      "system": "sargam",
+      "character": "P",
+      "variant": "2_dots_below",
+      "codepoint": "0xe073",
+      "octave_shift": -2
+    },
+    {
+      "id": 116,
+      "system": "sargam",
+      "character": "d",
+      "variant": "1_dot_above",
+      "codepoint": "0xe074",
+      "octave_shift": 1
+    },
+    {
+      "id": 117,
+      "system": "sargam",
+      "character": "d",
+      "variant": "2_dots_above",
+      "codepoint": "0xe075",
+      "octave_shift": 2
+    },
+    {
+      "id": 118,
+      "system": "sargam",
+      "character": "d",
+      "variant": "1_dot_below",
+      "codepoint": "0xe076",
+      "octave_shift": -1
+    },
+    {
+      "id": 119,
+      "system": "sargam",
+      "character": "d",
+      "variant": "2_dots_below",
+      "codepoint": "0xe077",
+      "octave_shift": -2
+    },
+    {
+      "id": 120,
+      "system": "sargam",
+      "character": "D",
+      "variant": "1_dot_above",
+      "codepoint": "0xe078",
+      "octave_shift": 1
+    },
+    {
+      "id": 121,
+      "system": "sargam",
+      "character": "D",
+      "variant": "2_dots_above",
+      "codepoint": "0xe079",
+      "octave_shift": 2
+    },
+    {
+      "id": 122,
+      "system": "sargam",
+      "character": "D",
+      "variant": "1_dot_below",
+      "codepoint": "0xe07a",
+      "octave_shift": -1
+    },
+    {
+      "id": 123,
+      "system": "sargam",
+      "character": "D",
+      "variant": "2_dots_below",
+      "codepoint": "0xe07b",
+      "octave_shift": -2
+    },
+    {
+      "id": 124,
+      "system": "sargam",
+      "character": "n",
+      "variant": "1_dot_above",
+      "codepoint": "0xe07c",
+      "octave_shift": 1
+    },
+    {
+      "id": 125,
+      "system": "sargam",
+      "character": "n",
+      "variant": "2_dots_above",
+      "codepoint": "0xe07d",
+      "octave_shift": 2
+    },
+    {
+      "id": 126,
+      "system": "sargam",
+      "character": "n",
+      "variant": "1_dot_below",
+      "codepoint": "0xe07e",
+      "octave_shift": -1
+    },
+    {
+      "id": 127,
+      "system": "sargam",
+      "character": "n",
+      "variant": "2_dots_below",
+      "codepoint": "0xe07f",
+      "octave_shift": -2
+    },
+    {
+      "id": 128,
+      "system": "sargam",
+      "character": "N",
+      "variant": "1_dot_above",
+      "codepoint": "0xe080",
+      "octave_shift": 1
+    },
+    {
+      "id": 129,
+      "system": "sargam",
+      "character": "N",
+      "variant": "2_dots_above",
+      "codepoint": "0xe081",
+      "octave_shift": 2
+    },
+    {
+      "id": 130,
+      "system": "sargam",
+      "character": "N",
+      "variant": "1_dot_below",
+      "codepoint": "0xe082",
+      "octave_shift": -1
+    },
+    {
+      "id": 131,
+      "system": "sargam",
+      "character": "N",
+      "variant": "2_dots_below",
+      "codepoint": "0xe083",
+      "octave_shift": -2
+    },
+    {
+      "id": 132,
+      "system": "doremi",
+      "character": "d",
+      "variant": "1_dot_above",
+      "codepoint": "0xe084",
+      "octave_shift": 1
+    },
+    {
+      "id": 133,
+      "system": "doremi",
+      "character": "d",
+      "variant": "2_dots_above",
+      "codepoint": "0xe085",
+      "octave_shift": 2
+    },
+    {
+      "id": 134,
+      "system": "doremi",
+      "character": "d",
+      "variant": "1_dot_below",
+      "codepoint": "0xe086",
+      "octave_shift": -1
+    },
+    {
+      "id": 135,
+      "system": "doremi",
+      "character": "d",
+      "variant": "2_dots_below",
+      "codepoint": "0xe087",
+      "octave_shift": -2
+    },
+    {
+      "id": 136,
+      "system": "doremi",
+      "character": "r",
+      "variant": "1_dot_above",
+      "codepoint": "0xe088",
+      "octave_shift": 1
+    },
+    {
+      "id": 137,
+      "system": "doremi",
+      "character": "r",
+      "variant": "2_dots_above",
+      "codepoint": "0xe089",
+      "octave_shift": 2
+    },
+    {
+      "id": 138,
+      "system": "doremi",
+      "character": "r",
+      "variant": "1_dot_below",
+      "codepoint": "0xe08a",
+      "octave_shift": -1
+    },
+    {
+      "id": 139,
+      "system": "doremi",
+      "character": "r",
+      "variant": "2_dots_below",
+      "codepoint": "0xe08b",
+      "octave_shift": -2
+    },
+    {
+      "id": 140,
+      "system": "doremi",
+      "character": "m",
+      "variant": "1_dot_above",
+      "codepoint": "0xe08c",
+      "octave_shift": 1
+    },
+    {
+      "id": 141,
+      "system": "doremi",
+      "character": "m",
+      "variant": "2_dots_above",
+      "codepoint": "0xe08d",
+      "octave_shift": 2
+    },
+    {
+      "id": 142,
+      "system": "doremi",
+      "character": "m",
+      "variant": "1_dot_below",
+      "codepoint": "0xe08e",
+      "octave_shift": -1
+    },
+    {
+      "id": 143,
+      "system": "doremi",
+      "character": "m",
+      "variant": "2_dots_below",
+      "codepoint": "0xe08f",
+      "octave_shift": -2
+    },
+    {
+      "id": 144,
+      "system": "doremi",
+      "character": "f",
+      "variant": "1_dot_above",
+      "codepoint": "0xe090",
+      "octave_shift": 1
+    },
+    {
+      "id": 145,
+      "system": "doremi",
+      "character": "f",
+      "variant": "2_dots_above",
+      "codepoint": "0xe091",
+      "octave_shift": 2
+    },
+    {
+      "id": 146,
+      "system": "doremi",
+      "character": "f",
+      "variant": "1_dot_below",
+      "codepoint": "0xe092",
+      "octave_shift": -1
+    },
+    {
+      "id": 147,
+      "system": "doremi",
+      "character": "f",
+      "variant": "2_dots_below",
+      "codepoint": "0xe093",
+      "octave_shift": -2
+    },
+    {
+      "id": 148,
+      "system": "doremi",
+      "character": "s",
+      "variant": "1_dot_above",
+      "codepoint": "0xe094",
+      "octave_shift": 1
+    },
+    {
+      "id": 149,
+      "system": "doremi",
+      "character": "s",
+      "variant": "2_dots_above",
+      "codepoint": "0xe095",
+      "octave_shift": 2
+    },
+    {
+      "id": 150,
+      "system": "doremi",
+      "character": "s",
+      "variant": "1_dot_below",
+      "codepoint": "0xe096",
+      "octave_shift": -1
+    },
+    {
+      "id": 151,
+      "system": "doremi",
+      "character": "s",
+      "variant": "2_dots_below",
+      "codepoint": "0xe097",
+      "octave_shift": -2
+    },
+    {
+      "id": 152,
+      "system": "doremi",
+      "character": "l",
+      "variant": "1_dot_above",
+      "codepoint": "0xe098",
+      "octave_shift": 1
+    },
+    {
+      "id": 153,
+      "system": "doremi",
+      "character": "l",
+      "variant": "2_dots_above",
+      "codepoint": "0xe099",
+      "octave_shift": 2
+    },
+    {
+      "id": 154,
+      "system": "doremi",
+      "character": "l",
+      "variant": "1_dot_below",
+      "codepoint": "0xe09a",
+      "octave_shift": -1
+    },
+    {
+      "id": 155,
+      "system": "doremi",
+      "character": "l",
+      "variant": "2_dots_below",
+      "codepoint": "0xe09b",
+      "octave_shift": -2
+    },
+    {
+      "id": 156,
+      "system": "doremi",
+      "character": "t",
+      "variant": "1_dot_above",
+      "codepoint": "0xe09c",
+      "octave_shift": 1
+    },
+    {
+      "id": 157,
+      "system": "doremi",
+      "character": "t",
+      "variant": "2_dots_above",
+      "codepoint": "0xe09d",
+      "octave_shift": 2
+    },
+    {
+      "id": 158,
+      "system": "doremi",
+      "character": "t",
+      "variant": "1_dot_below",
+      "codepoint": "0xe09e",
+      "octave_shift": -1
+    },
+    {
+      "id": 159,
+      "system": "doremi",
+      "character": "t",
+      "variant": "2_dots_below",
+      "codepoint": "0xe09f",
+      "octave_shift": -2
+    },
+    {
+      "id": 160,
+      "system": "doremi",
+      "character": "D",
+      "variant": "1_dot_above",
+      "codepoint": "0xe0a0",
+      "octave_shift": 1
+    },
+    {
+      "id": 161,
+      "system": "doremi",
+      "character": "D",
+      "variant": "2_dots_above",
+      "codepoint": "0xe0a1",
+      "octave_shift": 2
+    },
+    {
+      "id": 162,
+      "system": "doremi",
+      "character": "D",
+      "variant": "1_dot_below",
+      "codepoint": "0xe0a2",
+      "octave_shift": -1
+    },
+    {
+      "id": 163,
+      "system": "doremi",
+      "character": "D",
+      "variant": "2_dots_below",
+      "codepoint": "0xe0a3",
+      "octave_shift": -2
+    },
+    {
+      "id": 164,
+      "system": "doremi",
+      "character": "R",
+      "variant": "1_dot_above",
+      "codepoint": "0xe0a4",
+      "octave_shift": 1
+    },
+    {
+      "id": 165,
+      "system": "doremi",
+      "character": "R",
+      "variant": "2_dots_above",
+      "codepoint": "0xe0a5",
+      "octave_shift": 2
+    },
+    {
+      "id": 166,
+      "system": "doremi",
+      "character": "R",
+      "variant": "1_dot_below",
+      "codepoint": "0xe0a6",
+      "octave_shift": -1
+    },
+    {
+      "id": 167,
+      "system": "doremi",
+      "character": "R",
+      "variant": "2_dots_below",
+      "codepoint": "0xe0a7",
+      "octave_shift": -2
+    },
+    {
+      "id": 168,
+      "system": "doremi",
+      "character": "M",
+      "variant": "1_dot_above",
+      "codepoint": "0xe0a8",
+      "octave_shift": 1
+    },
+    {
+      "id": 169,
+      "system": "doremi",
+      "character": "M",
+      "variant": "2_dots_above",
+      "codepoint": "0xe0a9",
+      "octave_shift": 2
+    },
+    {
+      "id": 170,
+      "system": "doremi",
+      "character": "M",
+      "variant": "1_dot_below",
+      "codepoint": "0xe0aa",
+      "octave_shift": -1
+    },
+    {
+      "id": 171,
+      "system": "doremi",
+      "character": "M",
+      "variant": "2_dots_below",
+      "codepoint": "0xe0ab",
+      "octave_shift": -2
+    },
+    {
+      "id": 172,
+      "system": "doremi",
+      "character": "F",
+      "variant": "1_dot_above",
+      "codepoint": "0xe0ac",
+      "octave_shift": 1
+    },
+    {
+      "id": 173,
+      "system": "doremi",
+      "character": "F",
+      "variant": "2_dots_above",
+      "codepoint": "0xe0ad",
+      "octave_shift": 2
+    },
+    {
+      "id": 174,
+      "system": "doremi",
+      "character": "F",
+      "variant": "1_dot_below",
+      "codepoint": "0xe0ae",
+      "octave_shift": -1
+    },
+    {
+      "id": 175,
+      "system": "doremi",
+      "character": "F",
+      "variant": "2_dots_below",
+      "codepoint": "0xe0af",
+      "octave_shift": -2
+    },
+    {
+      "id": 176,
+      "system": "doremi",
+      "character": "S",
+      "variant": "1_dot_above",
+      "codepoint": "0xe0b0",
+      "octave_shift": 1
+    },
+    {
+      "id": 177,
+      "system": "doremi",
+      "character": "S",
+      "variant": "2_dots_above",
+      "codepoint": "0xe0b1",
+      "octave_shift": 2
+    },
+    {
+      "id": 178,
+      "system": "doremi",
+      "character": "S",
+      "variant": "1_dot_below",
+      "codepoint": "0xe0b2",
+      "octave_shift": -1
+    },
+    {
+      "id": 179,
+      "system": "doremi",
+      "character": "S",
+      "variant": "2_dots_below",
+      "codepoint": "0xe0b3",
+      "octave_shift": -2
+    },
+    {
+      "id": 180,
+      "system": "doremi",
+      "character": "L",
+      "variant": "1_dot_above",
+      "codepoint": "0xe0b4",
+      "octave_shift": 1
+    },
+    {
+      "id": 181,
+      "system": "doremi",
+      "character": "L",
+      "variant": "2_dots_above",
+      "codepoint": "0xe0b5",
+      "octave_shift": 2
+    },
+    {
+      "id": 182,
+      "system": "doremi",
+      "character": "L",
+      "variant": "1_dot_below",
+      "codepoint": "0xe0b6",
+      "octave_shift": -1
+    },
+    {
+      "id": 183,
+      "system": "doremi",
+      "character": "L",
+      "variant": "2_dots_below",
+      "codepoint": "0xe0b7",
+      "octave_shift": -2
+    },
+    {
+      "id": 184,
+      "system": "doremi",
+      "character": "T",
+      "variant": "1_dot_above",
+      "codepoint": "0xe0b8",
+      "octave_shift": 1
+    },
+    {
+      "id": 185,
+      "system": "doremi",
+      "character": "T",
+      "variant": "2_dots_above",
+      "codepoint": "0xe0b9",
+      "octave_shift": 2
+    },
+    {
+      "id": 186,
+      "system": "doremi",
+      "character": "T",
+      "variant": "1_dot_below",
+      "codepoint": "0xe0ba",
+      "octave_shift": -1
+    },
+    {
+      "id": 187,
+      "system": "doremi",
+      "character": "T",
+      "variant": "2_dots_below",
+      "codepoint": "0xe0bb",
+      "octave_shift": -2
+    }
+  ],
+  "symbols": [
+    {
+      "id": 0,
+      "name": "uni266F",
+      "label": "Sharp (#)",
+      "codepoint": "0xe0bc"
+    },
+    {
+      "id": 1,
+      "name": "uni266E",
+      "label": "Natural (♮)",
+      "codepoint": "0xe0bd"
+    },
+    {
+      "id": 2,
+      "name": "uni266D",
+      "label": "Flat (♭)",
+      "codepoint": "0xe0be"
+    },
+    {
+      "id": 3,
+      "name": "uni1D12A",
+      "label": "Double sharp (𝄪)",
+      "codepoint": "0xe0bf"
+    },
+    {
+      "id": 4,
+      "name": "uni1D12B",
+      "label": "Double flat (𝄫)",
+      "codepoint": "0xe0c0"
+    },
+    {
+      "id": 5,
+      "name": "barlineSingle",
+      "label": "Barline (single)",
+      "codepoint": "0xe0c1"
+    },
+    {
+      "id": 6,
+      "name": "barlineDouble",
+      "label": "Barline (double)",
+      "codepoint": "0xe0c2"
+    },
+    {
+      "id": 7,
+      "name": "ornamentMordent",
+      "label": "Mordent",
+      "codepoint": "0xe0c3"
+    },
+    {
+      "id": 8,
+      "name": "ornamentInvertedMordent",
+      "label": "Inverted mordent",
+      "codepoint": "0xe0c4"
+    },
+    {
+      "id": 9,
+      "name": "ornamentTurn",
+      "label": "Turn",
+      "codepoint": "0xe0c5"
+    },
+    {
+      "id": 10,
+      "name": "ornamentTrill",
+      "label": "Trill",
+      "codepoint": "0xe0c6"
+    }
+  ],
+  "summary": {
+    "total_notes": 188,
+    "total_symbols": 11,
+    "total_glyphs": 199,
+    "pua_usage": "199 codepoints used, 3847 available (4.9%)",
+    "notes_range": "0xE000 - 0xE0BB",
+    "symbols_range": "0xE0BC - 0xE0C6"
+  }
+}

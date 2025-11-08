@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Notation Font - Minimal Test</title>
+    <style>
+        @font-face {
+            font-family: 'NotationMonoDotted';
+            src: url('/static/fonts/NotationMonoDotted.ttf') format('truetype');
+        }
+
+        body {
+            font-family: monospace;
+            padding: 40px;
+            background: #f5f5f5;
+        }
+
+        .test-section {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        .char-display {
+            font-family: 'NotationMonoDotted', monospace;
+            font-size: 80px;
+            line-height: 100px;
+            height: 200px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            margin: 20px 0;
+            border-radius: 8px;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .info {
+            font-family: monospace;
+            font-size: 12px;
+            color: #666;
+            margin-top: 10px;
+        }
+
+        h1, h2 {
+            color: #333;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Notation Font - Minimal Test</h1>
+    <p>Testing if the new font with outline-copied glyphs renders correctly.</p>
+
+    <div class="test-section">
+        <h2>Character "1" - All 4 Variants</h2>
+        <div class="grid">
+            <div>
+                <div class="char-display" id="char-0xE000"></div>
+                <div class="info">0xE000: 1 dot above</div>
+            </div>
+            <div>
+                <div class="char-display" id="char-0xE001"></div>
+                <div class="info">0xE001: 2 dots above</div>
+            </div>
+            <div>
+                <div class="char-display" id="char-0xE002"></div>
+                <div class="info">0xE002: 1 dot below</div>
+            </div>
+            <div>
+                <div class="char-display" id="char-0xE003"></div>
+                <div class="info">0xE003: 2 dots below</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>Character "C" (Western system) - All 4 Variants</h2>
+        <p>(Western "C" is at index 7, so codepoints are 0xE01C-0xE01F)</p>
+        <div class="grid">
+            <div>
+                <div class="char-display" id="char-0xE01C"></div>
+                <div class="info">0xE01C: C + 1 dot above</div>
+            </div>
+            <div>
+                <div class="char-display" id="char-0xE01D"></div>
+                <div class="info">0xE01D: C + 2 dots above</div>
+            </div>
+            <div>
+                <div class="char-display" id="char-0xE01E"></div>
+                <div class="info">0xE01E: C + 1 dot below</div>
+            </div>
+            <div>
+                <div class="char-display" id="char-0xE01F"></div>
+                <div class="info">0xE01F: C + 2 dots below</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>Character "S" (Sargam system) - All 4 Variants</h2>
+        <p>(Sargam "S" is at index 21, so codepoints are 0xE054-0xE057)</p>
+        <div class="grid">
+            <div>
+                <div class="char-display" id="char-0xE054"></div>
+                <div class="info">0xE054: S + 1 dot above</div>
+            </div>
+            <div>
+                <div class="char-display" id="char-0xE055"></div>
+                <div class="info">0xE055: S + 2 dots above</div>
+            </div>
+            <div>
+                <div class="char-display" id="char-0xE056"></div>
+                <div class="info">0xE056: S + 1 dot below</div>
+            </div>
+            <div>
+                <div class="char-display" id="char-0xE057"></div>
+                <div class="info">0xE057: S + 2 dots below</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>Character "m" (Doremi system) - All 4 Variants</h2>
+        <p>(Doremi "m" is at index 26, so codepoints are 0xE068-0xE06B)</p>
+        <div class="grid">
+            <div>
+                <div class="char-display" id="char-0xE068"></div>
+                <div class="info">0xE068: m + 1 dot above</div>
+            </div>
+            <div>
+                <div class="char-display" id="char-0xE069"></div>
+                <div class="info">0xE069: m + 2 dots above</div>
+            </div>
+            <div>
+                <div class="char-display" id="char-0xE06A"></div>
+                <div class="info">0xE06A: m + 1 dot below</div>
+            </div>
+            <div>
+                <div class="char-display" id="char-0xE06B"></div>
+                <div class="info">0xE06B: m + 2 dots below</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // List of all characters
+        const ALL_CHARS = "1234567CDEFGABcdefgabSrRgGmMPdDnNdrmfsltDRMFSLT";
+        const PUA_START = 0xE000;
+
+        // Function to render a character at a specific codepoint
+        function renderGlyph(elementId, codepoint) {
+            const element = document.getElementById(elementId);
+            if (!element) return;
+
+            const char = String.fromCodePoint(codepoint);
+            element.textContent = char;
+
+            // Log to console
+            console.log(`${elementId}: Codepoint 0x${codepoint.toString(16).toUpperCase()}, Character: ${char}`);
+        }
+
+        // Render test characters
+        const testCodepoints = [
+            // Character "1"
+            { id: 'char-0xE000', cp: 0xE000 },
+            { id: 'char-0xE001', cp: 0xE001 },
+            { id: 'char-0xE002', cp: 0xE002 },
+            { id: 'char-0xE003', cp: 0xE003 },
+            // Character "C"
+            { id: 'char-0xE01C', cp: 0xE01C },
+            { id: 'char-0xE01D', cp: 0xE01D },
+            { id: 'char-0xE01E', cp: 0xE01E },
+            { id: 'char-0xE01F', cp: 0xE01F },
+            // Character "S"
+            { id: 'char-0xE054', cp: 0xE054 },
+            { id: 'char-0xE055', cp: 0xE055 },
+            { id: 'char-0xE056', cp: 0xE056 },
+            { id: 'char-0xE057', cp: 0xE057 },
+            // Character "m"
+            { id: 'char-0xE068', cp: 0xE068 },
+            { id: 'char-0xE069', cp: 0xE069 },
+            { id: 'char-0xE06A', cp: 0xE06A },
+            { id: 'char-0xE06B', cp: 0xE06B },
+        ];
+
+        testCodepoints.forEach(({ id, cp }) => {
+            renderGlyph(id, cp);
+        });
+
+        console.log('Font test page loaded. Check console and rendered characters above.');
+    </script>
+</body>
+</html>

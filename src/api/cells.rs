@@ -712,6 +712,80 @@ pub fn paste_ornament_to_cell(
     Ok(result)
 }
 
+/// Paste ornament cells directly to a specific cell (KISS: replace ornament with cells from clipboard)
+///
+/// # Parameters
+/// - `cells_js`: JavaScript array of Cell objects (the main line cells)
+/// - `cell_index`: Index of the cell to paste ornament to
+/// - `ornament_cells_js`: JavaScript array of Cell objects to use as ornament
+/// - `placement`: Placement string ("before" or "after")
+///
+/// # Returns
+/// Updated JavaScript array of Cell objects with ornament pasted
+#[wasm_bindgen(js_name = pasteOrnamentCells)]
+pub fn paste_ornament_cells(
+    cells_js: JsValue,
+    cell_index: usize,
+    ornament_cells_js: JsValue,
+    placement: &str,
+) -> Result<js_sys::Array, JsValue> {
+    wasm_info!("pasteOrnamentCells called: cell_index={}, placement='{}'", cell_index, placement);
+
+    // Deserialize cells from JavaScript
+    let mut cells: Vec<Cell> = serde_wasm_bindgen::from_value(cells_js)
+        .map_err(|e| {
+            wasm_error!("Deserialization error: {}", e);
+            JsValue::from_str(&format!("Deserialization error: {}", e))
+        })?;
+
+    // Deserialize ornament cells from JavaScript
+    let ornament_cells: Vec<Cell> = serde_wasm_bindgen::from_value(ornament_cells_js)
+        .map_err(|e| {
+            wasm_error!("Deserialization error for ornament cells: {}", e);
+            JsValue::from_str(&format!("Deserialization error for ornament cells: {}", e))
+        })?;
+
+    if cell_index >= cells.len() {
+        return Err(JsValue::from_str("Cell index out of bounds"));
+    }
+
+    if ornament_cells.is_empty() {
+        return Err(JsValue::from_str("No cells in clipboard"));
+    }
+
+    // Parse placement
+    let ornament_placement = match placement {
+        "before" => crate::models::OrnamentPlacement::Before,
+        "after" => crate::models::OrnamentPlacement::After,
+        _ => return Err(JsValue::from_str(&format!("Invalid placement: {}", placement))),
+    };
+
+    // Create ornament with clipboard cells
+    let ornament = crate::models::Ornament {
+        cells: ornament_cells,
+        placement: ornament_placement,
+    };
+
+    cells[cell_index].ornament = Some(ornament);
+    wasm_info!("  Pasted ornament cells to cell {}: {} cells, placement={:?}",
+               cell_index, cells[cell_index].ornament.as_ref().unwrap().cells.len(),
+               cells[cell_index].ornament.as_ref().unwrap().placement);
+
+    // Convert back to JavaScript array
+    let result = js_sys::Array::new();
+    for cell in cells {
+        let cell_js = serde_wasm_bindgen::to_value(&cell)
+            .map_err(|e| {
+                wasm_error!("Serialization error: {}", e);
+                JsValue::from_str(&format!("Serialization error: {}", e))
+            })?;
+        result.push(&cell_js);
+    }
+
+    wasm_info!("pasteOrnamentCells completed successfully");
+    Ok(result)
+}
+
 /// Clear ornament from a specific cell
 ///
 /// # Parameters

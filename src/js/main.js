@@ -16,6 +16,7 @@ import LilyPondPngTab from './lilypond-png-tab.js';
 import LilyPondRenderer from './lilypond-renderer.js';
 import ExportUI from './export-ui.js';
 import PreferencesUI from './preferences.js';
+import { FontTestUI } from './font-test.js';
 
 /**
  * Main application class
@@ -81,6 +82,9 @@ class MusicNotationApp {
       this.preferencesUI.initialize();
       this.ui.initialize();
       this.resizeHandle.initialize();
+
+      // Initialize Font Test UI
+      this.fontTestUI = new FontTestUI();
 
       // Setup resize redraw callback for OSMD/VexFlow renderer
       this.setupResizeRedraw();
