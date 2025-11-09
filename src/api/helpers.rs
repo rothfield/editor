@@ -166,9 +166,9 @@ pub fn validate_pitch_system(ps: u8) -> Result<(), String> {
 
 /// Validate octave value
 pub fn validate_octave(octave: i8) -> Result<(), String> {
-    if ![-1, 0, 1].contains(&octave) {
+    if ![-2, -1, 0, 1, 2].contains(&octave) {
         return Err(format!(
-            "Invalid octave value: {} (must be -1, 0, or 1)",
+            "Invalid octave value: {} (must be -2, -1, 0, 1, or 2)",
             octave
         ));
     }

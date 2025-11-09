@@ -402,9 +402,9 @@ pub fn apply_octave_legacy(
     wasm_log!("  Total cells: {}, selection range: {}..{}", cells.len(), start, end);
 
     // Validate octave value
-    if ![-1, 0, 1].contains(&octave) {
-        wasm_error!("Invalid octave value: {} (must be -1, 0, or 1)", octave);
-        return Err(JsValue::from_str("Octave must be -1, 0, or 1"));
+    if ![-2, -1, 0, 1, 2].contains(&octave) {
+        wasm_error!("Invalid octave value: {} (must be -2, -1, 0, 1, or 2)", octave);
+        return Err(JsValue::from_str("Octave must be -2, -1, 0, 1, or 2"));
     }
 
     // Apply octave to cells in selection range
@@ -499,6 +499,26 @@ pub fn apply_command(
                     cells[i].octave = 0;
                     modified_count += 1;
                     wasm_log!("  Cleared octave on cell {}: '{}'", i, cells[i].char);
+                }
+            }
+        }
+        "lowest_octave" => {
+            // Toggle lowest octave (-2)
+            for i in start..end.min(cells.len()) {
+                if cells[i].kind == crate::models::ElementKind::PitchedElement {
+                    cells[i].octave = if cells[i].octave == -2 { 0 } else { -2 };
+                    modified_count += 1;
+                    wasm_log!("  Toggled octave to {} on cell {}: '{}'", cells[i].octave, i, cells[i].char);
+                }
+            }
+        }
+        "highest_octave" => {
+            // Toggle highest octave (2)
+            for i in start..end.min(cells.len()) {
+                if cells[i].kind == crate::models::ElementKind::PitchedElement {
+                    cells[i].octave = if cells[i].octave == 2 { 0 } else { 2 };
+                    modified_count += 1;
+                    wasm_log!("  Toggled octave to {} on cell {}: '{}'", cells[i].octave, i, cells[i].char);
                 }
             }
         }

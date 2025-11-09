@@ -1711,26 +1711,32 @@ class MusicNotationEditor {
       });
 
       // Validate octave value
-      if (![-1, 0, 1].includes(octave)) {
+      if (![-2, -1, 0, 1, 2].includes(octave)) {
         logger.error(LOG_CATEGORIES.COMMAND, 'Invalid octave value', { octave });
         console.error(`Invalid octave value: ${octave}`);
         return;
       }
 
       const octaveNames = {
+        '-2': 'lowest (-2)',
         '-1': 'lower (-1)',
         0: 'middle (0)',
-        1: 'upper (1)'
+        1: 'upper (1)',
+        2: 'highest (2)'
       };
 
       // Map octave number to command name
       let command;
-      if (octave === -1) {
+      if (octave === -2) {
+        command = 'lowest_octave';
+      } else if (octave === -1) {
         command = 'lower_octave';
+      } else if (octave === 0) {
+        command = 'middle_octave';
       } else if (octave === 1) {
         command = 'upper_octave';
-      } else {
-        command = 'middle_octave';
+      } else if (octave === 2) {
+        command = 'highest_octave';
       }
 
       // Call unified WASM apply_command function

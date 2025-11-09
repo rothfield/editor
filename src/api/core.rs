@@ -1385,7 +1385,7 @@ pub fn apply_octave(octave: i8) -> Result<JsValue, JsValue> {
     wasm_info!("applyOctave called (Phase 1): octave={}", octave);
 
     // Validate octave value
-    if ![-1, 0, 1].contains(&octave) {
+    if ![-2, -1, 0, 1, 2].contains(&octave) {
         wasm_error!("Invalid octave value: {}", octave);
         return Err(JsValue::from_str(&format!("Invalid octave value: {}", octave)));
     }
