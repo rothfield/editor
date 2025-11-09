@@ -587,6 +587,32 @@ function initializeApp() {
 }
 
 /**
+ * Setup keyboard shortcuts for debugging/testing
+ */
+function setupKeyboardShortcuts() {
+  window.addEventListener('keydown', (event) => {
+    // Ctrl+Alt+N: Toggle notation font test mode on editor-container
+    if (event.ctrlKey && event.altKey && event.key.toLowerCase() === 'n') {
+      event.preventDefault();
+      const editorContainer = document.getElementById('editor-container');
+      if (editorContainer) {
+        editorContainer.classList.toggle('notation-font-test');
+        const isActive = editorContainer.classList.contains('notation-font-test');
+        const status = isActive ? 'ON' : 'OFF';
+        console.log(`Notation Font Test Mode: ${status}`);
+
+        // Update status indicator if available
+        const statusEl = document.getElementById('notation-font-test-status');
+        if (statusEl) {
+          statusEl.textContent = `Notation Font: ${status}`;
+          statusEl.style.color = isActive ? '#10b981' : '#6b7280';
+        }
+      }
+    }
+  });
+}
+
+/**
  * Setup global error handlers
  */
 function setupGlobalErrorHandlers() {
@@ -707,6 +733,7 @@ Object.defineProperty(window, 'musicEditor', {
  * Auto-initialize the application
  */
 setupGlobalErrorHandlers();
+setupKeyboardShortcuts();
 initializeApp();
 
 /**

@@ -4,8 +4,8 @@
   "pua_allocation": {
     "notes_start": "0xe600",
     "notes_end": "0xe6bb",
-    "symbols_start": "0xe030",
-    "symbols_end": "0xe56e"
+    "symbols_start": "0xe260",
+    "symbols_end": "0x1d108"
   },
   "notes": [
     {
@@ -1078,31 +1078,31 @@
       "name": "barlineSingle",
       "kind": "barline",
       "label": "Barline (single)",
-      "codepoint": "0xe030"
+      "codepoint": "0x1d100"
     },
     {
       "name": "barlineDouble",
       "kind": "barline",
       "label": "Barline (double)",
-      "codepoint": "0xe031"
+      "codepoint": "0x1d101"
     },
     {
       "name": "barlineRepeatLeft",
       "kind": "barline",
       "label": "Barline (repeat left)",
-      "codepoint": "0xe040"
+      "codepoint": "0x1d106"
     },
     {
       "name": "barlineRepeatRight",
       "kind": "barline",
       "label": "Barline (repeat right)",
-      "codepoint": "0xe041"
+      "codepoint": "0x1d107"
     },
     {
       "name": "barlineRepeatBoth",
       "kind": "barline",
       "label": "Barline (repeat both)",
-      "codepoint": "0xe042"
+      "codepoint": "0x1d108"
     },
     {
       "name": "ornamentMordent",

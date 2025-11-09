@@ -273,10 +273,10 @@ def build_font(
     strict_mode: bool = False
 ) -> 'fontforge.font':
     """
-    Generate NotationFont: Inter base + Noto Music symbols + custom octave variants.
+    Generate NotationFont: Noto Sans base + Noto Music symbols + custom octave variants.
 
     Steps:
-        1. Load Inter.ttc as base (has ASCII characters)
+        1. Load Noto Sans as base (has ASCII characters with professional typography)
         2. Import SMuFL symbols from Noto Music
         3. Add a synthetic dot glyph for octave variants
         4. Create custom octave variants (dots above/below)
@@ -289,19 +289,19 @@ def build_font(
     Returns:
         fontforge.font object
     """
-    print(f"\n[STAGE 3] Building NotationFont (Inter base + Noto Music symbols + custom variants)")
+    print(f"\n[STAGE 3] Building NotationFont (Noto Sans base + Noto Music symbols + custom variants)")
 
     if not fontforge:
         raise RuntimeError("FontForge module not available. Cannot build font.")
 
-    # Load Inter.ttc as the base font (has ASCII characters)
+    # Load Noto Sans as the base font (has ASCII characters with professional typography)
     if not base_font_path or not os.path.exists(base_font_path):
         if strict_mode:
             raise FileNotFoundError(f"Base font not found: {base_font_path}")
         else:
             raise FileNotFoundError(f"Base font not found: {base_font_path}")
 
-    print(f"  Loading base font: {base_font_path}")
+    print(f"  Loading base font (Noto Sans): {base_font_path}")
     try:
         font = fontforge.open(base_font_path)
         print(f"  ✓ Base font loaded")
@@ -314,12 +314,15 @@ def build_font(
         try:
             noto_music = fontforge.open(noto_music_path)
             print(f"  ✓ Noto Music loaded")
-            # Copy all glyphs from Noto Music to preserve SMuFL symbols
+            # Import glyphs from Noto Music for musical symbols
+            # This includes:
+            # - Unicode Musical Notation (U+1D100-U+1D1FF): barlines, repeats, ornaments
+            # - SMuFL (U+E000+): accidentals and other symbols
             print(f"  Importing glyphs from Noto Music...")
             symbols_imported = 0
             for glyph in noto_music.glyphs():
-                # Only import glyphs in PUA (E000+) - these are SMuFL symbols
-                if glyph.unicode >= 0xE000:
+                # Import glyphs in Unicode Music range (U+1D100-U+1D1FF) or PUA (E000+)
+                if (0x1D100 <= glyph.unicode <= 0x1D1FF) or (glyph.unicode >= 0xE000):
                     try:
                         # Try to create glyph at same unicode
                         new_glyph = font.createChar(glyph.unicode, glyph.glyphname)
@@ -334,7 +337,7 @@ def build_font(
                         symbols_imported += 1
                     except:
                         pass
-            print(f"  ✓ Imported {symbols_imported} glyphs from Noto Music")
+            print(f"  ✓ Imported {symbols_imported} glyphs from Noto Music (Unicode U+1D1xx and SMuFL U+E0xx)")
         except Exception as e:
             if strict_mode:
                 raise RuntimeError(f"Failed to import Noto Music symbols: {e}")
@@ -584,15 +587,24 @@ def validate_layout(layout: CodepointLayout):
         duplicates = [cp for cp in codepoints if codepoints.count(cp) > 1]
         raise ValueError(f"Duplicate codepoints: {[hex(cp) for cp in set(duplicates)]}")
 
-    # Check PUA range
+    # Check codepoint ranges
+    # Valid ranges:
+    # - Note atoms: PUA 0xE600 - 0xE6BB (188 glyphs)
+    # - Symbols: Unicode Music 0x1D100-0x1D1FF OR SMuFL PUA 0xE000-0xF8FF
     for atom in all_atoms:
-        if not (0xE000 <= atom.assigned_codepoint <= 0xF8FF):
+        valid = (
+            (0xE000 <= atom.assigned_codepoint <= 0xF8FF) or  # PUA (SMuFL)
+            (0x1D100 <= atom.assigned_codepoint <= 0x1D1FF)    # Unicode Music
+        )
+        if not valid:
             raise ValueError(
-                f"Codepoint {hex(atom.assigned_codepoint)} outside PUA range!"
+                f"Codepoint {hex(atom.assigned_codepoint)} outside valid ranges "
+                f"(PUA 0xE000-0xF8FF or Unicode Music 0x1D100-0x1D1FF)!"
             )
 
     print(f"  ✓ All {len(all_atoms)} atoms have valid, unique codepoints")
-    print(f"  ✓ Range: {hex(layout.notes_range[0])} - {hex(layout.symbols_range[1])}")
+    print(f"  ✓ Note atoms: {hex(layout.notes_range[0])} - {hex(layout.notes_range[1])}")
+    print(f"  ✓ Symbols: {hex(layout.symbols_range[0])} - {hex(layout.symbols_range[1])}")
 
 
 # ============================================================================
@@ -685,8 +697,8 @@ def main():
 
     parser.add_argument(
         "--base-font",
-        default="static/fonts/Inter.ttc",
-        help="Path to base text font (default: static/fonts/Inter.ttc)"
+        default="tools/fontgen/sources/NotoSans-Regular.ttf",
+        help="Path to base text font (default: tools/fontgen/sources/NotoSans-Regular.ttf)"
     )
     parser.add_argument(
         "--noto-music-font",
@@ -734,14 +746,14 @@ def main():
     output_html = os.path.join(output_dir, "debug-specimen.html")
 
     print("=" * 70)
-    print("NOTATION FONT GENERATOR (Noto Music-based)")
+    print("NOTATION FONT GENERATOR (Noto Sans + Noto Music)")
     print("=" * 70)
     print(f"\nConfiguration:")
-    print(f"  atoms.yaml:    {atoms_path}")
-    print(f"  base font:     {base_font_path}")
-    print(f"  Noto Music:    {noto_music_path}")
-    print(f"  output dir:    {output_dir}")
-    print(f"  mode:          {'STRICT' if args.strict else 'DEV'}")
+    print(f"  atoms.yaml:         {atoms_path}")
+    print(f"  base font (Noto Sans): {base_font_path}")
+    print(f"  music symbols (Noto Music):  {noto_music_path}")
+    print(f"  output dir:         {output_dir}")
+    print(f"  mode:               {'STRICT' if args.strict else 'DEV'}")
     print()
 
     # Stage 1: Load spec

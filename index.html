@@ -444,6 +444,17 @@
         textarea.font-sandbox {
             resize: none;
         }
+
+        /* Notation Font Test Mode - Apply to all children in editor-container */
+        #editor-container.notation-font-test {
+            font-family: 'NotationFont', monospace !important;
+            font-size: 16px !important;
+        }
+
+        #editor-container.notation-font-test * {
+            font-family: 'NotationFont', monospace !important;
+            font-size: 16px !important;
+        }
     </style>
 
     <!-- OSMD for staff notation rendering (local copy) -->
@@ -582,6 +593,8 @@
                             <button id="hotreload-toggle" class="px-2 py-1 rounded text-xs hover:bg-ui-hover transition-colors" title="Toggle hot reload (auto-refresh on file changes)">
                                 🔄 Hot Reload: <span id="hotreload-status">ON</span>
                             </button>
+                            <span class="text-gray-400">|</span>
+                            <span id="notation-font-test-status" class="text-gray-500 cursor-help" title="Ctrl+Alt+N to toggle NotationFont test mode">Notation Font: OFF</span>
                         </div>
                         <div class="flex items-center space-x-4">
                             <span id="performance-indicator" class="text-success hidden">Ready</span>

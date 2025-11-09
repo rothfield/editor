@@ -39,8 +39,9 @@ fn main() {
         })
         .unwrap_or(0xE000);
 
-    // Extract accidental PUA start (default to 0xE1F0)
-    let accidental_start = 0xE1F0u32;
+    // NOTE: Symbol codepoints are handled by the Python font generator (generate.py)
+    // and available at runtime via NotationFont-map.json
+    // build.rs only needs to generate constants for note atoms (pitch characters)
 
     // Count notation systems to generate per-system indices
     let systems = atoms
@@ -83,32 +84,32 @@ fn main() {
 ///
 /// Source: tools/fontgen/atoms.yaml
 /// Generated at compile time
+///
+/// NOTE: Symbol codepoints are handled dynamically via NotationFont-map.json
+/// This file only contains constants for note atoms (pitch characters)
 
 /// All pitch system characters in canonical order
 /// This is the single source of truth from atoms.yaml character_order field
 /// CRITICAL: This order must match the font generation and JSON mapping
+///
+/// Architecture:
+/// - Noto Sans: Base font providing pitch character glyphs (1-7, A-Z, a-z)
+/// - Noto Music: Provides SMuFL musical symbols (accidentals, barlines, ornaments)
 pub const ALL_CHARS: &str = "{}";
 
 /// Total number of characters across all notation systems
 pub const TOTAL_CHARACTERS: usize = {};
 
-/// Characters per octave variant
+/// Characters per octave variant (dots above/below)
+/// Each character gets 4 variants: +1 octave, +2 octaves, -1 octave, -2 octaves
 pub const CHARS_PER_VARIANT: u32 = 4;
 
 /// Base codepoint for Private Use Area (PUA) - note octave variants
-/// Allocated sequentially in PUA to avoid conflicts with SMuFL standard codepoints
+/// Allocated sequentially in PUA starting at this offset
 /// Value from atoms.yaml pua.start (typically 0xE600)
+///
+/// Allocation: 0x{{PUA_START}} through 0x{{PUA_START}} + (47 chars × 4 variants) - 1
 pub const PUA_START: u32 = 0x{:X};
-
-/// Starting codepoint for accidental variants (sharp glyphs)
-/// Located in SMuFL standard range U+E1F0 (NOT in PUA)
-/// Range: 0xE1F0 - 0xE21E (47 chars for sharp accidentals)
-pub const ACCIDENTAL_PUA_START: u32 = 0x{:X};
-
-/// Symbols and musical articulations start here (SMuFL standard ranges)
-/// Barlines: 0xE030-0xE042, Accidentals: 0xE260-0xE264, Ornaments: 0xE566-0xE56E
-/// Value from atoms.yaml smufl_symbols (standard SMuFL codepoints)
-pub const SYMBOLS_PUA_START: u32 = 0xE030;
 
 // System indices (for future per-system operations)
 {}
@@ -116,7 +117,6 @@ pub const SYMBOLS_PUA_START: u32 = 0xE030;
         char_order,
         char_count,
         pua_start,
-        accidental_start,
         system_info
     );
 
@@ -124,8 +124,8 @@ pub const SYMBOLS_PUA_START: u32 = 0xE030;
     let dest_file = out_dir.join("font_constants.rs");
     fs::write(&dest_file, code).expect("Failed to write font_constants.rs");
 
-    println!("cargo:warning=Generated font constants from atoms.yaml");
-    println!("cargo:warning=  ALL_CHARS: {} ({} chars)", char_order, char_count);
-    println!("cargo:warning=  PUA_START: 0x{:X}", pua_start);
-    println!("cargo:warning=  ACCIDENTAL_PUA_START: 0x{:X}", accidental_start);
+    println!("cargo:warning=Generated font constants from atoms.yaml (Noto Sans + Noto Music)");
+    println!("cargo:warning=  ALL_CHARS: {} ({} characters)", char_order, char_count);
+    println!("cargo:warning=  PUA_START: 0x{:X} (note octave variants)", pua_start);
+    println!("cargo:warning=  Symbols: Loaded from NotationFont.ttf via NotationFont-map.json at runtime");
 }

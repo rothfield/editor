@@ -46,7 +46,7 @@ tools/fontgen/
 
 ```
 static/fonts/
-├── NotationFont.ttf     # The font file (TTF format) - Noto Music base + custom variants
+├── NotationFont.ttf     # The font file (TTF format) - Noto Sans base + Noto Music symbols + custom variants
 └── NotationFont-map.json # Codepoint mapping for runtime lookup
 ```
 
@@ -380,15 +380,15 @@ notation_systems:
 
 ### To Change Base Font
 
-1. **Place new base font in `static/fonts/` or anywhere accessible**
+1. **Place new base font in `tools/fontgen/sources/` or anywhere accessible**
 2. **Regenerate with custom path:**
    ```bash
    python3 tools/fontgen/generate.py --base-font path/to/new-font.ttf
    ```
 
 3. **Or update default in generator:**
-   - Edit `generate.py` line ~644
-   - Change `default="static/fonts/Inter.ttc"`
+   - Edit `generate.py` line ~688
+   - Change `default="tools/fontgen/sources/NotoSans-Regular.ttf"` to your font path
 
 ## Integration with Application Code
 

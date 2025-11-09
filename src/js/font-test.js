@@ -423,8 +423,6 @@ function initFontSandbox() {
       const charIndex = fontConfig.all_chars.indexOf(char);
       if (charIndex === -1) continue;
 
-      content += `${char}: `;
-
       // Natural
       content += char;
 
@@ -438,7 +436,7 @@ function initFontSandbox() {
       const sharpCp = fontConfig.accidental_pua_start + charIndex;
       content += String.fromCodePoint(sharpCp);
 
-      content += '  ';
+      content += ' ';
     }
 
     content += '\n\n';

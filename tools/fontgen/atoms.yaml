@@ -185,23 +185,38 @@ notation_systems:
         label: "T (TI - uppercase)"
         accidentals: []
 
-# Source Fonts - Noto Music as single source of truth
-# Replaces Inter.ttc and Bravura.otf from previous implementation
+# Source Fonts - Dual-font architecture for optimal typography
+# Noto Sans: High-quality pitch character glyphs (1-7, A-Z, a-z)
+# Noto Music: SMuFL-compliant musical symbols (accidentals, barlines, ornaments)
 source_fonts:
   base_font:
+    path: "tools/fontgen/sources/NotoSans-Regular.ttf"
+    name: "Noto Sans"
+    version: "2.x"
+    license: "SIL OFL 1.1"
+    url: "https://github.com/notofonts/sans"
+    purpose: "Base glyphs for pitch characters (1-7, A-Z, a-z) and octave variants"
+    expected_size: "~300 KB"
+    notes: |
+      Provides high-quality typography for:
+      - Basic Latin characters (0-9, A-Z, a-z) for pitch notation
+      - Period (U+002E) for octave shift dots
+      - Professional comprehensive sans-serif design
+      - Unicode support for international text
+
+  music_symbols_font:
     path: "tools/fontgen/sources/NotoMusic.ttf"
     name: "Noto Music"
     version: "2.001"
     license: "SIL OFL 1.1"
     url: "https://github.com/notofonts/music"
-    purpose: "Base glyphs for pitch characters, octave variants, and musical symbols"
+    purpose: "SMuFL-compliant musical symbols (accidentals, barlines, ornaments)"
     expected_size: "~292 KB"
     notes: |
-      Single source of truth for all font data. Provides:
-      - Basic Latin characters (0-9, A-Z, a-z) for pitch notation
-      - Period (U+002E) for octave shift dots
+      Provides professional music notation symbols:
       - SMuFL musical symbols (accidentals, barlines, ornaments)
       - Full SMuFL specification compliance
+      - Consistent with industry-standard music fonts
 
 # Glyph Variants - How many dot variants each character gets
 # Each base character can have:
@@ -301,30 +316,31 @@ smufl_symbols:
     smufl_codepoint: 0xE264  # SMuFL U+E264 (PUA)
     codepoint_offset: 4
 
-  # Barlines (SMuFL common ornaments range)
+  # Barlines (Unicode Musical Notation)
+  # Use actual Unicode music symbols instead of SMuFL PUA
   - glyph_name: "barlineSingle"
     label: "Barline (single)"
-    smufl_codepoint: 0xE030  # SMuFL U+E030
+    smufl_codepoint: 0x1D100  # Unicode U+1D100 𝄀
     codepoint_offset: 5
 
   - glyph_name: "barlineDouble"
     label: "Barline (double)"
-    smufl_codepoint: 0xE031  # SMuFL U+E031
+    smufl_codepoint: 0x1D101  # Unicode U+1D101 𝄁
     codepoint_offset: 6
 
   - glyph_name: "barlineRepeatLeft"
     label: "Barline (repeat left)"
-    smufl_codepoint: 0xE040  # SMuFL U+E040 (PUA)
+    smufl_codepoint: 0x1D106  # Unicode U+1D106 𝄆 (Left Repeat)
     codepoint_offset: 7
 
   - glyph_name: "barlineRepeatRight"
     label: "Barline (repeat right)"
-    smufl_codepoint: 0xE041  # SMuFL U+E041 (PUA)
+    smufl_codepoint: 0x1D107  # Unicode U+1D107 𝄇 (Right Repeat)
     codepoint_offset: 8
 
   - glyph_name: "barlineRepeatBoth"
     label: "Barline (repeat both)"
-    smufl_codepoint: 0xE042  # SMuFL U+E042 (PUA)
+    smufl_codepoint: 0x1D108  # Unicode U+1D108 𝄈 (Begin and End Repeat)
     codepoint_offset: 9
 
   # Ornaments (SMuFL common ornaments range)

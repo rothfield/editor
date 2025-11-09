@@ -97,8 +97,11 @@ class MusicNotationEditor {
       const loadTime = performance.now() - startTime;
       console.log(`WASM module loaded in ${loadTime.toFixed(2)}ms`);
 
-      // Initialize renderer
-      this.renderer = new DOMRenderer(this.element, this);
+      // Load font mapping (single source of truth for symbol codepoints)
+      this.fontMapping = await this.loadFontMapping();
+
+      // Initialize renderer with font mapping
+      this.renderer = new DOMRenderer(this.element, this, { fontMapping: this.fontMapping });
 
       // Setup event handlers
       this.setupEventHandlers();
@@ -2200,8 +2203,6 @@ class MusicNotationEditor {
     }
 
     const charPos = this.getCursorPosition(); // Character position (0, 1, 2, ...)
-    const lineHeight = BASE_FONT_SIZE; // Line height in pixels - matches base font size
-
     const currentStave = this.getCurrentStave();
 
     // console.log(`📍 updateCursorVisualPosition: currentStave=${currentStave}, charPos=${charPos}`);
@@ -2211,8 +2212,9 @@ class MusicNotationEditor {
     // We just need the Y from the first cell of the current line
 
     let yOffset = 32; // Default fallback
+    let cellHeight = BASE_FONT_SIZE; // Default fallback for cursor height
 
-    // Find first cell to get its Y position (relative to the line)
+    // Find first cell to get its Y position and height (relative to the line)
     const cells = this.element.querySelectorAll(`[data-line-index="${currentStave}"]`);
     // console.log(`📍 Found ${cells.length} cells for line ${currentStave}`);
 
@@ -2221,6 +2223,16 @@ class MusicNotationEditor {
       const cellTop = parseInt(firstCell.style.top) || 32;
       // console.log(`📍 First cell top: ${firstCell.style.top}, parsed as: ${cellTop}px`);
       yOffset = cellTop; // This is already relative to the line, no offset needed
+
+      // Get actual cell height from the cell container (matches WASM display list)
+      const cellContainer = firstCell.closest('.cell-container');
+      if (cellContainer) {
+        const declaredHeight = parseInt(cellContainer.style.height);
+        if (declaredHeight) {
+          cellHeight = declaredHeight;
+          // console.log(`📍 Using cell height from DOM: ${cellHeight}px`);
+        }
+      }
     } else {
       // console.log(`📍 No cells found for line ${currentStave}, using default yOffset=${yOffset}px`);
     }
@@ -2229,13 +2241,13 @@ class MusicNotationEditor {
     const pixelPos = this.charPosToPixel(charPos);
     // console.log(`📍 charPosToPixel(${charPos}) returned: ${pixelPos}px`);
 
-    // console.log(`📍 Setting cursor: left=${pixelPos}px, top=${yOffset}px`);
+    // console.log(`📍 Setting cursor: left=${pixelPos}px, top=${yOffset}px, height=${cellHeight}px`);
 
     // Set cursor position (position: absolute relative to .notation-line)
     cursor.style.position = 'absolute';
     cursor.style.left = `${pixelPos}px`;
     cursor.style.top = `${yOffset}px`;
-    cursor.style.height = `${lineHeight}px`;
+    cursor.style.height = `${cellHeight}px`;
 
     // Update cursor appearance based on state
     if (this.eventManager && this.eventManager.editorFocus()) {
@@ -2761,6 +2773,30 @@ class MusicNotationEditor {
         }
       });
     });
+  }
+
+  /**
+   * Load font mapping from NotationFont-map.json (single source of truth)
+   * This mapping contains all barline, accidental, and symbol codepoints
+   */
+  async loadFontMapping() {
+    try {
+      const response = await fetch('/static/fonts/NotationFont-map.json');
+      if (!response.ok) {
+        throw new Error(`Failed to load font mapping: ${response.statusText}`);
+      }
+      const mapping = await response.json();
+      console.log('✅ Font mapping loaded:', {
+        notes: mapping.summary.total_notes,
+        symbols: mapping.summary.total_symbols,
+        systems: Object.keys(mapping.summary.systems)
+      });
+      return mapping;
+    } catch (error) {
+      console.error('Failed to load font mapping:', error);
+      // Return empty mapping as fallback
+      return { symbols: [], summary: { total_symbols: 0 } };
+    }
   }
 
   /**

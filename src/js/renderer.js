@@ -34,6 +34,7 @@ class DOMRenderer {
     // Configuration options
     this.options = {
       skipBeatLoops: options.skipBeatLoops || false,
+      fontMapping: options.fontMapping || null,
       ...options
     };
 
@@ -45,7 +46,7 @@ class DOMRenderer {
       lastRenderTime: 0
     };
 
-    this.setupBeatLoopStyles(); // Sets up octave dots CSS
+    this.setupBeatLoopStyles(); // Sets up octave dots CSS and barline styles
 
     // Initialize arc renderer (for slurs and beat loops)
     this.arcRenderer = new ArcRenderer(this.element, { skipBeatLoops: this.options.skipBeatLoops });
@@ -159,33 +160,7 @@ class DOMRenderer {
         z-index: 4;
       }
 
-      /* Left repeat (|:) - SMuFL U+E040 spanning 2 cells */
-      .char-cell.repeat-left-start::after {
-        content: '\uE040';
-        width: 200%;
-        text-align: left;
-      }
-
-      /* Right repeat (:|) - SMuFL U+E041 spanning 2 cells */
-      .char-cell.repeat-right-start::after {
-        content: '\uE041';
-        width: 200%;
-        text-align: left;
-      }
-
-      /* Double barline (||) - SMuFL U+E031 spanning 2 cells */
-      .char-cell.double-bar-start::after {
-        content: '\uE031';
-        width: 200%;
-        text-align: left;
-      }
-
-      /* Single barline (|) - SMuFL U+E030 */
-      .char-cell.single-bar::after {
-        content: '\uE030';
-        width: 100%;
-        text-align: center;
-      }
+      /* Barline styles generated from font mapping */
 
       /* Current line border */
       .notation-line.current-line {
@@ -196,6 +171,61 @@ class DOMRenderer {
       }
     `;
     document.head.appendChild(style);
+
+    // Add dynamic barline styles from font mapping
+    this.addBarlineStyles();
+  }
+
+  /**
+   * Generate barline CSS from font mapping (single source of truth)
+   */
+  addBarlineStyles() {
+    const mapping = this.options.fontMapping;
+    if (!mapping || !mapping.symbols) {
+      console.warn('Font mapping not available, using fallback barline styles');
+      return;
+    }
+
+    // Find barline symbols in mapping
+    const barlineSymbols = {
+      'barlineSingle': { selector: '.char-cell.single-bar', width: '100%', align: 'center' },
+      'barlineDouble': { selector: '.char-cell.double-bar-start', width: '200%', align: 'left' },
+      'barlineRepeatLeft': { selector: '.char-cell.repeat-left-start', width: '200%', align: 'left' },
+      'barlineRepeatRight': { selector: '.char-cell.repeat-right-start', width: '200%', align: 'left' },
+      'barlineRepeatBoth': { selector: '.char-cell.repeat-both', width: '200%', align: 'left' }
+    };
+
+    let barlineCss = '';
+    for (const [symbolName, config] of Object.entries(barlineSymbols)) {
+      const symbol = mapping.symbols.find(s => s.name === symbolName);
+      if (symbol) {
+        // Get codepoint and convert to CSS Unicode escape sequence
+        const codepoint = parseInt(symbol.codepoint, 16);
+        // CSS Unicode escapes: pad to 6 chars for > 0xFFFF, 4 for < 0xFFFF
+        const minPad = codepoint > 0xFFFF ? 6 : 4;
+        const codePointHex = codepoint.toString(16).toUpperCase().padStart(minPad, '0');
+
+        barlineCss += `
+      /* ${symbolName}: U+${codePointHex} from NotationFont-map.json */
+      ${config.selector}::after {
+        content: '\\${codePointHex}';
+        width: ${config.width};
+        text-align: ${config.align};
+      }
+      `;
+
+        console.log(`✅ Barline style: ${symbolName} -> U+${codePointHex}`);
+      } else {
+        console.warn(`⚠️ Symbol ${symbolName} not found in font mapping`);
+      }
+    }
+
+    if (barlineCss) {
+      const style = document.createElement('style');
+      style.textContent = barlineCss;
+      document.head.appendChild(style);
+      console.log('✅ Barline styles injected from font mapping');
+    }
   }
 
   /**
