@@ -158,7 +158,7 @@ impl CellStyleBuilder {
         } else if cell.kind == ElementKind::PitchedElement && !cell.char.is_empty() {
             let base_char = cell.char.chars().next().unwrap_or(' ');
 
-            // For accidentals, use the accidental variant glyph from the font
+            // For accidentals, try pre-composed glyph first, fallback to data-accidental for CSS rendering
             if let Some(acc_type) = accidental_type {
                 match acc_type {
                     AccidentalType::None => {
@@ -170,19 +170,27 @@ impl CellStyleBuilder {
                         }
                     },
                     AccidentalType::Sharp => {
-                        // Use the sharp variant glyph from NotationFont (U+E1F0-E21E: 47 glyphs)
+                        // Try pre-composed sharp glyph from NotationFont (U+E1F0-E21E: 47 glyphs)
+                        // Fallback: use data-accidental="sharp" for CSS ::after rendering
+                        dataset.insert("accidental".to_string(), "sharp".to_string());
                         get_accidental_glyph_codepoint(base_char, 1).to_string()
                     },
                     AccidentalType::Flat => {
-                        // Use the flat variant glyph from NotationFont (U+E220-E24E: 47 glyphs)
+                        // Try pre-composed flat glyph from NotationFont (U+E220-E24E: 47 glyphs)
+                        // Fallback: use data-accidental="flat" for CSS ::after rendering
+                        dataset.insert("accidental".to_string(), "flat".to_string());
                         get_accidental_glyph_codepoint(base_char, 2).to_string()
                     },
                     AccidentalType::DoubleSharp => {
-                        // Use the double-sharp variant glyph from NotationFont (U+E250-E27E: 47 glyphs)
+                        // Try pre-composed double-sharp glyph from NotationFont (U+E250-E27E: 47 glyphs)
+                        // Fallback: use data-accidental="dsharp" for CSS ::after rendering
+                        dataset.insert("accidental".to_string(), "dsharp".to_string());
                         get_accidental_glyph_codepoint(base_char, 3).to_string()
                     },
                     AccidentalType::DoubleFlat => {
-                        // Use the double-flat variant glyph from NotationFont (U+E280-E2AE: 47 glyphs)
+                        // Try pre-composed double-flat glyph from NotationFont (U+E280-E2AE: 47 glyphs)
+                        // Fallback: use data-accidental="dflat" for CSS ::after rendering
+                        dataset.insert("accidental".to_string(), "dflat".to_string());
                         get_accidental_glyph_codepoint(base_char, 4).to_string()
                     },
                 }

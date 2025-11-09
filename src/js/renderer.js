@@ -95,6 +95,38 @@ class DOMRenderer {
       /* Pitched elements: rendered with pre-composed accidental glyphs from NotationFont */
       .char-cell.kind-pitched {
         font-family: 'NotationFont', monospace;
+        position: relative;
+      }
+
+      /* FALLBACK: Render accidental symbols using ::after pseudo-element */
+      /* This is used until pre-composed accidental glyphs are available in the font */
+      .char-cell[data-accidental="sharp"]::after,
+      .char-cell[data-accidental="flat"]::after,
+      .char-cell[data-accidental="dsharp"]::after,
+      .char-cell[data-accidental="dflat"]::after {
+        position: absolute;
+        font-family: 'NotationFont';
+        font-size: 1em;
+        left: 1em;
+        top: 50%;
+        transform: translateY(-50%);
+        line-height: 1;
+      }
+
+      .char-cell[data-accidental="sharp"]::after {
+        content: '#';
+      }
+
+      .char-cell[data-accidental="flat"]::after {
+        content: 'b';
+      }
+
+      .char-cell[data-accidental="dsharp"]::after {
+        content: '##';
+      }
+
+      .char-cell[data-accidental="dflat"]::after {
+        content: 'bb';
       }
 
       /* All barline overlays using SMuFL music font */
