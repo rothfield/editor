@@ -262,6 +262,167 @@ def assign_codepoints(spec: AtomSpec) -> CodepointLayout:
 
 
 # ============================================================================
+# Helper: Create Accidental Composites
+# ============================================================================
+
+def create_accidental_composites(font: 'fontforge.font', spec: AtomSpec, layout: CodepointLayout):
+    """
+    Create pre-composed accidental glyphs by combining base characters with accidental symbols.
+
+    Algorithm:
+        1. Get all 47 base characters from character_order string (preserves duplicates across systems)
+        2. Extract accidental symbol glyphs from font (SMuFL: U+E260, U+E262, U+E263, U+E264)
+        3. For each character + accidental type, create composite glyph at allocated PUA codepoint
+        4. Position accidental symbol to the right of base character
+
+    Accidental Symbol Codepoints (SMuFL):
+        - Flat (♭): U+E260
+        - Sharp (♯): U+E262
+        - Double-sharp (𝄪): U+E263
+        - Double-flat (𝄫): U+E264
+
+    PUA Allocations (Private Use Area):
+        - Sharp composites: 0xE1F0-0xE21E (47 glyphs)
+        - Flat composites: 0xE220-0xE24E (47 glyphs)
+        - Double-sharp composites: 0xE250-0xE27E (47 glyphs)
+        - Double-flat composites: 0xE280-0xE2AE (47 glyphs)
+
+    Args:
+        font: FontForge font object with base characters and SMuFL symbols
+        spec: AtomSpec with notation systems
+        layout: CodepointLayout (unused but passed for compatibility)
+    """
+    # Get all 47 base characters from character_order string
+    # This preserves the allocation order and includes characters that appear in multiple systems
+    all_chars = list(spec.character_order)
+
+    if len(all_chars) != 47:
+        print(f"    WARNING: Expected 47 characters, got {len(all_chars)}")
+
+    # SMuFL accidental symbol glyph names from Noto Music
+    # Try both glyph name and codepoint lookups
+    ACCIDENTAL_SYMBOLS = {
+        'sharp': {'names': ['accidentalSharp', 'uni_E262'], 'cp': 0xE262},
+        'flat': {'names': ['accidentalFlat', 'uni_E260'], 'cp': 0xE260},
+        'double_sharp': {'names': ['accidentalDoubleSharp', 'uni_E263'], 'cp': 0xE263},
+        'double_flat': {'names': ['accidentalDoubleFlat', 'uni_E264'], 'cp': 0xE264},
+    }
+
+    # PUA allocation for accidental composites
+    ACCIDENTAL_RANGES = {
+        'sharp': (0xE1F0, 0xE21E),         # 47 glyphs
+        'flat': (0xE220, 0xE24E),          # 47 glyphs
+        'double_sharp': (0xE250, 0xE27E),  # 47 glyphs
+        'double_flat': (0xE280, 0xE2AE),   # 47 glyphs
+    }
+
+    # Try to get accidental symbol glyphs from font
+    accidental_glyphs = {}
+    print(f"    Searching for accidental symbols in font...")
+
+    for accidental_type, symbol_info in ACCIDENTAL_SYMBOLS.items():
+        glyph = None
+        found_name = None
+
+        # Try to find by glyph name first
+        for glyph_name in symbol_info['names']:
+            try:
+                glyph = font[glyph_name]
+                if glyph and glyph.glyphname:
+                    found_name = glyph_name
+                    break
+            except:
+                pass
+
+        # If not found by name, try by codepoint
+        if not glyph:
+            try:
+                glyph = font[symbol_info['cp']]
+                if glyph and glyph.glyphname:
+                    found_name = f"U+{symbol_info['cp']:04X}"
+            except:
+                pass
+
+        if glyph and glyph.glyphname:
+            accidental_glyphs[accidental_type] = glyph
+            print(f"    ✓ Found {accidental_type} as '{found_name}' (glyphname: {glyph.glyphname})")
+        else:
+            print(f"    WARNING: Accidental symbol {accidental_type} not found in font")
+            print(f"      Tried names: {symbol_info['names']}")
+            print(f"      Tried codepoint: U+{symbol_info['cp']:04X}")
+            accidental_glyphs[accidental_type] = None
+
+    # Create composites for each accidental type
+    composites_created = 0
+    for accidental_type, (pua_start, pua_end) in ACCIDENTAL_RANGES.items():
+        if accidental_glyphs[accidental_type] is None:
+            print(f"    Skipping {accidental_type} composites (symbol not found)")
+            continue
+
+        accidental_glyph = accidental_glyphs[accidental_type]
+        accidental_bbox = accidental_glyph.boundingBox()
+        if not accidental_bbox:
+            print(f"    WARNING: No bounding box for accidental {accidental_type}")
+            continue
+
+        acc_min_x, acc_min_y, acc_max_x, acc_max_y = accidental_bbox
+        acc_width = acc_max_x - acc_min_x
+
+        # Create composite for each character
+        for i, base_char in enumerate(all_chars):
+            try:
+                base_glyph = font[ord(base_char)]
+            except:
+                print(f"    ERROR: Base character '{base_char}' not found in font")
+                continue
+
+            if not base_glyph:
+                continue
+
+            base_bbox = base_glyph.boundingBox()
+            if not base_bbox:
+                continue
+
+            base_min_x, base_min_y, base_max_x, base_max_y = base_bbox
+            base_width = base_max_x - base_min_x
+
+            # Composite codepoint: sequential in allocated range
+            composite_cp = pua_start + i
+
+            # Create composite glyph
+            try:
+                composite = font.createChar(composite_cp, f"{base_char}_{accidental_type}")
+                composite.clear()
+
+                # Add base character reference
+                composite.addReference(base_glyph.glyphname, (1, 0, 0, 1, 0, 0))
+
+                # Position accidental symbol to the right of base character
+                # x_offset: right edge of base + small gap (typically 50-100 units)
+                # y_offset: vertical center alignment
+                x_offset = base_width + spec.geometry.accidental_x_offset
+                y_offset = (base_max_y + base_min_y - acc_max_y - acc_min_y) / 2 + spec.geometry.accidental_y_offset
+
+                # Scale accidental symbol if specified
+                scale = spec.geometry.accidental_scale
+                composite.addReference(
+                    accidental_glyph.glyphname,
+                    (scale, 0, 0, scale, x_offset, y_offset)
+                )
+
+                # Set width to accommodate both glyphs
+                composite.width = base_width + acc_width * scale + spec.geometry.accidental_x_offset + 50
+
+                composites_created += 1
+
+            except Exception as e:
+                print(f"    ERROR creating {accidental_type} composite for '{base_char}': {e}")
+                continue
+
+    print(f"  ✓ Created {composites_created} accidental composite glyphs")
+
+
+# ============================================================================
 # Stage 3: Build Font
 # ============================================================================
 
@@ -459,6 +620,10 @@ def build_font(
     # Barlines (U+E030-E042), accidentals (U+E260-E264), ornaments (U+E566-E56E)
     # are all part of the standard font.
     print(f"\n  ✓ SMuFL symbols already present in Noto Music base font")
+
+    # Create accidental composite glyphs
+    print(f"\n  Creating accidental composite glyphs...")
+    create_accidental_composites(font, spec, layout)
 
     # Correct direction for custom note glyphs
     print(f"\n  Finalizing {len(layout.note_atoms)} custom note glyphs...")

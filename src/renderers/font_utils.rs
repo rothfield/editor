@@ -116,10 +116,10 @@ pub fn get_glyph_codepoint(base_char: char, octave_shift: i8) -> char {
 /// * `base_char` - The pitch character (1, C, S, f, etc.)
 /// * `accidental` - The accidental type:
 ///   - 0 or 'n' = natural (no accidental, returns base char)
-///   - 1 or 's' = sharp
-///   - 2 or 'b' = flat
-///   - 3 or 'x' = double sharp
-///   - 4 or 'y' = double flat
+///   - 1 or 's' = sharp (U+E1F0-E21E: 47 glyphs)
+///   - 2 or 'b' = flat (U+E220-E24E: 47 glyphs)
+///   - 3 or 'x' = double sharp (U+E250-E27E: 47 glyphs)
+///   - 4 or 'y' = double flat (U+E280-E2AE: 47 glyphs)
 ///
 /// # Returns
 /// A Unicode codepoint as a character:
@@ -128,21 +128,44 @@ pub fn get_glyph_codepoint(base_char: char, octave_shift: i8) -> char {
 ///
 /// # Examples
 /// ```
-/// assert_eq!(get_sharp_glyph_codepoint('1', 0), '1');  // Natural (no accidental)
-/// assert_eq!(get_sharp_glyph_codepoint('1', 1), '\u{E1F0}');  // 1 sharp
-/// assert_eq!(get_sharp_glyph_codepoint('2', 1), '\u{E1F1}');  // 2 sharp
-/// assert_eq!(get_sharp_glyph_codepoint('1', 2), '1');  // 1 flat (not in font yet, returns base)
+/// assert_eq!(get_accidental_glyph_codepoint('1', 0), '1');  // Natural (no accidental)
+/// assert_eq!(get_accidental_glyph_codepoint('1', 1), '\u{E1F0}');  // 1 sharp
+/// assert_eq!(get_accidental_glyph_codepoint('2', 1), '\u{E1F1}');  // 2 sharp
+/// assert_eq!(get_accidental_glyph_codepoint('1', 2), '\u{E220}');  // 1 flat
+/// assert_eq!(get_accidental_glyph_codepoint('1', 3), '\u{E250}');  // 1 double sharp
+/// assert_eq!(get_accidental_glyph_codepoint('1', 4), '\u{E280}');  // 1 double flat
 /// ```
-pub fn get_sharp_glyph_codepoint(base_char: char, _accidental: u8) -> char {
-    // DEFERRED: Accidental support is deferred to v2.0 (see SPEC.md section 15).
-    // In the current architecture (Noto Sans + Noto Music), accidentals are:
-    // - Provided as separate symbols from Noto Music SMuFL ranges
-    // - Rendered via CSS ::after pseudo-elements (not pre-composed glyphs)
-    // - Not yet allocated as pre-composed glyphs in the PUA
-    //
-    // This function is kept for API compatibility but currently always returns
-    // the base character. Accidental rendering is handled at the HTML/CSS layer.
-    base_char
+pub fn get_accidental_glyph_codepoint(base_char: char, accidental: u8) -> char {
+    // Natural accidental: return base character unchanged
+    if accidental == 0 || accidental == b'n' {
+        return base_char;
+    }
+
+    // Find the character index in our canonical string
+    let char_index = match ALL_CHARS.find(base_char) {
+        Some(idx) => idx as u32,
+        None => return base_char, // Unknown character, return as-is
+    };
+
+    // Map accidental code to PUA range start
+    let pua_start: u32 = match accidental {
+        1 | b's' => 0xE1F0,  // Sharp composites
+        2 | b'b' => 0xE220,  // Flat composites
+        3 | b'x' => 0xE250,  // Double-sharp composites
+        4 | b'y' => 0xE280,  // Double-flat composites
+        _ => return base_char, // Unknown accidental code, return base character
+    };
+
+    // Calculate the codepoint: pua_start + char_index
+    let codepoint = pua_start + char_index;
+
+    // Convert to character, fallback to base if conversion fails
+    char::from_u32(codepoint).unwrap_or(base_char)
+}
+
+// Deprecated: use get_accidental_glyph_codepoint instead
+pub fn get_sharp_glyph_codepoint(base_char: char, accidental: u8) -> char {
+    get_accidental_glyph_codepoint(base_char, accidental)
 }
 
 #[cfg(test)]
@@ -174,81 +197,81 @@ mod tests {
     fn test_number_system_octave_plus_1() {
         // Character index 0
         let cp = get_glyph_codepoint('1', 1);
-        assert_eq!(cp as u32, 0xE000); // 0xE000 + (0 * 4) + 0
+        assert_eq!(cp as u32, 0xE600); // 0xE600 + (0 * 4) + 0
 
         // Character index 6
         let cp = get_glyph_codepoint('7', 1);
-        assert_eq!(cp as u32, 0xE018); // 0xE000 + (6 * 4) + 0
+        assert_eq!(cp as u32, 0xE618); // 0xE600 + (6 * 4) + 0
     }
 
     #[test]
     fn test_number_system_octave_plus_2() {
         // Character index 0
         let cp = get_glyph_codepoint('1', 2);
-        assert_eq!(cp as u32, 0xE001); // 0xE000 + (0 * 4) + 1
+        assert_eq!(cp as u32, 0xE601); // 0xE600 + (0 * 4) + 1
 
         // Character index 6
         let cp = get_glyph_codepoint('7', 2);
-        assert_eq!(cp as u32, 0xE019); // 0xE000 + (6 * 4) + 1
+        assert_eq!(cp as u32, 0xE619); // 0xE600 + (6 * 4) + 1
     }
 
     #[test]
     fn test_number_system_octave_minus_1() {
         // Character index 0
         let cp = get_glyph_codepoint('1', -1);
-        assert_eq!(cp as u32, 0xE002); // 0xE000 + (0 * 4) + 2
+        assert_eq!(cp as u32, 0xE602); // 0xE600 + (0 * 4) + 2
 
         // Character index 6
         let cp = get_glyph_codepoint('7', -1);
-        assert_eq!(cp as u32, 0xE01A); // 0xE000 + (6 * 4) + 2
+        assert_eq!(cp as u32, 0xE61A); // 0xE600 + (6 * 4) + 2
     }
 
     #[test]
     fn test_number_system_octave_minus_2() {
         // Character index 0
         let cp = get_glyph_codepoint('1', -2);
-        assert_eq!(cp as u32, 0xE003); // 0xE000 + (0 * 4) + 3
+        assert_eq!(cp as u32, 0xE603); // 0xE600 + (0 * 4) + 3
 
         // Character index 6
         let cp = get_glyph_codepoint('7', -2);
-        assert_eq!(cp as u32, 0xE01B); // 0xE000 + (6 * 4) + 3
+        assert_eq!(cp as u32, 0xE61B); // 0xE600 + (6 * 4) + 3
     }
 
     #[test]
     fn test_western_system_uppercase() {
         // C is at index 7 (unique)
         let cp = get_glyph_codepoint('C', 1);
-        assert_eq!(cp as u32, 0xE01C); // 0xE000 + (7 * 4) + 0 = 57372
+        assert_eq!(cp as u32, 0xE61C); // 0xE600 + (7 * 4) + 0 = 58908
 
         // B is at index 13 (unique)
         let cp = get_glyph_codepoint('B', -1);
-        assert_eq!(cp as u32, 0xE036); // 0xE000 + (13 * 4) + 2 = 57398
+        assert_eq!(cp as u32, 0xE636); // 0xE600 + (13 * 4) + 2 = 58934
     }
 
     #[test]
     fn test_western_system_lowercase() {
         // c is at index 14 (unique in Western, also in Doremi at 33 but first occurrence wins)
         let cp = get_glyph_codepoint('c', 2);
-        assert_eq!(cp as u32, 0xE039); // 0xE000 + (14 * 4) + 1 = 57401
+        assert_eq!(cp as u32, 0xE639); // 0xE600 + (14 * 4) + 1 = 58937
 
         // b is at index 20 (unique)
         let cp = get_glyph_codepoint('b', -2);
-        assert_eq!(cp as u32, 0xE053); // 0xE000 + (20 * 4) + 3 = 57427
+        assert_eq!(cp as u32, 0xE653); // 0xE600 + (20 * 4) + 3 = 58963
     }
 
     #[test]
     fn test_sargam_system() {
         // S is at index 21 (first and only occurrence in SARGAM context)
         let cp = get_glyph_codepoint('S', 1);
-        assert_eq!(cp as u32, 0xE054); // 0xE000 + (21 * 4) + 0
+        assert_eq!(cp as u32, 0xE654); // 0xE600 + (21 * 4) + 0
 
         // r is at index 22 (first occurrence - used for all systems)
         let cp = get_glyph_codepoint('r', -1);
-        assert_eq!(cp as u32, 0xE05A); // 0xE000 + (22 * 4) + 2
+        assert_eq!(cp as u32, 0xE65A); // 0xE600 + (22 * 4) + 2
 
         // N is at index 32 (unique to Sargam uppercase)
         let cp = get_glyph_codepoint('N', 2);
-        assert_eq!(cp as u32, 0xE081); // 0xE000 + (32 * 4) + 1
+        assert_eq!(cp as u32, 0xE681); // 0xE600 + (32 * 4) + 1
     }
 
     #[test]
@@ -258,15 +281,15 @@ mod tests {
 
         // 'd' first appears at index 15 (Western lowercase), not 33 (Doremi)
         let cp = get_glyph_codepoint('d', 1);
-        assert_eq!(cp as u32, 0xE03C); // 0xE000 + (15 * 4) + 0 = 57404
+        assert_eq!(cp as u32, 0xE63C); // 0xE600 + (15 * 4) + 0 = 58940
 
         // 'f' first appears at index 17 (Western lowercase), not 36 (Doremi)
         let cp = get_glyph_codepoint('f', -1);
-        assert_eq!(cp as u32, 0xE046); // 0xE000 + (17 * 4) + 2 = 57414
+        assert_eq!(cp as u32, 0xE646); // 0xE600 + (17 * 4) + 2 = 58950
 
         // 't' first appears at index 39 (Doremi lowercase) - unique
         let cp = get_glyph_codepoint('t', 2);
-        assert_eq!(cp as u32, 0xE09D); // 0xE000 + (39 * 4) + 1 = 57501
+        assert_eq!(cp as u32, 0xE69D); // 0xE600 + (39 * 4) + 1 = 59037
     }
 
     #[test]
@@ -274,8 +297,8 @@ mod tests {
         for ch in "1234567".chars() {
             let cp = get_glyph_codepoint(ch, 1);
             assert_ne!(cp, ch, "Character '{}' should have a PUA glyph", ch);
-            assert!(cp as u32 >= 0xE000, "Codepoint for '{}' should be in PUA range", ch);
-            assert!(cp as u32 <= 0xE0FF, "Codepoint for '{}' should be in PUA range", ch);
+            assert!(cp as u32 >= 0xE600, "Codepoint for '{}' should be in PUA range", ch);
+            assert!(cp as u32 <= 0xE6BB, "Codepoint for '{}' should be in PUA range", ch);
         }
     }
 
@@ -294,79 +317,129 @@ mod tests {
         assert_eq!(ALL_CHARS.len(), 47);
     }
 
-    // ===== Tests for sharp/flat accidental glyphs =====
+    // ===== Tests for accidental glyphs (sharp, flat, double-sharp, double-flat) =====
 
     #[test]
     fn test_accidental_natural_returns_base_char() {
-        assert_eq!(get_sharp_glyph_codepoint('1', 0), '1');
-        assert_eq!(get_sharp_glyph_codepoint('1', b'n'), '1');
-        assert_eq!(get_sharp_glyph_codepoint('C', 0), 'C');
-        assert_eq!(get_sharp_glyph_codepoint('S', b'n'), 'S');
+        assert_eq!(get_accidental_glyph_codepoint('1', 0), '1');
+        assert_eq!(get_accidental_glyph_codepoint('1', b'n'), '1');
+        assert_eq!(get_accidental_glyph_codepoint('C', 0), 'C');
+        assert_eq!(get_accidental_glyph_codepoint('S', b'n'), 'S');
     }
 
     #[test]
     fn test_accidental_unknown_character_returns_base() {
-        assert_eq!(get_sharp_glyph_codepoint('x', 1), 'x');
-        assert_eq!(get_sharp_glyph_codepoint('!', 2), '!');
-        assert_eq!(get_sharp_glyph_codepoint('∞', 3), '∞');
+        assert_eq!(get_accidental_glyph_codepoint('x', 1), 'x');
+        assert_eq!(get_accidental_glyph_codepoint('!', 2), '!');
+        assert_eq!(get_accidental_glyph_codepoint('∞', 3), '∞');
     }
 
     #[test]
     fn test_accidental_unknown_code_returns_base() {
-        assert_eq!(get_sharp_glyph_codepoint('1', 99), '1'); // Invalid accidental code
-        assert_eq!(get_sharp_glyph_codepoint('C', 255), 'C');
+        assert_eq!(get_accidental_glyph_codepoint('1', 99), '1'); // Invalid accidental code
+        assert_eq!(get_accidental_glyph_codepoint('C', 255), 'C');
     }
 
     #[test]
     fn test_number_system_sharp() {
         // Character index 0: '1' at U+E1F0
-        let cp = get_sharp_glyph_codepoint('1', 1);
+        let cp = get_accidental_glyph_codepoint('1', 1);
         assert_eq!(cp as u32, 0xE1F0); // 0xE1F0 + 0
 
         // Character index 6: '7' at U+E1F6
-        let cp = get_sharp_glyph_codepoint('7', b's');
+        let cp = get_accidental_glyph_codepoint('7', b's');
         assert_eq!(cp as u32, 0xE1F6); // 0xE1F0 + 6
     }
 
     #[test]
-    fn test_flat_not_in_font() {
-        // Flat accidentals not yet in font, should return base character
-        let cp = get_sharp_glyph_codepoint('1', 2);
-        assert_eq!(cp, '1'); // Returns base char, not a glyph
+    fn test_number_system_flat() {
+        // Character index 0: '1' flat at U+E220
+        let cp = get_accidental_glyph_codepoint('1', 2);
+        assert_eq!(cp as u32, 0xE220); // 0xE220 + 0
+
+        // Character index 6: '7' flat at U+E226
+        let cp = get_accidental_glyph_codepoint('7', b'b');
+        assert_eq!(cp as u32, 0xE226); // 0xE220 + 6
     }
 
     #[test]
-    fn test_double_sharp_not_in_font() {
-        // Double sharp accidentals not yet in font, should return base character
-        let cp = get_sharp_glyph_codepoint('7', b'x');
-        assert_eq!(cp, '7'); // Returns base char, not a glyph
+    fn test_number_system_double_sharp() {
+        // Character index 0: '1' double sharp at U+E250
+        let cp = get_accidental_glyph_codepoint('1', 3);
+        assert_eq!(cp as u32, 0xE250); // 0xE250 + 0
+
+        // Character index 6: '7' double sharp at U+E256
+        let cp = get_accidental_glyph_codepoint('7', b'x');
+        assert_eq!(cp as u32, 0xE256); // 0xE250 + 6
     }
 
     #[test]
-    fn test_double_flat_not_in_font() {
-        // Double flat accidentals not yet in font, should return base character
-        let cp = get_sharp_glyph_codepoint('7', b'y');
-        assert_eq!(cp, '7'); // Returns base char, not a glyph
+    fn test_number_system_double_flat() {
+        // Character index 0: '1' double flat at U+E280
+        let cp = get_accidental_glyph_codepoint('1', 4);
+        assert_eq!(cp as u32, 0xE280); // 0xE280 + 0
+
+        // Character index 6: '7' double flat at U+E286
+        let cp = get_accidental_glyph_codepoint('7', b'y');
+        assert_eq!(cp as u32, 0xE286); // 0xE280 + 6
     }
 
     #[test]
     fn test_western_system_sharp() {
         // C is at index 7: C# at U+E1F7
-        let cp_sharp = get_sharp_glyph_codepoint('C', 1);
+        let cp_sharp = get_accidental_glyph_codepoint('C', 1);
         assert_eq!(cp_sharp as u32, 0xE1F7); // 0xE1F0 + 7
 
         // B is at index 13: B# at U+E1FD
-        let cp = get_sharp_glyph_codepoint('B', 1);
+        let cp = get_accidental_glyph_codepoint('B', 1);
         assert_eq!(cp as u32, 0xE1FD); // 0xE1F0 + 13
     }
 
     #[test]
-    fn test_all_number_characters_have_sharp_glyphs() {
+    fn test_western_system_flat() {
+        // C is at index 7: C♭ at U+E227
+        let cp = get_accidental_glyph_codepoint('C', 2);
+        assert_eq!(cp as u32, 0xE227); // 0xE220 + 7
+
+        // B is at index 13: B♭ at U+E22D
+        let cp = get_accidental_glyph_codepoint('B', 2);
+        assert_eq!(cp as u32, 0xE22D); // 0xE220 + 13
+    }
+
+    #[test]
+    fn test_all_number_characters_have_accidental_glyphs() {
         for ch in "1234567".chars() {
-            let cp = get_sharp_glyph_codepoint(ch, 1);
+            // Test sharp
+            let cp = get_accidental_glyph_codepoint(ch, 1);
             assert_ne!(cp, ch, "Character '{}' should have a sharp glyph", ch);
-            assert!(cp as u32 >= 0xE1F0, "Sharp codepoint for '{}' should be in accidental range", ch);
-            assert!(cp as u32 <= 0xE21E, "Sharp codepoint for '{}' should be in accidental range", ch);
+            assert!(cp as u32 >= 0xE1F0, "Sharp codepoint for '{}' should be in range", ch);
+            assert!(cp as u32 <= 0xE21E, "Sharp codepoint for '{}' should be in range", ch);
+
+            // Test flat
+            let cp = get_accidental_glyph_codepoint(ch, 2);
+            assert_ne!(cp, ch, "Character '{}' should have a flat glyph", ch);
+            assert!(cp as u32 >= 0xE220, "Flat codepoint for '{}' should be in range", ch);
+            assert!(cp as u32 <= 0xE24E, "Flat codepoint for '{}' should be in range", ch);
+
+            // Test double sharp
+            let cp = get_accidental_glyph_codepoint(ch, 3);
+            assert_ne!(cp, ch, "Character '{}' should have a double sharp glyph", ch);
+            assert!(cp as u32 >= 0xE250, "Double sharp codepoint for '{}' should be in range", ch);
+            assert!(cp as u32 <= 0xE27E, "Double sharp codepoint for '{}' should be in range", ch);
+
+            // Test double flat
+            let cp = get_accidental_glyph_codepoint(ch, 4);
+            assert_ne!(cp, ch, "Character '{}' should have a double flat glyph", ch);
+            assert!(cp as u32 >= 0xE280, "Double flat codepoint for '{}' should be in range", ch);
+            assert!(cp as u32 <= 0xE2AE, "Double flat codepoint for '{}' should be in range", ch);
         }
+    }
+
+    #[test]
+    fn test_backward_compatibility_get_sharp_glyph_codepoint() {
+        // Old function should still work and delegate to new function
+        assert_eq!(get_sharp_glyph_codepoint('1', 0), '1');
+        assert_eq!(get_sharp_glyph_codepoint('1', 1), get_accidental_glyph_codepoint('1', 1));
+        assert_eq!(get_sharp_glyph_codepoint('C', 2), get_accidental_glyph_codepoint('C', 2));
     }
 }

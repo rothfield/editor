@@ -16,7 +16,7 @@
 notation_systems:
   # Number System: 1-7 (default in editor)
   # Usage: "1" means first scale degree, "2" means second, etc.
-  # NOTE: v1.0 - accidentals not yet implemented; all notes are naturals
+  # NOTE: Accidentals are now fully implemented as pre-composed glyphs in PUA ranges
   - system_name: number
     display_name: "Number System"
     description: "Numerical scale degrees (1-7)"
@@ -235,17 +235,59 @@ glyph_variants:
 # PUA (Private Use Area) Mapping
 # Where codepoints are assigned in Unicode Private Use Area
 # NOTE: SMuFL standard codepoints use ranges U+E030-U+E042 (barlines), U+E260-U+E264 (accidentals), U+E566-U+E56E (ornaments)
-# To avoid conflicts, note atoms start AFTER all SMuFL standard ranges at 0xE600
-pua:
+# To avoid conflicts, custom allocations use ranges that don't collide with SMuFL
+octave_variants:
   start: 0xE600
-  formula: "codepoint = pua_start + (character_index × 4) + variant_index"
+  range: "0xE600 - 0xE6BB"  # 188 glyphs (47 chars × 4 variants)
+  formula: "codepoint = 0xE600 + (character_index × 4) + variant_index"
   explanation: |
-    Each base character gets 4 consecutive codepoints in the PUA.
+    Each base character gets 4 consecutive codepoints in the PUA for octave shifts.
     Example for character at index 0 (first char in number system):
       - variant 0 (1 dot above):  0xE600 + (0 × 4) + 0 = 0xE600
       - variant 1 (2 dots above): 0xE600 + (0 × 4) + 1 = 0xE601
       - variant 2 (1 dot below):  0xE600 + (0 × 4) + 2 = 0xE602
       - variant 3 (2 dots below): 0xE600 + (0 × 4) + 3 = 0xE603
+
+accidental_composites:
+  description: "Pre-composed glyph composites combining base character + accidental symbol"
+  formula: "codepoint = pua_start + character_index (sequential)"
+  count_per_type: 47  # One composite glyph per base character
+  types:
+    sharp:
+      range: "0xE1F0 - 0xE21E"
+      count: 47
+      smufl_symbol: 0xE262  # accidentalSharp from Noto Music
+      examples:
+        "1#": 0xE1F0  # 1 sharp at index 0
+        "7#": 0xE1F6  # 7 sharp at index 6
+        "C#": 0xE1F7  # C sharp at index 7
+
+    flat:
+      range: "0xE220 - 0xE24E"
+      count: 47
+      smufl_symbol: 0xE260  # accidentalFlat from Noto Music
+      examples:
+        "1b": 0xE220  # 1 flat at index 0
+        "7b": 0xE226  # 7 flat at index 6
+        "Cb": 0xE227  # C flat at index 7
+
+    double_sharp:
+      range: "0xE250 - 0xE27E"
+      count: 47
+      smufl_symbol: 0xE263  # accidentalDoubleSharp from Noto Music
+      examples:
+        "1##": 0xE250  # 1 double-sharp at index 0
+        "7##": 0xE256  # 7 double-sharp at index 6
+        "C##": 0xE257  # C double-sharp at index 7
+
+    double_flat:
+      range: "0xE280 - 0xE2AE"
+      count: 47
+      smufl_symbol: 0xE264  # accidentalDoubleFlat from Noto Music
+      examples:
+        "1bb": 0xE280  # 1 double-flat at index 0
+        "7bb": 0xE286  # 7 double-flat at index 6
+        "Cbb": 0xE287  # C double-flat at index 7
 
 # Character Order (CRITICAL!)
 # This exact order must be preserved in:
@@ -368,15 +410,24 @@ smufl_symbols:
 summary:
   total_systems: 4
   total_base_characters: 47
-  total_glyphs: 188  # 47 characters × 4 variants each (base + octave shifts)
-  total_symbols: 14  # Accidentals, barlines, ornaments
-  total_glyphs_with_symbols: 202  # 188 + 14 symbols
-  pua_range_octave_variants: "0xE000 - 0xE0BB"  # Base chars + 4 octave variants each
-  pua_range_symbols: "0xE0BC onwards"           # Musical symbols (accidentals, barlines, ornaments)
-  pua_total_range: "0xE000 - 0xE0D9"
-  source_font_single: "Noto Music (complete replacement for Inter + Bravura)"
+  total_octave_variant_glyphs: 188  # 47 characters × 4 variants each (1 dot above, 2 above, 1 below, 2 below)
+  total_accidental_composite_glyphs: 188  # 47 characters × 4 accidental types (sharp, flat, double-sharp, double-flat)
+  total_smufl_symbols: 14  # Accidentals, barlines, ornaments
+  total_font_glyphs: 390  # 188 octave + 188 accidental + 14 symbols
+
+  pua_allocations:
+    octave_variants: "0xE600 - 0xE6BB"    # 188 glyphs (47 chars × 4 octave variants)
+    sharp_accidentals: "0xE1F0 - 0xE21E"  # 47 glyphs (47 chars with # symbol)
+    flat_accidentals: "0xE220 - 0xE24E"   # 47 glyphs (47 chars with ♭ symbol)
+    double_sharp_accidentals: "0xE250 - 0xE27E"  # 47 glyphs (47 chars with 𝄪 symbol)
+    double_flat_accidentals: "0xE280 - 0xE2AE"   # 47 glyphs (47 chars with 𝄫 symbol)
+    smufl_standard: "0xE030-0xE042 (barlines), 0xE260-0xE264 (accidentals), 0xE566-0xE56E (ornaments), 0x1D100-0x1D108 (Unicode Music)"
+
   notes: |
-    - Noto Music provides ALL glyphs (pitch chars + musical symbols) in one font
-    - Replaces previous two-font approach (Inter + Bravura)
-    - SMuFL compliant for standard music symbol mappings
+    - Dual-font architecture: Noto Sans (pitch chars) + Noto Music (musical symbols)
+    - Accidentals are now fully implemented as pre-composed glyph composites
+    - Each accidental type gets 47 pre-composed glyphs (one per base character)
+    - Accidental composites are generated by combining base character with SMuFL accidental symbol
+    - SMuFL standard codepoints are used directly (no custom allocation)
     - Font generation from atoms.yaml ensures compile-time consistency (build.rs)
+    - Runtime lookup: JavaScript uses PUA ranges; WASM uses get_accidental_glyph_codepoint()

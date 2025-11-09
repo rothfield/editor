@@ -422,14 +422,13 @@ export class MouseHandler {
     }
 
     // Get navigable cell indices from WASM (WASM-first architecture)
-    const editMode = this.editor.wasmModule.getOrnamentEditMode(this.editor.theDocument);
     // BUG FIX: Use the CLICKED line, not the current cursor line!
     const line = this.editor.theDocument?.lines?.[lineIndex];
 
-    // Get navigable indices from WASM
+    // Get navigable indices from WASM (ornament edit mode disabled)
     let navigableIndices = new Set();
     if (line) {
-      const navigableIndicesArray = this.editor.wasmModule.getNavigableIndices(line, editMode);
+      const navigableIndicesArray = this.editor.wasmModule.getNavigableIndices(line, false);
       navigableIndices = new Set(Array.from(navigableIndicesArray));
     }
 

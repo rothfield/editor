@@ -51,9 +51,7 @@ export class WASMBridge {
     this.setOrnamentPlacementOnCell = wasm.setOrnamentPlacementOnCell;
     this.clearOrnamentFromCell = wasm.clearOrnamentFromCell;
 
-    // Ornament Edit Mode API
-    this.getOrnamentEditMode = wasm.getOrnamentEditMode;
-    this.setOrnamentEditMode = wasm.setOrnamentEditMode;
+    // Ornament API
     this.getNavigableIndices = wasm.getNavigableIndices;
 
     // Document lifecycle API (WASM-owned)

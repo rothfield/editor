@@ -7,7 +7,7 @@ use crate::models::*;
 use crate::models::pitch_code::AccidentalType;
 use super::display_list::*;
 use super::document::LayoutConfig;
-use crate::renderers::{get_glyph_codepoint, get_sharp_glyph_codepoint};
+use crate::renderers::{get_glyph_codepoint, get_accidental_glyph_codepoint};
 use std::collections::HashMap;
 
 /// Builder for cell styling and layout
@@ -170,23 +170,20 @@ impl CellStyleBuilder {
                         }
                     },
                     AccidentalType::Sharp => {
-                        // Use the sharp variant glyph from NotationMono font (U+E1F0+)
-                        get_sharp_glyph_codepoint(base_char, 1).to_string()
+                        // Use the sharp variant glyph from NotationFont (U+E1F0-E21E: 47 glyphs)
+                        get_accidental_glyph_codepoint(base_char, 1).to_string()
                     },
                     AccidentalType::Flat => {
-                        // Flat accidentals not yet in font, keep base character for now
-                        dataset.insert("accidental".to_string(), "flat".to_string());
-                        cell.char.clone()
+                        // Use the flat variant glyph from NotationFont (U+E220-E24E: 47 glyphs)
+                        get_accidental_glyph_codepoint(base_char, 2).to_string()
                     },
                     AccidentalType::DoubleSharp => {
-                        // Double sharp not yet in font, keep base character for now
-                        dataset.insert("accidental".to_string(), "dsharp".to_string());
-                        cell.char.clone()
+                        // Use the double-sharp variant glyph from NotationFont (U+E250-E27E: 47 glyphs)
+                        get_accidental_glyph_codepoint(base_char, 3).to_string()
                     },
                     AccidentalType::DoubleFlat => {
-                        // Double flat not yet in font, keep base character for now
-                        dataset.insert("accidental".to_string(), "dflat".to_string());
-                        cell.char.clone()
+                        // Use the double-flat variant glyph from NotationFont (U+E280-E2AE: 47 glyphs)
+                        get_accidental_glyph_codepoint(base_char, 4).to_string()
                     },
                 }
             } else if cell.octave != 0 {
