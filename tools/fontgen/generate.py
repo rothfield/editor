@@ -417,7 +417,10 @@ def build_font(
         base_glyph_name = base_glyph.glyphname
 
         # Center dot horizontally
-        dot_x_offset = bx_min + (base_width - dot_width) / 2 - dx_min
+        dot_x_offset_centered = bx_min + (base_width - dot_width) / 2 - dx_min
+
+        # For dots below (variant 2 and 3), move right by one dot width minus 1/5 dot width (shift left by 1/5)
+        dot_x_offset_below = dot_x_offset_centered + (dot_width * 0.8)
 
         # Create composite glyph
         g = font.createChar(atom.assigned_codepoint, f"{atom.character}_v{atom.variant_index}")
@@ -427,23 +430,23 @@ def build_font(
         # Add dots based on variant
         if atom.variant_index == 0:  # 1 dot above
             y_pos = by_max - dy_min + spec.geometry.dot_above_gap
-            g.addReference(dot_name, (1, 0, 0, 1, dot_x_offset, y_pos))
+            g.addReference(dot_name, (1, 0, 0, 1, dot_x_offset_centered, y_pos))
 
         elif atom.variant_index == 1:  # 2 dots above
             y_pos1 = by_max - dy_min + spec.geometry.dot_above_gap
             y_pos2 = y_pos1 + spec.geometry.dot_vertical_step
-            g.addReference(dot_name, (1, 0, 0, 1, dot_x_offset, y_pos1))
-            g.addReference(dot_name, (1, 0, 0, 1, dot_x_offset, y_pos2))
+            g.addReference(dot_name, (1, 0, 0, 1, dot_x_offset_centered, y_pos1))
+            g.addReference(dot_name, (1, 0, 0, 1, dot_x_offset_centered, y_pos2))
 
         elif atom.variant_index == 2:  # 1 dot below
             y_pos = by_min - dy_max - spec.geometry.dot_below_gap
-            g.addReference(dot_name, (1, 0, 0, 1, dot_x_offset, y_pos))
+            g.addReference(dot_name, (1, 0, 0, 1, dot_x_offset_below, y_pos))
 
         elif atom.variant_index == 3:  # 2 dots below
             y_pos1 = by_min - dy_max - spec.geometry.dot_below_gap
             y_pos2 = y_pos1 - spec.geometry.dot_vertical_step
-            g.addReference(dot_name, (1, 0, 0, 1, dot_x_offset, y_pos1))
-            g.addReference(dot_name, (1, 0, 0, 1, dot_x_offset, y_pos2))
+            g.addReference(dot_name, (1, 0, 0, 1, dot_x_offset_below, y_pos1))
+            g.addReference(dot_name, (1, 0, 0, 1, dot_x_offset_below, y_pos2))
 
         g.width = base_glyph.width
 
