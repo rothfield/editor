@@ -431,9 +431,9 @@ impl<'a> LayoutLineComputer<'a> {
 
         // Position based on arc direction
         let baseline_offset = if is_downward {
-            // Beat loops: positioned below the cell bottom
-            // Position = cell_height (cell bottom) + beat_loop_offset_below (gap below)
-            config.cell_height + config.beat_loop_offset_below
+            // Beat loops: top aligned with cell bottom
+            // Beat loop top is at exactly cell_height (bottom of cell)
+            config.cell_height
         } else {
             // Slurs: positioned above glyphs using slur_offset_above
             config.slur_offset_above
