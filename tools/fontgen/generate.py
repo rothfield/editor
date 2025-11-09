@@ -427,8 +427,8 @@ def build_font(
         # Add dots based on variant
         # Single dots: 100% scale, Double dots: 60% scale
         double_dot_scale = 0.6
-        # For double dots, spacing equals one dot height (at scaled size)
-        double_dot_spacing = dot_height * double_dot_scale
+        # For double dots, spacing equals two dot heights (at scaled size)
+        double_dot_spacing = 2 * dot_height * double_dot_scale
 
         if atom.variant_index == 0:  # 1 dot above
             y_pos = by_max - dy_min + spec.geometry.dot_above_gap
