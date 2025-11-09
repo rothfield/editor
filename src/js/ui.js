@@ -132,9 +132,11 @@ class UI {
       { id: 'menu-separator-1', label: null, separator: true },
       { id: 'menu-apply-slur', label: 'Apply Slur (Alt+S)', action: 'apply-slur' },
       { id: 'menu-separator-2', label: null, separator: true },
+      { id: 'menu-octave-highest', label: 'Highest Octave (Alt+H)', action: 'octave-highest' },
       { id: 'menu-octave-upper', label: 'Upper Octave (Alt+U)', action: 'octave-upper' },
       { id: 'menu-octave-middle', label: 'Middle Octave (Alt+M)', action: 'octave-middle' },
-      { id: 'menu-octave-lower', label: 'Lower Octave (Alt+L)', action: 'octave-lower' }
+      { id: 'menu-octave-lower', label: 'Lower Octave (Alt+L)', action: 'octave-lower' },
+      { id: 'menu-octave-lowest', label: 'Lowest Octave (Alt+K)', action: 'octave-lowest' }
     ];
 
     const editMenu = document.getElementById('edit-menu');
@@ -641,6 +643,9 @@ class UI {
       case 'apply-slur':
         this.applySlur();
         break;
+      case 'octave-highest':
+        this.applyOctave(2);
+        break;
       case 'octave-upper':
         this.applyOctave(1);
         break;
@@ -649,6 +654,9 @@ class UI {
         break;
       case 'octave-lower':
         this.applyOctave(-1);
+        break;
+      case 'octave-lowest':
+        this.applyOctave(-2);
         break;
       case 'select-all':
         this.selectAll();
