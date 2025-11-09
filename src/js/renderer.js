@@ -79,9 +79,6 @@ class DOMRenderer {
         font-size: ${BASE_FONT_SIZE}px;
       }
 
-      /* Octave dots now use real DOM elements (span.cell-modifier.octave-dot) instead of ::before pseudo-elements */
-      /* The octave-dot spans are positioned absolutely within the cell-content */
-
       /* Symbol elements styled in green */
       .char-cell.kind-symbol {
         color: #22c55e; /* green-500 */
@@ -802,7 +799,6 @@ class DOMRenderer {
     const ornamentalCells = [];
 
     // Render cells with new DOM structure
-    // Structure: cell-container > (cell-content > (cell-char + octave-dot) + cell-text)
     renderLine.cells.forEach((cellData, idx) => {
       // Get cellIndex from dataset
       let cellIndex = idx;
@@ -1012,8 +1008,8 @@ class DOMRenderer {
       line.appendChild(span);
     });
 
-    // Octave dots are no longer rendered as separate overlay elements
-    // They are now embedded in font glyphs via glyph substitution in RenderCell
+    // Note: Octave dots are embedded in NotationFont glyphs (U+E000-U+E0BB range, 4 variants per character)
+    // Font rendering handles all octave visualization
 
     return line;
   }

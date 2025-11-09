@@ -82,28 +82,6 @@ export const SLUR_BORDER_COLOR = '#4a5568'; // Slur arc color
 export const SLUR_BORDER_RADIUS = 12;      // Corner radius for arc ends (px)
 
 // ============================================================================
-// Octave Visualization
-// ============================================================================
-
-/**
- * Octave dot styling constants
- */
-export const OCTAVE_DOT_RADIUS = 3;        // Dot radius (px)
-export const OCTAVE_DOT_OFFSET = 10;       // Distance from cell edge (px)
-export const OCTAVE_DOT_SPACING = 9;       // Spacing between multiple dots (px)
-export const OCTAVE_DOT_COLOR = '#000000'; // Dot color (black)
-
-/**
- * Octave position values
- */
-export const OCTAVE_POSITIONS = {
-  TWO_UP: 2,
-  ONE_UP: 1,
-  MIDDLE: 0,
-  ONE_DOWN: -1,
-  TWO_DOWN: -2
-};
-
 // ============================================================================
 // Element Types and Enums
 // ============================================================================
