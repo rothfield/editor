@@ -353,28 +353,6 @@
             background-color: rgba(59, 130, 246, 0.3); /* Blue with transparency */
         }
 
-        /* T027: Ornament cell styling - rhythm-transparent embellishments */
-        .char-cell.ornament-cell {
-            font-size: 0.75em; /* 75% of base font size */
-            vertical-align: super; /* Raised/superscript position */
-            color: #6366f1; /* Indigo-500 for visual distinction */
-        }
-
-        /* T067: Edit mode styling - ornaments inline when edit mode is ON */
-        .char-cell.ornament-cell[data-edit-mode="true"] {
-            /* Inline display: normal width, clickable, same visual styling */
-            vertical-align: baseline; /* Reset to baseline for inline editing */
-            cursor: text; /* Indicate editability */
-            pointer-events: auto; /* Enable interactions */
-        }
-
-        /* T067: Floating mode styling - zero-width overlay when edit mode is OFF */
-        .char-cell.ornament-cell[data-edit-mode="false"] {
-            /* Floating display: zero width, non-interactive, raised positioning */
-            overflow: visible; /* Allow content to extend beyond zero width */
-            cursor: default; /* Not editable in floating mode */
-        }
-
         /* Ornament indicator spans - rendered smaller and raised */
         .char-cell.ornament-first,
         .char-cell.ornament-middle,
@@ -542,8 +520,6 @@
                     <span>Position: <span id="cursor-position">Line: 0, Col: 0 (Lane: 1)</span></span>
                     <span class="text-gray-400">|</span>
                     <span>Pitch System: <span id="current-pitch-system" style="font-weight: bold;">Number</span></span>
-                    <span class="text-gray-400">|</span>
-                    <span><span id="ornament-edit-mode-display" style="font-weight: bold;">Edit Ornament Mode: OFF</span></span>
                     <span class="text-gray-400">|</span>
                     <span>Characters: <span id="char-count">0</span></span>
                     <span class="text-gray-400">|</span>

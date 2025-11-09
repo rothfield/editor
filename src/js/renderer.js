@@ -291,10 +291,7 @@ class DOMRenderer {
       slur_offset_above: SLUR_OFFSET_ABOVE,
       beat_loop_offset_below: BEAT_LOOP_OFFSET_BELOW,
       beat_loop_height: BEAT_LOOP_HEIGHT,
-      ornament_edit_mode: this.editor.wasmModule.getOrnamentEditMode(doc),
     };
-
-    console.log(`🎨 Layout config ornament_edit_mode: ${config.ornament_edit_mode}`);
 
     const displayList = this.editor.wasmModule.computeLayout(doc, config);
     const layoutTime = performance.now() - layoutStart;
@@ -930,11 +927,8 @@ class DOMRenderer {
       line.appendChild(lyricSpan);
     });
 
-    // T029/T066-T069: Render ornamental cells (inline when edit mode ON, floating when OFF)
+    // T029: Render ornamental cells (zero-width floating layout)
     // These are cells with ornament indicators (rhythm-transparent)
-
-    // T066: Get edit mode state from WASM (WASM-first architecture)
-    const ornamentEditMode = this.editor.wasmModule.getOrnamentEditMode(this.theDocument);
 
     ornamentalCells.forEach(({ cellData, cellIndex, cell }) => {
       const ornamentChar = document.createElement('span');
@@ -959,44 +953,24 @@ class DOMRenderer {
         }
       }
 
-      // T067: Add data-edit-mode attribute for CSS styling
-      ornamentChar.dataset.editMode = ornamentEditMode ? 'true' : 'false';
-
       // Convert absolute Y to relative Y within this line
       const ornamentRelativeY = cellData.y - lineStartY;
 
-      // T069: Conditional rendering based on edit mode
-      if (ornamentEditMode) {
-        // Edit mode ON: Render inline with normal width and interactivity
-        ornamentChar.style.cssText = `
-          position: absolute;
-          left: ${cellData.x}px;
-          top: ${ornamentRelativeY}px;
-          width: ${cellData.w}px;
-          height: ${cellData.h}px;
-          pointer-events: auto;
-          z-index: 1;
-        `;
-
-        // Mouse events are now handled by MouseHandler in editor.js
-        // No cell-level handlers needed anymore
-      } else {
-        // Edit mode OFF: Zero-width floating layout with absolute positioning
-        ornamentChar.style.cssText = `
-          position: absolute;
-          left: ${cellData.x}px;
-          top: ${ornamentRelativeY}px;
-          width: 0;
-          height: ${cellData.h}px;
-          pointer-events: none;
-          z-index: 5;
-        `;
-      }
+      // Zero-width floating layout with absolute positioning
+      ornamentChar.style.cssText = `
+        position: absolute;
+        left: ${cellData.x}px;
+        top: ${ornamentRelativeY}px;
+        width: 0;
+        height: ${cellData.h}px;
+        pointer-events: none;
+        z-index: 5;
+      `;
 
       line.appendChild(ornamentChar);
     });
 
-    // Render ornaments when ornament_edit_mode is OFF
+    // Render ornaments (positioned to the RIGHT and UP from anchor notes)
     // Ornaments are positioned to the RIGHT and UP (70%) from anchor notes, scaled smaller
     if (renderLine.ornaments && renderLine.ornaments.length > 0) {
       renderLine.ornaments.forEach(ornament => {

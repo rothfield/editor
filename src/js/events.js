@@ -132,10 +132,6 @@ class EventManager {
       'Alt+o': () => this.applyOrnament(),
       'Alt+O': () => this.applyOrnament(),
 
-      // Ornament edit mode toggle (Alt+Shift+O)
-      'Alt+Shift+o': () => this.toggleOrnamentEditMode(),
-      'Alt+Shift+O': () => this.toggleOrnamentEditMode(),
-
       // Debug shortcuts
       F12: () => this.toggleDebugMode(),
       'Ctrl+Shift+I': () => this.toggleDebugMode(),
@@ -150,8 +146,6 @@ class EventManager {
       // Alt commands for musical notation
       'Alt+s', 'Alt+S', 'Alt+u', 'Alt+U', 'Alt+m', 'Alt+M',
       'Alt+l', 'Alt+L', 'Alt+t', 'Alt+T', 'Alt+o', 'Alt+O',
-      // Alt+Shift commands
-      'Alt+Shift+o', 'Alt+Shift+O',
       // Alt commands for file operations
       'Alt+n', 'Alt+N',
       // Ctrl commands for file operations
@@ -436,18 +430,6 @@ class EventManager {
   }
 
   /**
-   * Toggle ornament edit mode (Alt+Shift+O)
-   */
-  toggleOrnamentEditMode() {
-    console.log('Alt+Shift+O: Toggle ornament edit mode shortcut triggered');
-    if (this.editor && this.editor.toggleOrnamentEditMode) {
-      this.editor.toggleOrnamentEditMode();
-    } else {
-      console.warn('Ornament edit mode toggle not available');
-    }
-  }
-
-  /**
    * Apply ornament to selection (Alt+O)
    */
   applyOrnament() {
@@ -584,7 +566,6 @@ Musical Notation:
 • Number System: 1-7 (with #/b for accidentals)
 • Western System: cdefgab/CDEFGAB (with #/b for accidentals)
 • Alt+O: Apply ornament indicator to selection
-• Alt+Shift+O: Toggle Edit Ornaments mode
 • Alt+S: Apply slur to selection
 • Alt+U/M/L: Apply octave +1/0/-1 to selection
 • Alt+T: Enter tala notation

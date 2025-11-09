@@ -513,78 +513,7 @@ fn collapse_ornaments_from_cells(_line: &mut Line) {
     // No expansion/collapse logic is needed
 }
 
-/// Set the ornament edit mode for the document
-///
-/// # Parameters
-/// - `document_js`: JavaScript Document object
-/// - `mode`: true to enable edit mode (ornaments display in normal position), false for attached mode
-///
-/// # Returns
-/// Updated JavaScript Document object with the ornament edit mode set
-#[wasm_bindgen(js_name = setOrnamentEditMode)]
-pub fn set_ornament_edit_mode(
-    document_js: JsValue,
-    mode: bool,
-) -> Result<JsValue, JsValue> {
-    wasm_info!("setOrnamentEditMode called: mode={}", mode);
-
-    // Deserialize document from JavaScript
-    let mut document: Document = serde_wasm_bindgen::from_value(document_js)
-        .map_err(|e| {
-            wasm_error!("Deserialization error: {}", e);
-            JsValue::from_str(&format!("Deserialization error: {}", e))
-        })?;
-
-    // Expand or collapse ornaments in all lines
-    for line in &mut document.lines {
-        if mode {
-            // OFF → ON: expand ornaments into cells
-            expand_ornaments_to_cells(line);
-            wasm_info!("  Expanded ornaments in line");
-        } else {
-            // ON → OFF: collapse cells back to ornaments
-            collapse_ornaments_from_cells(line);
-            wasm_info!("  Collapsed ornaments in line");
-        }
-    }
-
-    document.ornament_edit_mode = mode;
-    wasm_info!("  Ornament edit mode set to: {}", mode);
-
-    // Compute glyphs before serialization
-    document.compute_glyphs();
-
-    // Serialize back to JavaScript
-    let result = serde_wasm_bindgen::to_value(&document)
-        .map_err(|e| {
-            wasm_error!("Serialization error: {}", e);
-            JsValue::from_str(&format!("Serialization error: {}", e))
-        })?;
-
-    wasm_info!("setOrnamentEditMode completed successfully");
-    Ok(result)
-}
-
-/// Get the ornament edit mode from the document
-///
-/// # Parameters
-/// - `document_js`: JavaScript Document object
-///
-/// # Returns
-/// true if edit mode is enabled, false for attached mode
-#[wasm_bindgen(js_name = getOrnamentEditMode)]
-pub fn get_ornament_edit_mode(document_js: JsValue) -> Result<bool, JsValue> {
-    // Deserialize document from JavaScript
-    let document: Document = serde_wasm_bindgen::from_value(document_js)
-        .map_err(|e| {
-            wasm_error!("Deserialization error: {}", e);
-            JsValue::from_str(&format!("Deserialization error: {}", e))
-        })?;
-
-    Ok(document.ornament_edit_mode)
-}
-
-/// Get navigable cell indices for a line, filtered based on ornament edit mode
+/// Get navigable cell indices for a line
 ///
 /// In normal mode (edit_mode = false), ornament cells are excluded from navigation.
 /// In edit mode (edit_mode = true), all cells are navigable.
