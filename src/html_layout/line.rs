@@ -426,23 +426,21 @@ impl<'a> LayoutLineComputer<'a> {
         // Anchor points at cell centers
         let is_downward = direction == "down";
 
-        let start_x = start_cell.x + (start_cell.w / 2.0);
-        let start_y = if is_downward {
-            start_cell.y + start_cell.h
+        // Position arcs based on direction
+        // Slurs: positioned above the font bbox (around 20% of cell height from top)
+        // Beat loops: positioned below baseline (around 80% of cell height)
+        // Don't account for octave dots (upper or lower) - they're positioned outside the cell
+        let baseline_offset = if is_downward {
+            config.cell_height * 0.80 // Beat loops below baseline
         } else {
-            // Position slurs a little below baseline (baseline is at ~75% of cell height)
-            // Don't account for octave dots - they're positioned outside the cell
-            start_cell.y + (config.cell_height * 0.80)
+            config.cell_height * 0.20 // Slurs above font bbox
         };
 
+        let start_x = start_cell.x + (start_cell.w / 2.0);
+        let start_y = start_cell.y + baseline_offset;
+
         let end_x = end_cell.x + (end_cell.w / 2.0);
-        let end_y = if is_downward {
-            end_cell.y + end_cell.h
-        } else {
-            // Position slurs a little below baseline
-            // Don't account for octave dots - they're positioned outside the cell
-            end_cell.y + (config.cell_height * 0.80)
-        };
+        let end_y = end_cell.y + baseline_offset;
 
         // Calculate horizontal span
         let span = (end_x - start_x).abs();
