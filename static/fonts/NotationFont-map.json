@@ -1,0 +1,1154 @@
+{
+  "version": "1.0",
+  "generated_from": "atoms.yaml",
+  "pua_allocation": {
+    "notes_start": "0xe600",
+    "notes_end": "0xe6bb",
+    "symbols_start": "0xe030",
+    "symbols_end": "0xe56e"
+  },
+  "notes": [
+    {
+      "system": "number",
+      "character": "1",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe600",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe601",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe602",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe603",
+          "octave_shift": -2
+        }
+      }
+    },
+    {
+      "system": "number",
+      "character": "2",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe604",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe605",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe606",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe607",
+          "octave_shift": -2
+        }
+      }
+    },
+    {
+      "system": "number",
+      "character": "3",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe608",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe609",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe60a",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe60b",
+          "octave_shift": -2
+        }
+      }
+    },
+    {
+      "system": "number",
+      "character": "4",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe60c",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe60d",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe60e",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe60f",
+          "octave_shift": -2
+        }
+      }
+    },
+    {
+      "system": "number",
+      "character": "5",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe610",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe611",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe612",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe613",
+          "octave_shift": -2
+        }
+      }
+    },
+    {
+      "system": "number",
+      "character": "6",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe614",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe615",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe616",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe617",
+          "octave_shift": -2
+        }
+      }
+    },
+    {
+      "system": "number",
+      "character": "7",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe618",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe619",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe61a",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe61b",
+          "octave_shift": -2
+        }
+      }
+    },
+    {
+      "system": "western",
+      "character": "C",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe61c",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe61d",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe61e",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe61f",
+          "octave_shift": -2
+        }
+      }
+    },
+    {
+      "system": "western",
+      "character": "D",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe620",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe621",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe622",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe623",
+          "octave_shift": -2
+        }
+      }
+    },
+    {
+      "system": "western",
+      "character": "E",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe624",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe625",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe626",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe627",
+          "octave_shift": -2
+        }
+      }
+    },
+    {
+      "system": "western",
+      "character": "F",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe628",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe629",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe62a",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe62b",
+          "octave_shift": -2
+        }
+      }
+    },
+    {
+      "system": "western",
+      "character": "G",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe62c",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe62d",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe62e",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe62f",
+          "octave_shift": -2
+        }
+      }
+    },
+    {
+      "system": "western",
+      "character": "A",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe630",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe631",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe632",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe633",
+          "octave_shift": -2
+        }
+      }
+    },
+    {
+      "system": "western",
+      "character": "B",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe634",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe635",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe636",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe637",
+          "octave_shift": -2
+        }
+      }
+    },
+    {
+      "system": "western",
+      "character": "c",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe638",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe639",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe63a",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe63b",
+          "octave_shift": -2
+        }
+      }
+    },
+    {
+      "system": "western",
+      "character": "d",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe63c",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe63d",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe63e",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe63f",
+          "octave_shift": -2
+        }
+      }
+    },
+    {
+      "system": "western",
+      "character": "e",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe640",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe641",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe642",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe643",
+          "octave_shift": -2
+        }
+      }
+    },
+    {
+      "system": "western",
+      "character": "f",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe644",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe645",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe646",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe647",
+          "octave_shift": -2
+        }
+      }
+    },
+    {
+      "system": "western",
+      "character": "g",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe648",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe649",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe64a",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe64b",
+          "octave_shift": -2
+        }
+      }
+    },
+    {
+      "system": "western",
+      "character": "a",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe64c",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe64d",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe64e",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe64f",
+          "octave_shift": -2
+        }
+      }
+    },
+    {
+      "system": "western",
+      "character": "b",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe650",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe651",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe652",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe653",
+          "octave_shift": -2
+        }
+      }
+    },
+    {
+      "system": "sargam",
+      "character": "S",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe654",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe655",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe656",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe657",
+          "octave_shift": -2
+        }
+      }
+    },
+    {
+      "system": "sargam",
+      "character": "r",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe658",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe659",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe65a",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe65b",
+          "octave_shift": -2
+        }
+      }
+    },
+    {
+      "system": "sargam",
+      "character": "R",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe65c",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe65d",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe65e",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe65f",
+          "octave_shift": -2
+        }
+      }
+    },
+    {
+      "system": "sargam",
+      "character": "g",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe660",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe661",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe662",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe663",
+          "octave_shift": -2
+        }
+      }
+    },
+    {
+      "system": "sargam",
+      "character": "G",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe664",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe665",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe666",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe667",
+          "octave_shift": -2
+        }
+      }
+    },
+    {
+      "system": "sargam",
+      "character": "m",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe668",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe669",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe66a",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe66b",
+          "octave_shift": -2
+        }
+      }
+    },
+    {
+      "system": "sargam",
+      "character": "M",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe66c",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe66d",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe66e",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe66f",
+          "octave_shift": -2
+        }
+      }
+    },
+    {
+      "system": "sargam",
+      "character": "P",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe670",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe671",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe672",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe673",
+          "octave_shift": -2
+        }
+      }
+    },
+    {
+      "system": "sargam",
+      "character": "d",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe674",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe675",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe676",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe677",
+          "octave_shift": -2
+        }
+      }
+    },
+    {
+      "system": "sargam",
+      "character": "D",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe678",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe679",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe67a",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe67b",
+          "octave_shift": -2
+        }
+      }
+    },
+    {
+      "system": "sargam",
+      "character": "n",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe67c",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe67d",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe67e",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe67f",
+          "octave_shift": -2
+        }
+      }
+    },
+    {
+      "system": "sargam",
+      "character": "N",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe680",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe681",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe682",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe683",
+          "octave_shift": -2
+        }
+      }
+    },
+    {
+      "system": "doremi",
+      "character": "d",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe684",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe685",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe686",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe687",
+          "octave_shift": -2
+        }
+      }
+    },
+    {
+      "system": "doremi",
+      "character": "r",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe688",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe689",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe68a",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe68b",
+          "octave_shift": -2
+        }
+      }
+    },
+    {
+      "system": "doremi",
+      "character": "m",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe68c",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe68d",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe68e",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe68f",
+          "octave_shift": -2
+        }
+      }
+    },
+    {
+      "system": "doremi",
+      "character": "f",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe690",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe691",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe692",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe693",
+          "octave_shift": -2
+        }
+      }
+    },
+    {
+      "system": "doremi",
+      "character": "s",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe694",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe695",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe696",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe697",
+          "octave_shift": -2
+        }
+      }
+    },
+    {
+      "system": "doremi",
+      "character": "l",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe698",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe699",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe69a",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe69b",
+          "octave_shift": -2
+        }
+      }
+    },
+    {
+      "system": "doremi",
+      "character": "t",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe69c",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe69d",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe69e",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe69f",
+          "octave_shift": -2
+        }
+      }
+    },
+    {
+      "system": "doremi",
+      "character": "D",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe6a0",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe6a1",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe6a2",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe6a3",
+          "octave_shift": -2
+        }
+      }
+    },
+    {
+      "system": "doremi",
+      "character": "R",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe6a4",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe6a5",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe6a6",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe6a7",
+          "octave_shift": -2
+        }
+      }
+    },
+    {
+      "system": "doremi",
+      "character": "M",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe6a8",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe6a9",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe6aa",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe6ab",
+          "octave_shift": -2
+        }
+      }
+    },
+    {
+      "system": "doremi",
+      "character": "F",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe6ac",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe6ad",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe6ae",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe6af",
+          "octave_shift": -2
+        }
+      }
+    },
+    {
+      "system": "doremi",
+      "character": "S",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe6b0",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe6b1",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe6b2",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe6b3",
+          "octave_shift": -2
+        }
+      }
+    },
+    {
+      "system": "doremi",
+      "character": "L",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe6b4",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe6b5",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe6b6",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe6b7",
+          "octave_shift": -2
+        }
+      }
+    },
+    {
+      "system": "doremi",
+      "character": "T",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe6b8",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe6b9",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe6ba",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe6bb",
+          "octave_shift": -2
+        }
+      }
+    }
+  ],
+  "symbols": [
+    {
+      "name": "accidentalSharp",
+      "kind": "accidental",
+      "label": "Sharp (#)",
+      "codepoint": "0xe262"
+    },
+    {
+      "name": "accidentalNatural",
+      "kind": "accidental",
+      "label": "Natural (\u266e)",
+      "codepoint": "0xe261"
+    },
+    {
+      "name": "accidentalFlat",
+      "kind": "accidental",
+      "label": "Flat (\u266d)",
+      "codepoint": "0xe260"
+    },
+    {
+      "name": "accidentalDoubleSharp",
+      "kind": "accidental",
+      "label": "Double sharp (\ud834\udd2a)",
+      "codepoint": "0xe263"
+    },
+    {
+      "name": "accidentalDoubleFlat",
+      "kind": "accidental",
+      "label": "Double flat (\ud834\udd2b)",
+      "codepoint": "0xe264"
+    },
+    {
+      "name": "barlineSingle",
+      "kind": "barline",
+      "label": "Barline (single)",
+      "codepoint": "0xe030"
+    },
+    {
+      "name": "barlineDouble",
+      "kind": "barline",
+      "label": "Barline (double)",
+      "codepoint": "0xe031"
+    },
+    {
+      "name": "barlineRepeatLeft",
+      "kind": "barline",
+      "label": "Barline (repeat left)",
+      "codepoint": "0xe040"
+    },
+    {
+      "name": "barlineRepeatRight",
+      "kind": "barline",
+      "label": "Barline (repeat right)",
+      "codepoint": "0xe041"
+    },
+    {
+      "name": "barlineRepeatBoth",
+      "kind": "barline",
+      "label": "Barline (repeat both)",
+      "codepoint": "0xe042"
+    },
+    {
+      "name": "ornamentMordent",
+      "kind": "ornament",
+      "label": "Mordent",
+      "codepoint": "0xe56d"
+    },
+    {
+      "name": "ornamentInvertedMordent",
+      "kind": "ornament",
+      "label": "Inverted mordent",
+      "codepoint": "0xe56e"
+    },
+    {
+      "name": "ornamentTurn",
+      "kind": "ornament",
+      "label": "Turn",
+      "codepoint": "0xe567"
+    },
+    {
+      "name": "ornamentTrill",
+      "kind": "ornament",
+      "label": "Trill",
+      "codepoint": "0xe566"
+    }
+  ],
+  "summary": {
+    "total_notes": 47,
+    "total_symbols": 14,
+    "systems": {
+      "number": {
+        "count": 7,
+        "chars": "1234567"
+      },
+      "western": {
+        "count": 14,
+        "chars": "CDEFGABcdefgab"
+      },
+      "sargam": {
+        "count": 12,
+        "chars": "SrRgGmMPdDnN"
+      },
+      "doremi": {
+        "count": 14,
+        "chars": "drmfsltDRMFSLT"
+      }
+    }
+  }
+}

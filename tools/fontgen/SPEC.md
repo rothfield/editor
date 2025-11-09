@@ -8,7 +8,7 @@
 
 ## 1. Overview
 
-The Notation Font Generation System is a **build-time toolchain** that produces a composite font file (`NotationMonoDotted.ttf`) and a runtime mapping file (`NotationMonoDotted-map.json`) for use in the music notation editor.
+The Notation Font Generation System is a **build-time toolchain** that produces a composite font file (`NotationFont.ttf`) and a runtime mapping file (`NotationFont-map.json`) for use in the music notation editor.
 
 ### 1.1 Design Principles
 
@@ -28,8 +28,8 @@ The Notation Font Generation System is a **build-time toolchain** that produces 
 |-----------|---------------|------------|
 | `atoms.yaml` | Define semantic universe of pitch systems and symbols | Font generation, PUA math |
 | `generate.py` | Transform atoms → glyphs → font file + JSON | Define notation semantics |
-| `NotationMonoDotted.ttf` | Render glyphs at runtime | Store metadata about systems |
-| `NotationMonoDotted-map.json` | Provide codepoint lookup for editor | Contain build-time implementation details |
+| `NotationFont.ttf` | Render glyphs at runtime | Store metadata about systems |
+| `NotationFont-map.json` | Provide codepoint lookup for editor | Contain build-time implementation details |
 | Editor (Rust/JS) | Resolve (system, pitch, accidental, octave) → codepoint via JSON | Compute PUA offsets or assume ranges |
 
 ### 2.2 Data Flow
@@ -39,10 +39,10 @@ atoms.yaml (semantic spec)
     ↓
 generate.py (build system)
     ├─ Inter.ttc (base font for notes)
-    ├─ Bravura.otf (symbol glyphs)
+    ├─ NotoMusic.ttf (symbol glyphs)
     ↓
-    ├─→ NotationMonoDotted.ttf (runtime font)
-    └─→ NotationMonoDotted-map.json (runtime lookup)
+    ├─→ NotationFont.ttf (runtime font)
+    └─→ NotationFont-map.json (runtime lookup)
         ↓
     Editor (Rust/JS) reads JSON at build time
         ↓
@@ -136,10 +136,10 @@ glyph_variants:
     2: "1 dot below"
     3: "2 dots below"
 
-bravura_symbols:
+noto_music_symbols:
   - glyph_name: "uni266F"
     label: "Sharp (#)"
-    bravura_codepoint: 0x266F
+    noto_music_codepoint: 0x266F
     codepoint_offset: 0  # Relative to symbol start
 
 pua:
@@ -152,9 +152,9 @@ character_order: "1234567CDEFGABcdefgabSrRgGmMPdDnNdrmfsltDRMFSLT"
 **Requirements**:
 - `character_order` MUST match the concatenation of all characters in `notation_systems`
 - Each system's characters appear in the order defined
-- `codepoint_offset` in `bravura_symbols` is relative to the start of the symbol range
+- `codepoint_offset` in `noto_music_symbols` is relative to the start of the symbol range
 
-### 4.2 `NotationMonoDotted-map.json` Structure
+### 4.2 `NotationFont-map.json` Structure
 
 #### Minimal Schema (Runtime Contract)
 
@@ -223,7 +223,7 @@ character_order: "1234567CDEFGABcdefgabSrRgGmMPdDnNdrmfsltDRMFSLT"
 
 #### Forbidden Fields (DO NOT include in runtime JSON)
 
-- Bravura source codepoints
+- Noto Music source codepoints
 - FontForge glyph names
 - Intermediate build data
 - PUA allocation formulas
@@ -245,7 +245,7 @@ def load_atom_spec(yaml_path: str) -> AtomSpec:
     Returns:
         AtomSpec with:
             - notation_systems: List[NotationSystem]
-            - bravura_symbols: List[BravuraSymbol]
+            - noto_music_symbols: List[Noto MusicSymbol]
             - character_order: str
 
     Raises:
@@ -267,7 +267,7 @@ def assign_codepoints(spec: AtomSpec, start: int = 0xE000) -> CodepointLayout:
                 i. Assign cp to (character, variant)
                 ii. cp += 1
         3. symbol_start = cp
-        4. For each symbol in bravura_symbols:
+        4. For each symbol in noto_music_symbols:
             a. Assign cp to symbol
             b. cp += 1
         5. Return layout with all assignments
@@ -286,7 +286,7 @@ def assign_codepoints(spec: AtomSpec, start: int = 0xE000) -> CodepointLayout:
 ```python
 def build_font(
     base_font_path: str,
-    bravura_font_path: str,
+    noto_music_font_path: str,
     layout: CodepointLayout
 ) -> fontforge.font:
     """
@@ -294,7 +294,7 @@ def build_font(
 
     Steps:
         1. Load base font (Inter.ttc)
-        2. Load Bravura font (optional)
+        2. Load Noto Music font (optional)
         3. For each note atom in layout:
             a. Get base character glyph from Inter
             b. Get dot glyph from Inter
@@ -303,7 +303,7 @@ def build_font(
                 ii. Add reference(s) to dots (positioned above/below)
             d. Set glyph width from base character
         4. For each symbol in layout:
-            a. Get glyph from Bravura by name or codepoint
+            a. Get glyph from Noto Music by name or codepoint
             b. Copy glyph to symbol.codepoint in target font
         5. Flatten all composite glyphs (convert references → outlines)
         6. Return font
@@ -326,7 +326,7 @@ def build_mapping_json(layout: CodepointLayout) -> dict:
         - Summary statistics
 
     Excludes:
-        - Bravura source info
+        - Noto Music source info
         - FontForge internals
         - Build-time metadata
 
@@ -342,9 +342,9 @@ def build_mapping_json(layout: CodepointLayout) -> dict:
 | `atoms.yaml` not found | Fail immediately, print path |
 | `character_order` mismatch | Fail with diff of expected vs. actual |
 | Base font not found | Fail immediately |
-| Bravura font not found | Warn, skip symbols, continue |
+| Noto Music font not found | Warn, skip symbols, continue |
 | Base glyph missing from Inter | Fail with character name |
-| Bravura glyph missing | Warn, skip that symbol, continue |
+| Noto Music glyph missing | Warn, skip that symbol, continue |
 | Duplicate codepoint | Fail immediately (sanity check failure) |
 | PUA overflow (> 0xF8FF) | Fail with usage statistics |
 
@@ -372,14 +372,14 @@ def validate_layout(layout: CodepointLayout):
 
 The editor MUST:
 
-1. **Read `NotationMonoDotted-map.json` at build time** (not runtime)
+1. **Read `NotationFont-map.json` at build time** (not runtime)
 2. **Generate static lookup tables** in Rust/JS from JSON
 3. **Never compute codepoints** using formulas or offsets
 
 #### Example: Rust Static Table
 
 ```rust
-// Generated at build time from NotationMonoDotted-map.json
+// Generated at build time from NotationFont-map.json
 pub struct NoteGlyph {
     pub id: u32,
     pub system: NotationSystem,
@@ -423,7 +423,7 @@ pub static SYMBOL_GLYPHS: &[SymbolGlyph] = &[
 #### Example: JavaScript Static Object
 
 ```javascript
-// Generated at build time from NotationMonoDotted-map.json
+// Generated at build time from NotationFont-map.json
 export const NOTE_GLYPHS = [
   {
     id: 0,
@@ -475,14 +475,14 @@ pub fn get_symbol_glyph(name: &str) -> Option<char> {
 
 ```css
 @font-face {
-    font-family: 'NotationMonoDotted';
-    src: url('/fonts/NotationMonoDotted.ttf') format('truetype');
+    font-family: 'NotationFont';
+    src: url('/fonts/NotationFont.ttf') format('truetype');
     font-weight: normal;
     font-style: normal;
 }
 
 .notation-character {
-    font-family: 'NotationMonoDotted', monospace;
+    font-family: 'NotationFont', monospace;
     font-size: 18px;
 }
 ```
@@ -517,7 +517,7 @@ pub fn get_symbol_glyph(name: &str) -> Option<char> {
    ```
 
 4. **Verify output**:
-   - Check `NotationMonoDotted-map.json` has new system
+   - Check `NotationFont-map.json` has new system
    - Verify PUA allocation didn't break existing codepoints
    - Test new characters in browser
 
@@ -548,7 +548,7 @@ Future versions MUST:
 ### 8.2 Font Versioning
 
 Font metadata includes:
-- `fontname`: "NotationMonoDotted"
+- `fontname`: "NotationFont"
 - `fullname`: "Notation Mono Dotted"
 - `version`: Matches JSON version
 
@@ -582,11 +582,11 @@ def test_json_schema_valid():
 python3 tools/fontgen/generate.py
 
 # Verify files exist
-test -f static/fonts/NotationMonoDotted.ttf
-test -f static/fonts/NotationMonoDotted-map.json
+test -f static/fonts/NotationFont.ttf
+test -f static/fonts/NotationFont-map.json
 
 # Verify JSON is valid
-jq . static/fonts/NotationMonoDotted-map.json > /dev/null
+jq . static/fonts/NotationFont-map.json > /dev/null
 
 # Verify font loads in browser (Playwright test)
 npx playwright test tests/e2e-pw/tests/notation-font-loads.spec.js
@@ -723,20 +723,20 @@ notation_systems:
 
 **Behavior**: Permissive, optimized for iteration
 
-- Bravura font missing → Warn, skip symbols, continue
-- Invalid Bravura glyph → Warn, skip that symbol, continue
+- Noto Music font missing → Warn, skip symbols, continue
+- Invalid Noto Music glyph → Warn, skip that symbol, continue
 - Missing base glyphs → Fail (can't generate notes)
 
 **Use case**: Local development, quick iteration on dot positioning
 
 ### 12.2 Strict Mode (CI/Release)
 
-**Flag**: `--strict` or `--require-bravura`
+**Flag**: `--strict` or `--require-noto_music`
 
 **Behavior**: All-or-nothing, fail on any error
 
-- Bravura font missing → **FAIL** with error message
-- Invalid Bravura glyph → **FAIL** with glyph name
+- Noto Music font missing → **FAIL** with error message
+- Invalid Noto Music glyph → **FAIL** with glyph name
 - Missing base glyphs → **FAIL**
 - Any codepoint collision → **FAIL**
 - PUA overflow → **FAIL**
@@ -748,7 +748,7 @@ notation_systems:
 # Dev mode (lenient)
 python3 tools/fontgen/generate.py
 
-# Strict mode (fail on missing Bravura)
+# Strict mode (fail on missing Noto Music)
 python3 tools/fontgen/generate.py --strict
 ```
 
@@ -771,14 +771,14 @@ python3 tools/fontgen/generate.py --strict
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>NotationMonoDotted Debug Specimen</title>
+    <title>NotationFont Debug Specimen</title>
     <style>
         @font-face {
-            font-family: 'NotationMonoDotted';
-            src: url('./NotationMonoDotted.ttf') format('truetype');
+            font-family: 'NotationFont';
+            src: url('./NotationFont.ttf') format('truetype');
         }
         body {
-            font-family: 'NotationMonoDotted', monospace;
+            font-family: 'NotationFont', monospace;
             font-size: 32px;
             line-height: 2;
         }
@@ -789,7 +789,7 @@ python3 tools/fontgen/generate.py --strict
     </style>
 </head>
 <body>
-    <h1>NotationMonoDotted Debug Specimen</h1>
+    <h1>NotationFont Debug Specimen</h1>
     <p class="label">Generated: 2025-11-08 | Total glyphs: 199</p>
 
     <div class="system">
@@ -862,13 +862,13 @@ fi
 # editor/Makefile
 
 .PHONY: fonts
-fonts: static/fonts/NotationMonoDotted.ttf
+fonts: static/fonts/NotationFont.ttf
 
-static/fonts/NotationMonoDotted.ttf: tools/fontgen/atoms.yaml tools/fontgen/generate.py
+static/fonts/NotationFont.ttf: tools/fontgen/atoms.yaml tools/fontgen/generate.py
 	@echo "Generating notation font..."
 	python3 tools/fontgen/generate.py --strict
 	@echo "Validating JSON..."
-	jq . static/fonts/NotationMonoDotted-map.json > /dev/null
+	jq . static/fonts/NotationFont-map.json > /dev/null
 	@echo "Running sanity tests..."
 	python3 -m pytest tools/fontgen/test_generator.py
 	@echo "✓ Font generation complete"
@@ -997,7 +997,7 @@ def assign_codepoints(spec):
 
 - **Unicode Private Use Area**: https://www.unicode.org/charts/PDF/UE000.pdf
 - **SMuFL (Standard Music Font Layout)**: https://w3c.github.io/smufl/latest/
-- **Bravura Font**: https://github.com/steinbergmedia/bravura
+- **Noto Music Font**: https://github.com/steinbergmedia/noto_music
 - **FontForge Python API**: https://fontforge.org/docs/scripting/python.html
 
 ---
@@ -1011,20 +1011,20 @@ pip install PyYAML fontforge
 
 # 2. Verify base fonts exist
 ls -lh static/fonts/Inter.ttc
-ls -lh tools/fontgen/base_fonts/Bravura.otf  # optional
+ls -lh tools/fontgen/base_fonts/NotoMusic.ttf  # optional
 
 # 3. Run generator
 cd /home/john/editor
 python3 tools/fontgen/generate.py \
   --base-font static/fonts/Inter.ttc \
-  --bravura-font tools/fontgen/base_fonts/Bravura.otf \
+  --noto_music-font tools/fontgen/base_fonts/NotoMusic.ttf \
   --atoms tools/fontgen/atoms.yaml \
   --output-dir static/fonts
 
 # 4. Verify output
-ls -lh static/fonts/NotationMonoDotted.ttf
-ls -lh static/fonts/NotationMonoDotted-map.json
-jq .summary static/fonts/NotationMonoDotted-map.json
+ls -lh static/fonts/NotationFont.ttf
+ls -lh static/fonts/NotationFont-map.json
+jq .summary static/fonts/NotationFont-map.json
 
 # 5. Test in browser
 npm run dev  # Start dev server

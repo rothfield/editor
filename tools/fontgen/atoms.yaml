@@ -219,16 +219,18 @@ glyph_variants:
 
 # PUA (Private Use Area) Mapping
 # Where codepoints are assigned in Unicode Private Use Area
+# NOTE: SMuFL standard codepoints use ranges U+E030-U+E042 (barlines), U+E260-U+E264 (accidentals), U+E566-U+E56E (ornaments)
+# To avoid conflicts, note atoms start AFTER all SMuFL standard ranges at 0xE600
 pua:
-  start: 0xE000
+  start: 0xE600
   formula: "codepoint = pua_start + (character_index × 4) + variant_index"
   explanation: |
     Each base character gets 4 consecutive codepoints in the PUA.
     Example for character at index 0 (first char in number system):
-      - variant 0 (1 dot above):  0xE000 + (0 × 4) + 0 = 0xE000
-      - variant 1 (2 dots above): 0xE000 + (0 × 4) + 1 = 0xE001
-      - variant 2 (1 dot below):  0xE000 + (0 × 4) + 2 = 0xE002
-      - variant 3 (2 dots below): 0xE000 + (0 × 4) + 3 = 0xE003
+      - variant 0 (1 dot above):  0xE600 + (0 × 4) + 0 = 0xE600
+      - variant 1 (2 dots above): 0xE600 + (0 × 4) + 1 = 0xE601
+      - variant 2 (1 dot below):  0xE600 + (0 × 4) + 2 = 0xE602
+      - variant 3 (2 dots below): 0xE600 + (0 × 4) + 3 = 0xE603
 
 # Character Order (CRITICAL!)
 # This exact order must be preserved in:
@@ -261,17 +263,17 @@ geometry:
     barline_scale: 1.0         # Scale factor for barlines
     ornament_scale: 1.0        # Scale factor for mordent/trill/turn
 
-# Bravura Symbols - Musical articulations and symbols extracted from Bravura font
-# These are composited into the final NotationMonoDotted.ttf
-# Bravura is the standard music notation font used by Finale, Dorico, MuseScore
-# Reference: https://w3c.github.io/smufl/latest/tables/common-ornaments.html
+# SMuFL Symbols - Musical articulations and symbols from Noto Music
+# These are composited into the final NotationFont.ttf
+# Noto Music provides SMuFL-compliant music glyphs
+# Reference: https://w3c.github.io/smufl/latest/
 #
 # Each symbol has:
 # - glyph_name: SMuFL glyph name (e.g., "ornamentMordent")
 # - label: Human-readable description
 # - smufl_codepoint: Unicode codepoint in SMuFL standard (e.g., U+E56D)
 # - codepoint_offset: Ordinal position in symbol array (symbols start after all notes)
-bravura_symbols:
+smufl_symbols:
   # Accidentals (SMuFL PUA range E260-E264)
   # CRITICAL: Use SMuFL names + PUA codepoints, NOT Unicode codepoints
   - glyph_name: "accidentalSharp"

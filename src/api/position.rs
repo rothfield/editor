@@ -35,8 +35,8 @@ pub fn get_max_char_position(doc_js: JsValue) -> Result<usize, JsValue> {
     let line = doc.lines.get(line_index)
         .ok_or_else(|| JsValue::from_str("Current line not found"))?;
 
-    // Get edit mode
-    let edit_mode = doc.ornament_edit_mode;
+    // All cells are now in the flow (ornaments are inline, not separate marker cells)
+    let _edit_mode = doc.ornament_edit_mode;
 
     // Sum up lengths of all navigable cell glyphs
     let mut total_chars = 0;
@@ -63,8 +63,8 @@ pub fn char_pos_to_cell_index(doc_js: JsValue, char_pos: usize) -> Result<JsValu
     let line = doc.lines.get(line_index)
         .ok_or_else(|| JsValue::from_str("Current line not found"))?;
 
-    // Get edit mode
-    let edit_mode = doc.ornament_edit_mode;
+    // All cells are now in the flow (ornaments are inline, not separate marker cells)
+    let _edit_mode = doc.ornament_edit_mode;
 
     // Accumulate character counts and find the target cell
     let mut accumulated_chars = 0;
@@ -108,8 +108,8 @@ pub fn cell_index_to_char_pos(doc_js: JsValue, cell_index: usize) -> Result<usiz
     let line = doc.lines.get(line_index)
         .ok_or_else(|| JsValue::from_str("Current line not found"))?;
 
-    // Get edit mode
-    let edit_mode = doc.ornament_edit_mode;
+    // All cells are now in the flow (ornaments are inline, not separate marker cells)
+    let _edit_mode = doc.ornament_edit_mode;
 
     // Handle empty cells array
     if line.cells.is_empty() {

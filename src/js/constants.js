@@ -16,8 +16,8 @@
 export const BASE_FONT_SIZE = 32;       // Base font size in pixels (body text) - 2x from 16
 export const BASE_LINE_HEIGHT = 32;     // Base line height in pixels - 2x from 16
 export const SMALL_FONT_SIZE = 12;      // Small font size for octave dots and tala
-export const BRAVURA_FONT_SIZE = BASE_FONT_SIZE * 0.70;  // SMuFL music font size for barlines (70% of pitched element size)
-export const BRAVURA_VERTICAL_OFFSET = BASE_FONT_SIZE * 0.4;  // Vertical offset for barline glyphs (40% of base font size)
+export const SMUFL_FONT_SIZE = BASE_FONT_SIZE * 0.70;  // SMuFL music font size from Noto Music (barlines, accidentals, ornaments) - 70% of pitched element size
+export const SMUFL_VERTICAL_OFFSET = BASE_FONT_SIZE * 0.4;  // Vertical offset for SMuFL glyphs (40% of base font size)
 
 // ============================================================================
 // Layout Constants

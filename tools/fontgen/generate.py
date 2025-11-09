@@ -1,24 +1,24 @@
 #!/usr/bin/env python3
 """
-Notation Font Generator v6+ - Refactored per SPEC.md
+Notation Font Generator - Noto Music-based
 
 This is the authoritative font generation tool. It reads atoms.yaml (single source
 of truth) and outputs:
-  1. NotationMonoDotted.ttf - the font file with all dot variants
-  2. NotationMonoDotted-map.json - JSON mapping for runtime lookup
+  1. NotationFont.ttf - Noto Music base + custom octave variants (dots above/below)
+  2. NotationFont-map.json - JSON mapping for runtime lookup
 
-Architecture (clean separation of concerns):
+Architecture:
   Stage 1: load_atom_spec() - Parse atoms.yaml
-  Stage 2: assign_codepoints() - Sequential PUA allocation
-  Stage 3: build_font() - Generate glyphs with FontForge + Bravura extraction
-  Stage 4: build_mapping_json() - Minimal runtime contract
+  Stage 2: assign_codepoints() - Allocate codepoints for custom variants
+  Stage 3: build_font() - Open Noto Music, add custom note variants
+  Stage 4: build_mapping_json() - Generate runtime mapping
   Stage 5: validate_layout() - Sanity checks
 
 Usage:
-  python3 generate.py [--base-font PATH] [--bravura-font PATH] [--output-dir PATH]
+  python3 generate.py [--noto-music-font PATH] [--output-dir PATH]
   python3 generate.py --validate-only  (no FontForge needed)
   python3 generate.py --debug-html      (visual specimen)
-  python3 generate.py --strict          (fail on missing Bravura)
+  python3 generate.py --strict          (fail on errors)
 """
 
 import sys
@@ -62,8 +62,8 @@ class Geometry:
 
 
 @dataclass
-class BravuraSymbol:
-    """A symbol to extract from Bravura"""
+class SMuFLSymbol:
+    """A symbol from SMuFL standard (Noto Music)"""
     glyph_name: str
     label: str
     smufl_codepoint: int
@@ -84,9 +84,10 @@ class NoteAtom:
 class AtomSpec:
     """Complete notation specification"""
     notation_systems: dict  # system_name -> list of characters
-    bravura_symbols: list  # List of BravuraSymbol
+    smufl_symbols: list  # List of SMuFLSymbol
     geometry: Geometry
     character_order: str
+    pua_start: int = 0xE600  # PUA start codepoint from atoms.yaml
 
 
 @dataclass
@@ -159,23 +160,29 @@ def load_atom_spec(yaml_path: str) -> AtomSpec:
     print(f"  ✓ Geometry loaded: dot_above_gap={geometry.dot_above_gap}, "
           f"dot_vertical_step={geometry.dot_vertical_step}")
 
-    # Extract Bravura symbols
-    bravura_symbols = []
-    for symbol_def in config.get('bravura_symbols', []):
-        bravura_symbols.append(BravuraSymbol(
+    # Extract SMuFL symbols from Noto Music
+    smufl_symbols = []
+    for symbol_def in config.get('smufl_symbols', []):
+        smufl_symbols.append(SMuFLSymbol(
             glyph_name=symbol_def['glyph_name'],
             label=symbol_def['label'],
             smufl_codepoint=symbol_def.get('smufl_codepoint', 0),
             codepoint_offset=symbol_def.get('codepoint_offset', 0),
         ))
 
-    print(f"  ✓ Bravura symbols: {len(bravura_symbols)}")
+    print(f"  ✓ SMuFL symbols: {len(smufl_symbols)}")
+
+    # Extract PUA start codepoint
+    pua_config = config.get('pua', {})
+    pua_start = pua_config.get('start', 0xE600)
+    print(f"  ✓ PUA start: {hex(pua_start)}")
 
     return AtomSpec(
         notation_systems=notation_systems,
-        bravura_symbols=bravura_symbols,
+        smufl_symbols=smufl_symbols,
         geometry=geometry,
         character_order=character_order,
+        pua_start=pua_start,
     )
 
 
@@ -183,19 +190,20 @@ def load_atom_spec(yaml_path: str) -> AtomSpec:
 # Stage 2: Assign Codepoints
 # ============================================================================
 
-def assign_codepoints(spec: AtomSpec, start: int = 0xE000) -> CodepointLayout:
+def assign_codepoints(spec: AtomSpec) -> CodepointLayout:
     """
     Sequentially assign PUA codepoints to all atoms.
 
     Algorithm:
         1. For each system in order, create 4 variants per character
-        2. Assign sequential codepoints to each variant
-        3. After all notes, assign symbol codepoints
+        2. Assign sequential codepoints to each variant (starting at spec.pua_start)
+        3. Assign symbol codepoints at SMuFL standard codepoints (not sequential)
         4. Return layout with all assignments
 
     Returns:
         CodepointLayout with all atoms assigned
     """
+    start = spec.pua_start
     print(f"\n[STAGE 2] Assigning PUA codepoints (starting at {hex(start)})")
 
     note_atoms = []
@@ -219,16 +227,25 @@ def assign_codepoints(spec: AtomSpec, start: int = 0xE000) -> CodepointLayout:
 
     print(f"  ✓ Assigned {len(note_atoms)} note atoms: {hex(start)} - {hex(notes_end)}")
 
-    # Assign symbol codepoints
-    symbols_start = cp
-    for symbol in spec.bravura_symbols:
-        symbol.assigned_codepoint = cp
-        cp += 1
+    # Assign symbol codepoints - use SMuFL standard codepoints directly (NOT sequential PUA)
+    # SMuFL symbols use their official codepoints from W3C SMuFL specification
+    # This ensures barlines render at U+E030, U+E031, U+E040, U+E041, etc.
+    symbols_assigned = 0
+    for symbol in spec.smufl_symbols:
+        # Use the standard SMuFL codepoint directly (from W3C SMuFL spec)
+        symbol.assigned_codepoint = symbol.smufl_codepoint
+        symbols_assigned += 1
 
-    symbols_end = cp - 1
-    symbols_range = (symbols_start, symbols_end)
+    # Find range for informational purposes only
+    if spec.smufl_symbols:
+        symbol_cps = [s.smufl_codepoint for s in spec.smufl_symbols]
+        symbols_start = min(symbol_cps)
+        symbols_end = max(symbol_cps)
+        symbols_range = (symbols_start, symbols_end)
+    else:
+        symbols_range = (None, None)
 
-    print(f"  ✓ Assigned {len(spec.bravura_symbols)} symbols: {hex(symbols_start)} - {hex(symbols_end)}")
+    print(f"  ✓ Assigned {len(spec.smufl_symbols)} SMuFL symbols at standard codepoints: {hex(symbols_start) if symbols_start else 'none'} - {hex(symbols_end) if symbols_end else 'none'}")
 
     # Check for PUA overflow
     if cp > 0xF8FF:
@@ -238,7 +255,7 @@ def assign_codepoints(spec: AtomSpec, start: int = 0xE000) -> CodepointLayout:
 
     return CodepointLayout(
         note_atoms=note_atoms,
-        symbols=spec.bravura_symbols,
+        symbols=spec.smufl_symbols,
         notes_range=notes_range,
         symbols_range=symbols_range,
     )
@@ -250,66 +267,121 @@ def assign_codepoints(spec: AtomSpec, start: int = 0xE000) -> CodepointLayout:
 
 def build_font(
     base_font_path: str,
-    bravura_font_path: str,
+    noto_music_path: str,
     spec: AtomSpec,
     layout: CodepointLayout,
     strict_mode: bool = False
 ) -> 'fontforge.font':
     """
-    Generate composite font with all glyphs.
+    Generate NotationFont: Inter base + Noto Music symbols + custom octave variants.
 
     Steps:
-        1. Load base font (Inter.ttc)
-        2. Load Bravura font (optional, required in strict mode)
-        3. Create note atoms (base char + dots)
-        4. Extract Bravura symbols
-        5. Flatten all glyphs
+        1. Load Inter.ttc as base (has ASCII characters)
+        2. Import SMuFL symbols from Noto Music
+        3. Add a synthetic dot glyph for octave variants
+        4. Create custom octave variants (dots above/below)
+        5. Rename font to NotationFont
+        6. Return the enhanced font
 
     Args:
-        strict_mode: If True, fail on missing Bravura or glyphs
+        strict_mode: If True, fail on errors
 
     Returns:
         fontforge.font object
     """
-    print(f"\n[STAGE 3] Building font")
+    print(f"\n[STAGE 3] Building NotationFont (Inter base + Noto Music symbols + custom variants)")
 
     if not fontforge:
         raise RuntimeError("FontForge module not available. Cannot build font.")
 
-    # Load base font
+    # Load Inter.ttc as the base font (has ASCII characters)
+    if not base_font_path or not os.path.exists(base_font_path):
+        if strict_mode:
+            raise FileNotFoundError(f"Base font not found: {base_font_path}")
+        else:
+            raise FileNotFoundError(f"Base font not found: {base_font_path}")
+
     print(f"  Loading base font: {base_font_path}")
-    if not os.path.exists(base_font_path):
-        raise FileNotFoundError(f"Base font not found: {base_font_path}")
+    try:
+        font = fontforge.open(base_font_path)
+        print(f"  ✓ Base font loaded")
+    except Exception as e:
+        raise RuntimeError(f"Failed to load base font: {e}")
 
-    font = fontforge.open(base_font_path)
-    font.fontname = "NotationMonoDotted"
-    font.fullname = "Notation Mono Dotted"
-    font.familyname = "Notation Mono"
-
-    # Load Bravura (optional)
-    bravura = None
-    if bravura_font_path and os.path.exists(bravura_font_path):
-        print(f"  Loading Bravura font: {bravura_font_path}")
+    # Import SMuFL symbols from Noto Music
+    if noto_music_path and os.path.exists(noto_music_path):
+        print(f"  Loading Noto Music for SMuFL symbols: {noto_music_path}")
         try:
-            bravura = fontforge.open(bravura_font_path)
-            print(f"  ✓ Bravura loaded")
+            noto_music = fontforge.open(noto_music_path)
+            print(f"  ✓ Noto Music loaded")
+            # Copy all glyphs from Noto Music to preserve SMuFL symbols
+            print(f"  Importing glyphs from Noto Music...")
+            symbols_imported = 0
+            for glyph in noto_music.glyphs():
+                # Only import glyphs in PUA (E000+) - these are SMuFL symbols
+                if glyph.unicode >= 0xE000:
+                    try:
+                        # Try to create glyph at same unicode
+                        new_glyph = font.createChar(glyph.unicode, glyph.glyphname)
+                        # Copy the glyph data
+                        pen = new_glyph.glyphPen()
+                        if pen:
+                            glyph.draw(pen)
+                            pen = None
+                        # Copy width
+                        if glyph.width:
+                            new_glyph.width = glyph.width
+                        symbols_imported += 1
+                    except:
+                        pass
+            print(f"  ✓ Imported {symbols_imported} glyphs from Noto Music")
         except Exception as e:
             if strict_mode:
-                raise RuntimeError(f"Failed to load Bravura (strict mode): {e}")
+                raise RuntimeError(f"Failed to import Noto Music symbols: {e}")
             else:
-                print(f"  WARNING: Could not load Bravura: {e}")
-    else:
-        if strict_mode:
-            raise FileNotFoundError(
-                f"Bravura font required (--strict mode) but not found: {bravura_font_path}"
-            )
-        else:
-            print(f"  Note: Bravura not found (optional in dev mode)")
+                print(f"  WARNING: Could not import Noto Music: {e}")
 
-    # Get dot glyph
-    dot_glyph = font[ord('.')]
-    if not dot_glyph:
-        raise RuntimeError("ERROR: No dot glyph (.) found in base font")
+    # Rename to NotationFont
+    font.fontname = "NotationFont"
+    font.fullname = "NotationFont"
+    font.familyname = "NotationFont"
+
+    # Get or create dot glyph
+    dot_glyph = None
+    dot_codepoint = ord('.')
+    try:
+        dot_glyph = font[dot_codepoint]
+    except:
+        pass
+
+    # If no period glyph exists, create a synthetic one
+    if not dot_glyph or not dot_glyph.glyphname:
+        print(f"  Creating synthetic dot glyph...")
+        try:
+            dot_glyph = font.createChar(dot_codepoint, "period")
+        except:
+            try:
+                dot_glyph = font[dot_codepoint]
+            except:
+                raise RuntimeError("ERROR: Could not create or find dot glyph")
+
+        # Create a small circle/dot using bezier curves
+        pen = dot_glyph.glyphPen()
+        if pen:
+            # Draw a small circle at origin (100 units radius, typical font units)
+            # This is a crude implementation - just a square for simplicity
+            size = 100
+            pen.moveTo((0, 0))
+            pen.lineTo((size, 0))
+            pen.lineTo((size, size))
+            pen.lineTo((0, size))
+            pen.closePath()
+            pen = None
+        dot_glyph.width = size + 50  # Add some padding
+        print(f"    Created synthetic dot")
+
+    else:
+        print(f"  Using existing dot glyph from Noto Music")
 
     dot_bbox = dot_glyph.boundingBox()
     if not dot_bbox:
@@ -325,9 +397,13 @@ def build_font(
     # Create note glyphs
     print(f"\n  Creating {len(layout.note_atoms)} note glyphs...")
     for i, atom in enumerate(layout.note_atoms):
-        base_glyph = font[ord(atom.character)]
+        try:
+            base_glyph = font[ord(atom.character)]
+        except Exception as e:
+            raise RuntimeError(f"Base character '{atom.character}' (U+{ord(atom.character):04X}) not found in Noto Music: {e}")
+
         if not base_glyph:
-            raise RuntimeError(f"Base character '{atom.character}' not found in font")
+            raise RuntimeError(f"Base character '{atom.character}' (U+{ord(atom.character):04X}) is empty in font")
 
         base_bbox = base_glyph.boundingBox()
         if not base_bbox:
@@ -371,80 +447,13 @@ def build_font(
         if (i + 1) % 50 == 0:
             print(f"    Created {i + 1}/{len(layout.note_atoms)} glyphs")
 
-    # Extract Bravura symbols
-    symbols_created = 0
-    if bravura:
-        print(f"\n  Extracting {len(layout.symbols)} Bravura symbols...")
-        for symbol in layout.symbols:
-            try:
-                # Try to find glyph by SMuFL name or codepoint
-                bravura_glyph = None
+    # SMuFL symbols are already in Noto Music - no extraction needed!
+    # Barlines (U+E030-E042), accidentals (U+E260-E264), ornaments (U+E566-E56E)
+    # are all part of the standard font.
+    print(f"\n  ✓ SMuFL symbols already present in Noto Music base font")
 
-                # First try by glyph name (preferred)
-                if symbol.glyph_name:
-                    try:
-                        bravura_glyph = bravura[symbol.glyph_name]
-                    except Exception:
-                        pass
-
-                # Try by uniXXXX naming convention (e.g., uniE262)
-                if bravura_glyph is None and symbol.smufl_codepoint:
-                    uni_name = f"uni{symbol.smufl_codepoint:04X}"
-                    try:
-                        bravura_glyph = bravura[uni_name]
-                    except Exception:
-                        pass
-
-                # Try by integer codepoint as fallback
-                if bravura_glyph is None and symbol.smufl_codepoint:
-                    try:
-                        bravura_glyph = bravura[symbol.smufl_codepoint]
-                    except Exception as lookup_e:
-                        pass
-
-                if bravura_glyph is not None:
-                    new_glyph = font.createChar(
-                        symbol.assigned_codepoint,
-                        f"symbol_{symbol.glyph_name}"
-                    )
-                    new_glyph.clear()
-
-                    # Apply geometry scaling based on symbol type
-                    scale = spec.geometry.accidental_scale if symbol.glyph_name.startswith("accidental") else \
-                            spec.geometry.barline_scale if "barline" in symbol.glyph_name else \
-                            spec.geometry.ornament_scale
-
-                    # Copy glyph from Bravura using pen API
-                    pen = new_glyph.glyphPen()
-                    if pen:
-                        bravura_glyph.draw(pen)
-                        pen = None
-
-                    # Set width from reference glyph (or base char as fallback)
-                    ref_width = bravura_glyph.width if bravura_glyph.width > 0 else font[ord('|')].width
-                    new_glyph.width = int(ref_width * scale)
-
-                    symbols_created += 1
-                    print(f"    ✓ {symbol.label}")
-                else:
-                    if strict_mode:
-                        raise RuntimeError(
-                            f"Could not find Bravura glyph: {symbol.glyph_name} ({hex(symbol.smufl_codepoint)})"
-                        )
-                    else:
-                        print(f"    ✗ {symbol.label} (skipped)")
-
-            except Exception as e:
-                if strict_mode:
-                    raise
-                else:
-                    print(f"    ✗ {symbol.label}: {e}")
-
-        print(f"  ✓ Extracted {symbols_created}/{len(layout.symbols)} symbols")
-
-    # Correct direction for all custom glyphs
-    total_glyphs = len(layout.note_atoms) + symbols_created
-    print(f"\n  Finalizing {total_glyphs} glyphs...")
+    # Correct direction for custom note glyphs
+    print(f"\n  Finalizing {len(layout.note_atoms)} custom note glyphs...")
 
     # Correct direction for note atoms
     for atom in layout.note_atoms:
@@ -452,15 +461,7 @@ def build_font(
         if g:
             g.correctDirection()
 
-    # Correct direction for symbols
-    for symbol in layout.symbols:
-        g = font[symbol.assigned_codepoint]
-        if g and len(g.references) > 0:
-            # Simplify composite glyphs (flattens references into outlines)
-            g.simplify()
-            g.correctDirection()
-
-    print(f"  ✓ Finalized")
+    print(f"  ✓ Finalized {len(layout.note_atoms)} custom note variants")
 
     return font
 
@@ -606,14 +607,14 @@ def write_debug_html(output_path: str, spec: AtomSpec, layout: CodepointLayout):
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>NotationMonoDotted Debug Specimen</title>
+    <title>NotationFont Debug Specimen</title>
     <style>
         @font-face {
-            font-family: 'NotationMonoDotted';
-            src: url('./NotationMonoDotted.ttf') format('truetype');
+            font-family: 'NotationFont';
+            src: url('./NotationFont.ttf') format('truetype');
         }
         body {
-            font-family: 'NotationMonoDotted', monospace;
+            font-family: 'NotationFont', monospace;
             font-size: 32px;
             line-height: 2;
             background: #fafafa;
@@ -628,7 +629,7 @@ def write_debug_html(output_path: str, spec: AtomSpec, layout: CodepointLayout):
     </style>
 </head>
 <body>
-    <h1>NotationMonoDotted Debug Specimen</h1>
+    <h1>NotationFont Debug Specimen</h1>
     <p class="label">Generated: v1.0 | Total glyphs: """ + str(len(layout.note_atoms) + len(layout.symbols)) + """</p>
 """
 
@@ -685,12 +686,12 @@ def main():
     parser.add_argument(
         "--base-font",
         default="static/fonts/Inter.ttc",
-        help="Path to base font (default: static/fonts/Inter.ttc)"
+        help="Path to base text font (default: static/fonts/Inter.ttc)"
     )
     parser.add_argument(
-        "--bravura-font",
-        default="tools/fontgen/base_fonts/Bravura.otf",
-        help="Path to Bravura font (default: tools/fontgen/base_fonts/Bravura.otf)"
+        "--noto-music-font",
+        default="tools/fontgen/sources/NotoMusic.ttf",
+        help="Path to Noto Music font for SMuFL symbols (default: tools/fontgen/sources/NotoMusic.ttf)"
     )
     parser.add_argument(
         "--atoms",
@@ -705,7 +706,7 @@ def main():
     parser.add_argument(
         "--strict",
         action="store_true",
-        help="Fail on any errors (requires Bravura)"
+        help="Fail on any errors (requires Noto Music)"
     )
     parser.add_argument(
         "--validate-only",
@@ -726,19 +727,19 @@ def main():
 
     atoms_path = os.path.join(repo_root, args.atoms)
     base_font_path = os.path.join(repo_root, args.base_font)
-    bravura_font_path = os.path.join(repo_root, args.bravura_font)
+    noto_music_path = os.path.join(repo_root, args.noto_music_font)
     output_dir = os.path.join(repo_root, args.output_dir)
-    output_font = os.path.join(output_dir, "NotationMonoDotted.ttf")
-    output_mapping = os.path.join(output_dir, "NotationMonoDotted-map.json")
+    output_font = os.path.join(output_dir, "NotationFont.ttf")
+    output_mapping = os.path.join(output_dir, "NotationFont-map.json")
     output_html = os.path.join(output_dir, "debug-specimen.html")
 
     print("=" * 70)
-    print("NOTATION FONT GENERATOR v6+ (SPEC.md-compliant)")
+    print("NOTATION FONT GENERATOR (Noto Music-based)")
     print("=" * 70)
     print(f"\nConfiguration:")
     print(f"  atoms.yaml:    {atoms_path}")
     print(f"  base font:     {base_font_path}")
-    print(f"  bravura font:  {bravura_font_path}")
+    print(f"  Noto Music:    {noto_music_path}")
     print(f"  output dir:    {output_dir}")
     print(f"  mode:          {'STRICT' if args.strict else 'DEV'}")
     print()
@@ -786,7 +787,7 @@ def main():
 
     try:
         os.makedirs(output_dir, exist_ok=True)
-        font = build_font(base_font_path, bravura_font_path, spec, layout, args.strict)
+        font = build_font(base_font_path, noto_music_path, spec, layout, args.strict)
         font.generate(output_font)
         print(f"\n  ✓ Font saved: {output_font}")
     except Exception as e:

@@ -46,8 +46,8 @@ tools/fontgen/
 
 ```
 static/fonts/
-├── NotationMonoDotted.ttf     # The font file (TTF format)
-└── NotationMonoDotted-map.json # Codepoint mapping for runtime lookup
+├── NotationFont.ttf     # The font file (TTF format) - Noto Music base + custom variants
+└── NotationFont-map.json # Codepoint mapping for runtime lookup
 ```
 
 ## Key Concepts
@@ -81,10 +81,10 @@ Breaking down by system:
 
 ### Codepoint Formula
 
-Each character gets 4 consecutive codepoints in the PUA:
+Each character gets 4 consecutive codepoints in the PUA (starting at 0xE600 to avoid SMuFL standard ranges):
 
 ```
-codepoint = 0xE000 + (character_index × 4) + variant_index
+codepoint = 0xE600 + (character_index × 4) + variant_index
 ```
 
 **Variant indices:**
@@ -94,14 +94,14 @@ codepoint = 0xE000 + (character_index × 4) + variant_index
 - 3 = 2 dots below
 
 **Example:** Character '1' (index 0)
-- 1 dot above = 0xE000 + (0 × 4) + 0 = **0xE000**
-- 2 dots above = 0xE000 + (0 × 4) + 1 = **0xE001**
-- 1 dot below = 0xE000 + (0 × 4) + 2 = **0xE002**
-- 2 dots below = 0xE000 + (0 × 4) + 3 = **0xE003**
+- 1 dot above = 0xE600 + (0 × 4) + 0 = **0xE600**
+- 2 dots above = 0xE600 + (0 × 4) + 1 = **0xE601**
+- 1 dot below = 0xE600 + (0 × 4) + 2 = **0xE602**
+- 2 dots below = 0xE600 + (0 × 4) + 3 = **0xE603**
 
 ### JSON Mapping File
 
-`NotationMonoDotted-map.json` is generated from `atoms.yaml` and contains:
+`NotationFont-map.json` is generated from `atoms.yaml` and contains:
 - Character index → codepoint lookup table
 - System definitions
 - Summary statistics
@@ -124,9 +124,8 @@ sudo pacman -S fontforge        # Arch Linux
 sudo apt-get install fontforge  # Debian/Ubuntu
 brew install fontforge          # macOS
 
-# Bravura font (optional - get from base_fonts/README.md)
-curl -L https://github.com/steinbergmedia/bravura/raw/master/Bravura.otf \
-  -o tools/fontgen/base_fonts/Bravura.otf
+# Noto Music font (included in sources/)
+# Already checked in at: tools/fontgen/sources/NotoMusic.ttf
 ```
 
 ### Generator Flags (v6+)
@@ -138,11 +137,11 @@ python3 tools/fontgen/generate.py [FLAGS]
 | Flag | Purpose | When to Use |
 |------|---------|------------|
 | _(none)_ | Generate font (dev mode) | Local development, fast iteration |
-| `--strict` | Require Bravura, fail on errors | CI/production builds |
+| `--strict` | Fail on any errors | CI/production builds |
 | `--validate-only` | Check YAML only (no FontForge) | Pre-commit hook, quick validation |
 | `--debug-html` | Generate visual specimen | Check dot/symbol positioning |
 | `--base-font PATH` | Override base font (default: `static/fonts/Inter.ttc`) | Use different base font |
-| `--bravura-font PATH` | Override Bravura path (default: `tools/fontgen/base_fonts/Bravura.otf`) | Use system Bravura |
+| `--noto-music-font PATH` | Override Noto Music path (default: `tools/fontgen/sources/NotoMusic.ttf`) | Use different source music font |
 | `--atoms PATH` | Override atoms.yaml (default: `tools/fontgen/atoms.yaml`) | N/A |
 | `--output-dir PATH` | Override output directory (default: `static/fonts`) | N/A |
 
@@ -155,8 +154,7 @@ python3 tools/fontgen/generate.py
 ```
 
 **Behavior**:
-- ✅ Missing Bravura? OK - skips symbols, continues
-- ✅ Invalid Bravura glyph? OK - skips that symbol, continues
+- ✅ Missing Noto Music? Continues (custom variants only, no SMuFL symbols)
 - ❌ Missing base font (Inter)? Fails (critical)
 - ✅ Good for: local dev, quick iteration on geometry
 
@@ -167,8 +165,7 @@ python3 tools/fontgen/generate.py --strict
 ```
 
 **Behavior**:
-- ❌ Missing Bravura? FAIL
-- ❌ Invalid Bravura glyph? FAIL
+- ❌ Missing Noto Music? FAIL
 - ❌ Missing base font? FAIL
 - ❌ Codepoint collision? FAIL
 - ❌ PUA overflow? FAIL
@@ -205,7 +202,7 @@ python3 tools/fontgen/generate.py --debug-html
 ### Examples
 
 ```bash
-# Development: quick iteration (Bravura optional)
+# Development: quick iteration
 python3 tools/fontgen/generate.py
 
 # Development: with visual check
@@ -215,17 +212,17 @@ open static/fonts/debug-specimen.html
 # Pre-commit: validate without FontForge
 python3 tools/fontgen/generate.py --validate-only
 
-# CI/Release: strict mode (requires Bravura)
+# CI/Release: strict mode (requires Noto Music)
 python3 tools/fontgen/generate.py --strict
 
-# Custom Bravura path
+# Custom Noto Music path
 python3 tools/fontgen/generate.py \
-  --bravura-font /usr/local/share/fonts/Bravura.otf
+  --noto-music-font /usr/share/fonts/NotoMusic.ttf
 
 # All custom
 python3 tools/fontgen/generate.py \
   --base-font static/fonts/Inter.ttc \
-  --bravura-font tools/fontgen/base_fonts/Bravura.otf \
+  --noto-music-font tools/fontgen/sources/NotoMusic.ttf \
   --atoms tools/fontgen/atoms.yaml \
   --output-dir static/fonts \
   --strict \
@@ -236,43 +233,49 @@ python3 tools/fontgen/generate.py \
 
 ```
 ======================================================================
-NOTATION FONT GENERATOR v6 (atoms.yaml + JSON Mapping)
+NOTATION FONT GENERATOR (Noto Music-based)
 ======================================================================
 
-Config:      /home/john/editor/tools/fontgen/atoms.yaml
-Base font:   /home/john/editor/static/fonts/Inter.ttc
-Output font: /home/john/editor/static/fonts/NotationMonoDotted.ttf
-Output map:  /home/john/editor/static/fonts/NotationMonoDotted-map.json
+Configuration:
+  atoms.yaml:    /home/john/editor/tools/fontgen/atoms.yaml
+  base font:     /home/john/editor/static/fonts/Inter.ttc
+  Noto Music:    /home/john/editor/tools/fontgen/sources/NotoMusic.ttf
+  output dir:    /home/john/editor/static/fonts
+  mode:          STRICT
 
-Loading atoms definition: ...
-  Character order: 1234567CDEFGABcdefgabSrRgGmMPdDnNdrmfsltDRMFSLT
-  Total characters: 47
+[STAGE 1] Loading atom specification...
+  ✓ number: 7 characters
+  ✓ western: 14 characters
+  ✓ sargam: 12 characters
+  ✓ doremi: 14 characters
+  ✓ Character order validated: 1234567CDEFGABcdefgabSrRgGmMPdDnNdrmfsltDRMFSLT
 
-Loading font: static/fonts/Inter.ttc
-  Dot glyph: 'period'
-  Dot bbox: (...)
-  Dot size: XXxYY
+[STAGE 2] Assigning PUA codepoints (starting at 0xe600)
+  ✓ Assigned 188 note atoms: 0xe600 - 0xe6bb
+  ✓ Assigned 14 SMuFL symbols at standard codepoints: 0xe030 - 0xe56e
 
-Generating 47 base chars × 4 variants = 188 glyphs...
-  Generated 50 glyphs for 13/47 base chars...
-  ...
-  Generated 188 glyphs for 47/47 base chars...
+[STAGE 3] Building NotationFont (Inter base + Noto Music symbols + custom variants)
+  Loading base font: /home/john/editor/static/fonts/Inter.ttc
+  ✓ Base font loaded
+  Loading Noto Music for SMuFL symbols...
+  ✓ Noto Music loaded
+  Importing glyphs from Noto Music...
+  ✓ Imported 549 glyphs from Noto Music
+  Creating 188 note glyphs...
+  ✓ Font saved: /home/john/editor/static/fonts/NotationFont.ttf
 
-Flattening all 188 custom glyphs...
-
-Saving font to: static/fonts/NotationMonoDotted.ttf
-✓ Font generated successfully with flattened composite glyphs!
-
-Generating JSON mapping: static/fonts/NotationMonoDotted-map.json
-✓ JSON mapping generated!
+[STAGE 4] Building JSON mapping
+  ✓ Notes: 47
+  ✓ Symbols: 14
+  ✓ JSON mapping saved: /home/john/editor/static/fonts/NotationFont-map.json
 
 ======================================================================
 SUCCESS!
 ======================================================================
 
 Generated files:
-  ✓ /home/john/editor/static/fonts/NotationMonoDotted.ttf
-  ✓ /home/john/editor/static/fonts/NotationMonoDotted-map.json
+  ✓ /home/john/editor/static/fonts/NotationFont.ttf
+  ✓ /home/john/editor/static/fonts/NotationFont-map.json
 ```
 
 ## Testing
@@ -392,7 +395,7 @@ notation_systems:
 ### JavaScript Usage
 
 ```javascript
-import mapping from '../static/fonts/NotationMonoDotted-map.json';
+import mapping from '../static/fonts/NotationFont-map.json';
 
 function getGlyph(baseChar, octaveShift) {
     // Find character in mapping
@@ -415,7 +418,7 @@ function getGlyph(baseChar, octaveShift) {
 
 ### Rust Usage
 
-At **build time**, read `NotationMonoDotted-map.json` and generate a static table:
+At **build time**, read `NotationFont-map.json` and generate a static table:
 
 ```rust
 // Generate this at build time from mapping JSON
@@ -425,10 +428,10 @@ static ATOM_GLYPHS: &[AtomGlyph] = &[
         character: '1',
         base_unicode: Some('1'),
         dots: [
-            Some('\u{E000}'),  // +1
-            Some('\u{E001}'),  // +2
-            Some('\u{E002}'),  // -1
-            Some('\u{E003}'),  // -2
+            Some('\u{E600}'),  // +1
+            Some('\u{E601}'),  // +2
+            Some('\u{E602}'),  // -1
+            Some('\u{E603}'),  // -2
         ]
     },
     // ... rest of atoms
@@ -460,18 +463,18 @@ fn glyph_for(base_char: char, octave_shift: i8) -> char {
    ```html
    <style>
        @font-face {
-           font-family: 'NotationMonoDotted';
-           src: url('static/fonts/NotationMonoDotted.ttf') format('truetype');
+           font-family: 'NotationFont';
+           src: url('static/fonts/NotationFont.ttf') format('truetype');
        }
-       .test { font-family: 'NotationMonoDotted', monospace; font-size: 32px; }
+       .test { font-family: 'NotationFont', monospace; font-size: 32px; }
    </style>
 
    <div class="test">
        <!-- Test all systems -->
-       <p>Number: &#xE000; &#xE004; &#xE008;</p>
-       <p>Western: &#xE01C; &#xE020;</p>
-       <p>Sargam: &#xE084; &#xE088;</p>
-       <p>Doremi (including f): &#xE090;</p>
+       <p>Number: &#xE600; &#xE604; &#xE608;</p>
+       <p>Western: &#xE61C; &#xE620;</p>
+       <p>Sargam: &#xE684; &#xE688;</p>
+       <p>Doremi (including f): &#xE690;</p>
    </div>
    ```
 
@@ -483,7 +486,7 @@ In `tests/e2e-pw/tests/notation-font-*.spec.js`:
 
 ```javascript
 test('verify notation font loads and renders', async ({ page }) => {
-    const mapping = await fetch('/fonts/NotationMonoDotted-map.json')
+    const mapping = await fetch('/fonts/NotationFont-map.json')
         .then(r => r.json());
 
     // Verify all systems have characters
@@ -510,10 +513,11 @@ test('verify notation font loads and renders', async ({ page }) => {
 | "PyYAML not found" | Install: `pip install PyYAML` |
 | "atoms.yaml not found" | Run from editor/ root: `python3 tools/fontgen/generate.py` |
 | "Base font not found" | Check `static/fonts/Inter.ttc` exists, or pass `--base-font` |
-| Font doesn't load in browser | Verify `static/fonts/NotationMonoDotted.ttf` exists and is deployed |
-| Dots not visible at runtime | Check CSS includes `@font-face` for NotationMonoDotted |
+| "Noto Music not found" | Check `tools/fontgen/sources/NotoMusic.ttf` exists, or pass `--noto-music-font` |
+| Font doesn't load in browser | Verify `static/fonts/NotationFont.ttf` exists and is deployed |
+| Dots not visible at runtime | Check CSS includes `@font-face` for NotationFont |
 | Character order mismatch | Verify atoms.yaml and code use identical order |
-| Codepoints wrong in output | Delete `NotationMonoDotted-map.json` and regenerate |
+| Codepoints wrong in output | Delete `NotationFont-map.json` and regenerate |
 
 ## Architecture Decisions
 

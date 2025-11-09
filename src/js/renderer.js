@@ -9,8 +9,8 @@ import {
   BASE_FONT_SIZE,
   BASE_LINE_HEIGHT,
   SMALL_FONT_SIZE,
-  BRAVURA_FONT_SIZE,
-  BRAVURA_VERTICAL_OFFSET,
+  SMUFL_FONT_SIZE,
+  SMUFL_VERTICAL_OFFSET,
   LEFT_MARGIN_PX,
   CELL_Y_OFFSET,
   CELL_HEIGHT
@@ -58,6 +58,15 @@ class DOMRenderer {
   setupBeatLoopStyles() {
     const style = document.createElement('style');
     style.textContent = `
+      /* ===== WEB FONTS ===== */
+      /* Load NotationFont (derived from Noto Music) for all pitch + music symbols */
+      @font-face {
+        font-family: 'NotationFont';
+        src: url('/static/fonts/NotationFont.ttf') format('truetype');
+        font-weight: normal;
+        font-style: normal;
+      }
+
       /* Base cell styles */
       .char-cell {
         padding: 0;
@@ -133,6 +142,7 @@ class DOMRenderer {
       }
 
       /* Base styles for all SMuFL barline glyphs */
+      /* Using NotationFont (derived from Noto Music) which includes barline glyphs */
       .char-cell.repeat-left-start::after,
       .char-cell.repeat-right-start::after,
       .char-cell.double-bar-start::after,
@@ -143,7 +153,7 @@ class DOMRenderer {
         top: ${BASE_FONT_SIZE * 0.75}px;
         transform: translateY(-50%);
         color: #000;
-        font-size: ${BRAVURA_FONT_SIZE * 1.2}px;
+        font-size: ${SMUFL_FONT_SIZE * 1.2}px;
         line-height: 1;
         pointer-events: none;
         z-index: 4;

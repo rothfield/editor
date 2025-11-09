@@ -101,6 +101,7 @@ impl BeatAccumulator {
     }
 
     /// Add grace note to pending list
+    #[allow(dead_code)]
     fn add_grace_note(&mut self, pitch: PitchInfo) {
         // Default to After placement for ornaments
         let grace = GraceNoteData {

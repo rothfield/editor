@@ -23,12 +23,12 @@ help:
 	@echo "  build-css      - Generate CSS only"
 	@echo "  build-profile-analyze - Show build profile information"
 	@echo ""
-	@echo "Font Generation:"
-	@echo "  fonts          - Generate notation fonts (strict mode, fail on errors)"
+	@echo "Font Generation (Noto Music-based):"
+	@echo "  fonts          - Generate NotationFont from Noto Music (strict mode, fail on errors)"
 	@echo "  fonts-validate - Validate atoms.yaml only (no FontForge needed)"
-	@echo "  fonts-debug    - Generate visual specimen (debug-notation-font.html)"
+	@echo "  fonts-debug    - Generate visual specimen (debug-specimen.html)"
 	@echo "  fonts-test     - Run font generator tests (pytest)"
-	@echo "  fonts-install  - Install Bravura and NotationMono fonts locally (Arch Linux/Wayland)"
+	@echo "  fonts-install  - Install NotationFont locally (Arch Linux/Wayland)"
 	@echo ""
 	@echo "Development:"
 	@echo "  dev            - Start dev server with auto-rebuild + hot reload ⚡"
@@ -114,20 +114,31 @@ build-css:
 	npm run build-css
 	@echo "CSS generation complete!"
 
-# Font Generation (NotationFont from Noto Music)
+# Font Generation (NotationFont derived from Noto Music)
+# Single source of truth: tools/fontgen/atoms.yaml
+# Generator: tools/fontgen/generate.py
 fonts:
-	@echo "Generating NotationFont.ttf from Noto Music..."
-	@python3 scripts/fonts/generate_noto.py
-	@echo "Fonts generated: static/fonts/NotationFont.ttf"
+	@echo "Generating NotationFont.ttf from atoms.yaml + Noto Music..."
+	@python3 tools/fontgen/generate.py --strict
+	@echo "✓ Fonts generated: static/fonts/NotationMonoDotted.ttf"
 
 fonts-validate:
-	@echo "Validating fonts can be generated..."
-	@python3 scripts/fonts/generate_noto.py --output /tmp/NotationFont-validate.ttf
-	@echo "Validation complete!"
-	@rm -f /tmp/NotationFont-validate.ttf
+	@echo "Validating atoms.yaml configuration..."
+	@python3 tools/fontgen/generate.py --validate-only
+	@echo "✓ Validation complete! atoms.yaml is valid"
+
+fonts-debug:
+	@echo "Generating visual specimen HTML..."
+	@python3 tools/fontgen/generate.py --debug-html
+	@echo "✓ Debug specimen: static/fonts/debug-specimen.html"
+
+fonts-test:
+	@echo "Running font generator tests..."
+	@python3 -m pytest tools/fontgen/test_generator.py -v
+	@echo "✓ Font tests complete!"
 
 fonts-install:
-	@echo "Installing NotationFont locally (Arch Linux/Wayland)..."
+	@echo "Installing NotationFont (derived from Noto Music) locally..."
 	@mkdir -p ~/.local/share/fonts
 	@echo "  Installing NotationFont.ttf..."
 	@cp static/fonts/NotationFont.ttf ~/.local/share/fonts/

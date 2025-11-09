@@ -95,18 +95,20 @@ pub const TOTAL_CHARACTERS: usize = {};
 /// Characters per octave variant
 pub const CHARS_PER_VARIANT: u32 = 4;
 
-/// Base codepoint for Private Use Area (PUA)
-/// Octave variants are allocated here: 0xE000 - 0xE0BB (47 chars × 4 variants = 188 glyphs)
+/// Base codepoint for Private Use Area (PUA) - note octave variants
+/// Allocated sequentially in PUA to avoid conflicts with SMuFL standard codepoints
+/// Value from atoms.yaml pua.start (typically 0xE600)
 pub const PUA_START: u32 = 0x{:X};
 
 /// Starting codepoint for accidental variants (sharp glyphs)
-/// Located after octave variants in the font at U+E1F0
+/// Located in SMuFL standard range U+E1F0 (NOT in PUA)
 /// Range: 0xE1F0 - 0xE21E (47 chars for sharp accidentals)
 pub const ACCIDENTAL_PUA_START: u32 = 0x{:X};
 
-/// Symbols and musical articulations start here (after accidentals)
-/// Range: 0xE220 onwards (barlines, ornaments, etc.)
-pub const SYMBOLS_PUA_START: u32 = 0xE220;
+/// Symbols and musical articulations start here (SMuFL standard ranges)
+/// Barlines: 0xE030-0xE042, Accidentals: 0xE260-0xE264, Ornaments: 0xE566-0xE56E
+/// Value from atoms.yaml smufl_symbols (standard SMuFL codepoints)
+pub const SYMBOLS_PUA_START: u32 = 0xE030;
 
 // System indices (for future per-system operations)
 {}

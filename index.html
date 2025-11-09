@@ -322,9 +322,9 @@
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
         }
 
-        /* Music font for barlines and musical symbols */
+        /* Music font for barlines and musical symbols (NotationFont derived from Noto Music) */
         .char-cell.kind-barline {
-            font-family: 'Bravura', serif;
+            font-family: 'NotationFont', serif;
             font-size: 20px;
             line-height: 1;
         }
@@ -399,10 +399,10 @@
 
         /* Ornament dialog CSS removed - replaced by copy/paste workflow */
 
-        /* Ornament Container */
+        /* Ornament Container (NotationFont derived from Noto Music) */
         .ornament-container {
             position: absolute;
-            font-family: 'Bravura', serif;
+            font-family: 'NotationFont', serif;
             z-index: 5;
             pointer-events: auto;
             cursor: pointer;
@@ -430,6 +430,19 @@
         /* Ornament Preview */
         .ornament-preview-container {
             position: relative;
+        }
+
+        /* Font Sandbox - NotationFont textarea */
+        textarea.font-sandbox {
+            font-family: 'NotationFont', monospace;
+            font-size: 18pt;
+            line-height: 1.6;
+            letter-spacing: 0.1em;
+        }
+
+        /* Disable resize and ensure proper layout */
+        textarea.font-sandbox {
+            resize: none;
         }
     </style>
 
@@ -617,6 +630,9 @@
                         <button id="tab-font-test" class="tab" data-tab="font-test" data-testid="tab-font-test" title="Font Testing - All custom glyphs">
                             Font Test
                         </button>
+                        <button id="tab-font-sandbox" class="tab" data-tab="font-sandbox" data-testid="tab-font-sandbox" title="Font Sandbox - Test NotationFont rendering">
+                            Font Sandbox
+                        </button>
                     </div>
                 </div>
 
@@ -696,15 +712,18 @@
                     <!-- Font Test Tab -->
                     <div id="tab-content-font-test" data-tab-content="font-test" class="tab-content hidden flex-1 flex flex-col p-4">
                         <div class="mb-2">
-                            <h3 class="text-xs font-bold mb-2">NotationMono Font Glyphs</h3>
-                            <div class="flex gap-2 mb-2">
-                                <button id="font-test-show-all" class="px-2 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600">Show All</button>
-                                <button id="font-test-show-sharps" class="px-2 py-1 bg-green-500 text-white rounded text-xs hover:bg-green-600">Sharp Accidentals</button>
-                                <button id="font-test-show-octaves" class="px-2 py-1 bg-purple-500 text-white rounded text-xs hover:bg-purple-600">Octave Variants</button>
-                                <button id="font-test-show-symbols" class="px-2 py-1 bg-orange-500 text-white rounded text-xs hover:bg-orange-600">Barlines & Symbols</button>
+                            <h3 class="text-sm font-bold mb-2">NotationFont Glyphs & Unicode Mapping</h3>
+                            <div class="flex gap-2 mb-2 flex-wrap">
+                                <button id="font-test-show-all" class="px-2 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600">Comprehensive View</button>
+                                <button id="font-test-show-table" class="px-2 py-1 bg-green-500 text-white rounded text-xs hover:bg-green-600">Unicode Table</button>
                             </div>
                         </div>
                         <div id="font-test-grid" class="flex-1 bg-white p-3 border-2 border-gray-300 rounded overflow-auto"></div>
+                    </div>
+
+                    <!-- Font Sandbox Tab -->
+                    <div id="tab-content-font-sandbox" data-tab-content="font-sandbox" class="tab-content hidden flex-1 flex flex-col p-4">
+                        <textarea id="font-sandbox" class="flex-1 bg-white p-3 border-2 border-gray-300 rounded overflow-auto font-sandbox resize-none" placeholder="Type NotationFont characters here (1-7, A-G, S-N, d-t, etc.)"></textarea>
                     </div>
                 </div>
             </aside>
