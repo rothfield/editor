@@ -236,6 +236,9 @@ glyph_variants:
 # Where codepoints are assigned in Unicode Private Use Area
 # NOTE: SMuFL standard codepoints use ranges U+E030-U+E042 (barlines), U+E260-U+E264 (accidentals), U+E566-U+E56E (ornaments)
 # To avoid conflicts, custom allocations use ranges that don't collide with SMuFL
+pua:
+  start: 0xE600  # PUA start for octave variants
+
 octave_variants:
   start: 0xE600
   range: "0xE600 - 0xE6BB"  # 188 glyphs (47 chars × 4 variants)
