@@ -428,10 +428,10 @@ impl<'a> LayoutLineComputer<'a> {
 
         // Position arcs based on direction
         // Slurs: positioned above the font bbox (around 20% of cell height from top)
-        // Beat loops: positioned entirely below the glyphs bbox (around 85% of cell height, well below baseline at 75%)
+        // Beat loops: positioned well below the glyphs bbox (around 95% of cell height, near cell bottom)
         // Don't account for octave dots (upper or lower) - they're positioned outside the cell
         let baseline_offset = if is_downward {
-            config.cell_height * 0.85 // Beat loops entirely below glyphs bbox
+            config.cell_height * 0.95 // Beat loops well below glyphs bbox, no collision with pitches
         } else {
             config.cell_height * 0.20 // Slurs above font bbox
         };
