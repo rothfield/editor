@@ -425,25 +425,28 @@ def build_font(
         g.addReference(base_glyph_name, (1, 0, 0, 1, 0, 0))
 
         # Add dots based on variant
+        # Single dots: 100% scale, Double dots: 60% scale
+        double_dot_scale = 0.6
+
         if atom.variant_index == 0:  # 1 dot above
             y_pos = by_max - dy_min + spec.geometry.dot_above_gap
             g.addReference(dot_name, (1, 0, 0, 1, dot_x_offset, y_pos))
 
-        elif atom.variant_index == 1:  # 2 dots above
+        elif atom.variant_index == 1:  # 2 dots above (60% size)
             y_pos1 = by_max - dy_min + spec.geometry.dot_above_gap
             y_pos2 = y_pos1 + spec.geometry.dot_vertical_step
-            g.addReference(dot_name, (1, 0, 0, 1, dot_x_offset, y_pos1))
-            g.addReference(dot_name, (1, 0, 0, 1, dot_x_offset, y_pos2))
+            g.addReference(dot_name, (double_dot_scale, 0, 0, double_dot_scale, dot_x_offset, y_pos1))
+            g.addReference(dot_name, (double_dot_scale, 0, 0, double_dot_scale, dot_x_offset, y_pos2))
 
         elif atom.variant_index == 2:  # 1 dot below
             y_pos = by_min - dy_max - spec.geometry.dot_below_gap
             g.addReference(dot_name, (1, 0, 0, 1, dot_x_offset, y_pos))
 
-        elif atom.variant_index == 3:  # 2 dots below
+        elif atom.variant_index == 3:  # 2 dots below (60% size)
             y_pos1 = by_min - dy_max - spec.geometry.dot_below_gap
             y_pos2 = y_pos1 - spec.geometry.dot_vertical_step
-            g.addReference(dot_name, (1, 0, 0, 1, dot_x_offset, y_pos1))
-            g.addReference(dot_name, (1, 0, 0, 1, dot_x_offset, y_pos2))
+            g.addReference(dot_name, (double_dot_scale, 0, 0, double_dot_scale, dot_x_offset, y_pos1))
+            g.addReference(dot_name, (double_dot_scale, 0, 0, double_dot_scale, dot_x_offset, y_pos2))
 
         g.width = base_glyph.width
 
