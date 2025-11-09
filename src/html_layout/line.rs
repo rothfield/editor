@@ -421,7 +421,7 @@ impl<'a> LayoutLineComputer<'a> {
         end_cell: &RenderCell,
         direction: &str,
         color: &str,
-        _config: &LayoutConfig,
+        config: &LayoutConfig,
     ) -> RenderArc {
         // Anchor points at cell centers
         let is_downward = direction == "down";
@@ -430,14 +430,18 @@ impl<'a> LayoutLineComputer<'a> {
         let start_y = if is_downward {
             start_cell.y + start_cell.h
         } else {
-            start_cell.y
+            // Position slurs a little below baseline (baseline is at ~75% of cell height)
+            // Don't account for octave dots - they're positioned outside the cell
+            start_cell.y + (config.cell_height * 0.80)
         };
 
         let end_x = end_cell.x + (end_cell.w / 2.0);
         let end_y = if is_downward {
             end_cell.y + end_cell.h
         } else {
-            end_cell.y
+            // Position slurs a little below baseline
+            // Don't account for octave dots - they're positioned outside the cell
+            end_cell.y + (config.cell_height * 0.80)
         };
 
         // Calculate horizontal span
