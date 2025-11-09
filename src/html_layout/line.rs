@@ -426,18 +426,17 @@ impl<'a> LayoutLineComputer<'a> {
         // Anchor points at cell centers
         let is_downward = direction == "down";
 
-        // Position arcs based on direction using actual measurements
-        // Baseline is at 75% of cell height (standard for most fonts)
-        let baseline_offset_in_cell = config.cell_height * 0.75;
+        // Position arcs using actual measurements from layout config
+        // These values come from JavaScript constants and are passed via config
 
         // Position based on arc direction
         let baseline_offset = if is_downward {
-            // Beat loops: placed just below baseline, with font_size/4 spacing below
-            // This prevents collision with glyphs while keeping grouping tight
-            baseline_offset_in_cell + (config.font_size * 0.25)
+            // Beat loops: positioned just below glyphs bbox
+            // Position = cell_height - beat_loop_height - beat_loop_offset_below
+            config.cell_height - config.beat_loop_height - config.beat_loop_offset_below
         } else {
-            // Slurs: placed above glyphs (at 20% of cell height)
-            config.cell_height * 0.20
+            // Slurs: positioned above glyphs using slur_offset_above
+            config.slur_offset_above
         };
 
         let start_x = start_cell.x + (start_cell.w / 2.0);

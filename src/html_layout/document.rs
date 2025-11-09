@@ -40,6 +40,15 @@ pub struct LayoutConfig {
 
     /// Minimum padding between syllables
     pub min_syllable_padding: f32,
+
+    /// Slur positioning: distance above cell top (pixels)
+    pub slur_offset_above: f32,
+
+    /// Beat loop positioning: gap between cell bottom and beat loop (pixels)
+    pub beat_loop_offset_below: f32,
+
+    /// Beat loop arc height (pixels)
+    pub beat_loop_height: f32,
 }
 
 /// Main layout engine for computing display lists

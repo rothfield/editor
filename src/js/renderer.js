@@ -13,7 +13,10 @@ import {
   SMUFL_VERTICAL_OFFSET,
   LEFT_MARGIN_PX,
   CELL_Y_OFFSET,
-  CELL_HEIGHT
+  CELL_HEIGHT,
+  BEAT_LOOP_OFFSET_BELOW,
+  BEAT_LOOP_HEIGHT,
+  SLUR_OFFSET_ABOVE
 } from './constants.js';
 import ArcRenderer from './arc-renderer.js';
 
@@ -285,6 +288,9 @@ class DOMRenderer {
       cell_y_offset: CELL_Y_OFFSET,
       cell_height: CELL_HEIGHT,
       min_syllable_padding: 4.0,
+      slur_offset_above: SLUR_OFFSET_ABOVE,
+      beat_loop_offset_below: BEAT_LOOP_OFFSET_BELOW,
+      beat_loop_height: BEAT_LOOP_HEIGHT,
       ornament_edit_mode: this.editor.wasmModule.getOrnamentEditMode(doc),
     };
 
