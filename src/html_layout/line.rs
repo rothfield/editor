@@ -431,9 +431,9 @@ impl<'a> LayoutLineComputer<'a> {
 
         // Position based on arc direction
         let baseline_offset = if is_downward {
-            // Beat loops: positioned below the cell
+            // Beat loops: positioned below the cell, moved down 1/4 of font size
             // Cell height already includes octave dots (they're part of the font glyphs)
-            config.cell_height
+            config.cell_height + (config.font_size * 0.25)
         } else {
             // Slurs: positioned above glyphs using slur_offset_above
             config.slur_offset_above
