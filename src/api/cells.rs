@@ -314,7 +314,15 @@ pub fn delete_character(
         }
     }
 
-    // IMPORTANT: After deletion, reparse the affected glyph to update pitch_code
+    // CRITICAL LOGIC: Multi-Character Glyph Handling After Deletion
+    // See CLAUDE.md "Multi-Character Glyph Rendering" for full architecture
+    //
+    // Example: User types "1#", creating cells [root: "1#"/Sharp, continuation: "#"]
+    //          User backspaces continuation cell
+    //          Result: Keep root cell as "1#"/Sharp (what user typed)
+    //          Rendering: Invisible "1#" + CSS overlay shows composite glyph
+    //
+    // ONLY reparse if continuations REMAIN - otherwise preserve typed text
     if is_multi_cell_glyph && new_root_idx < cells.len() {
         // Build combined string from remaining cells starting at root
         let mut combined = String::new();
@@ -325,24 +333,40 @@ pub fn delete_character(
         end_idx += 1;
 
         // Add any continuation cells
+        let mut has_continuations = false;
         while end_idx < cells.len() && cells[end_idx].continuation {
             combined.push_str(&cells[end_idx].char);
+            has_continuations = true;
             end_idx += 1;
         }
 
-        wasm_log!("  Reparsing remaining glyph: combined='{}'", combined);
+        wasm_log!("  Remaining glyph: combined='{}', has_continuations={}", combined, has_continuations);
 
-        // Reparse the combined string to get correct pitch_code
-        let pitch_system = preserved_pitch_system.unwrap_or(PitchSystem::Unknown);
-        let reparsed = parse(&combined, pitch_system, cells[new_root_idx].col);
+        // CRITICAL: Preserve what user typed - only reparse if continuations remain
+        // If all continuations deleted (e.g., deleted "#" from "1#"):
+        //   - Keep original char="1#" and pitch_code=Sharp
+        //   - Preserves textual mental model and DOM truth
+        //   - Rendering layer extracts base char and applies composite glyph overlay
+        if has_continuations {
+            wasm_log!("  Reparsing because continuations remain: '{}'", combined);
 
-        // Update root cell with reparsed data, preserving musical attributes
-        cells[new_root_idx].kind = reparsed.kind;
-        cells[new_root_idx].pitch_code = reparsed.pitch_code;
-        cells[new_root_idx].pitch_system = reparsed.pitch_system;
-        cells[new_root_idx].flags = preserved_flags;
-        cells[new_root_idx].octave = preserved_octave;
-        cells[new_root_idx].slur_indicator = preserved_slur_indicator;
+            // Reparse the combined string to get correct pitch_code
+            let pitch_system = preserved_pitch_system.unwrap_or(PitchSystem::Unknown);
+            let reparsed = parse(&combined, pitch_system, cells[new_root_idx].col);
+
+            // Update root cell with reparsed data, preserving musical attributes
+            cells[new_root_idx].kind = reparsed.kind;
+            cells[new_root_idx].pitch_code = reparsed.pitch_code;
+            cells[new_root_idx].pitch_system = reparsed.pitch_system;
+            cells[new_root_idx].flags = preserved_flags;
+            cells[new_root_idx].octave = preserved_octave;
+            cells[new_root_idx].slur_indicator = preserved_slur_indicator;
+        } else {
+            wasm_log!("  No continuations remain - keeping original char='{}' and pitch_code", combined);
+            // WASM-FIRST PRINCIPLE: Keep the typed text (char="1#")
+            // Rendering layer handles display via composite glyph overlay
+            // This preserves round-trip fidelity and textual mental model
+        }
 
         wasm_info!("  Updated root cell[{}]: pitch_code={:?}, octave={}, flags={}",
                   new_root_idx, cells[new_root_idx].pitch_code, cells[new_root_idx].octave, cells[new_root_idx].flags);

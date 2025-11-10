@@ -98,7 +98,6 @@ class ArcRenderer {
     const slurs = [];
     const lineElements = Array.from(document.querySelectorAll('.notation-line'));
 
-    let cumulativeY = 0;
     for (let lineIdx = 0; lineIdx < displayList.lines.length; lineIdx++) {
       const line = displayList.lines[lineIdx];
       const lineElement = lineElements[lineIdx];
@@ -107,15 +106,13 @@ class ArcRenderer {
         for (const arc of line.slurs) {
           slurs.push({
             ...arc,
-            start_y: (arc.start_y - cumulativeY) + lineElement.offsetTop,
-            end_y: (arc.end_y - cumulativeY) + lineElement.offsetTop,
-            cp1_y: (arc.cp1_y - cumulativeY) + lineElement.offsetTop,
-            cp2_y: (arc.cp2_y - cumulativeY) + lineElement.offsetTop
+            start_y: (arc.start_y - line.y) + lineElement.offsetTop,
+            end_y: (arc.end_y - line.y) + lineElement.offsetTop,
+            cp1_y: (arc.cp1_y - line.y) + lineElement.offsetTop,
+            cp2_y: (arc.cp2_y - line.y) + lineElement.offsetTop
           });
         }
       }
-
-      cumulativeY += line.height;
     }
 
     this.updateArcPathsFromData(slurs, this.slurPaths, this.slurGroup);
@@ -137,33 +134,24 @@ class ArcRenderer {
     const beatLoops = [];
     const lineElements = Array.from(document.querySelectorAll('.notation-line'));
 
-    // Calculate cumulative Y same way as renderer does for cells
-    let cumulativeY = 0;
-    for (let prevLineIdx = 0; prevLineIdx < displayList.lines.length; prevLineIdx++) {
-      const prevHeight = displayList.lines[prevLineIdx].height;
-
-      // Calculate for this line
-      const lineIdx = prevLineIdx;
+    for (let lineIdx = 0; lineIdx < displayList.lines.length; lineIdx++) {
       const line = displayList.lines[lineIdx];
       const lineElement = lineElements[lineIdx];
 
       if (line.beat_loops && Array.isArray(line.beat_loops) && lineElement) {
         for (const arc of line.beat_loops) {
           // Arc Y is absolute from Rust. Convert to line-relative, then add line's DOM position
-          // Line-relative = arc.y - cumulativeY (same as cells: relativeY = cellData.y - lineStartY)
+          // Line-relative = arc.y - line.y (line.y computed in WASM)
           // SVG absolute = line-relative + lineElement.offsetTop
           beatLoops.push({
             ...arc,
-            start_y: (arc.start_y - cumulativeY) + lineElement.offsetTop,
-            end_y: (arc.end_y - cumulativeY) + lineElement.offsetTop,
-            cp1_y: (arc.cp1_y - cumulativeY) + lineElement.offsetTop,
-            cp2_y: (arc.cp2_y - cumulativeY) + lineElement.offsetTop
+            start_y: (arc.start_y - line.y) + lineElement.offsetTop,
+            end_y: (arc.end_y - line.y) + lineElement.offsetTop,
+            cp1_y: (arc.cp1_y - line.y) + lineElement.offsetTop,
+            cp2_y: (arc.cp2_y - line.y) + lineElement.offsetTop
           });
         }
       }
-
-      // Advance cumulative Y for next line
-      cumulativeY += prevHeight;
     }
 
     this.updateArcPathsFromData(beatLoops, this.beatLoopPaths, this.beatLoopGroup);

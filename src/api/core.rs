@@ -777,6 +777,58 @@ pub fn set_line_label(
     Ok(result)
 }
 
+/// Set whether a line starts a new stave block (system)
+///
+/// # Parameters
+/// - `document_js`: JavaScript Document object
+/// - `line_index`: Index of the line to modify
+/// - `new_system`: Boolean indicating whether this line starts a new system
+///
+/// When new_system=true, this line begins a new grouped system (e.g., piano grand staff).
+/// All subsequent lines with new_system=false belong to this system until
+/// the next line with new_system=true or end of document.
+///
+/// # Returns
+/// Updated Document object serialized to JavaScript
+#[wasm_bindgen(js_name = setLineNewSystem)]
+pub fn set_line_new_system(
+    document_js: JsValue,
+    line_index: usize,
+    new_system: bool,
+) -> Result<JsValue, JsValue> {
+    wasm_info!("setLineNewSystem called: line_index={}, new_system={}", line_index, new_system);
+
+    // Deserialize document from JavaScript
+    let mut document: Document = serde_wasm_bindgen::from_value(document_js)
+        .map_err(|e| {
+            wasm_error!("Deserialization error: {}", e);
+            JsValue::from_str(&format!("Deserialization error: {}", e))
+        })?;
+
+    // Validate line index
+    if line_index >= document.lines.len() {
+        wasm_error!("Line index {} out of bounds (max: {})", line_index, document.lines.len() - 1);
+        return Err(JsValue::from_str("Line index out of bounds"));
+    }
+
+    // Set the new_system flag for the line
+    document.lines[line_index].new_system = new_system;
+    wasm_info!("  Line {} new_system set to: {}", line_index, new_system);
+
+    // Compute glyphs before serialization
+    document.compute_glyphs();
+
+    // Serialize back to JavaScript
+    let result = serde_wasm_bindgen::to_value(&document)
+        .map_err(|e| {
+            wasm_error!("Serialization error: {}", e);
+            JsValue::from_str(&format!("Serialization error: {}", e))
+        })?;
+
+    wasm_info!("setLineNewStave completed successfully");
+    Ok(result)
+}
+
 // ============================================================================
 // Core edit primitive - editReplaceRange
 // ============================================================================
@@ -1252,6 +1304,7 @@ pub fn insert_newline() -> Result<JsValue, JsValue> {
         key_signature: current_line.key_signature.clone(),
         tempo: current_line.tempo.clone(),
         time_signature: current_line.time_signature.clone(),
+        new_system: false,
         beats: Vec::new(),
         slurs: Vec::new(),
     };
@@ -2442,6 +2495,7 @@ pub fn split_line_at_position(
         key_signature: line.key_signature.clone(), // Inherit key signature
         tempo: line.tempo.clone(), // Inherit tempo
         time_signature: line.time_signature.clone(), // Inherit time signature
+        new_system: false, // New line does not start a new system
         beats: Vec::new(),
         slurs: Vec::new(),
     };

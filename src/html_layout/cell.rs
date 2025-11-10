@@ -85,6 +85,38 @@ impl CellStyleBuilder {
             None
         };
 
+        // Add accidental type to dataset for CSS overlay rendering
+        if let Some(acc_type) = accidental_type {
+            if acc_type != AccidentalType::None {
+                // Add CSS class to mark cells with accidentals for styling
+                classes.push("has-accidental".to_string());
+
+                // Store accidental type for JavaScript overlay calculation
+                let acc_str = match acc_type {
+                    AccidentalType::None => "none",
+                    AccidentalType::Sharp => "sharp",
+                    AccidentalType::Flat => "flat",
+                    AccidentalType::DoubleSharp => "double-sharp",
+                    AccidentalType::DoubleFlat => "double-flat",
+                };
+                dataset.insert("accidentalType".to_string(), acc_str.to_string());
+
+                // Calculate and store the composite glyph codepoint for CSS overlay
+                if cell.pitch_code.is_some() {
+                    let base_char = cell.char.chars().next().unwrap_or(' ');
+                    let acc_type_num = match acc_type {
+                        AccidentalType::Sharp => 1,
+                        AccidentalType::Flat => 2,
+                        AccidentalType::DoubleSharp => 3,
+                        AccidentalType::DoubleFlat => 4,
+                        _ => 0,
+                    };
+                    let glyph_codepoint = get_accidental_glyph_codepoint(base_char, acc_type_num);
+                    dataset.insert("compositeGlyph".to_string(), format!("U+{:X}", glyph_codepoint as u32));
+                }
+            }
+        }
+
         // Hide continuation cells of pitched elements (they're part of accidentals)
         if cell.continuation && cell.kind == ElementKind::PitchedElement {
             classes.push("pitch-continuation".to_string());
@@ -145,59 +177,26 @@ impl CellStyleBuilder {
             _ => String::new(),
         };
 
-        // Substitute pitched element characters for octave display and accidentals
-        // WASM BUSINESS LOGIC:
-        // 1. For accidentals, substitute with accidental variant glyph from the font
-        // 2. For octave shift, substitute with octave dot variant
-        // 3. For continuation cells, replace with non-breaking space (invisible but takes space)
-        // 4. Otherwise, use the base character as-is
+        // Character rendering strategy (see CLAUDE.md "Multi-Character Glyph Rendering")
+        // IMPORTANT: For accidentals, keep the original typed text in DOM (textual truth)
+        // and let JavaScript/CSS handle the visual presentation via overlay.
+        // This preserves:
+        // - What user typed (mental model)
+        // - Accessibility (screen readers see "1#")
+        // - Copy/paste (get "1#" not composite glyph codepoint)
+        // - Round-trip fidelity (save/load preserves intent)
         let char = if cell.continuation && cell.kind == ElementKind::PitchedElement {
             // Continuation cells (like the '#' in "1#") are rendered as non-breaking space
             // This makes them invisible while preserving layout
             "\u{00A0}".to_string()
         } else if cell.kind == ElementKind::PitchedElement && !cell.char.is_empty() {
-            let base_char = cell.char.chars().next().unwrap_or(' ');
-
-            // For accidentals, try pre-composed glyph first, fallback to data-accidental for CSS rendering
-            if let Some(acc_type) = accidental_type {
-                match acc_type {
-                    AccidentalType::None => {
-                        // No accidental, proceed to octave check
-                        if cell.octave != 0 {
-                            get_glyph_codepoint(base_char, cell.octave).to_string()
-                        } else {
-                            cell.char.clone()
-                        }
-                    },
-                    AccidentalType::Sharp => {
-                        // Try pre-composed sharp glyph from NotationFont (U+E1F0-E21E: 47 glyphs)
-                        // Fallback: use data-accidental="sharp" for CSS ::after rendering
-                        dataset.insert("accidental".to_string(), "sharp".to_string());
-                        get_accidental_glyph_codepoint(base_char, 1).to_string()
-                    },
-                    AccidentalType::Flat => {
-                        // Try pre-composed flat glyph from NotationFont (U+E220-E24E: 47 glyphs)
-                        // Fallback: use data-accidental="flat" for CSS ::after rendering
-                        dataset.insert("accidental".to_string(), "flat".to_string());
-                        get_accidental_glyph_codepoint(base_char, 2).to_string()
-                    },
-                    AccidentalType::DoubleSharp => {
-                        // Try pre-composed double-sharp glyph from NotationFont (U+E250-E27E: 47 glyphs)
-                        // Fallback: use data-accidental="dsharp" for CSS ::after rendering
-                        dataset.insert("accidental".to_string(), "dsharp".to_string());
-                        get_accidental_glyph_codepoint(base_char, 3).to_string()
-                    },
-                    AccidentalType::DoubleFlat => {
-                        // Try pre-composed double-flat glyph from NotationFont (U+E280-E2AE: 47 glyphs)
-                        // Fallback: use data-accidental="dflat" for CSS ::after rendering
-                        dataset.insert("accidental".to_string(), "dflat".to_string());
-                        get_accidental_glyph_codepoint(base_char, 4).to_string()
-                    },
-                }
-            } else if cell.octave != 0 {
-                // Octave display (dots above/below)
+            // For pitched elements, handle octave display but NOT accidentals
+            // (Accidentals are handled by CSS overlay in JavaScript renderer)
+            if cell.octave != 0 {
+                let base_char = cell.char.chars().next().unwrap_or(' ');
                 get_glyph_codepoint(base_char, cell.octave).to_string()
             } else {
+                // Keep original typed text (e.g., "1#" for sharp, "1b" for flat)
                 cell.char.clone()
             }
         } else {

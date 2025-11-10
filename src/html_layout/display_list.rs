@@ -48,6 +48,10 @@ pub struct RenderLine {
     /// Calculated height for this line
     pub height: f32,
 
+    /// Absolute Y position (top edge of this line)
+    /// Computed during layout as cumulative sum of all previous line heights
+    pub y: f32,
+
     /// Slur arcs to render (computed with line y-offset already factored in)
     #[serde(default)]
     pub slurs: Vec<RenderArc>,

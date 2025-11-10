@@ -186,6 +186,16 @@ class UI {
      * Setup Line menu
      */
   setupLineMenu() {
+    // Get current line's new_system state if a line is selected
+    let currentLineNewSystem = false;
+    if (this.editor && this.editor.theDocument) {
+      const cursor = this.editor.theDocument.state.cursor;
+      const line = this.editor.theDocument.lines[cursor.line];
+      if (line) {
+        currentLineNewSystem = line.new_system || false;
+      }
+    }
+
     const menuItems = [
       { id: 'menu-select-all', label: 'Select Line (triple-click)', action: 'select-all' },
       { id: 'menu-separator-0', label: null, separator: true },
@@ -194,7 +204,9 @@ class UI {
       { id: 'menu-set-pitch-system', label: 'Set Pitch System...', action: 'set-line-pitch-system' },
       { id: 'menu-set-lyrics', label: 'Set Lyrics...', action: 'set-lyrics' },
       { id: 'menu-set-tala', label: 'Set Tala...', action: 'set-tala' },
-      { id: 'menu-set-key-signature', label: 'Set Key Signature...', action: 'set-line-key-signature' }
+      { id: 'menu-set-key-signature', label: 'Set Key Signature...', action: 'set-line-key-signature' },
+      { id: 'menu-separator-1', label: null, separator: true },
+      { id: 'menu-new-system', label: 'Start new system', action: 'toggle-new-system', checkable: true, checked: currentLineNewSystem }
     ];
 
     const lineMenu = document.getElementById('line-menu');
@@ -210,7 +222,22 @@ class UI {
         menuItem.id = item.id;
         menuItem.className = 'menu-item';
         menuItem.dataset.action = item.action;
-        menuItem.textContent = item.label;
+
+        if (item.checkable) {
+          // Add checkbox indicator for checkable items
+          const checkbox = document.createElement('span');
+          checkbox.className = 'menu-checkbox';
+          checkbox.textContent = item.checked ? '✓ ' : '✗ '; // Checkmark or X
+          checkbox.dataset.checked = item.checked ? 'true' : 'false';
+          menuItem.appendChild(checkbox);
+
+          const label = document.createElement('span');
+          label.textContent = item.label;
+          menuItem.appendChild(label);
+        } else {
+          menuItem.textContent = item.label;
+        }
+
         menuItem.addEventListener('click', this.handleMenuItemClick);
         lineMenu.appendChild(menuItem);
       }
@@ -678,6 +705,9 @@ class UI {
         break;
       case 'set-line-key-signature':
         this.setLineKeySignature();
+        break;
+      case 'toggle-new-system':
+        this.toggleLineNewSystem();
         break;
       case 'preferences':
         this.openPreferences();
@@ -1165,6 +1195,46 @@ class UI {
         this.editor.addToConsoleLog(`Line key signature set to: ${newSignature}`);
         await this.editor.renderAndUpdate();
       }
+    }
+  }
+
+  /**
+   * Toggle whether current line starts a new system
+   */
+  async toggleLineNewSystem() {
+    if (!this.editor || !this.editor.theDocument || !this.editor.wasmModule) {
+      console.error('Editor not initialized');
+      return;
+    }
+
+    const lineIdx = this.getCurrentLineIndex();
+    const currentLine = this.editor.theDocument.lines[lineIdx];
+    if (!currentLine) {
+      console.error('Current line not found');
+      return;
+    }
+
+    // Toggle the new_system flag
+    const newNewSystemValue = !currentLine.new_system;
+
+    try {
+      // Call WASM function to update the document
+      this.editor.theDocument = this.editor.wasmModule.setLineNewSystem(
+        this.editor.theDocument,
+        lineIdx,
+        newNewSystemValue
+      );
+
+      this.editor.addToConsoleLog(`Line ${lineIdx} "${newNewSystemValue ? '' : 'no longer '}starts new system"`);
+
+      // Update menu to reflect new state
+      this.setupLineMenu();
+
+      // Re-render document
+      await this.editor.renderAndUpdate();
+    } catch (error) {
+      console.error('Error toggling new_system:', error);
+      this.editor.addToConsoleLog(`Error: ${error.message}`);
     }
   }
 

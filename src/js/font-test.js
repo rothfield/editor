@@ -6,8 +6,9 @@
  * regardless of changes to atoms.yaml or font generation.
  */
 
-// Font configuration loaded from WASM
+// Font configuration loaded from WASM and NotationFont-map.json
 let fontConfig = null;
+let fontMapData = null;
 
 // Notation system definitions (from atoms.yaml)
 const PITCH_SYSTEMS = {
@@ -41,34 +42,21 @@ const OCTAVE_VARIANTS = [
   { shift: -2, label: "2 dots below (octave -2)" }
 ];
 
-// Symbol definitions (from atoms.yaml smufl_symbols)
-const SYMBOLS = {
-  accidentals: [
-    { cp: 0xE262, label: "Sharp (#)" },
-    { cp: 0xE261, label: "Natural (♮)" },
-    { cp: 0xE260, label: "Flat (♭)" },
-    { cp: 0xE263, label: "Double Sharp (𝄪)" },
-    { cp: 0xE264, label: "Double Flat (𝄫)" }
-  ],
-  barlines: [
-    { cp: 0xE030, label: "Single Barline" },
-    { cp: 0xE031, label: "Double Barline" },
-    { cp: 0xE040, label: "Repeat Left" },
-    { cp: 0xE041, label: "Repeat Right" },
-    { cp: 0xE042, label: "Repeat Both" }
-  ],
-  ornaments: [
-    { cp: 0xE566, label: "Trill" },
-    { cp: 0xE567, label: "Turn" },
-    { cp: 0xE56D, label: "Mordent" },
-    { cp: 0xE56E, label: "Inverted Mordent" }
-  ]
-};
-
-// Initialize font config from WASM
+// Initialize font config from WASM and load NotationFont-map.json
 async function initFontConfig() {
   try {
-    // Try to get from editor instance first (preferred)
+    // Load NotationFont-map.json first (single source of truth)
+    try {
+      const mapResponse = await fetch('static/fonts/NotationFont-map.json');
+      if (mapResponse.ok) {
+        fontMapData = await mapResponse.json();
+        console.log('✓ Font map loaded from NotationFont-map.json');
+      }
+    } catch (mapError) {
+      console.warn('⚠ Could not load NotationFont-map.json:', mapError);
+    }
+
+    // Try to get font config from editor instance first (preferred)
     let config = window.editor?.wasmModule?.getFontConfig?.();
 
     // Fallback to global window.wasmModule if available
@@ -116,19 +104,46 @@ export class FontTestUI {
   showComprehensiveView() {
     this.grid.innerHTML = '';
 
-    // 1. Display each pitch system with all variants
+    // 1. Display symbols first (from NotationFont-map.json - single source of truth)
+    if (fontMapData?.symbols && fontMapData.symbols.length > 0) {
+      this.addSymbolsFromMap();
+    } else {
+      console.warn('No symbols found in font map data');
+    }
+
+    // 2. Display each pitch system with all variants
     for (const [systemKey, systemInfo] of Object.entries(PITCH_SYSTEMS)) {
       this.addPitchSystemSection(systemKey, systemInfo);
     }
+  }
 
-    // 2. Accidentals section
-    this.addSymbolSection("Accidentals", SYMBOLS.accidentals);
+  addSymbolsFromMap() {
+    // Group symbols by kind
+    const symbolsByKind = {};
+    for (const symbol of fontMapData.symbols) {
+      if (!symbolsByKind[symbol.kind]) {
+        symbolsByKind[symbol.kind] = [];
+      }
+      symbolsByKind[symbol.kind].push(symbol);
+    }
 
-    // 3. Barlines section
-    this.addSymbolSection("Barlines & Repeat Markers", SYMBOLS.barlines);
+    // Display symbols grouped by kind
+    const kindOrder = ['accidental', 'barline', 'ornament'];
+    const kindLabels = {
+      'accidental': 'Accidentals',
+      'barline': 'Barlines & Repeat Markers',
+      'ornament': 'Ornaments'
+    };
 
-    // 4. Ornaments section
-    this.addSymbolSection("Ornaments", SYMBOLS.ornaments);
+    for (const kind of kindOrder) {
+      if (symbolsByKind[kind]) {
+        const symbols = symbolsByKind[kind].map(s => ({
+          cp: parseInt(s.codepoint, 16),
+          label: s.label
+        }));
+        this.addSymbolSection(kindLabels[kind] || kind, symbols);
+      }
+    }
   }
 
   addPitchSystemSection(systemKey, systemInfo) {
@@ -354,11 +369,13 @@ export class FontTestUI {
       tbody.appendChild(this.createTableRow(cp, String.fromCodePoint(cp), `${char}# (sharp)`, 'Accidental', `${systemName} +sharp`));
     }
 
-    // Add symbols
-    const allSymbols = [...SYMBOLS.accidentals, ...SYMBOLS.barlines, ...SYMBOLS.ornaments];
-    for (const symbol of allSymbols) {
-      const type = this.getSymbolType(symbol.cp);
-      tbody.appendChild(this.createTableRow(symbol.cp, String.fromCodePoint(symbol.cp), symbol.label, 'Symbol', type));
+    // Add symbols (from font map data - single source of truth)
+    if (fontMapData?.symbols && fontMapData.symbols.length > 0) {
+      for (const symbol of fontMapData.symbols) {
+        const cp = parseInt(symbol.codepoint, 16);
+        const kind = symbol.kind.charAt(0).toUpperCase() + symbol.kind.slice(1);
+        tbody.appendChild(this.createTableRow(cp, String.fromCodePoint(cp), symbol.label, 'Symbol', kind));
+      }
     }
 
     table.appendChild(tbody);

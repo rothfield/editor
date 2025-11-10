@@ -40,12 +40,57 @@ pub fn emit_musicxml(
         return Ok(builder.finalize());
     }
 
-    // TODO: Future multi-part support
-    // When we need separate parts (e.g., score with multiple instruments),
-    // use part boundaries similar to LilyPond's /break directive.
-    // For now, all lines go into a single part with system breaks between lines.
+    // Check if ANY line requests multi-system grouping
+    let has_multi_system = export_lines.iter().any(|line| line.starts_new_system);
 
-    // Start a single part containing all lines
+    // If no lines request multi-system, use simple single-part emission
+    if !has_multi_system {
+        builder.start_part("");
+        for (line_index, export_line) in export_lines.iter().enumerate() {
+            let is_first_line = line_index == 0;
+            emit_line(&mut builder, export_line, is_first_line)?;
+        }
+        builder.end_part();
+        return Ok(builder.finalize());
+    }
+
+    // Multi-part support using system blocks (new_system flag)
+    // Lines with starts_new_system=true create a new part
+    // All subsequent lines with starts_new_system=false belong to the same part
+
+    let mut current_part_lines: Vec<&ExportLine> = Vec::new();
+
+    for export_line in export_lines.iter() {
+        let is_line_start_of_block = export_line.starts_new_system;
+
+        // If this line starts a new system block and we have lines in the current part,
+        // emit the current part first
+        if is_line_start_of_block && !current_part_lines.is_empty() {
+            emit_part(&mut builder, &current_part_lines)?;
+            current_part_lines.clear();
+        }
+
+        // Add this line to the current part
+        current_part_lines.push(export_line);
+    }
+
+    // Emit any remaining lines as the final part
+    if !current_part_lines.is_empty() {
+        emit_part(&mut builder, &current_part_lines)?;
+    }
+
+    Ok(builder.finalize())
+}
+
+/// Emit a complete part (one or more lines grouped by stave block)
+fn emit_part(
+    builder: &mut MusicXmlBuilder,
+    export_lines: &[&ExportLine],
+) -> Result<(), String> {
+    if export_lines.is_empty() {
+        return Ok(());
+    }
+
     // Use the first line's label as the part name if available
     let part_name = if export_lines[0].label.is_empty() {
         String::new()
@@ -54,13 +99,16 @@ pub fn emit_musicxml(
     };
     builder.start_part(&part_name);
 
-    // Process each line as a system break (not a new part)
+    // Process each line as a system break
     for (line_index, export_line) in export_lines.iter().enumerate() {
         let is_first_line = line_index == 0;
-        emit_line(&mut builder, export_line, is_first_line)?;
+        emit_line(builder, export_line, is_first_line)?;
     }
 
-    Ok(builder.finalize())
+    // Close the part
+    builder.end_part();
+
+    Ok(())
 }
 
 /// Emit a single line (system) within the part

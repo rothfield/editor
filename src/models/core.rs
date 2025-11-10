@@ -248,6 +248,13 @@ pub struct Line {
     #[serde(default)]
     pub time_signature: String,
 
+    /// Whether this line starts a new system for grouping
+    /// When true, this line begins a new grouped system (e.g., piano grand staff)
+    /// All subsequent lines with new_system=false belong to this system
+    /// Used for visual grouping with bracket in left margin
+    #[serde(default)]
+    pub new_system: bool,
+
     /// Derived beat spans (calculated, not stored)
     #[serde(skip)]
     pub beats: Vec<BeatSpan>,
@@ -270,6 +277,7 @@ impl Line {
             key_signature: String::new(),
             tempo: String::new(),
             time_signature: String::new(),
+            new_system: false,
             beats: Vec::new(),
             slurs: Vec::new(),
         }

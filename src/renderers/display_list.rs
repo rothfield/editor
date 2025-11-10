@@ -47,6 +47,10 @@ pub struct RenderLine {
 
     /// Calculated height for this line
     pub height: f32,
+
+    /// Absolute Y position (top edge of this line)
+    /// Computed during layout as cumulative sum of all previous line heights
+    pub y: f32,
 }
 
 /// A single cell with all rendering information

@@ -49,6 +49,12 @@ pub struct ExportLine {
     #[serde(default)]
     pub label: String,
 
+    /// Whether this line starts a new system in the score
+    /// Lines with this flag true will create a new part in MusicXML
+    /// All subsequent lines with flag false belong to the same part
+    #[serde(default)]
+    pub starts_new_system: bool,
+
     /// Measures in this line
     pub measures: Vec<ExportMeasure>,
 
@@ -72,6 +78,7 @@ impl ExportLine {
             label,
             measures: Vec::new(),
             lyrics,
+            starts_new_system: false,
         }
     }
 }

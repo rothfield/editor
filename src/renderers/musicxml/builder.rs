@@ -102,7 +102,7 @@ impl MusicXmlBuilder {
     }
 
     /// End the current part and save it
-    fn end_part(&mut self) {
+    pub fn end_part(&mut self) {
         if self.current_part_id == 0 {
             return; // No part to end
         }
@@ -114,6 +114,11 @@ impl MusicXmlBuilder {
         };
 
         self.parts.push(part);
+
+        // Reset state after ending part
+        self.buffer.clear();
+        self.current_part_id = 0;
+        self.current_part_name.clear();
     }
 
     /// Set the document title

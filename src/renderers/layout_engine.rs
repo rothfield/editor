@@ -76,6 +76,7 @@ impl LayoutEngine {
         let mut cell_width_offset = 0;
         let mut syllable_width_offset = 0;
         let mut char_width_offset = 0;
+        let mut cumulative_y = 0.0;
 
         // Process each line
         for (line_idx, line) in document.lines.iter().enumerate() {
@@ -117,12 +118,14 @@ impl LayoutEngine {
                 cell_widths,
                 syllable_widths,
                 char_widths,
+                cumulative_y,
             );
 
             cell_width_offset += line.cells.len();
             syllable_width_offset += syllable_count;
             char_width_offset += char_count;
 
+            cumulative_y += render_line.height;
             lines.push(render_line);
         }
 
@@ -144,6 +147,7 @@ impl LayoutEngine {
         cell_widths: &[f32],
         syllable_widths: &[f32],
         char_widths: &[f32],
+        y: f32,
     ) -> RenderLine {
         // Derive beats using WASM BeatDeriver
         let beats = self.beat_deriver.extract_implicit_beats(&line.cells);
@@ -230,6 +234,7 @@ impl LayoutEngine {
             lyrics,
             tala,
             height,
+            y,
         }
     }
 

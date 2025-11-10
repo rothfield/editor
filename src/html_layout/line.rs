@@ -188,6 +188,7 @@ impl<'a> LayoutLineComputer<'a> {
             lyrics,
             tala,
             height,
+            y: line_y_offset,
             slurs,
             beat_loops,
             ornament_arcs,

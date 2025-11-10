@@ -49,6 +49,9 @@ class DOMRenderer {
       lastRenderTime: 0
     };
 
+    // System grouping (groups of parts bracketed together)
+    this.systemBlocks = []; // Array of {startLineIdx, endLineIdx, lines: []}
+
     this.setupBeatLoopStyles(); // Sets up octave dots CSS and barline styles
 
     // Initialize arc renderer (for slurs and beat loops)
@@ -91,42 +94,37 @@ class DOMRenderer {
       }
 
       /* ===== ACCIDENTAL RENDERING (WASM-FIRST ARCHITECTURE) ===== */
+      /* Architecture: DOM contains typed text (textual truth), CSS overlay shows composite glyph (visual rendering)
+         See CLAUDE.md "Multi-Character Glyph Rendering: Textual Mental Model with Visual Overlays"
+      */
 
       /* Pitched elements: rendered with pre-composed accidental glyphs from NotationFont */
       .char-cell.kind-pitched {
         font-family: 'NotationFont', monospace;
+      }
+
+      /* Multi-character glyphs with accidentals (e.g., 1#, 2b, 1##, 1bb)
+         Hide the typed text, show composite glyph via overlay
+      */
+      .char-cell.has-accidental {
+        color: transparent;
         position: relative;
       }
 
-      /* FALLBACK: Render accidental symbols using ::after pseudo-element */
-      /* This is used until pre-composed accidental glyphs are available in the font */
-      .char-cell[data-accidental="sharp"]::after,
-      .char-cell[data-accidental="flat"]::after,
-      .char-cell[data-accidental="dsharp"]::after,
-      .char-cell[data-accidental="dflat"]::after {
+      /* CSS overlay for accidental composite glyphs
+         The composite glyph codepoint is set via CSS custom property (--composite-glyph)
+         by JavaScript during rendering (see renderLineFromDisplayList)
+      */
+      .char-cell.has-accidental::after {
+        content: var(--composite-glyph, '');
         position: absolute;
-        font-family: 'NotationFont';
-        font-size: 1em;
-        left: 1em;
-        top: 50%;
-        transform: translateY(-50%);
-        line-height: 1;
-      }
-
-      .char-cell[data-accidental="sharp"]::after {
-        content: '#';
-      }
-
-      .char-cell[data-accidental="flat"]::after {
-        content: 'b';
-      }
-
-      .char-cell[data-accidental="dsharp"]::after {
-        content: '##';
-      }
-
-      .char-cell[data-accidental="dflat"]::after {
-        content: 'bb';
+        left: 0;
+        top: 0;
+        font-family: 'NotationFont', monospace;
+        color: #000;
+        pointer-events: none;
+        z-index: 2;
+        white-space: nowrap;
       }
 
       /* All barline overlays using SMuFL music font */
@@ -169,6 +167,17 @@ class DOMRenderer {
         outline-offset: -2px;
         border-radius: 4px;
         background-color: rgba(59, 130, 246, 0.05); /* very subtle blue tint */
+      }
+
+      /* ===== SYSTEM GROUP BRACKETS ===== */
+      /* Container for system group bracket SVG overlay */
+      #system-group-brackets-svg {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        pointer-events: none;
+        z-index: 1;
       }
     `;
     document.head.appendChild(style);
@@ -230,6 +239,136 @@ class DOMRenderer {
   }
 
   /**
+   * Compute system blocks from document lines
+   * Groups consecutive lines based on new_system flag
+   * @param {Array} lines - Document lines
+   * @returns {Array} Array of system blocks: [{startLineIdx, endLineIdx, lines: []}]
+   */
+  computeSystemBlocks(lines) {
+    // Check if ANY line requests multi-system grouping
+    const hasMultiSystem = lines.some(line => line.new_system);
+
+    // If no lines request multi-system, return empty (no brackets)
+    if (!hasMultiSystem) {
+      return [];
+    }
+
+    const blocks = [];
+    let currentBlock = null;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+
+      if (line.new_system && currentBlock !== null) {
+        // Start of a new block - save the current one
+        blocks.push(currentBlock);
+        currentBlock = { startLineIdx: i, endLineIdx: i, lines: [i] };
+      } else if (line.new_system) {
+        // First line or explicit new system
+        currentBlock = { startLineIdx: i, endLineIdx: i, lines: [i] };
+      } else if (currentBlock !== null) {
+        // Continue current block
+        currentBlock.endLineIdx = i;
+        currentBlock.lines.push(i);
+      } else {
+        // No block started yet and this line doesn't start one
+        // Create implicit block for first lines before any new_system=true
+        currentBlock = { startLineIdx: i, endLineIdx: i, lines: [i] };
+      }
+    }
+
+    // Don't forget the last block
+    if (currentBlock !== null) {
+      blocks.push(currentBlock);
+    }
+
+    return blocks;
+  }
+
+  /**
+   * Render system group brackets (visual grouping in left margin)
+   * Calculates Y positions from displayList line heights (pure data computation)
+   * @param {Object} displayList - Display list from WASM layout (contains line heights)
+   */
+  renderSystemGroupBrackets(displayList) {
+    // Find or create SVG overlay for brackets
+    let svgContainer = document.getElementById('system-group-brackets-svg');
+    if (!svgContainer) {
+      svgContainer = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svgContainer.id = 'system-group-brackets-svg';
+      this.element.parentElement?.insertBefore(svgContainer, this.element);
+    }
+
+    // Clear previous brackets
+    svgContainer.innerHTML = '';
+
+    if (!this.systemBlocks || this.systemBlocks.length === 0 || !displayList || !displayList.lines) {
+      return;
+    }
+
+    // Get editor container dimensions
+    const editorContainer = document.getElementById('editor-container');
+    if (!editorContainer) return;
+
+    const containerRect = editorContainer.getBoundingClientRect();
+    const marginWidth = 40; // Width of left margin for bracket
+    const bracketX = marginWidth - 15; // Position bracket near right edge of margin
+
+    // Account for editor element offset within container
+    const editorOffsetY = this.element.offsetTop;
+
+    // Render bracket for each block with multiple lines
+    this.systemBlocks.forEach((block, blockIdx) => {
+      if (block.lines.length < 2) {
+        // Don't draw bracket for single-line blocks
+        return;
+      }
+
+      // Get Y coordinates from displayList (computed in WASM)
+      // Bracket aligns with .notation-line container borders (not cell content)
+      // Add editor offset since SVG is positioned relative to parent container
+      const topY = editorOffsetY + displayList.lines[block.startLineIdx].y;
+      const endLineHeight = displayList.lines[block.endLineIdx]?.height || 0;
+      const bottomY = editorOffsetY + displayList.lines[block.endLineIdx].y + endLineHeight;
+
+      // Validate coordinates
+      if (isNaN(topY) || isNaN(bottomY) || topY === undefined || bottomY === undefined) {
+        console.warn(`Invalid coordinates for stave block ${blockIdx}: topY=${topY}, bottomY=${bottomY}`);
+        return;
+      }
+
+      // Create bracket path (curved bracket on the left)
+      // Bracket extends from top border of first line to bottom border of last line
+      const radius = 8;
+      const brackets = `
+        <!-- Start curve (extends to top border) -->
+        <path d="M ${bracketX} ${topY}
+                 Q ${bracketX - radius} ${topY}
+                   ${bracketX - radius} ${topY + radius}"
+              stroke="#666" stroke-width="2" fill="none" stroke-linecap="round"/>
+
+        <!-- Vertical line -->
+        <line x1="${bracketX - radius}" y1="${topY + radius}"
+              x2="${bracketX - radius}" y2="${bottomY - radius}"
+              stroke="#666" stroke-width="2" stroke-linecap="round"/>
+
+        <!-- End curve (extends to bottom border) -->
+        <path d="M ${bracketX - radius} ${bottomY - radius}
+                 Q ${bracketX - radius} ${bottomY}
+                   ${bracketX} ${bottomY}"
+              stroke="#666" stroke-width="2" fill="none" stroke-linecap="round"/>
+      `;
+
+      svgContainer.innerHTML += brackets;
+    });
+
+    // Ensure SVG has proper dimensions
+    svgContainer.setAttribute('width', containerRect.width);
+    svgContainer.setAttribute('height', containerRect.height);
+    svgContainer.setAttribute('viewBox', `0 0 ${containerRect.width} ${containerRect.height}`);
+  }
+
+  /**
    * Render entire document using Rust layout engine + thin JS DOM layer
    * @param {Object} doc - The document to render
    * @param {number[]} dirtyLineIndices - Optional array of line indices to render (incremental update)
@@ -257,6 +396,10 @@ class DOMRenderer {
         return;
       }
     }
+
+    // Compute system blocks for visual grouping
+    this.systemBlocks = this.computeSystemBlocks(doc.lines);
+    console.log(`📊 Computed ${this.systemBlocks.length} system blocks`);
 
     // STEP 1: Measure all widths (JS-only, native DOM)
     const measureStart = performance.now();
@@ -306,6 +449,12 @@ class DOMRenderer {
     console.log(`⏱️ DOM render time: ${renderTime.toFixed(2)}ms`);
 
     // Ornaments are now rendered from DisplayList in renderFromDisplayList()
+
+    // STEP 4: Render system group brackets (visual grouping)
+    const bracketsStart = performance.now();
+    this.renderSystemGroupBrackets(displayList);
+    const bracketsTime = performance.now() - bracketsStart;
+    console.log(`⏱️ System bracket render time: ${bracketsTime.toFixed(2)}ms`);
 
     // Update render statistics
     const endTime = performance.now();
@@ -766,13 +915,8 @@ class DOMRenderer {
     line.dataset.line = renderLine.line_index;
     line.style.cssText = `position:relative; height:${renderLine.height}px; width:100%;`;
 
-    // Calculate cumulative Y offset for this line (sum of all previous line heights)
-    let lineStartY = 0;
-    if (displayList && displayList.lines) {
-      for (let i = 0; i < renderLine.line_index; i++) {
-        lineStartY += displayList.lines[i].height;
-      }
-    }
+    // Store absolute Y position (computed in WASM)
+    const lineStartY = renderLine.y;
     line.dataset.lineStartY = lineStartY;
 
     // Render label if present
@@ -850,15 +994,35 @@ class DOMRenderer {
       }
 
       // Set data attributes on cell-char
+      let compositeGlyphCodepoint = null;
       if (cellData.dataset) {
         if (cellData.dataset instanceof Map) {
           for (const [key, value] of cellData.dataset.entries()) {
             cellChar.dataset[key] = value;
+            if (key === 'compositeGlyph') {
+              compositeGlyphCodepoint = value;
+            }
           }
         } else {
           for (const [key, value] of Object.entries(cellData.dataset)) {
             cellChar.dataset[key] = value;
+            if (key === 'compositeGlyph') {
+              compositeGlyphCodepoint = value;
+            }
           }
+        }
+      }
+
+      // Set CSS custom property for accidental composite glyph overlay
+      // This allows the ::after pseudo-element to display the correct composite glyph
+      if (cellChar.classList.contains('has-accidental') && compositeGlyphCodepoint) {
+        // Convert codepoint (e.g., "U+E1F0") to actual Unicode character
+        // Extract hex value from "U+XXXX" format
+        const hexMatch = compositeGlyphCodepoint.match(/U\+([0-9A-Fa-f]+)/);
+        if (hexMatch) {
+          const codepoint = parseInt(hexMatch[1], 16);
+          const glyphChar = String.fromCodePoint(codepoint);
+          cellChar.style.setProperty('--composite-glyph', `'${glyphChar}'`);
         }
       }
 
