@@ -160,6 +160,35 @@ Rust 1.75+ (WASM module), JavaScript ES2022+ (host application), Node.js 18+: Fo
 
 If explicitly testing pitch system features (e.g., switching from Number to Western), use configurable input that adapts to the active system.
 
+### Debug Logging
+
+**CRITICAL: When adding debug logging, DO NOT ask the user to view the logs!**
+
+Instead:
+1. Write an E2E test (or temporary test) to verify the functionality
+2. Run the test to capture console output
+3. Use test results to diagnose the issue
+4. Remove debug logging after fixing the issue
+
+Example:
+```javascript
+// ❌ BAD: Adding console.log and asking user to check browser
+console.log('[Feature] Debug info:', data);
+// Then asking user: "Can you open browser console and check the logs?"
+
+// ✅ GOOD: Write a test that captures the logs
+test('feature works correctly', async ({ page }) => {
+  const logs = [];
+  page.on('console', msg => logs.push(msg.text()));
+
+  // Perform action
+  await page.click('#button');
+
+  // Assert based on logs or behavior
+  expect(logs.some(log => log.includes('[Feature] Debug info'))).toBeTruthy();
+});
+```
+
 ## Recent Changes
 - 006-music-notation-ornament: Added Rust 1.75+ (WASM module) + JavaScript ES2022+ (host application) + wasm-bindgen 0.2.92, OSMD 1.7.6, UnoCSS (styling)
 - 006-music-notation-ornament: Added Rust 1.75+ (WASM module) + JavaScript ES2022+ (host application) + wasm-bindgen 0.2.92, OSMD 1.7.6, serde 1.0.197, quick-xml 0.31, mustache 0.9

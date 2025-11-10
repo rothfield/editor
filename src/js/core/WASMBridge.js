@@ -90,6 +90,7 @@ export class WASMBridge {
     this.setLineTala = wasm.setLineTala;
     this.setLinePitchSystem = wasm.setLinePitchSystem;
     this.setLineNewSystem = wasm.setLineNewSystem;
+    this.setLineStaffRole = wasm.setLineStaffRole;
 
     // Line manipulation API
     this.splitLineAtPosition = wasm.splitLineAtPosition;

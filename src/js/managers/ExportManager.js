@@ -20,17 +20,16 @@ export class ExportManager {
    * @returns {Promise<string|null>} MusicXML string or null on error
    */
   async exportMusicXML() {
-    if (!this.editor.wasmModule || !this.editor.theDocument) {
-      console.error('Cannot export MusicXML: WASM module or document not initialized');
+    if (!this.editor.wasmModule) {
+      console.error('Cannot export MusicXML: WASM module not initialized');
       return null;
     }
 
     try {
       const startTime = performance.now();
-      const cellCount = this.editor.theDocument.lines?.[0]?.cells?.length || 0;
-      console.log(`[JS] exportMusicXML: first line has ${cellCount} cells`);
+      console.log(`[JS] exportMusicXML: using WASM internal document`);
 
-      const musicxml = this.editor.wasmModule.exportMusicXML(this.editor.theDocument);
+      const musicxml = this.editor.wasmModule.exportMusicXML();
       const exportTime = performance.now() - startTime;
 
       logger.info(LOG_CATEGORIES.EDITOR, 'MusicXML export completed', {
@@ -51,15 +50,15 @@ export class ExportManager {
    */
   async updateIRDisplay() {
     const irDisplay = document.getElementById('ir-display');
-    if (!irDisplay || !this.editor.theDocument) {
+    if (!irDisplay) {
       return;
     }
 
     try {
       // Call WASM function to generate IR as JSON
       if (typeof this.editor.wasmModule?.generateIRJson === 'function') {
-        console.log('[IR] Calling generateIRJson...');
-        const irJson = this.editor.wasmModule.generateIRJson(this.editor.theDocument);
+        console.log('[IR] Calling generateIRJson (using WASM internal document)...');
+        const irJson = this.editor.wasmModule.generateIRJson();
         console.log('[IR] Generated successfully, length:', irJson.length);
         irDisplay.textContent = irJson;
       } else {

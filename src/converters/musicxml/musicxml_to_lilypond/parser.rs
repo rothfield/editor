@@ -5,7 +5,7 @@
 //! (pitches, durations, attributes).
 
 use crate::converters::musicxml::musicxml_to_lilypond::errors::ParseError;
-use crate::converters::musicxml::musicxml_to_lilypond::types::{Duration, Pitch, Rational};
+use crate::converters::musicxml::musicxml_to_lilypond::types::{Duration, PartGroup, Pitch, Rational};
 use roxmltree::{Document, Node};
 
 // ============================================================================
@@ -145,6 +145,78 @@ impl<'a> XmlDocument<'a> {
         }
 
         Ok(parts)
+    }
+
+    /// Extract part grouping information from <part-list>
+    ///
+    /// Parses <part-group> elements to determine which parts should be
+    /// grouped together (e.g., with brackets/braces in LilyPond StaffGroup).
+    pub fn extract_part_groups(&'a self) -> Vec<PartGroup> {
+        let score = match self.get_score_partwise() {
+            Ok(s) => s,
+            Err(_) => return Vec::new(),
+        };
+
+        let part_list = match get_child(score, "part-list") {
+            Some(pl) => pl,
+            None => return Vec::new(),
+        };
+
+        let mut groups: Vec<PartGroup> = Vec::new();
+        let mut active_groups: std::collections::HashMap<u32, (Vec<String>, Option<String>, bool)> =
+            std::collections::HashMap::new();
+
+        // Iterate through part-list children to process part-groups and score-parts
+        for child in part_list.children() {
+            if !child.is_element() {
+                continue;
+            }
+
+            match child.tag_name().name() {
+                "part-group" => {
+                    let group_type = child.attribute("type").unwrap_or("");
+                    let group_number = child
+                        .attribute("number")
+                        .and_then(|n| n.parse::<u32>().ok())
+                        .unwrap_or(1);
+
+                    if group_type == "start" {
+                        // Start a new group, extract symbol and barline from start element
+                        let symbol = get_child(child, "group-symbol")
+                            .and_then(get_text)
+                            .map(|s| s.to_string());
+
+                        let barline = get_child(child, "group-barline")
+                            .and_then(get_text)
+                            .map(|s| s == "yes")
+                            .unwrap_or(true);
+
+                        active_groups.insert(group_number, (Vec::new(), symbol, barline));
+                    } else if group_type == "stop" {
+                        // Close the group and save it
+                        if let Some((part_ids, symbol, barline)) = active_groups.remove(&group_number) {
+                            groups.push(PartGroup {
+                                number: group_number,
+                                part_ids,
+                                symbol,
+                                barline,
+                            });
+                        }
+                    }
+                }
+                "score-part" => {
+                    // Add this part ID to all active groups
+                    if let Some(part_id) = child.attribute("id") {
+                        for (part_ids, _, _) in active_groups.values_mut() {
+                            part_ids.push(part_id.to_string());
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        groups
     }
 
     /// Set current divisions (for duration calculations)

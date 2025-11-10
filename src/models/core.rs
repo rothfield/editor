@@ -210,6 +210,24 @@ impl Cell {
 
 }
 
+/// Staff role for grouping and bracketing in multi-staff systems
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub enum StaffRole {
+    /// Standalone staff (not part of a group)
+    Melody,
+    /// Group header (e.g., "Piano", "Choir")
+    GroupHeader,
+    /// Member of the group above
+    GroupItem,
+}
+
+impl Default for StaffRole {
+    fn default() -> Self {
+        StaffRole::Melody
+    }
+}
+
 /// Container for musical notation with simplified structure and flattened metadata
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Line {
@@ -255,6 +273,24 @@ pub struct Line {
     #[serde(default)]
     pub new_system: bool,
 
+    /// System ID for this line (which bracket group it belongs to)
+    /// Recalculated whenever new_system flags change
+    /// In ungrouped mode: each line gets unique system_id (1, 2, 3...)
+    /// In grouped mode: lines with same system_id are bracketed together
+    #[serde(default)]
+    pub system_id: usize,
+
+    /// Part ID for MusicXML export (unique identifier for this part)
+    /// Format: "P1", "P2", "P3", etc.
+    /// Recalculated whenever lines are added/removed or new_system changes
+    #[serde(default)]
+    pub part_id: String,
+
+    /// Staff role for visual grouping and bracketing
+    /// Determines if this line is a standalone staff, group header, or group member
+    #[serde(default)]
+    pub staff_role: StaffRole,
+
     /// Derived beat spans (calculated, not stored)
     #[serde(skip)]
     pub beats: Vec<BeatSpan>,
@@ -278,6 +314,9 @@ impl Line {
             tempo: String::new(),
             time_signature: String::new(),
             new_system: false,
+            system_id: 0, // Will be recalculated
+            part_id: String::new(), // Will be recalculated
+            staff_role: StaffRole::default(), // Default to Melody
             beats: Vec::new(),
             slurs: Vec::new(),
         }
@@ -475,6 +514,49 @@ impl Document {
                     // Compute char from pitch code using effective pitch system
                     cell.char = pitch_code.to_string(effective_system);
                 }
+            }
+        }
+    }
+
+    /// Recalculate system_id and part_id for all lines based on new_system flags
+    ///
+    /// Algorithm:
+    /// - Determine mode: grouped (if ANY line.new_system == true) or ungrouped
+    /// - Ungrouped mode: Each line gets unique system_id (1, 2, 3...)
+    /// - Grouped mode: Use new_system flags to group lines (increment system_id when new_system=true)
+    /// - Part IDs are always assigned sequentially ("P1", "P2", "P3"...)
+    ///
+    /// Call this whenever:
+    /// - new_system flag changes on any line
+    /// - Lines are added or removed
+    /// - Document is loaded (for backward compatibility)
+    pub fn recalculate_system_and_part_ids(&mut self) {
+        // Step 1: Determine mode
+        let grouped_mode = self.lines.iter().any(|l| l.new_system);
+
+        web_sys::console::log_1(&format!("[recalculate_system_and_part_ids] {} lines, grouped_mode={}",
+            self.lines.len(), grouped_mode).into());
+
+        // Step 2: Apply algorithm based on mode
+        if grouped_mode {
+            // GROUPED MODE: Use new_system flags to group lines
+            let mut system_id = 1;
+            for (i, line) in self.lines.iter_mut().enumerate() {
+                if i > 0 && line.new_system {
+                    system_id += 1;
+                }
+                line.system_id = system_id;
+                line.part_id = format!("P{}", i + 1);
+                web_sys::console::log_1(&format!("  Line {}: new_system={}, system_id={}, part_id={}",
+                    i, line.new_system, line.system_id, line.part_id).into());
+            }
+        } else {
+            // UNGROUPED MODE: Each line is independent (no explicit grouping)
+            for (i, line) in self.lines.iter_mut().enumerate() {
+                line.system_id = i + 1; // Each line in its own system
+                line.part_id = format!("P{}", i + 1); // Each line is a separate part
+                web_sys::console::log_1(&format!("  Line {}: system_id={}, part_id={}",
+                    i, line.system_id, line.part_id).into());
             }
         }
     }

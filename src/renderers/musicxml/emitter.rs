@@ -6,7 +6,7 @@
 use crate::models::pitch::Pitch;
 use crate::models::{PitchSystem, Accidental, PitchCode};
 use super::export_ir::*;
-use super::builder::MusicXmlBuilder;
+use super::builder::{MusicXmlBuilder, xml_escape};
 use super::grace_notes::ornament_position_to_placement;
 
 /// Emit a complete MusicXML document from export lines
@@ -15,127 +15,243 @@ pub fn emit_musicxml(
     document_title: Option<&str>,
     document_key_signature: Option<&str>,
 ) -> Result<String, String> {
-    let mut builder = MusicXmlBuilder::new();
-
-    // Set document title if present
-    if let Some(title) = document_title {
-        if !title.is_empty() {
-            builder.set_title(Some(title.to_string()));
-        }
-    }
-
-    // Set document key signature if present
-    if let Some(key_sig) = document_key_signature {
-        if !key_sig.is_empty() {
-            builder.set_key_signature(Some(key_sig));
-        }
-    }
-
-    // Handle empty document
+    // Handle empty document - use simple builder approach
     if export_lines.is_empty() || export_lines.iter().all(|line| line.measures.is_empty()) {
-        // Generate empty MusicXML with a single measure containing a whole rest
+        let mut builder = MusicXmlBuilder::new();
+        if let Some(title) = document_title {
+            if !title.is_empty() {
+                builder.set_title(Some(title.to_string()));
+            }
+        }
+        if let Some(key_sig) = document_key_signature {
+            if !key_sig.is_empty() {
+                builder.set_key_signature(Some(key_sig));
+            }
+        }
         builder.start_measure_with_divisions(Some(1), false, 4);
         builder.write_rest(4, 4.0);
         builder.end_measure();
         return Ok(builder.finalize());
     }
 
-    // Check if ANY line requests multi-system grouping
-    let has_multi_system = export_lines.iter().any(|line| line.starts_new_system);
+    // NEW ARCHITECTURE:
+    // Build complete MusicXML structure manually
+    // - Each ExportLine = One MusicXML <part>
+    // - system_id determines visual bracketing with <part-group>
 
-    // If no lines request multi-system, use simple single-part emission
-    if !has_multi_system {
-        builder.start_part("");
-        for (line_index, export_line) in export_lines.iter().enumerate() {
-            let is_first_line = line_index == 0;
-            emit_line(&mut builder, export_line, is_first_line)?;
+    let mut xml = String::new();
+
+    // XML header
+    xml.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+    xml.push_str("<!DOCTYPE score-partwise PUBLIC \"-//Recordare//DTD MusicXML 3.1 Partwise//EN\" \"http://www.musicxml.org/dtds/partwise.dtd\">\n");
+    xml.push_str("<score-partwise version=\"3.1\">\n");
+
+    // Add title if present
+    if let Some(title) = document_title {
+        if !title.is_empty() {
+            xml.push_str("  <movement-title>");
+            xml.push_str(&xml_escape(title));
+            xml.push_str("</movement-title>\n");
         }
-        builder.end_part();
-        return Ok(builder.finalize());
     }
 
-    // Multi-part support using system blocks (new_system flag)
-    // Lines with starts_new_system=true create a new part
-    // All subsequent lines with starts_new_system=false belong to the same part
+    // Debug: Log export lines
+    web_sys::console::log_1(&format!("[MusicXML Emitter] Processing {} export lines:", export_lines.len()).into());
+    for (i, line) in export_lines.iter().enumerate() {
+        web_sys::console::log_1(&format!("  Line {}: system_id={}, part_id={}, label='{}', {} measures",
+            i, line.system_id, line.part_id, line.label, line.measures.len()).into());
+    }
 
-    let mut current_part_lines: Vec<&ExportLine> = Vec::new();
+    // Group lines by part_id to combine document lines into single MusicXML parts
+    use std::collections::HashMap;
+    let mut parts_map: HashMap<String, Vec<&ExportLine>> = HashMap::new();
+    for line in export_lines.iter() {
+        parts_map.entry(line.part_id.clone()).or_insert_with(Vec::new).push(line);
+    }
 
-    for export_line in export_lines.iter() {
-        let is_line_start_of_block = export_line.starts_new_system;
+    // Get unique part IDs in order
+    let mut unique_part_ids: Vec<String> = parts_map.keys().cloned().collect();
+    unique_part_ids.sort(); // Ensure consistent ordering (P1, P2, P3...)
 
-        // If this line starts a new system block and we have lines in the current part,
-        // emit the current part first
-        if is_line_start_of_block && !current_part_lines.is_empty() {
-            emit_part(&mut builder, &current_part_lines)?;
-            current_part_lines.clear();
+    web_sys::console::log_1(&format!("[MusicXML Emitter] Grouped into {} unique parts", unique_part_ids.len()).into());
+
+    // Group parts by system_id to determine bracket groups
+    // Map: system_id -> Vec<part_id>
+    let mut system_to_parts: HashMap<usize, Vec<String>> = HashMap::new();
+    for part_id in &unique_part_ids {
+        let lines = &parts_map[part_id];
+        let system_id = lines[0].system_id;
+        system_to_parts.entry(system_id).or_insert_with(Vec::new).push(part_id.clone());
+    }
+
+    // Emit <part-list> with brackets for multi-part systems
+    xml.push_str("  <part-list>\n");
+    let mut group_number = 1;
+
+    // Get system IDs in order
+    let mut system_ids: Vec<usize> = system_to_parts.keys().cloned().collect();
+    system_ids.sort();
+
+    for system_id in system_ids {
+        let part_ids_in_system = &system_to_parts[&system_id];
+
+        // Add bracket if system has multiple parts
+        if part_ids_in_system.len() > 1 {
+            xml.push_str(&format!("    <part-group type=\"start\" number=\"{}\">\n", group_number));
+            xml.push_str("      <group-symbol>bracket</group-symbol>\n");
+            xml.push_str("      <group-barline>yes</group-barline>\n");
+            xml.push_str("    </part-group>\n");
         }
 
-        // Add this line to the current part
-        current_part_lines.push(export_line);
+        // Emit score-part for each part in this system
+        for part_id in part_ids_in_system {
+            let lines = &parts_map[part_id];
+            let first_line = lines[0];
+
+            xml.push_str(&format!("    <score-part id=\"{}\">\n", part_id));
+            let part_name = if first_line.label.is_empty() {
+                "Staff".to_string()
+            } else {
+                xml_escape(&first_line.label)
+            };
+            xml.push_str(&format!("      <part-name>{}</part-name>\n", part_name));
+            xml.push_str("    </score-part>\n");
+        }
+
+        // Close bracket if system has multiple parts
+        if part_ids_in_system.len() > 1 {
+            xml.push_str(&format!("    <part-group type=\"stop\" number=\"{}\"/>\n", group_number));
+            group_number += 1;
+        }
     }
 
-    // Emit any remaining lines as the final part
-    if !current_part_lines.is_empty() {
-        emit_part(&mut builder, &current_part_lines)?;
+    xml.push_str("  </part-list>\n");
+
+    // Emit one <part> per unique part_id, combining all lines with that part_id
+    for part_id in &unique_part_ids {
+        let lines = &parts_map[part_id];
+
+        web_sys::console::log_1(&format!("[MusicXML Emitter] Emitting part {} with {} lines",
+            part_id, lines.len()).into());
+
+        // Combine all measures from all lines in this part
+        let combined_part_xml = emit_combined_part(lines, document_key_signature)?;
+        xml.push_str(&combined_part_xml);
     }
 
-    Ok(builder.finalize())
+    xml.push_str("</score-partwise>\n");
+
+    Ok(xml)
 }
 
-/// Emit a complete part (one or more lines grouped by stave block)
-fn emit_part(
-    builder: &mut MusicXmlBuilder,
-    export_lines: &[&ExportLine],
-) -> Result<(), String> {
-    if export_lines.is_empty() {
-        return Ok(());
-    }
-
-    // Use the first line's label as the part name if available
-    let part_name = if export_lines[0].label.is_empty() {
-        String::new()
-    } else {
-        export_lines[0].label.clone()
-    };
-    builder.start_part(&part_name);
-
-    // Process each line as a system break
-    for (line_index, export_line) in export_lines.iter().enumerate() {
-        let is_first_line = line_index == 0;
-        emit_line(builder, export_line, is_first_line)?;
-    }
-
-    // Close the part
-    builder.end_part();
-
-    Ok(())
+/// Parse time signature string (e.g., "4/4" -> 4, "3/4" -> 3)
+fn parse_beat_count(time_sig: Option<&str>) -> usize {
+    time_sig
+        .and_then(|s| s.split('/').next())
+        .and_then(|numerator| numerator.trim().parse::<usize>().ok())
+        .unwrap_or(4) // Default to 4/4
 }
 
-/// Emit a single line (system) within the part
-/// Each line represents a new system break in the layout
-fn emit_line(
-    builder: &mut MusicXmlBuilder,
+/// Emit multiple ExportLines (with same part_id) as a single combined MusicXML <part>
+/// This combines all measures from all lines into one continuous part
+fn emit_combined_part(
+    lines: &[&ExportLine],
+    document_key_signature: Option<&str>,
+) -> Result<String, String> {
+    if lines.is_empty() {
+        return Ok(String::new());
+    }
+
+    let part_id = &lines[0].part_id;
+    let mut builder = MusicXmlBuilder::new();
+
+    // Set key signature from first line or document
+    let key_sig = lines[0].key_signature.as_deref().or(document_key_signature);
+    if let Some(key_sig_str) = key_sig {
+        if !key_sig_str.is_empty() {
+            builder.set_key_signature(Some(key_sig_str));
+        }
+    }
+
+    // Parse beat count from first line's time signature
+    let beat_count = parse_beat_count(lines[0].time_signature.as_deref());
+
+    // Combine all measures from all lines
+    let mut measure_index = 0;
+    for (line_idx, line) in lines.iter().enumerate() {
+        for (measure_idx_in_line, measure) in line.measures.iter().enumerate() {
+            let is_first_measure = measure_index == 0;
+
+            // Emit <print new-system="yes"/> for first measure of each line (except first line)
+            // This creates visual system breaks that match the document structure
+            let emit_new_system = line_idx > 0 && measure_idx_in_line == 0;
+
+            emit_measure(
+                &mut builder,
+                measure,
+                line,
+                is_first_measure,
+                emit_new_system,
+                beat_count,
+            )?;
+
+            measure_index += 1;
+        }
+    }
+
+    // Get the accumulated measures from the builder buffer
+    let measures_xml = builder.get_buffer();
+
+    // Wrap with <part> tags
+    let part_xml = format!("  <part id=\"{}\">\n{}  </part>\n", part_id, measures_xml);
+
+    Ok(part_xml)
+}
+
+/// Emit a single ExportLine as a complete MusicXML <part>
+fn emit_single_line_as_part(
     export_line: &ExportLine,
-    is_first_line: bool,
-) -> Result<(), String> {
+    document_key_signature: Option<&str>,
+    starts_new_system: bool,
+) -> Result<String, String> {
+    let mut builder = MusicXmlBuilder::new();
+
+    // Set key signature from line or document
+    let key_sig = export_line.key_signature.as_deref().or(document_key_signature);
+    if let Some(key_sig_str) = key_sig {
+        if !key_sig_str.is_empty() {
+            builder.set_key_signature(Some(key_sig_str));
+        }
+    }
+
+    // Parse beat count from time signature
+    let beat_count = parse_beat_count(export_line.time_signature.as_deref());
+
     // Process each measure in the line
     for (measure_index, measure) in export_line.measures.iter().enumerate() {
         let is_first_measure = measure_index == 0;
-        // System break occurs at the first measure of each line after the first
-        let is_new_system = !is_first_line && is_first_measure;
-        let beat_count = 4; // TODO: Extract from time signature
+        // Emit new-system on first measure if this part starts a new visual system
+        let emit_new_system = is_first_measure && starts_new_system;
 
         emit_measure(
-            builder,
+            &mut builder,
             measure,
             export_line,
             is_first_measure,
-            is_new_system,
+            emit_new_system,
             beat_count,
         )?;
     }
 
-    Ok(())
+    // Get the accumulated measures from the builder buffer
+    let measures_xml = builder.get_buffer();
+
+    // Wrap with <part> tags (measures_xml already contains proper indentation)
+    let part_xml = format!("  <part id=\"{}\">\n{}  </part>\n",
+        export_line.part_id,
+        measures_xml);
+
+    Ok(part_xml)
 }
 
 /// Emit a single measure with its events
@@ -153,7 +269,7 @@ fn emit_measure(
     // Write key and clef only on first measure
     if is_first_measure {
         if let Some(ref _key_sig) = export_line.key_signature {
-            // Key signature is handled by builder.set_key_signature() at document level
+            // Key signature is handled by builder.set_key_signature() at part level
         }
         // Clef is hardcoded in builder for now
     }
@@ -561,9 +677,12 @@ mod tests {
     }
 
     #[test]
-    fn test_multiline_document_produces_single_part_with_system_breaks() {
-        // Create a document with 2 lines
+    fn test_multiline_document_produces_multiple_parts() {
+        // NEW ARCHITECTURE: Each ExportLine = One MusicXML part
+        // Create a document with 2 lines (same system_id = grouped)
         let export_line1 = ExportLine {
+            system_id: 1,
+            part_id: "P1".to_string(),
             label: "Line 1".to_string(),
             key_signature: None,
             time_signature: None,
@@ -576,6 +695,8 @@ mod tests {
         };
 
         let export_line2 = ExportLine {
+            system_id: 1, // Same system = grouped (bracketed)
+            part_id: "P2".to_string(),
             label: "Line 2".to_string(),
             key_signature: None,
             time_signature: None,
@@ -593,13 +714,22 @@ mod tests {
         let xml = emit_musicxml(&export_lines, Some("Test"), None)
             .expect("Failed to emit MusicXML");
 
-        // Should have exactly one <part> element (not two)
-        let part_count = xml.matches("<part id=\"P1\">").count();
-        assert_eq!(part_count, 1, "Should have exactly one part for multi-line document");
+        // Debug: print the XML
+        eprintln!("\n=== GENERATED MUSICXML ===\n{}\n=== END ===\n", xml);
 
-        // The second measure should have a system break
-        assert!(xml.contains("<print new-system=\"yes\"/>"),
-                "Second line should start with system break");
+        // Should have TWO parts (one per line)
+        let p1_count = xml.matches("<part id=\"P1\">").count();
+        let p2_count = xml.matches("<part id=\"P2\">").count();
+        assert_eq!(p1_count, 1, "Should have one part P1");
+        assert_eq!(p2_count, 1, "Should have one part P2");
+
+        // Should have a part-group for the system (because 2 lines share system_id=1)
+        assert!(xml.contains("<part-group type=\"start\""),
+                "Should have part-group start for multi-line system");
+        assert!(xml.contains("<part-group type=\"stop\""),
+                "Should have part-group stop for multi-line system");
+        assert!(xml.contains("<group-symbol>bracket</group-symbol>"),
+                "Part group should have bracket symbol");
     }
 
     #[test]

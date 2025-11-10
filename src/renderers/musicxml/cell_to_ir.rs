@@ -967,6 +967,8 @@ pub fn build_export_measures_from_document(document: &Document) -> Vec<ExportLin
         let measures = build_export_measures_from_line(line);
 
         let export_line = ExportLine {
+            system_id: line.system_id,
+            part_id: line.part_id.clone(),
             key_signature: if line.key_signature.is_empty() {
                 document.key_signature.clone()
             } else {
@@ -980,7 +982,6 @@ pub fn build_export_measures_from_document(document: &Document) -> Vec<ExportLin
             clef: "treble".to_string(), // TODO: derive from line metadata
             label: line.label.clone(),
             lyrics: line.lyrics.clone(),
-            starts_new_system: line.new_system,
             measures,
         };
 

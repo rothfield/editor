@@ -1,0 +1,247 @@
+/* Staff Grouping Gutter Styles */
+/* Based on proto2.html design */
+
+/* Line structure with gutter */
+.notation-line {
+  display: flex !important;
+  flex-direction: row;
+  align-items: stretch;
+}
+
+/* Gutter column (left side) */
+.line-gutter {
+  width: 80px;
+  min-width: 80px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px;
+  flex-shrink: 0;
+  position: relative;
+  cursor: default;
+  user-select: none;
+  transition: width 0.2s ease-in-out, min-width 0.2s ease-in-out, padding 0.2s ease-in-out, opacity 0.2s ease-in-out;
+  overflow: hidden;
+}
+
+/* Gutter collapsed state */
+.line-gutter.gutter-collapsed {
+  width: 0 !important;
+  min-width: 0 !important;
+  padding: 0 !important;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.line-gutter:hover {
+  background: #f1f5ff;
+}
+
+/* Gutter icon */
+.gutter-icon {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: #666;
+  flex-shrink: 0;
+}
+
+/* Line label within gutter */
+.line-gutter .line-label {
+  position: static !important;
+  flex: 1;
+  font-size: 12px;
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Line content area (cells) */
+.line-content {
+  flex: 1;
+  position: relative;
+  min-width: 0;
+}
+
+/* Role-specific styling */
+
+/* Melody (standalone staff) */
+.role-melody .gutter-icon::before {
+  content: "M";
+  color: #666;
+}
+
+.role-melody .line-label {
+  font-weight: 400;
+}
+
+/* Group header */
+.role-group-header .gutter-icon::before {
+  content: "G";
+  color: #0057b8;
+}
+
+.role-group-header .line-label {
+  font-weight: 600;
+}
+
+/* Group item */
+.role-group-item .gutter-icon::before {
+  content: "•";
+  color: #666;
+  font-size: 14px;
+}
+
+.role-group-item .line-label {
+  padding-left: 12px;
+  font-weight: 400;
+}
+
+/* Vertical line connecting group items */
+.role-group-item::before {
+  content: "";
+  position: absolute;
+  left: 12px;
+  top: 0;
+  bottom: 0;
+  border-left: 1px solid #ccc;
+  pointer-events: none;
+}
+
+/* Group bracket overlays */
+.group-bracket {
+  position: absolute;
+  width: 8px;
+  border-left: 2px solid #0057b8;
+  border-radius: 4px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.group-bracket-cap-top,
+.group-bracket-cap-bottom {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-left: 2px solid #0057b8;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.group-bracket-cap-top {
+  border-top: 2px solid #0057b8;
+  border-radius: 4px 0 0 0;
+}
+
+.group-bracket-cap-bottom {
+  border-bottom: 2px solid #0057b8;
+  border-radius: 0 0 0 4px;
+}
+
+/* Context menu */
+.context-menu {
+  position: absolute;
+  z-index: 1000;
+  background: #ffffff;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  min-width: 220px;
+  padding: 4px 0;
+  font-size: 13px;
+  display: none;
+}
+
+.context-menu-item {
+  padding: 6px 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.context-menu-item:hover {
+  background: #eef6ff;
+}
+
+.context-menu-item.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.context-menu-item.disabled:hover {
+  background: transparent;
+}
+
+.context-menu-radio {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid #888;
+  display: inline-block;
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+.context-menu-radio.checked {
+  background: #0057b8;
+  border-color: #0057b8;
+}
+
+/* Gutter toggle button */
+.gutter-toggle-btn {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(107, 114, 128, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 10;
+  transition: all 0.2s ease-in-out;
+  backdrop-filter: blur(4px);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  padding: 0;
+}
+
+.gutter-toggle-btn:hover {
+  background: rgba(0, 102, 204, 0.1);
+  border-color: rgba(0, 102, 204, 0.5);
+}
+
+.gutter-toggle-btn:focus {
+  outline: 2px solid rgba(0, 102, 204, 0.5);
+  outline-offset: 2px;
+}
+
+.gutter-toggle-btn svg {
+  width: 12px;
+  height: 12px;
+  stroke: #6b7280;
+  transition: transform 0.2s ease-in-out, stroke 0.2s;
+  flex-shrink: 0;
+}
+
+.gutter-toggle-btn:hover svg {
+  stroke: #0066cc;
+}
+
+/* Icon rotation when gutter is collapsed */
+body.gutter-collapsed .gutter-toggle-btn svg {
+  transform: scaleX(-1);
+}
+
+/* Adjust left position when gutter is collapsed */
+body.gutter-collapsed .gutter-toggle-btn {
+  left: 4px;
+}

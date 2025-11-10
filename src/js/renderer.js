@@ -19,6 +19,7 @@ import {
   SLUR_OFFSET_ABOVE
 } from './constants.js';
 import ArcRenderer from './arc-renderer.js';
+import { ContextMenuManager } from './context-menu.js';
 
 class DOMRenderer {
   constructor(editorElement, editor, options = {}) {
@@ -56,6 +57,318 @@ class DOMRenderer {
 
     // Initialize arc renderer (for slurs and beat loops)
     this.arcRenderer = new ArcRenderer(this.element, { skipBeatLoops: this.options.skipBeatLoops });
+
+    // Initialize context menu for gutter interactions
+    this.contextMenu = new ContextMenuManager();
+
+    // Initialize gutter toggle
+    this.gutterToggleBtn = null;
+    this.gutterCollapsed = false;
+    this.initializeGutterContextMenu();
+  }
+
+  /**
+   * Initialize gutter context menu system
+   */
+  initializeGutterContextMenu() {
+    // Wait for DOM to be ready
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => {
+        this.contextMenu.initialize('line-gutter-menu');
+        this.setupGutterEventListeners();
+        this.setupGutterToggle();
+      });
+    } else {
+      this.contextMenu.initialize('line-gutter-menu');
+      this.setupGutterEventListeners();
+      this.setupGutterToggle();
+    }
+  }
+
+  /**
+   * Setup event listeners for gutter interactions
+   */
+  setupGutterEventListeners() {
+    // Use event delegation on the editor element
+    this.element.addEventListener('contextmenu', (e) => {
+      const gutter = e.target.closest('.line-gutter');
+      if (!gutter) return; // Not in gutter, allow default context menu
+
+      e.preventDefault(); // Prevent browser context menu
+      e.stopPropagation(); // Prevent event from bubbling to document handlers
+
+      const lineElement = gutter.closest('.notation-line');
+      if (!lineElement) return;
+
+      const currentRole = lineElement.dataset.role || 'melody';
+
+      // Check if "group-item" should be disabled
+      const disabledItems = {};
+      const hasHeaderAbove = this.findGroupHeaderAbove(lineElement);
+      if (!hasHeaderAbove) {
+        disabledItems['group-item'] = 'Requires a staff group above this line';
+      }
+
+      // Show context menu
+      this.contextMenu.show(
+        e.pageX,
+        e.pageY,
+        currentRole,
+        lineElement,
+        (choice, targetLine) => this.handleRoleChange(choice, targetLine),
+        { disabledItems }
+      );
+    });
+
+    // Listen for mousedown globally to close the context menu
+    // Use mousedown instead of click to catch the event earlier
+    document.addEventListener('mousedown', (e) => {
+      // Only hide if menu is visible
+      if (this.contextMenu.menu && this.contextMenu.menu.style.display !== 'none') {
+        // Don't close if clicking on the menu itself
+        if (!e.target.closest('#line-gutter-menu')) {
+          this.contextMenu.hide();
+        }
+      }
+    }, true); // Use capture phase
+  }
+
+  /**
+   * Setup gutter toggle button
+   */
+  setupGutterToggle() {
+    // Restore collapsed state from localStorage
+    const savedCollapsed = localStorage.getItem('editor_gutter_collapsed') === 'true';
+
+    // Create toggle button
+    this.gutterToggleBtn = document.createElement('button');
+    this.gutterToggleBtn.className = 'gutter-toggle-btn';
+    this.gutterToggleBtn.title = 'Toggle line gutter';
+    this.gutterToggleBtn.setAttribute('data-testid', 'gutter-toggle-btn');
+    this.gutterToggleBtn.setAttribute('aria-label', 'Toggle line gutter visibility');
+
+    // SVG chevron icon (left-pointing)
+    this.gutterToggleBtn.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="15 18 9 12 15 6"></polyline>
+      </svg>
+    `;
+
+    // Attach to notation-editor container
+    this.element.style.position = 'relative'; // Ensure positioning context
+    this.element.appendChild(this.gutterToggleBtn);
+
+    // Event handler
+    this.gutterToggleBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      this.toggleGutter();
+    });
+
+    // Apply saved state
+    if (savedCollapsed) {
+      this.collapseGutter(false); // false = don't animate on init
+    }
+  }
+
+  /**
+   * Toggle gutter visibility
+   */
+  toggleGutter() {
+    if (this.gutterCollapsed) {
+      this.expandGutter();
+    } else {
+      this.collapseGutter();
+    }
+  }
+
+  /**
+   * Collapse gutter (hide)
+   * @param {boolean} animate - Whether to animate the transition
+   */
+  collapseGutter(animate = true) {
+    this.gutterCollapsed = true;
+    document.body.classList.add('gutter-collapsed');
+
+    // Find all gutter elements
+    const gutters = this.element.querySelectorAll('.line-gutter');
+    gutters.forEach((gutter) => {
+      gutter.classList.add('gutter-collapsed');
+    });
+
+    // Save state
+    localStorage.setItem('editor_gutter_collapsed', 'true');
+
+    // Trigger full re-render to recalculate arc positions
+    if (this.editor) {
+      this.editor.render({ dirtyLineIndices: null });
+    }
+  }
+
+  /**
+   * Expand gutter (show)
+   * @param {boolean} animate - Whether to animate the transition
+   */
+  expandGutter(animate = true) {
+    this.gutterCollapsed = false;
+    document.body.classList.remove('gutter-collapsed');
+
+    // Find all gutter elements
+    const gutters = this.element.querySelectorAll('.line-gutter');
+    gutters.forEach(gutter => {
+      gutter.classList.remove('gutter-collapsed');
+    });
+
+    // Save state
+    localStorage.setItem('editor_gutter_collapsed', 'false');
+
+    // Trigger full re-render to recalculate arc positions
+    if (this.editor) {
+      this.editor.render({ dirtyLineIndices: null });
+    }
+  }
+
+  /**
+   * Handle line role change
+   * @param {string} newRole - New role (melody, group-header, group-item)
+   * @param {HTMLElement} lineElement - Line element to update
+   */
+  async handleRoleChange(newRole, lineElement) {
+    // Validation: group-item must have a group-header above
+    if (newRole === 'group-item') {
+      const hasHeaderAbove = this.findGroupHeaderAbove(lineElement);
+      if (!hasHeaderAbove) {
+        alert('No staff group above this line. Set a "Staff group" line above first.');
+        return;
+      }
+    }
+
+    // Get line index
+    const lineIdx = parseInt(lineElement.dataset.line);
+
+    // Call WASM to update internal document
+    try {
+      this.editor.wasmModule.setLineStaffRole(lineIdx, newRole);
+
+      // Get fresh document snapshot from WASM with updated role
+      const updatedDoc = this.editor.wasmModule.getDocumentSnapshot();
+      this.editor.theDocument = updatedDoc;
+
+      // Full re-render from WASM (regenerates DisplayList with new role)
+      await this.editor.renderAndUpdate();
+
+      console.log(`Line ${lineIdx} role changed to: ${newRole}`);
+    } catch (error) {
+      console.error('Error setting staff role:', error);
+      alert(`Error: ${error.message || error}`);
+    }
+  }
+
+  /**
+   * Find if there's a group-header above the given line
+   * @param {HTMLElement} lineElement - Line element to check
+   * @returns {HTMLElement|null} - Group header element or null
+   */
+  findGroupHeaderAbove(lineElement) {
+    const lines = Array.from(this.element.querySelectorAll('.notation-line'));
+    const idx = lines.indexOf(lineElement);
+    if (idx === -1) return null;
+
+    // Search upwards for group-header
+    for (let i = idx - 1; i >= 0; i--) {
+      const role = lines[i].dataset.role;
+      if (role === 'group-header') {
+        return lines[i];
+      }
+      if (role === 'melody') {
+        // Stop at standalone staff
+        break;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Render group brackets based on line roles (DOM-driven)
+   * Replaces WASM-computed system blocks with user-editable roles
+   */
+  renderGroupBrackets() {
+    // Remove old bracket overlays
+    this.element.querySelectorAll('.group-bracket, .group-bracket-cap-top, .group-bracket-cap-bottom')
+      .forEach(el => el.remove());
+
+    const lines = Array.from(this.element.querySelectorAll('.notation-line'));
+    if (lines.length === 0) return;
+
+    const editorRect = this.element.getBoundingClientRect();
+
+    // Find groups: group-header followed by group-items
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const role = line.dataset.role;
+
+      if (role === 'group-header') {
+        // Collect contiguous group-item lines below
+        let startIdx = i;
+        let endIdx = i;
+
+        for (let j = i + 1; j < lines.length; j++) {
+          if (lines[j].dataset.role === 'group-item') {
+            endIdx = j;
+          } else {
+            break; // Stop at non-group-item
+          }
+        }
+
+        // Only draw bracket if there are group items below the header
+        if (endIdx > startIdx) {
+          this.drawGroupBracket(lines, startIdx, endIdx, editorRect);
+        }
+      }
+    }
+  }
+
+  /**
+   * Draw a single group bracket
+   * @param {HTMLElement[]} lines - Array of line elements
+   * @param {number} startIdx - Index of group-header line
+   * @param {number} endIdx - Index of last group-item line
+   * @param {DOMRect} editorRect - Editor bounding rect
+   */
+  drawGroupBracket(lines, startIdx, endIdx, editorRect) {
+    const firstLine = lines[startIdx];
+    const lastLine = lines[endIdx];
+
+    const firstRect = firstLine.getBoundingClientRect();
+    const lastRect = lastLine.getBoundingClientRect();
+
+    const top = firstRect.top - editorRect.top;
+    const bottom = lastRect.bottom - editorRect.top;
+    const height = bottom - top;
+
+    // Create vertical bracket line
+    const bracket = document.createElement('div');
+    bracket.className = 'group-bracket';
+    bracket.style.top = `${top}px`;
+    bracket.style.height = `${height}px`;
+    bracket.style.left = '4px'; // Position in left margin
+    this.element.appendChild(bracket);
+
+    // Create top cap
+    const capTop = document.createElement('div');
+    capTop.className = 'group-bracket-cap-top';
+    capTop.style.top = `${top}px`;
+    capTop.style.left = '4px';
+    this.element.appendChild(capTop);
+
+    // Create bottom cap
+    const capBottom = document.createElement('div');
+    capBottom.className = 'group-bracket-cap-bottom';
+    capBottom.style.top = `${bottom - 8}px`;
+    capBottom.style.left = '4px';
+    this.element.appendChild(capBottom);
   }
 
   /**
@@ -239,56 +552,9 @@ class DOMRenderer {
   }
 
   /**
-   * Compute system blocks from document lines
-   * Groups consecutive lines based on new_system flag
-   * @param {Array} lines - Document lines
-   * @returns {Array} Array of system blocks: [{startLineIdx, endLineIdx, lines: []}]
-   */
-  computeSystemBlocks(lines) {
-    // Check if ANY line requests multi-system grouping
-    const hasMultiSystem = lines.some(line => line.new_system);
-
-    // If no lines request multi-system, return empty (no brackets)
-    if (!hasMultiSystem) {
-      return [];
-    }
-
-    const blocks = [];
-    let currentBlock = null;
-
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-
-      if (line.new_system && currentBlock !== null) {
-        // Start of a new block - save the current one
-        blocks.push(currentBlock);
-        currentBlock = { startLineIdx: i, endLineIdx: i, lines: [i] };
-      } else if (line.new_system) {
-        // First line or explicit new system
-        currentBlock = { startLineIdx: i, endLineIdx: i, lines: [i] };
-      } else if (currentBlock !== null) {
-        // Continue current block
-        currentBlock.endLineIdx = i;
-        currentBlock.lines.push(i);
-      } else {
-        // No block started yet and this line doesn't start one
-        // Create implicit block for first lines before any new_system=true
-        currentBlock = { startLineIdx: i, endLineIdx: i, lines: [i] };
-      }
-    }
-
-    // Don't forget the last block
-    if (currentBlock !== null) {
-      blocks.push(currentBlock);
-    }
-
-    return blocks;
-  }
-
-  /**
    * Render system group brackets (visual grouping in left margin)
-   * Calculates Y positions from displayList line heights (pure data computation)
-   * @param {Object} displayList - Display list from WASM layout (contains line heights)
+   * System blocks are computed in WASM and provided in displayList.system_blocks
+   * @param {Object} displayList - Display list from WASM layout (contains line heights and system_blocks)
    */
   renderSystemGroupBrackets(displayList) {
     // Find or create SVG overlay for brackets
@@ -319,17 +585,15 @@ class DOMRenderer {
 
     // Render bracket for each block with multiple lines
     this.systemBlocks.forEach((block, blockIdx) => {
-      if (block.lines.length < 2) {
-        // Don't draw bracket for single-line blocks
-        return;
-      }
+      // WASM already filters out single-line blocks, so no need to check
+      // Block structure from WASM: { start_line_idx, end_line_idx, system_id }
 
       // Get Y coordinates from displayList (computed in WASM)
       // Bracket aligns with .notation-line container borders (not cell content)
       // Add editor offset since SVG is positioned relative to parent container
-      const topY = editorOffsetY + displayList.lines[block.startLineIdx].y;
-      const endLineHeight = displayList.lines[block.endLineIdx]?.height || 0;
-      const bottomY = editorOffsetY + displayList.lines[block.endLineIdx].y + endLineHeight;
+      const topY = editorOffsetY + displayList.lines[block.start_line_idx].y;
+      const endLineHeight = displayList.lines[block.end_line_idx]?.height || 0;
+      const bottomY = editorOffsetY + displayList.lines[block.end_line_idx].y + endLineHeight;
 
       // Validate coordinates
       if (isNaN(topY) || isNaN(bottomY) || topY === undefined || bottomY === undefined) {
@@ -397,10 +661,6 @@ class DOMRenderer {
       }
     }
 
-    // Compute system blocks for visual grouping
-    this.systemBlocks = this.computeSystemBlocks(doc.lines);
-    console.log(`📊 Computed ${this.systemBlocks.length} system blocks`);
-
     // STEP 1: Measure all widths (JS-only, native DOM)
     const measureStart = performance.now();
     const measurements = this.measureAllWidths(doc);
@@ -438,6 +698,10 @@ class DOMRenderer {
     const layoutTime = performance.now() - layoutStart;
     console.log(`⏱️ Layout time: ${layoutTime.toFixed(2)}ms`);
 
+    // Get system blocks from DisplayList (computed in WASM)
+    this.systemBlocks = displayList.system_blocks || [];
+    console.log(`📊 System blocks from WASM: ${this.systemBlocks.length}`);
+
     // Cache DisplayList for cursor positioning
     this.displayList = displayList;
     this.editor.displayList = displayList; // Store in editor for tab display
@@ -450,11 +714,11 @@ class DOMRenderer {
 
     // Ornaments are now rendered from DisplayList in renderFromDisplayList()
 
-    // STEP 4: Render system group brackets (visual grouping)
+    // STEP 4: Render group brackets based on line roles (user-editable)
     const bracketsStart = performance.now();
-    this.renderSystemGroupBrackets(displayList);
+    this.renderGroupBrackets();
     const bracketsTime = performance.now() - bracketsStart;
-    console.log(`⏱️ System bracket render time: ${bracketsTime.toFixed(2)}ms`);
+    console.log(`⏱️ Group bracket render time: ${bracketsTime.toFixed(2)}ms`);
 
     // Update render statistics
     const endTime = performance.now();
@@ -790,13 +1054,19 @@ class DOMRenderer {
 
     // FULL RENDERING: Destroy and rebuild everything
     // Clear previous render to avoid duplicate event handlers
-    // IMPORTANT: Preserve the arc overlay SVG when clearing
+    // IMPORTANT: Preserve the arc overlay SVG and gutter toggle button when clearing
     const arcOverlaySvg = this.arcRenderer?.svgOverlay;
+    const gutterToggleBtn = this.gutterToggleBtn;
     this.element.innerHTML = '';
 
     // Re-append the arc overlay SVG after clearing
     if (arcOverlaySvg && arcOverlaySvg.parentNode !== this.element) {
       this.element.appendChild(arcOverlaySvg);
+    }
+
+    // Re-append the gutter toggle button after clearing
+    if (gutterToggleBtn && gutterToggleBtn.parentNode !== this.element) {
+      this.element.appendChild(gutterToggleBtn);
     }
 
     // Render header if present
@@ -911,31 +1181,41 @@ class DOMRenderer {
     const currentLineIndex = this.editor?.theDocument?.state?.cursor?.line ?? -1;
     const isCurrentLine = renderLine.line_index === currentLineIndex;
 
-    line.className = isCurrentLine ? 'notation-line current-line' : 'notation-line';
+    // Read role from WASM DisplayList (source of truth)
+    const lineRole = renderLine.staff_role || 'melody';
+
+    line.className = isCurrentLine ? `notation-line current-line role-${lineRole}` : `notation-line role-${lineRole}`;
     line.dataset.line = renderLine.line_index;
-    line.style.cssText = `position:relative; height:${renderLine.height}px; width:100%;`;
+    line.dataset.role = lineRole;
+    line.style.cssText = `height:${renderLine.height}px; width:100%;`;
 
     // Store absolute Y position (computed in WASM)
     const lineStartY = renderLine.y;
     line.dataset.lineStartY = lineStartY;
 
-    // Render label if present
+    // Create gutter column (icon + label)
+    const gutter = document.createElement('div');
+    gutter.className = this.gutterCollapsed ? 'line-gutter gutter-collapsed' : 'line-gutter';
+
+    // Gutter icon (role indicator)
+    const gutterIcon = document.createElement('span');
+    gutterIcon.className = 'gutter-icon';
+    gutter.appendChild(gutterIcon);
+
+    // Label in gutter (if present)
     if (renderLine.label) {
       const labelElement = document.createElement('span');
       labelElement.className = 'line-label text-ui-disabled-text';
       labelElement.textContent = renderLine.label;
-      labelElement.style.cssText = `
-        position: absolute;
-        left: 0;
-        top: ${CELL_Y_OFFSET}px;
-        height: ${CELL_HEIGHT}px;
-        line-height: ${BASE_LINE_HEIGHT}px;
-        font-size: ${BASE_FONT_SIZE}px;
-        display: inline-flex;
-        align-items: baseline;
-      `;
-      line.appendChild(labelElement);
+      gutter.appendChild(labelElement);
     }
+
+    line.appendChild(gutter);
+
+    // Create content wrapper for cells
+    const lineContent = document.createElement('div');
+    lineContent.className = 'line-content';
+    lineContent.style.cssText = `position:relative; height:100%;`;
 
     // Get line index from renderLine
     const lineIndex = renderLine.line_index;
@@ -1063,7 +1343,7 @@ class DOMRenderer {
       // Lyrics are rendered at line level with absolute positioning using WASM coordinates
       // (see renderLyrics loop below)
 
-      line.appendChild(cellContainer);
+      lineContent.appendChild(cellContainer);
     });
 
     // Render all lyrics using positions from WASM DisplayList
@@ -1085,7 +1365,7 @@ class DOMRenderer {
         pointer-events: none;
         white-space: nowrap;
       `;
-      line.appendChild(lyricSpan);
+      lineContent.appendChild(lyricSpan);
     });
 
     // T029: Render ornamental cells (zero-width floating layout)
@@ -1128,7 +1408,7 @@ class DOMRenderer {
         z-index: 5;
       `;
 
-      line.appendChild(ornamentChar);
+      lineContent.appendChild(ornamentChar);
     });
 
     // Render ornaments (positioned to the RIGHT and UP from anchor notes)
@@ -1150,7 +1430,7 @@ class DOMRenderer {
           pointer-events: none;
           white-space: nowrap;
         `;
-        line.appendChild(ornamentSpan);
+        lineContent.appendChild(ornamentSpan);
       });
     }
 
@@ -1170,11 +1450,14 @@ class DOMRenderer {
         font-weight: 600;
         pointer-events: none;
       `;
-      line.appendChild(span);
+      lineContent.appendChild(span);
     });
 
     // Note: Octave dots are embedded in NotationFont glyphs (U+E000-U+E0BB range, 4 variants per character)
     // Font rendering handles all octave visualization
+
+    // Append lineContent to line
+    line.appendChild(lineContent);
 
     return line;
   }
@@ -1183,7 +1466,19 @@ class DOMRenderer {
    * Show empty state when no content
    */
   showEmptyState() {
+    // Preserve arc overlay and gutter toggle button
+    const arcOverlaySvg = this.arcRenderer?.svgOverlay;
+    const gutterToggleBtn = this.gutterToggleBtn;
+
     this.element.innerHTML = '';
+
+    // Re-append preserved elements
+    if (arcOverlaySvg) {
+      this.element.appendChild(arcOverlaySvg);
+    }
+    if (gutterToggleBtn) {
+      this.element.appendChild(gutterToggleBtn);
+    }
   }
 
   /**

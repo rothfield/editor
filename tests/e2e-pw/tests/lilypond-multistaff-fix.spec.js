@@ -43,8 +43,13 @@ test.describe('Multi-staff LilyPond Export - No Duplicate Attributes', () => {
     const musicxml = `<?xml version="1.0" encoding="UTF-8"?>
 <score-partwise version="3.1">
   <part-list>
+    <part-group type="start" number="1">
+      <group-symbol>bracket</group-symbol>
+      <group-barline>yes</group-barline>
+    </part-group>
     <score-part id="P1"><part-name>Treble</part-name></score-part>
     <score-part id="P2"><part-name>Bass</part-name></score-part>
+    <part-group type="stop" number="1"/>
   </part-list>
   <part id="P1">
     <measure number="1">
@@ -99,7 +104,7 @@ test.describe('Multi-staff LilyPond Export - No Duplicate Attributes', () => {
 
     // Count directives
     const timeMatches = lilypond.match(/\\time\s+\d+\/\d+/g) || [];
-    const staffMatches = lilypond.match(/\\new\s+Staff/g) || [];
+    const staffMatches = lilypond.match(/\\new\s+Staff(?!Group)/g) || [];
     const keyMatches = lilypond.match(/\\key\s+\w+\s+\\(major|minor)/g) || [];
 
     console.log(`✓ Found ${staffMatches.length} \\new Staff`);
@@ -112,8 +117,10 @@ test.describe('Multi-staff LilyPond Export - No Duplicate Attributes', () => {
     expect(keyMatches.length).toBe(1);   // Only in first staff
 
     // Verify \time is in first staff, not second
-    const firstStaffStart = lilypond.indexOf('\\new Staff');
-    const secondStaffStart = lilypond.indexOf('\\new Staff', firstStaffStart + 1);
+    // With StaffGroup, we need to find the actual Staff blocks (not StaffGroup)
+    const staffGroupPos = lilypond.indexOf('\\new StaffGroup');
+    const firstStaffStart = lilypond.indexOf('\\new Staff {', staffGroupPos);
+    const secondStaffStart = lilypond.indexOf('\\new Staff {', firstStaffStart + 1);
     const timePosition = lilypond.indexOf('\\time');
 
     expect(timePosition).toBeGreaterThan(firstStaffStart);
@@ -126,9 +133,14 @@ test.describe('Multi-staff LilyPond Export - No Duplicate Attributes', () => {
     const musicxml = `<?xml version="1.0" encoding="UTF-8"?>
 <score-partwise version="3.1">
   <part-list>
+    <part-group type="start" number="1">
+      <group-symbol>bracket</group-symbol>
+      <group-barline>yes</group-barline>
+    </part-group>
     <score-part id="P1"><part-name>Soprano</part-name></score-part>
     <score-part id="P2"><part-name>Alto</part-name></score-part>
     <score-part id="P3"><part-name>Bass</part-name></score-part>
+    <part-group type="stop" number="1"/>
   </part-list>
   <part id="P1">
     <measure number="1">
@@ -176,7 +188,7 @@ test.describe('Multi-staff LilyPond Export - No Duplicate Attributes', () => {
 
     const lilypond = result.lilypond;
     const timeCount = (lilypond.match(/\\time\s+\d+\/\d+/g) || []).length;
-    const staffCount = (lilypond.match(/\\new\s+Staff/g) || []).length;
+    const staffCount = (lilypond.match(/\\new\s+Staff(?!Group)/g) || []).length;
 
     console.log(`\n✓ Found ${staffCount} staves`);
     console.log(`✓ Found ${timeCount} \\time directive(s)`);
@@ -213,7 +225,7 @@ test.describe('Multi-staff LilyPond Export - No Duplicate Attributes', () => {
 
     const lilypond = result.lilypond;
     const timeCount = (lilypond.match(/\\time\s+\d+\/\d+/g) || []).length;
-    const staffCount = (lilypond.match(/\\new\s+Staff/g) || []).length;
+    const staffCount = (lilypond.match(/\\new\s+Staff(?!Group)/g) || []).length;
 
     console.log(`\n✓ Found ${staffCount} staff`);
     console.log(`✓ Found ${timeCount} \\time directive(s)`);
@@ -228,8 +240,13 @@ test.describe('Multi-staff LilyPond Export - No Duplicate Attributes', () => {
     const musicxml = `<?xml version="1.0" encoding="UTF-8"?>
 <score-partwise version="3.1">
   <part-list>
+    <part-group type="start" number="1">
+      <group-symbol>bracket</group-symbol>
+      <group-barline>yes</group-barline>
+    </part-group>
     <score-part id="P1"><part-name>Part 1</part-name></score-part>
     <score-part id="P2"><part-name>Part 2</part-name></score-part>
+    <part-group type="stop" number="1"/>
   </part-list>
   <part id="P1">
     <measure number="1">

@@ -1,0 +1,239 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Staff Grouping UI Prototype</title>
+    <link rel="stylesheet" href="style.css" />
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 20px;
+      }
+
+      .editor {
+        border: 1px solid #ccc;
+        border-radius: 6px;
+        padding: 8px 12px;
+        max-width: 480px;
+        position: relative;
+      }
+
+      .line-row {
+        display: flex;
+        align-items: center;
+        padding: 4px 0;
+        position: relative;
+      }
+
+      .gutter {
+        width: 40px;
+        display: flex;
+        justify-content: flex-start;
+        align-items: center;
+      }
+
+      .group-icon {
+        border: none;
+        background: transparent;
+        cursor: pointer;
+        font-size: 16px;
+        padding: 0;
+      }
+
+      .line-label {
+        flex: 1;
+      }
+
+      /* Simple visual hint: grouped lines have tinted background */
+      .grouped {
+        background: rgba(0, 120, 255, 0.06);
+      }
+
+      /* Bracket overlay on the left for grouped systems */
+      .bracket-overlay {
+        position: absolute;
+        left: 4px;
+        width: 10px;
+        border-left: 2px solid #0078ff;
+        border-radius: 4px;
+      }
+
+      .bracket-top-cap,
+      .bracket-bottom-cap {
+        position: absolute;
+        width: 10px;
+        height: 8px;
+        border-left: 2px solid #0078ff;
+      }
+
+      .bracket-top-cap {
+        border-top: 2px solid #0078ff;
+        border-radius: 4px 0 0 0;
+      }
+
+      .bracket-bottom-cap {
+        border-bottom: 2px solid #0078ff;
+        border-radius: 0 0 0 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Staff Grouping UI Prototype</h1>
+
+    <p>Click the icons in the left gutter to cycle: Single → Start → End → Single.</p>
+
+    <div class="editor" id="editor">
+      <div class="line-row" data-state="single">
+        <div class="gutter">
+          <button class="group-icon" title="Single staff">●</button>
+        </div>
+        <div class="line-label">Melody</div>
+      </div>
+
+      <div class="line-row" data-state="start">
+        <div class="gutter">
+          <button class="group-icon" title="Start bracket group">⎧</button>
+        </div>
+        <div class="line-label">Piano RH</div>
+      </div>
+
+      <div class="line-row" data-state="end">
+        <div class="gutter">
+          <button class="group-icon" title="End bracket group">⎭</button>
+        </div>
+        <div class="line-label">Piano LH</div>
+      </div>
+
+      <div class="line-row" data-state="single">
+        <div class="gutter">
+          <button class="group-icon" title="Single staff">●</button>
+        </div>
+        <div class="line-label">Melody continues</div>
+      </div>
+    </div>
+
+    <script>
+      // States: in your real app these are enums from WASM
+      const STATES = ["single", "start", "end"];
+
+      function stateToIcon(state) {
+        switch (state) {
+          case "single":
+            return "●";   // isolated staff
+          case "start":
+            return "⎧";  // top of bracket
+          case "end":
+            return "⎭";  // bottom of bracket
+        }
+      }
+
+      function stateToTitle(state) {
+        switch (state) {
+          case "single":
+            return "Single staff (not grouped)";
+          case "start":
+            return "Start bracket group here";
+          case "end":
+            return "End bracket group here";
+        }
+      }
+
+      function cycleState(current) {
+        const idx = STATES.indexOf(current);
+        const next = STATES[(idx + 1) % STATES.length];
+        return next;
+      }
+
+      function updateUI() {
+        const editor = document.getElementById("editor");
+        const rows = Array.from(editor.querySelectorAll(".line-row"));
+
+        // Clear any old bracket overlays
+        editor
+          .querySelectorAll(".bracket-overlay, .bracket-top-cap, .bracket-bottom-cap")
+          .forEach(el => el.remove());
+
+        // Remove grouping highlight
+        rows.forEach(r => r.classList.remove("grouped"));
+
+        // Find groups from start → end
+        let inGroup = false;
+        let groupStartIdx = -1;
+
+        rows.forEach((row, idx) => {
+          const state = row.dataset.state;
+
+          if (!inGroup && state === "start") {
+            inGroup = true;
+            groupStartIdx = idx;
+          } else if (!inGroup && state === "end") {
+            // Degenerate 1-line group
+            inGroup = false;
+            groupStartIdx = idx;
+            drawBracket(editor, rows, groupStartIdx, idx);
+          } else if (inGroup && state === "end") {
+            // Close group
+            drawBracket(editor, rows, groupStartIdx, idx);
+            inGroup = false;
+            groupStartIdx = -1;
+          }
+        });
+
+        function drawBracket(editor, rows, startIdx, endIdx) {
+          // Mark rows visually
+          for (let i = startIdx; i <= endIdx; i++) {
+            rows[i].classList.add("grouped");
+          }
+
+          const firstRow = rows[startIdx];
+          const lastRow = rows[endIdx];
+
+          const rect1 = firstRow.getBoundingClientRect();
+          const rect2 = lastRow.getBoundingClientRect();
+          const editorRect = editor.getBoundingClientRect();
+
+          const top = rect1.top - editorRect.top;
+          const bottom = rect2.bottom - editorRect.top;
+          const height = bottom - top;
+
+          const overlay = document.createElement("div");
+          overlay.className = "bracket-overlay";
+          overlay.style.top = top + "px";
+          overlay.style.height = height + "px";
+          editor.appendChild(overlay);
+
+          const topCap = document.createElement("div");
+          topCap.className = "bracket-top-cap";
+          topCap.style.top = top + "px";
+          editor.appendChild(topCap);
+
+          const bottomCap = document.createElement("div");
+          bottomCap.className = "bracket-bottom-cap";
+          bottomCap.style.top = bottom - 8 + "px";
+          editor.appendChild(bottomCap);
+        }
+      }
+
+      // Attach click handlers to gutter icons
+      document.querySelectorAll(".line-row").forEach(row => {
+        const button = row.querySelector(".group-icon");
+        button.addEventListener("click", () => {
+          const current = row.dataset.state;
+          const next = cycleState(current);
+          row.dataset.state = next;
+          button.textContent = stateToIcon(next);
+          button.title = stateToTitle(next);
+
+          // In your real app: send command to WASM here
+          // wasm.handle_command({ kind: "set_staff_group_marker", line_id, marker: next });
+
+          updateUI();
+        });
+      });
+
+      // Initial layout
+      updateUI();
+    </script>
+  </body>
+</html>
+

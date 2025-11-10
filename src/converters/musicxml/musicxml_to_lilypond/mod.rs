@@ -90,8 +90,9 @@ pub fn convert_musicxml_to_lilypond(
         settings.composer = doc.extract_composer();
     }
 
-    // Extract parts
+    // Extract parts and part-groups
     let parts = doc.extract_parts()?;
+    let part_groups = doc.extract_part_groups();
 
     // Convert each part
     let mut converted_parts = Vec::new();
@@ -109,7 +110,7 @@ pub fn convert_musicxml_to_lilypond(
     }
 
     // Generate LilyPond document
-    let lilypond_source = generate_lilypond_document(converted_parts, &settings);
+    let lilypond_source = generate_lilypond_document(converted_parts, &part_groups, &settings);
 
     Ok(ConversionResult {
         lilypond_source,

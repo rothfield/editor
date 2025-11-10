@@ -204,9 +204,7 @@ class UI {
       { id: 'menu-set-pitch-system', label: 'Set Pitch System...', action: 'set-line-pitch-system' },
       { id: 'menu-set-lyrics', label: 'Set Lyrics...', action: 'set-lyrics' },
       { id: 'menu-set-tala', label: 'Set Tala...', action: 'set-tala' },
-      { id: 'menu-set-key-signature', label: 'Set Key Signature...', action: 'set-line-key-signature' },
-      { id: 'menu-separator-1', label: null, separator: true },
-      { id: 'menu-new-system', label: 'Start new system', action: 'toggle-new-system', checkable: true, checked: currentLineNewSystem }
+      { id: 'menu-set-key-signature', label: 'Set Key Signature...', action: 'set-line-key-signature' }
     ];
 
     const lineMenu = document.getElementById('line-menu');
@@ -414,6 +412,11 @@ class UI {
       // Refresh ornament menu before showing (to display current ornament text)
       if (menuName === 'ornament') {
         this.setupOrnamentMenu();
+      }
+
+      // Refresh line menu before showing
+      if (menuName === 'line') {
+        this.setupLineMenu();
       }
 
       // Show menu
@@ -706,9 +709,6 @@ class UI {
       case 'set-line-key-signature':
         this.setLineKeySignature();
         break;
-      case 'toggle-new-system':
-        this.toggleLineNewSystem();
-        break;
       case 'preferences':
         this.openPreferences();
         break;
@@ -728,6 +728,7 @@ class UI {
     if (this.fileOperations) {
       console.log('✅ Using FileOperations.newFile()');
       await this.fileOperations.newFile();
+      this.setupLineMenu();
       return;
     }
 
@@ -737,6 +738,7 @@ class UI {
       try {
         await this.editor.createNewDocument();
         this.editor.addToConsoleLog('Created new document');
+        this.setupLineMenu();
       } catch (error) {
         console.error('Failed to create new document:', error);
       }
@@ -1199,48 +1201,8 @@ class UI {
   }
 
   /**
-   * Toggle whether current line starts a new system
+   * Close all menus
    */
-  async toggleLineNewSystem() {
-    if (!this.editor || !this.editor.theDocument || !this.editor.wasmModule) {
-      console.error('Editor not initialized');
-      return;
-    }
-
-    const lineIdx = this.getCurrentLineIndex();
-    const currentLine = this.editor.theDocument.lines[lineIdx];
-    if (!currentLine) {
-      console.error('Current line not found');
-      return;
-    }
-
-    // Toggle the new_system flag
-    const newNewSystemValue = !currentLine.new_system;
-
-    try {
-      // Call WASM function to update the document
-      this.editor.theDocument = this.editor.wasmModule.setLineNewSystem(
-        this.editor.theDocument,
-        lineIdx,
-        newNewSystemValue
-      );
-
-      this.editor.addToConsoleLog(`Line ${lineIdx} "${newNewSystemValue ? '' : 'no longer '}starts new system"`);
-
-      // Update menu to reflect new state
-      this.setupLineMenu();
-
-      // Re-render document
-      await this.editor.renderAndUpdate();
-    } catch (error) {
-      console.error('Error toggling new_system:', error);
-      this.editor.addToConsoleLog(`Error: ${error.message}`);
-    }
-  }
-
-  /**
-     * Close all menus
-     */
   closeAllMenus() {
     const menus = document.querySelectorAll('[id$="-menu"]');
     menus.forEach(menu => {
@@ -1575,6 +1537,7 @@ class UI {
       const success = await this.editor.storage.loadDocument(selectedName);
       if (success) {
         this.editor.addToConsoleLog(`✅ Document loaded from storage: "${selectedName}"`);
+        this.setupLineMenu();
       }
     } catch (error) {
       console.error('Failed to load from storage:', error);
@@ -1616,6 +1579,7 @@ class UI {
       const success = await this.editor.storage.importFromJSON();
       if (success) {
         this.editor.addToConsoleLog('✅ Document imported from JSON');
+        this.setupLineMenu();
       }
     } catch (error) {
       console.error('Failed to import from JSON:', error);

@@ -98,6 +98,22 @@ pub enum PitchLanguage {
     Italiano,
 }
 
+/// Part grouping information from MusicXML <part-group> element
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PartGroup {
+    /// Group number from MusicXML
+    pub number: u32,
+
+    /// Part IDs that belong to this group
+    pub part_ids: Vec<String>,
+
+    /// Group symbol (bracket, brace, etc.)
+    pub symbol: Option<String>,
+
+    /// Whether group has barline
+    pub barline: bool,
+}
+
 // ============================================================================
 // PITCH AND DURATION (T012, T013)
 // ============================================================================

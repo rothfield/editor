@@ -15,6 +15,24 @@ pub struct DisplayList {
 
     /// All lines to render with their cells, lyrics, and tala
     pub lines: Vec<RenderLine>,
+
+    /// System blocks for visual bracket grouping
+    /// Computed from line.system_id values
+    #[serde(default)]
+    pub system_blocks: Vec<SystemBlock>,
+}
+
+/// A system block represents a group of lines bracketed together
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SystemBlock {
+    /// Index of the first line in this system
+    pub start_line_idx: usize,
+
+    /// Index of the last line in this system
+    pub end_line_idx: usize,
+
+    /// System ID (all lines in this block have the same system_id)
+    pub system_id: usize,
 }
 
 /// Document header information
@@ -38,6 +56,9 @@ pub struct RenderLine {
 
     /// Optional line label
     pub label: Option<String>,
+
+    /// Staff role for visual grouping ("melody", "group-header", "group-item")
+    pub staff_role: String,
 
     /// Positioned lyrics syllables
     pub lyrics: Vec<RenderLyric>,

@@ -29,6 +29,12 @@ export class MouseHandler {
    * @param {MouseEvent} event - Browser mouse event
    */
   async handleMouseDown(event) {
+    // Ignore clicks on the gutter toggle button
+    const gutterToggle = event.target.closest('.gutter-toggle-btn');
+    if (gutterToggle) {
+      return;
+    }
+
     this.editor.element.focus({ preventScroll: true });
 
     // Close any open menus when clicking in editor

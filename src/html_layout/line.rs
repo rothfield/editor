@@ -185,6 +185,11 @@ impl<'a> LayoutLineComputer<'a> {
             } else {
                 Some(line.label.clone())
             },
+            staff_role: match line.staff_role {
+                crate::models::StaffRole::Melody => "melody",
+                crate::models::StaffRole::GroupHeader => "group-header",
+                crate::models::StaffRole::GroupItem => "group-item",
+            }.to_string(),
             lyrics,
             tala,
             height,

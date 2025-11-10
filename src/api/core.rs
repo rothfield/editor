@@ -4,7 +4,7 @@
 //! and token combination using the recursive descent parser.
 
 use wasm_bindgen::prelude::*;
-use crate::models::{Cell, PitchSystem, Document, Line, Pos, EditorDiff, CaretInfo, SelectionInfo, ElementKind};
+use crate::models::{Cell, PitchSystem, Document, Line, Pos, EditorDiff, CaretInfo, SelectionInfo, ElementKind, StaffRole};
 use crate::parse::grammar::{parse_single, mark_continuations};
 
 #[cfg(test)]
@@ -815,6 +815,10 @@ pub fn set_line_new_system(
     document.lines[line_index].new_system = new_system;
     wasm_info!("  Line {} new_system set to: {}", line_index, new_system);
 
+    // Recalculate system_id and part_id for all lines
+    document.recalculate_system_and_part_ids();
+    wasm_info!("  System and part IDs recalculated");
+
     // Compute glyphs before serialization
     document.compute_glyphs();
 
@@ -827,6 +831,50 @@ pub fn set_line_new_system(
 
     wasm_info!("setLineNewStave completed successfully");
     Ok(result)
+}
+
+/// Set the staff role for a specific line
+///
+/// # Arguments
+/// * `line_index` - Index of the line to modify
+/// * `role` - Staff role as string ("melody", "group-header", "group-item")
+///
+/// # Returns
+/// Ok(()) on success, Err with error message on failure
+#[wasm_bindgen(js_name = setLineStaffRole)]
+pub fn set_line_staff_role(line_index: usize, role: String) -> Result<(), JsValue> {
+    wasm_info!("setLineStaffRole called: line_index={}, role={}", line_index, role);
+
+    // Access internal WASM document
+    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let document = doc_guard.as_mut()
+        .ok_or_else(|| {
+            wasm_error!("No document loaded");
+            JsValue::from_str("No document loaded")
+        })?;
+
+    // Validate line index
+    if line_index >= document.lines.len() {
+        wasm_error!("Line index {} out of bounds (max: {})", line_index, document.lines.len() - 1);
+        return Err(JsValue::from_str("Line index out of bounds"));
+    }
+
+    // Parse and set the staff role
+    let staff_role = match role.as_str() {
+        "melody" => StaffRole::Melody,
+        "group-header" => StaffRole::GroupHeader,
+        "group-item" => StaffRole::GroupItem,
+        _ => {
+            wasm_error!("Invalid staff role: {}", role);
+            return Err(JsValue::from_str(&format!("Invalid role: {}", role)));
+        }
+    };
+
+    document.lines[line_index].staff_role = staff_role;
+    wasm_info!("  Line {} staff_role set to: {:?}", line_index, document.lines[line_index].staff_role);
+
+    wasm_info!("setLineStaffRole completed successfully");
+    Ok(())
 }
 
 // ============================================================================
@@ -1305,12 +1353,18 @@ pub fn insert_newline() -> Result<JsValue, JsValue> {
         tempo: current_line.tempo.clone(),
         time_signature: current_line.time_signature.clone(),
         new_system: false,
+        system_id: 0, // Will be recalculated
+        part_id: String::new(), // Will be recalculated
+        staff_role: StaffRole::default(), // Default to Melody
         beats: Vec::new(),
         slurs: Vec::new(),
     };
 
     // Insert new line after current line
     doc.lines.insert(cursor_line + 1, new_line);
+
+    // Recalculate system_id and part_id after adding line
+    doc.recalculate_system_and_part_ids();
 
     // Move cursor to start of new line
     let new_cursor_row = cursor_line + 1;
@@ -2071,6 +2125,9 @@ pub fn load_document(document_js: JsValue) -> Result<(), JsValue> {
         doc.state.selection_manager = existing_doc.state.selection_manager.clone();
     }
 
+    // Recalculate system_id and part_id for backward compatibility with old documents
+    doc.recalculate_system_and_part_ids();
+
     *DOCUMENT.lock().unwrap() = Some(doc);
     wasm_info!("loadDocument completed successfully");
     Ok(())
@@ -2117,6 +2174,9 @@ pub fn create_new_document() -> Result<JsValue, JsValue> {
 
     wasm_info!("  Created document with {} line(s)", document.lines.len());
 
+    // Recalculate system_id and part_id
+    document.recalculate_system_and_part_ids();
+
     // Compute glyphs
     document.compute_glyphs();
 
@@ -2136,39 +2196,26 @@ pub fn create_new_document() -> Result<JsValue, JsValue> {
 
 /// Export document to MusicXML format
 ///
-/// # Parameters
-/// - `document_js`: JavaScript Document object
+/// Uses WASM's internal document (from DOCUMENT mutex) to ensure
+/// all metadata (part_id, system_id) is up-to-date after edit operations.
 ///
 /// # Returns
 /// MusicXML string (XML format)
 #[wasm_bindgen(js_name = exportMusicXML)]
-pub fn export_musicxml(document_js: JsValue) -> Result<String, JsValue> {
-    wasm_info!("exportMusicXML called");
+pub fn export_musicxml() -> Result<String, JsValue> {
+    wasm_info!("exportMusicXML called (using internal WASM document)");
 
-    // DEBUG: Log what we're receiving from JavaScript before deserialization
-    wasm_log!("  Input document type: {}", js_sys::Object::keys(&js_sys::Object::from(document_js.clone())).length());
+    // Use WASM's internal document instead of accepting from JavaScript
+    // This ensures we have the latest metadata (part_id, system_id) after edit operations
+    let doc_guard = DOCUMENT.lock().unwrap();
+    let document = doc_guard.as_ref()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
-    // Deserialize document from JavaScript
-    let document: Document = serde_wasm_bindgen::from_value(document_js)
-        .map_err(|e| {
-            wasm_error!("Deserialization error: {}", e);
-            JsValue::from_str(&format!("Deserialization error: {}", e))
-        })?;
-
-    wasm_log!("  Deserialized successfully");
     wasm_log!("  Document has {} lines", document.lines.len());
 
-    // DEBUG: Log what's in the first line
-    if let Some(first_line) = document.lines.first() {
-        wasm_log!("  First line has {} cells", first_line.cells.len());
-        if !first_line.cells.is_empty() {
-            let cells_summary: String = first_line.cells.iter().map(|c| c.char.clone()).collect();
-            wasm_log!("  First line cells: '{}'", cells_summary);
-        } else {
-            wasm_log!("  ⚠️ BUG FOUND: First line has ZERO cells - cells not being deserialized!");
-        }
-    } else {
-        wasm_log!("  No lines found in document!");
+    // DEBUG: Log part_id values to verify they're set
+    for (i, line) in document.lines.iter().enumerate() {
+        wasm_log!("  Line {}: part_id='{}', system_id={}", i, line.part_id, line.system_id);
     }
 
     // Export to MusicXML
@@ -2189,25 +2236,22 @@ pub fn export_musicxml(document_js: JsValue) -> Result<String, JsValue> {
 /// Converts the internal document to the IR (ExportLine/ExportMeasure/ExportEvent)
 /// and serializes it to JSON for inspection and debugging.
 ///
+/// Uses WASM's internal document to ensure all metadata is up-to-date.
+///
 /// The IR captures all document structure (measures, beats, events) with
 /// proper rhythm analysis (LCM-based division calculation) and preserves
 /// all musical information (slurs, lyrics, ornaments, chords, etc.).
 ///
-/// # Parameters
-/// - `document_js`: JavaScript Document object
-///
 /// # Returns
 /// JSON string representation of the IR structure
 #[wasm_bindgen(js_name = generateIRJson)]
-pub fn generate_ir_json(document_js: JsValue) -> Result<String, JsValue> {
-    wasm_info!("generateIRJson called");
+pub fn generate_ir_json() -> Result<String, JsValue> {
+    wasm_info!("generateIRJson called (using internal WASM document)");
 
-    // Deserialize document from JavaScript
-    let document: Document = serde_wasm_bindgen::from_value(document_js)
-        .map_err(|e| {
-            wasm_error!("Deserialization error: {}", e);
-            JsValue::from_str(&format!("Deserialization error: {}", e))
-        })?;
+    // Use WASM's internal document instead of accepting from JavaScript
+    let doc_guard = DOCUMENT.lock().unwrap();
+    let document = doc_guard.as_ref()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
     wasm_log!("  Document has {} lines", document.lines.len());
 
@@ -2235,23 +2279,21 @@ pub fn generate_ir_json(document_js: JsValue) -> Result<String, JsValue> {
 /// Export document to MIDI format
 ///
 /// Converts the internal document to MusicXML, then to MIDI using the musicxml_to_midi converter.
+/// Uses WASM's internal document to ensure all metadata is up-to-date.
 ///
 /// # Parameters
-/// - `document_js`: JavaScript Document object
 /// - `tpq`: Ticks per quarter note (typically 480 or 960), use 0 for default (480)
 ///
 /// # Returns
 /// MIDI file as Uint8Array (Standard MIDI File Format 1)
 #[wasm_bindgen(js_name = exportMIDI)]
-pub fn export_midi(document_js: JsValue, tpq: u16) -> Result<js_sys::Uint8Array, JsValue> {
-    wasm_info!("exportMIDI called with tpq={}", tpq);
+pub fn export_midi(tpq: u16) -> Result<js_sys::Uint8Array, JsValue> {
+    wasm_info!("exportMIDI called with tpq={} (using internal WASM document)", tpq);
 
-    // Deserialize document from JavaScript
-    let document: Document = serde_wasm_bindgen::from_value(document_js)
-        .map_err(|e| {
-            wasm_error!("Deserialization error: {}", e);
-            JsValue::from_str(&format!("Deserialization error: {}", e))
-        })?;
+    // Use WASM's internal document instead of accepting from JavaScript
+    let doc_guard = DOCUMENT.lock().unwrap();
+    let document = doc_guard.as_ref()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
     wasm_log!("  Document has {} lines", document.lines.len());
 
@@ -2496,6 +2538,9 @@ pub fn split_line_at_position(
         tempo: line.tempo.clone(), // Inherit tempo
         time_signature: line.time_signature.clone(), // Inherit time signature
         new_system: false, // New line does not start a new system
+        staff_role: StaffRole::default(), // Default to Melody
+        system_id: 0, // Will be recalculated
+        part_id: String::new(), // Will be recalculated
         beats: Vec::new(),
         slurs: Vec::new(),
     };
@@ -2506,6 +2551,9 @@ pub fn split_line_at_position(
     // Insert both lines back into document
     doc.lines.insert(stave_index, line);
     doc.lines.insert(stave_index + 1, new_line);
+
+    // Recalculate system_id and part_id after splitting
+    doc.recalculate_system_and_part_ids();
 
     wasm_info!("Line split successfully, document now has {} lines", doc.lines.len());
 

@@ -2109,15 +2109,16 @@ class MusicNotationEditor {
       cursor = this.createCursorElement();
     }
 
-    // Append cursor to the current line container (not to editor)
-    // This way cursor is positioned absolutely relative to its line
-    // So Y coordinates work without any offset calculations
+    // Append cursor to .line-content (not .notation-line)
+    // This way cursor shares the same positioning context as cells
+    // No gutter offset calculations needed
     const currentStave = this.getCurrentStave();
     const lineContainers = this.element.querySelectorAll('.notation-line');
     if (lineContainers.length > currentStave) {
       const lineContainer = lineContainers[currentStave];
-      if (cursor.parentElement !== lineContainer) {
-        lineContainer.appendChild(cursor);
+      const lineContent = lineContainer.querySelector('.line-content');
+      if (lineContent && cursor.parentElement !== lineContent) {
+        lineContent.appendChild(cursor);
       }
     }
 
@@ -2249,7 +2250,8 @@ class MusicNotationEditor {
 
     // console.log(`📍 Setting cursor: left=${pixelPos}px, top=${yOffset}px, height=${cellHeight}px`);
 
-    // Set cursor position (position: absolute relative to .notation-line)
+    // Set cursor position (position: absolute relative to .line-content)
+    // Shares same coordinate system as cells - no offset needed
     cursor.style.position = 'absolute';
     cursor.style.left = `${pixelPos}px`;
     cursor.style.top = `${yOffset}px`;

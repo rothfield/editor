@@ -593,6 +593,18 @@ impl MusicXmlBuilder {
         self.buffer.push_str("<print new-system=\"yes\"/>\n");
     }
 
+    /// Write raw XML directly to the buffer
+    /// Used for emitting custom XML structures like <part-list> and <part-group>
+    pub fn raw(&mut self, xml: &str) {
+        self.buffer.push_str(xml);
+    }
+
+    /// Get the current buffer content without finalizing
+    /// Used for extracting measure/part content without XML wrapper
+    pub fn get_buffer(&self) -> &str {
+        &self.buffer
+    }
+
     /// Write a lyric element to a note
     /// syllable: The text of the syllable
     /// syllabic: The syllabic type (Single, Begin, Middle, End)
@@ -747,7 +759,7 @@ fn parse_key_to_fifths(key_str: &str) -> Option<i8> {
 }
 
 /// Escape special XML characters
-fn xml_escape(s: &str) -> String {
+pub fn xml_escape(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")

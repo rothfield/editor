@@ -34,6 +34,17 @@ use serde::{Serialize, Deserialize};
 /// Intermediate representation of a line (staff/part) for MusicXML export
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExportLine {
+    /// System ID for this line (which bracket group it belongs to)
+    /// Copied from Line.system_id
+    #[serde(default)]
+    pub system_id: usize,
+
+    /// Part ID for MusicXML export (unique identifier for this part)
+    /// Format: "P1", "P2", "P3", etc.
+    /// Copied from Line.part_id
+    #[serde(default)]
+    pub part_id: String,
+
     /// Key signature string (e.g., "G major" or "F#m")
     /// Set at part level in MusicXML, shared across all measures
     pub key_signature: Option<String>,
@@ -49,12 +60,6 @@ pub struct ExportLine {
     #[serde(default)]
     pub label: String,
 
-    /// Whether this line starts a new system in the score
-    /// Lines with this flag true will create a new part in MusicXML
-    /// All subsequent lines with flag false belong to the same part
-    #[serde(default)]
-    pub starts_new_system: bool,
-
     /// Measures in this line
     pub measures: Vec<ExportMeasure>,
 
@@ -65,6 +70,8 @@ pub struct ExportLine {
 
 impl ExportLine {
     pub fn new(
+        system_id: usize,
+        part_id: String,
         key_signature: Option<String>,
         time_signature: Option<String>,
         clef: String,
@@ -72,13 +79,14 @@ impl ExportLine {
         lyrics: String,
     ) -> Self {
         ExportLine {
+            system_id,
+            part_id,
             key_signature,
             time_signature,
             clef,
             label,
             measures: Vec::new(),
             lyrics,
-            starts_new_system: false,
         }
     }
 }
@@ -332,12 +340,16 @@ mod tests {
     #[test]
     fn test_line_creation() {
         let line = ExportLine::new(
+            1,
+            "P1".to_string(),
             Some("G major".to_string()),
             Some("4/4".to_string()),
             "treble".to_string(),
             String::new(),
             String::new(),
         );
+        assert_eq!(line.system_id, 1);
+        assert_eq!(line.part_id, "P1");
         assert_eq!(line.key_signature, Some("G major".to_string()));
         assert_eq!(line.clef, "treble");
         assert_eq!(line.measures.len(), 0);

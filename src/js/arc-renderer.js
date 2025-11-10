@@ -103,9 +103,19 @@ class ArcRenderer {
       const lineElement = lineElements[lineIdx];
 
       if (line.slurs && Array.isArray(line.slurs) && lineElement) {
+        // Get gutter offset (cells are positioned relative to .line-content)
+        const lineContent = lineElement.querySelector('.line-content');
+        const gutterOffset = lineContent ? lineContent.offsetLeft : 0;
+
         for (const arc of line.slurs) {
           slurs.push({
             ...arc,
+            // Add gutter offset to X-coordinates
+            start_x: arc.start_x + gutterOffset,
+            end_x: arc.end_x + gutterOffset,
+            cp1_x: arc.cp1_x + gutterOffset,
+            cp2_x: arc.cp2_x + gutterOffset,
+            // Convert Y-coordinates from line-relative to SVG absolute
             start_y: (arc.start_y - line.y) + lineElement.offsetTop,
             end_y: (arc.end_y - line.y) + lineElement.offsetTop,
             cp1_y: (arc.cp1_y - line.y) + lineElement.offsetTop,
@@ -139,12 +149,22 @@ class ArcRenderer {
       const lineElement = lineElements[lineIdx];
 
       if (line.beat_loops && Array.isArray(line.beat_loops) && lineElement) {
+        // Get gutter offset (cells are positioned relative to .line-content)
+        const lineContent = lineElement.querySelector('.line-content');
+        const gutterOffset = lineContent ? lineContent.offsetLeft : 0;
+
         for (const arc of line.beat_loops) {
           // Arc Y is absolute from Rust. Convert to line-relative, then add line's DOM position
           // Line-relative = arc.y - line.y (line.y computed in WASM)
           // SVG absolute = line-relative + lineElement.offsetTop
           beatLoops.push({
             ...arc,
+            // Add gutter offset to X-coordinates
+            start_x: arc.start_x + gutterOffset,
+            end_x: arc.end_x + gutterOffset,
+            cp1_x: arc.cp1_x + gutterOffset,
+            cp2_x: arc.cp2_x + gutterOffset,
+            // Convert Y-coordinates from line-relative to SVG absolute
             start_y: (arc.start_y - line.y) + lineElement.offsetTop,
             end_y: (arc.end_y - line.y) + lineElement.offsetTop,
             cp1_y: (arc.cp1_y - line.y) + lineElement.offsetTop,
@@ -177,9 +197,19 @@ class ArcRenderer {
       const lineElement = lineElements[lineIdx];
 
       if (line.ornament_arcs && Array.isArray(line.ornament_arcs) && lineElement) {
+        // Get gutter offset (cells are positioned relative to .line-content)
+        const lineContent = lineElement.querySelector('.line-content');
+        const gutterOffset = lineContent ? lineContent.offsetLeft : 0;
+
         for (const arc of line.ornament_arcs) {
           ornamentArcs.push({
             ...arc,
+            // Add gutter offset to X-coordinates
+            start_x: arc.start_x + gutterOffset,
+            end_x: arc.end_x + gutterOffset,
+            cp1_x: arc.cp1_x + gutterOffset,
+            cp2_x: arc.cp2_x + gutterOffset,
+            // Convert Y-coordinates from cumulative to SVG absolute
             start_y: (arc.start_y - cumulativeY) + lineElement.offsetTop,
             end_y: (arc.end_y - cumulativeY) + lineElement.offsetTop,
             cp1_y: (arc.cp1_y - cumulativeY) + lineElement.offsetTop,

@@ -8,6 +8,7 @@
 
     <!-- External CSS -->
     <link rel="stylesheet" href="dist/main.css">
+    <link rel="stylesheet" href="src/css/gutter.css">
 
     <!-- Custom UI styles -->
     <style>
@@ -713,6 +714,22 @@
                 </div>
             </aside>
         </main>
+    </div>
+
+    <!-- Context Menu for Line Gutter -->
+    <div class="context-menu" id="line-gutter-menu">
+        <div class="context-menu-item" data-choice="melody">
+            <span class="context-menu-radio" data-radio="melody"></span>
+            Melody (standalone staff)
+        </div>
+        <div class="context-menu-item" data-choice="group-header">
+            <span class="context-menu-radio" data-radio="group-header"></span>
+            Staff group (group header)
+        </div>
+        <div class="context-menu-item" data-choice="group-item">
+            <span class="context-menu-radio" data-radio="group-item"></span>
+            Group item (member of group above)
+        </div>
     </div>
 
     <!-- JavaScript Modules -->

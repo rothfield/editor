@@ -138,14 +138,62 @@ impl LayoutEngine {
             lines.push(render_line);
         }
 
+        // Compute system blocks from line system_ids
+        let system_blocks = compute_system_blocks(document);
+
         DisplayList {
             header: Some(DocumentHeader {
                 title: document.title.clone(),
                 composer: document.composer.clone(),
             }),
             lines,
+            system_blocks,
         }
     }
+}
+
+/// Compute system blocks by grouping consecutive lines with the same system_id
+///
+/// Note: This only creates blocks for systems with MORE than one line.
+/// Single-line systems are not included (no bracket needed).
+fn compute_system_blocks(document: &Document) -> Vec<SystemBlock> {
+    let mut blocks = Vec::new();
+
+    if document.lines.is_empty() {
+        return blocks;
+    }
+
+    let mut current_system_id = document.lines[0].system_id;
+    let mut start_idx = 0;
+
+    for (i, line) in document.lines.iter().enumerate().skip(1) {
+        if line.system_id != current_system_id {
+            // End of current block, check if it has multiple lines
+            if i - start_idx > 1 {
+                blocks.push(SystemBlock {
+                    start_line_idx: start_idx,
+                    end_line_idx: i - 1,
+                    system_id: current_system_id,
+                });
+            }
+
+            // Start new block
+            current_system_id = line.system_id;
+            start_idx = i;
+        }
+    }
+
+    // Handle last block
+    let last_idx = document.lines.len() - 1;
+    if last_idx - start_idx >= 1 {
+        blocks.push(SystemBlock {
+            start_line_idx: start_idx,
+            end_line_idx: last_idx,
+            system_id: current_system_id,
+        });
+    }
+
+    blocks
 }
 
 impl Default for LayoutEngine {

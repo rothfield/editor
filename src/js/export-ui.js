@@ -243,18 +243,14 @@ class ExportUI {
    * @private
    */
   async exportMIDI(baseFilename) {
-    if (!this.editor.theDocument) {
-      throw new Error('No document to export');
-    }
-
     if (!this.editor.wasmModule || !this.editor.wasmModule.exportMIDI) {
       throw new Error('WASM module not initialized');
     }
 
     try {
-      // Call WASM function to export MIDI
-      // exportMIDI(document, tpq=480)
-      const midiData = this.editor.wasmModule.exportMIDI(this.editor.theDocument, 480);
+      // Call WASM function to export MIDI (uses WASM internal document)
+      // exportMIDI(tpq=480)
+      const midiData = this.editor.wasmModule.exportMIDI(480);
 
       // Convert Uint8Array to Blob
       const blob = new Blob([midiData], { type: 'audio/midi' });

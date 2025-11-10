@@ -10,10 +10,11 @@ use crate::converters::musicxml::musicxml_to_lilypond::templates::{
 /// Generate LilyPond document from music and settings using templates
 pub fn generate_lilypond_document(
     parts: Vec<SequentialMusic>,
+    part_groups: &[PartGroup],
     settings: &ConversionSettings,
 ) -> String {
     // Generate just the musical content
-    let staves_content = generate_staves_content(&parts, settings);
+    let staves_content = generate_staves_content(&parts, part_groups, settings);
 
     // Collect lyrics if enabled
     let lyrics_content = if settings.convert_lyrics {
@@ -58,16 +59,28 @@ pub fn generate_lilypond_document(
         Err(e) => {
             eprintln!("Template rendering failed: {}", e);
             // Fallback to hardcoded generation if template rendering fails
-            generate_lilypond_document_fallback(parts, settings)
+            generate_lilypond_document_fallback(parts, part_groups, settings)
         }
     }
 }
 
 /// Generate just the musical content (staves)
-fn generate_staves_content(parts: &[SequentialMusic], settings: &ConversionSettings) -> String {
+fn generate_staves_content(
+    parts: &[SequentialMusic],
+    part_groups: &[PartGroup],
+    settings: &ConversionSettings,
+) -> String {
     if parts.is_empty() {
         return String::new();
     }
+
+    // Check if all parts belong to a single group
+    let has_groups = !part_groups.is_empty();
+    let single_group = if has_groups && part_groups.len() == 1 {
+        Some(&part_groups[0])
+    } else {
+        None
+    };
 
     if parts.len() == 1 {
         // Single part - Staff > Voice > \fixed c > notes
@@ -76,8 +89,33 @@ fn generate_staves_content(parts: &[SequentialMusic], settings: &ConversionSetti
             "    \\new Staff {{\n      \\new Voice = \"mel\" {{\n        % \\fixed c anchors absolute pitch spelling for note names we emit.\n        \\fixed c {{\n{}\n        }}\n      }}\n    }}",
             music_content
         )
+    } else if let Some(_group) = single_group {
+        // Multiple parts in a single group - use StaffGroup << >>
+        let mut output = String::new();
+        output.push_str("    \\new StaffGroup <<\n");
+
+        for (i, part) in parts.iter().enumerate() {
+            // Filter out initial attributes from subsequent staves (only first staff needs them)
+            let filtered_part = if i > 0 {
+                filter_initial_attributes(part)
+            } else {
+                part.clone()
+            };
+
+            let music_content = generate_music(&filtered_part, settings, 10);
+            output.push_str("      \\new Staff {\n");
+            output.push_str("        \\new Voice = \"mel\" {\n");
+            output.push_str("          \\fixed c {\n");
+            output.push_str(&music_content);
+            output.push_str("          }\n");
+            output.push_str("        }\n");
+            output.push_str("      }\n");
+        }
+
+        output.push_str("    >>");
+        output
     } else {
-        // Multiple parts - use \break between lines instead of creating new staves
+        // Multiple parts without groups (different systems) - use \break between lines
         let combined_music = parts
             .iter()
             .enumerate()
@@ -136,6 +174,7 @@ fn filter_initial_attributes(part: &SequentialMusic) -> SequentialMusic {
 #[allow(dead_code)]
 fn generate_lilypond_document_fallback(
     parts: Vec<SequentialMusic>,
+    _part_groups: &[PartGroup],
     settings: &ConversionSettings,
 ) -> String {
     let mut output = String::new();
