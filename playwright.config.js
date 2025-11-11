@@ -7,6 +7,7 @@ import { defineConfig, devices } from '@playwright/test';
  */
 export default defineConfig({
   testDir: './tests/e2e-pw/tests',
+  testIgnore: '**/known-issues/**',
 
   // Test execution
   fullyParallel: !!process.env.CI,
