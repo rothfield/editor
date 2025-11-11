@@ -3,7 +3,7 @@
  *
  * This class provides a clean interface to the WASM module, handling:
  * - WASM function mapping and initialization
- * - Error handling for WASM calls
+ * - Automatic error handling for all WASM calls
  * - Document synchronization with WASM
  * - Result validation
  */
@@ -19,123 +19,118 @@ export class WASMBridge {
     // Store raw WASM module reference
     this.rawModule = wasmModuleImport;
 
-    // Map all WASM functions for easy access
+    // Map all WASM functions for easy access with automatic error wrapping
     this._initializeFunctionMappings();
 
-    logger.info(LOG_CATEGORIES.INITIALIZATION, 'WASMBridge initialized');
+    logger.info(LOG_CATEGORIES.INITIALIZATION, 'WASMBridge initialized with error handling');
   }
 
   /**
-   * Initialize all WASM function mappings
+   * Wrap a WASM function with comprehensive error handling
+   * @private
+   */
+  _wrapFunction(fn, name) {
+    if (!fn) {
+      logger.warn(LOG_CATEGORIES.WASM, `WASM function '${name}' is undefined`);
+      return (...args) => {
+        throw new Error(`WASM function '${name}' is not available`);
+      };
+    }
+
+    return (...args) => {
+      try {
+        const result = fn(...args);
+        return result;
+      } catch (error) {
+        logger.error(LOG_CATEGORIES.WASM, `WASM call failed: ${name}`, {
+          error: error.message || error,
+          stack: error.stack,
+          argsCount: args.length
+        });
+        // Re-throw with additional context
+        throw new Error(`WASM function '${name}' failed: ${error.message || error}`);
+      }
+    };
+  }
+
+  /**
+   * Initialize all WASM function mappings with automatic error wrapping
    * @private
    */
   _initializeFunctionMappings() {
     const wasm = this.rawModule;
 
-    // New recursive descent API
-    this.insertCharacter = wasm.insertCharacter;
-    this.parseText = wasm.parseText;
-    this.deleteCharacter = wasm.deleteCharacter;
-    this.applyOctave = wasm.applyOctave;
-    this.applyCommand = wasm.applyCommand;
+    // List of all WASM functions to map with automatic error handling
+    const functionNames = [
+      // New recursive descent API
+      'insertCharacter', 'parseText', 'deleteCharacter', 'applyOctave', 'applyCommand',
 
-    // Slur API
-    this.applySlur = wasm.applySlur;
-    this.removeSlur = wasm.removeSlur;
-    this.hasSlurInSelection = wasm.hasSlurInSelection;
+      // Slur API
+      'applySlur', 'removeSlur', 'hasSlurInSelection',
 
-    // Ornament Copy/Paste API (cells-array pattern, like applyCommand)
-    this.copyOrnamentFromCell = wasm.copyOrnamentFromCell;
-    this.pasteOrnamentToCell = wasm.pasteOrnamentToCell;
-    this.pasteOrnamentCells = wasm.pasteOrnamentCells;
-    this.setOrnamentPlacementOnCell = wasm.setOrnamentPlacementOnCell;
-    this.clearOrnamentFromCell = wasm.clearOrnamentFromCell;
+      // Ornament Copy/Paste API
+      'copyOrnamentFromCell', 'pasteOrnamentToCell', 'pasteOrnamentCells',
+      'setOrnamentPlacementOnCell', 'clearOrnamentFromCell',
 
-    // Ornament API
-    this.getNavigableIndices = wasm.getNavigableIndices;
+      // Ornament API
+      'getNavigableIndices',
 
-    // Document lifecycle API (WASM-owned)
-    this.createNewDocument = wasm.createNewDocument;
-    this.loadDocument = wasm.loadDocument;
-    this.getDocumentSnapshot = wasm.getDocumentSnapshot;
+      // Document lifecycle API
+      'createNewDocument', 'loadDocument', 'getDocumentSnapshot',
 
-    // Core edit primitive
-    this.editReplaceRange = wasm.editReplaceRange;
+      // Core edit primitive
+      'editReplaceRange',
 
-    // NEW WASM-First Text Editing Operations (Phase 1 migration)
-    this.insertText = wasm.insertText;
-    this.deleteAtCursor = wasm.deleteAtCursor;
-    this.insertNewline = wasm.insertNewline;
+      // WASM-First Text Editing Operations
+      'insertText', 'deleteAtCursor', 'insertNewline',
 
-    // Copy/Paste API
-    this.copyCells = wasm.copyCells;
-    this.pasteCells = wasm.pasteCells;
+      // Copy/Paste API
+      'copyCells', 'pasteCells',
 
-    // Primary Selection API (X11 style - middle-click paste)
-    this.getPrimarySelection = wasm.getPrimarySelection;
-    this.updatePrimarySelection = wasm.updatePrimarySelection;
+      // Primary Selection API
+      'getPrimarySelection', 'updatePrimarySelection',
 
-    // Undo/Redo API
-    this.undo = wasm.undo;
-    this.redo = wasm.redo;
-    this.canUndo = wasm.canUndo;
-    this.canRedo = wasm.canRedo;
+      // Undo/Redo API
+      'undo', 'redo', 'canUndo', 'canRedo',
 
-    // Document API (metadata)
-    this.setTitle = wasm.setTitle;
-    this.setComposer = wasm.setComposer;
-    this.setDocumentPitchSystem = wasm.setDocumentPitchSystem;
-    this.setLineLabel = wasm.setLineLabel;
-    this.setLineLyrics = wasm.setLineLyrics;
-    this.setLineTala = wasm.setLineTala;
-    this.setLinePitchSystem = wasm.setLinePitchSystem;
-    this.setLineNewSystem = wasm.setLineNewSystem;
-    this.setLineStaffRole = wasm.setLineStaffRole;
+      // Document API (metadata)
+      'setTitle', 'setComposer', 'setDocumentPitchSystem',
+      'setLineLabel', 'setLineLyrics', 'setLineTala', 'setLinePitchSystem',
+      'setLineNewSystem', 'setLineStaffRole',
 
-    // Line manipulation API
-    this.splitLineAtPosition = wasm.splitLineAtPosition;
+      // Line manipulation API
+      'splitLineAtPosition',
 
-    // Layout API
-    this.computeLayout = wasm.computeLayout;
+      // Layout API
+      'computeLayout',
 
-    // Export APIs
-    this.exportMusicXML = wasm.exportMusicXML;
-    this.convertMusicXMLToLilyPond = wasm.convertMusicXMLToLilyPond;
-    this.exportMIDI = wasm.exportMIDI;
-    this.generateIRJson = wasm.generateIRJson;
+      // Export APIs
+      'exportMusicXML', 'convertMusicXMLToLilyPond', 'exportMIDI', 'generateIRJson',
 
-    // Font Configuration API
-    // Returns font config from build.rs-generated constants
-    this.getFontConfig = wasm.getFontConfig;
+      // Font Configuration API
+      'getFontConfig',
 
-    // Cursor/Selection API (anchor/head model)
-    this.getCaretInfo = wasm.getCaretInfo;
-    this.getSelectionInfo = wasm.getSelectionInfo;
-    this.setSelection = wasm.setSelection;
-    this.clearSelection = wasm.clearSelection;
-    this.startSelection = wasm.startSelection;
-    this.extendSelection = wasm.extendSelection;
+      // Cursor/Selection API
+      'getCaretInfo', 'getSelectionInfo', 'setSelection', 'clearSelection',
+      'startSelection', 'extendSelection',
 
-    // Cursor Movement API
-    this.moveLeft = wasm.moveLeft;
-    this.moveRight = wasm.moveRight;
-    this.moveUp = wasm.moveUp;
-    this.moveDown = wasm.moveDown;
-    this.moveHome = wasm.moveHome;
-    this.moveEnd = wasm.moveEnd;
+      // Cursor Movement API
+      'moveLeft', 'moveRight', 'moveUp', 'moveDown', 'moveHome', 'moveEnd',
 
-    // Mouse API
-    this.mouseDown = wasm.mouseDown;
-    this.mouseMove = wasm.mouseMove;
-    this.mouseUp = wasm.mouseUp;
-    this.selectBeatAtPosition = wasm.selectBeatAtPosition;
-    this.selectLineAtPosition = wasm.selectLineAtPosition;
+      // Mouse API
+      'mouseDown', 'mouseMove', 'mouseUp',
+      'selectBeatAtPosition', 'selectLineAtPosition',
 
-    // Position Conversion API (WASM-first refactoring)
-    this.getMaxCharPosition = wasm.getMaxCharPosition;
-    this.charPosToCellIndex = wasm.charPosToCellIndex;
-    this.cellIndexToCharPos = wasm.cellIndexToCharPos;
-    this.charPosToPixel = wasm.charPosToPixel;
+      // Position Conversion API
+      'getMaxCharPosition', 'charPosToCellIndex', 'cellIndexToCharPos', 'charPosToPixel'
+    ];
+
+    // Automatically wrap all functions with error handling
+    functionNames.forEach(name => {
+      this[name] = this._wrapFunction(wasm[name], name);
+    });
+
+    logger.debug(LOG_CATEGORIES.INITIALIZATION, `Wrapped ${functionNames.length} WASM functions`);
   }
 
   /**
@@ -162,6 +157,7 @@ export class WASMBridge {
 
   /**
    * Call a WASM function with error handling
+   * (Legacy method - all functions are now auto-wrapped)
    *
    * @param {string} functionName - Name of the WASM function to call
    * @param {...any} args - Arguments to pass to the function
@@ -173,15 +169,8 @@ export class WASMBridge {
       throw new Error(`WASM function '${functionName}' does not exist`);
     }
 
-    try {
-      return this[functionName](...args);
-    } catch (error) {
-      logger.error(LOG_CATEGORIES.WASM, `WASM call failed: ${functionName}`, {
-        error,
-        args: args.length
-      });
-      throw error;
-    }
+    // Functions are already wrapped, so just call directly
+    return this[functionName](...args);
   }
 
   /**
