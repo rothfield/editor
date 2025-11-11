@@ -58,7 +58,7 @@ LilyPond (via converter)
 
 ### Layer 1: Document → Intermediate Representation (IR)
 
-**Location:** `src/renderers/musicxml/cell_to_ir.rs`
+**Location:** `src/renderers/musicxml/line_to_ir.rs`
 
 **Function:** `build_export_measures_from_document(document: &Document) -> Vec<ExportLine>`
 
@@ -287,7 +287,7 @@ this.sourceElement.textContent = parsed.lilypond_source;
 
 ### Export Pipeline
 - `src/renderers/musicxml/converter.rs` - Main entry: `to_musicxml()`
-- `src/renderers/musicxml/cell_to_ir.rs` - Document → IR conversion (FSM)
+- `src/renderers/musicxml/line_to_ir.rs` - Document → IR conversion (FSM)
 - `src/renderers/musicxml/emitter.rs` - IR → MusicXML XML
 - `src/converters/musicxml/mod.rs` - MusicXML → LilyPond conversion router
 
@@ -350,7 +350,7 @@ To add a new feature that affects **all lines** (e.g., line labels, line clefs, 
    }
    ```
 
-2. **Update IR conversion** (`src/renderers/musicxml/cell_to_ir.rs`)
+2. **Update IR conversion** (`src/renderers/musicxml/line_to_ir.rs`)
    ```rust
    // In build_export_measures_from_document:
    for (line_idx, line) in document.lines.iter().enumerate() {

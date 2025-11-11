@@ -280,7 +280,7 @@ pub enum DirectionType {
 
 ## Layer 2 FSM: Cell Grouping (EXTENDED)
 
-**File**: `src/renderers/musicxml/cell_to_ir.rs` (NEW)
+**File**: `src/renderers/musicxml/line_to_ir.rs` (NEW)
 
 ### FSM States
 
@@ -788,7 +788,7 @@ fn emit_lyric(
 - ✅ No invented abstractions (e.g., no Part type)
 
 ### Phase 2: Implement Cell→IR FSM Core (4 hours) ✅ COMPLETED
-**File**: `src/renderers/musicxml/cell_to_ir.rs`
+**File**: `src/renderers/musicxml/line_to_ir.rs`
 
 - [x] Define `CellGroupingState` enum (InBeat, CollectingDashesInBeat, CollectingPitchInBeat, CollectingTrailingGraceNotes)
 - [x] Implement `group_cells_into_events()` FSM with explicit state transitions
@@ -804,7 +804,7 @@ fn emit_lyric(
 **Key Fix**: Consecutive dashes now correctly form a single Rest element with combined divisions (not separate rest elements). This fixes the bug where `--` was producing `r1` instead of `r4`.
 
 ### Phase 3: Add Slurs/Lyrics/Chords (4 hours) ✅ COMPLETED
-**File**: `src/renderers/musicxml/cell_to_ir.rs` (continued)
+**File**: `src/renderers/musicxml/line_to_ir.rs` (continued)
 
 - [x] Implement `parse_lyrics_to_syllables()` (handle hyphens + spaces)
 - [x] Implement `attach_slur_to_note()` (wire up slur indicators)
@@ -827,7 +827,7 @@ fn emit_lyric(
 - 13 Phase 3 helper function tests
 
 ### Phase 4: Measure Builder (2 hours) - HELPER FUNCTIONS ✅
-**File**: `src/renderers/musicxml/cell_to_ir.rs` (continued)
+**File**: `src/renderers/musicxml/line_to_ir.rs` (continued)
 
 Helper functions completed:
 - [x] Implement `gcd(a, b)` - Greatest common divisor
@@ -857,7 +857,7 @@ Helper functions completed:
   - Returns Vec<ExportLine> (one per staff)
 
 ### Phase 5: Build Measures from Document ✅ COMPLETED
-**File**: `src/renderers/musicxml/cell_to_ir.rs` (completed as part of Phase 4)
+**File**: `src/renderers/musicxml/line_to_ir.rs` (completed as part of Phase 4)
 
 - [x] Implement `build_export_measures_from_document(doc)` → `Vec<ExportLine>`
 - [x] Map each `Line` → one ExportLine (staff)
@@ -917,7 +917,7 @@ Helper functions completed:
 pub fn to_musicxml(doc: &Document) -> String {
     #[cfg(feature = "ir_export")]
     {
-        let measures = cell_to_ir::build_export_measures_from_document(doc);
+        let measures = line_to_ir::build_export_measures_from_document(doc);
         emitter::emit_musicxml(measures, doc)
     }
 

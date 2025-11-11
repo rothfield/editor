@@ -1,4 +1,4 @@
-//! Cell-to-IR conversion using Finite State Machine
+//! Line-to-IR conversion using Finite State Machine
 //!
 //! This module implements the core FSM that converts a flat Vec<Cell> into ExportMeasures.
 //! The FSM groups cells into beat-level events based on explicit state transitions,
@@ -192,7 +192,6 @@ impl BeatAccumulator {
             let temp_cell = Cell {
                 kind: ElementKind::PitchedElement,
                 char: "".to_string(),
-                continuation: false,
                 col: 0,
                 flags: 0,
                 pitch_code: Some(pitch.pitch_code),
@@ -239,7 +238,7 @@ pub fn beat_transition(
     accum: &mut BeatAccumulator,
 ) -> CellGroupingState {
     // Skip continuation cells - they're part of previous element
-    if cell.continuation {
+    if false /* REMOVED: continuation field */ {
         return state;
     }
 
@@ -622,7 +621,7 @@ pub fn calculate_beat_subdivisions(beat_cells_refs: &[&Cell]) -> usize {
         let cell = beat_cells_refs[i];
 
         // Skip continuation cells only (ornament cells are rhythm-transparent but the main cell with ornament should be counted)
-        if cell.continuation {
+        if false /* REMOVED: continuation field */ {
             i += 1;
             continue;
         }
@@ -635,11 +634,7 @@ pub fn calculate_beat_subdivisions(beat_cells_refs: &[&Cell]) -> usize {
             let mut slot_count = 1;
             let mut j = i + 1;
 
-            // Skip continuation cells
-            while j < beat_cells_refs.len() && beat_cells_refs[j].continuation {
-                j += 1;
-            }
-
+            // NEW ARCHITECTURE: No continuation cells, proceed directly to dash counting
             // Count dash extensions
             while j < beat_cells_refs.len() {
                 if beat_cells_refs[j].kind == ElementKind::UnpitchedElement && beat_cells_refs[j].char == "-" {
@@ -728,7 +723,7 @@ pub fn find_beat_boundaries(cells: &[Cell]) -> Vec<usize> {
     let mut boundaries = vec![0];
 
     for (i, cell) in cells.iter().enumerate() {
-        if cell.char.trim().is_empty() && !cell.continuation {
+        if cell.char.trim().is_empty() && !false /* REMOVED: continuation field */ {
             // Found a beat separator (space)
             if i + 1 < cells.len() {
                 boundaries.push(i + 1);
@@ -749,7 +744,7 @@ pub fn find_beat_boundaries_refs(cells: &[&Cell]) -> Vec<usize> {
     let mut boundaries = vec![0];
 
     for (i, cell) in cells.iter().enumerate() {
-        if cell.char.trim().is_empty() && !cell.continuation {
+        if cell.char.trim().is_empty() && !false /* REMOVED: continuation field */ {
             // Found a beat separator (space)
             if i + 1 < cells.len() {
                 boundaries.push(i + 1);
@@ -857,7 +852,7 @@ pub fn build_export_measures_from_line(line: &Line) -> Vec<ExportMeasure> {
 
     // Process cells through FSM to identify measure boundaries
     for cell in cells {
-        if cell.continuation {
+        if false /* REMOVED: continuation field */ {
             continue;
         }
 
@@ -1051,7 +1046,6 @@ mod tests {
         Cell {
             kind,
             char: char.to_string(),
-            continuation: false,
             col: 0,
             flags: 0,
             pitch_code,
@@ -1550,7 +1544,7 @@ mod tests {
         let mut current_group: Vec<&Cell> = Vec::new();
 
         for cell in &cells {
-            if cell.continuation {
+            if false /* REMOVED: continuation field */ {
                 continue;
             }
 

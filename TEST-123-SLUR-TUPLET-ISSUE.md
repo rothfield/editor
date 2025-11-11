@@ -87,7 +87,7 @@ builder.write_note_with_beam_from_pitch_code(
 
 ### Related Files
 
-- **IR Building**: `src/renderers/musicxml/cell_to_ir.rs` - FSM extracts slur indicators from cells
+- **IR Building**: `src/renderers/musicxml/line_to_ir.rs` - FSM extracts slur indicators from cells
 - **Beat Processing**: `src/renderers/musicxml/beat.rs` (lines 444-514) - Assigns tuplet brackets and slur markers
 - **MusicXML Emission**: `src/renderers/musicxml/builder.rs` (lines 171-202, 270-293) - Writes slur elements
 - **Data Structures**: `src/renderers/musicxml/export_ir.rs` (lines 213-231) - `SlurData` type definition
@@ -151,7 +151,7 @@ The slur indicators need to be tracked through the tuplet processing pipeline. O
    - Eliminate cell-based lookup during note writing
 
 3. **Option C**: Process slurs in IR phase, not beat phase
-   - Attach slur information during `cell_to_ir` conversion
+   - Attach slur information during `line_to_ir` conversion
    - Make it part of the IR structure, not a separate pass
 
 ## Impact

@@ -44,7 +44,7 @@ The issue is **ONE ARCHITECTURAL LAYER TOO EARLY** in the processing pipeline:
 Layer 1: INPUT (Alt+S selection) - When user applies slur to "123"
          ↓ Problem: Slur markers end up on cells [1] and [2] instead of [0] and [2]
 
-Layer 2: CELL TO IR (cell_to_ir.rs) - Transfers cell slur_indicator to IR
+Layer 2: CELL TO IR (line_to_ir.rs) - Transfers cell slur_indicator to IR
          ↓ Problem: Works with already-wrong cell markers
 
 Layer 3: BEAT PROCESSING (beat.rs) - My fix tries to fix here
@@ -70,7 +70,7 @@ When Alt+S is applied to a selection of cells in a single beat (tuplet case):
 
 This is likely in the UI/editor code where Alt+S selects and marks cells.
 
-### Option 2: Fix at cell_to_ir.rs After Identifying Tuplets
+### Option 2: Fix at line_to_ir.rs After Identifying Tuplets
 After building the IR:
 1. Detect which notes belong to a tuplet
 2. If tuplet notes have slur markers, recompute to ensure proper start/continue/stop sequence
@@ -103,7 +103,7 @@ The fix in beat.rs works correctly for space-separated patterns but doesn't addr
 
 For a complete fix, I recommend:
 1. **First**: Investigate why Alt+S marks cells [1,2] instead of [0,2] for "123"
-2. **Then**: Either fix that directly, OR implement a tuplet-aware slur recomputation in cell_to_ir.rs
+2. **Then**: Either fix that directly, OR implement a tuplet-aware slur recomputation in line_to_ir.rs
 3. **Test**: Ensure all tests pass for both "1 2 3" (separate beats) and "123" (tuplet)
 
 The current partial fix prevents regression for non-tuplet slurs and provides a foundation for the full solution.

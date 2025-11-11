@@ -7,7 +7,7 @@
 //! 2. Export IR → MusicXML String
 
 use crate::models::Document;
-use super::cell_to_ir::build_export_measures_from_document;
+use super::line_to_ir::build_export_measures_from_document;
 use super::emitter::emit_musicxml;
 
 /// Export a document to MusicXML 3.1 format

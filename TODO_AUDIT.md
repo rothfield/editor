@@ -46,19 +46,19 @@ Last updated: 2025-11-10
 ### MusicXML Export Features
 **Location:** `src/renderers/musicxml/`
 
-1. **Slash notation for grace notes** (`cell_to_ir.rs:110, 142`)
+1. **Slash notation for grace notes** (`line_to_ir.rs:110, 142`)
    - Wire up slash notation from cell data
    - Impact: Grace note rendering inaccurate
 
-2. **Slur placement** (`cell_to_ir.rs:478`)
+2. **Slur placement** (`line_to_ir.rs:478`)
    - Derive placement from context (currently hardcoded to Above)
    - Impact: Slur positioning may be incorrect
 
-3. **Lyrics verse numbers** (`cell_to_ir.rs:507`)
+3. **Lyrics verse numbers** (`line_to_ir.rs:507`)
    - Support multiple verse numbers
    - Impact: Multi-verse songs display incorrectly
 
-4. **Clef detection** (`cell_to_ir.rs:983`)
+4. **Clef detection** (`line_to_ir.rs:983`)
    - Derive from line metadata instead of hardcoded "treble"
    - Impact: Bass clef and other clefs not supported
 

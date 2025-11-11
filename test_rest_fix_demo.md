@@ -36,7 +36,7 @@ The IR (Intermediate Representation) to MusicXML conversion was producing incorr
 
 ## Fix Location
 
-**File**: `src/renderers/musicxml/cell_to_ir.rs`
+**File**: `src/renderers/musicxml/line_to_ir.rs`
 **Lines**: 947-965
 
 ### Code Added:
@@ -66,7 +66,7 @@ for (beat_start_idx, beat_end_idx, beat_div) in &beat_event_ranges {
 ## Test Added
 
 **Test**: `test_rest_division_scaling_single_beat()`
-**Location**: `src/renderers/musicxml/cell_to_ir.rs:1133-1204`
+**Location**: `src/renderers/musicxml/line_to_ir.rs:1133-1204`
 
 Verifies that:
 1. Events are created with beat-relative divisions
@@ -105,6 +105,6 @@ This fix ensures that:
 
 ## Related Files
 
-- `src/renderers/musicxml/cell_to_ir.rs` - Main fix location
+- `src/renderers/musicxml/line_to_ir.rs` - Main fix location
 - `src/renderers/musicxml/emitter.rs` - Uses the fixed IR
 - `src/renderers/musicxml/export_ir.rs` - IR type definitions

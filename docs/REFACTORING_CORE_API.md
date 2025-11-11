@@ -366,7 +366,7 @@ const snapshot = editor.wasmModule.getDocumentSnapshot();
 | 2533 | `split_line_at_position` | ❌ No | No | Takes document_js param (unused?) |
 
 **Dependencies**:
-- Renderers: musicxml::to_musicxml, musicxml::cell_to_ir
+- Renderers: musicxml::to_musicxml, musicxml::line_to_ir
 - Converters: musicxml_to_midi, convert_musicxml_to_lilypond
 - Layout: html_layout::compute_layout
 - Global: DOCUMENT mutex (some functions)

@@ -81,7 +81,7 @@ pub fn generate_ir_json() -> Result<String, JsValue> {
     wasm_log!("  Document has {} lines", document.lines.len());
 
     // Build IR from document (FSM-based cell grouping, measure/beat boundaries, LCM calculation)
-    let export_lines = crate::renderers::musicxml::cell_to_ir::build_export_measures_from_document(&document);
+    let export_lines = crate::renderers::musicxml::line_to_ir::build_export_measures_from_document(&document);
     crate::musicxml_log!(
         "Built IR: {} lines, {} total measures",
         export_lines.len(),

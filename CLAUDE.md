@@ -293,13 +293,13 @@ MusicXML (Standard interchange format)
 ### Key Components
 
 **IR (Intermediate Representation):**
-- **Location**: `src/renderers/musicxml/cell_to_ir.rs`, `src/renderers/musicxml/export_ir.rs`
+- **Location**: `src/renderers/musicxml/line_to_ir.rs`, `src/renderers/musicxml/export_ir.rs`
 - **Responsibilities**: Convert Cell-based document to structured musical events
 - **Key types**: `ExportLine`, `ExportMeasure`, `ExportEvent`, `NoteData`, `SlurData`, `TieData`, etc.
 - **Future**: Will move to `src/renderers/ir/` when architecture is fully shared
 
-**Cell-to-IR Conversion (FSM):**
-- **Location**: `src/renderers/musicxml/cell_to_ir.rs`
+**Line-to-IR Conversion (FSM):**
+- **Location**: `src/renderers/musicxml/line_to_ir.rs`
 - **Process**: Finite State Machine processes cells sequentially, grouping them into beat-level events
 - **Handles**: Grace notes, dashes (rests/extensions), rhythmic grouping, lyrics, slurs, ties
 
@@ -314,7 +314,7 @@ When adding support for a new musical element (e.g., slurs):
 
 1. **Add to Cell model** if it's user-creatable (e.g., `SlurIndicator` on Cell)
 2. **Add to IR types** if it needs to be exported (e.g., `SlurData` in `NoteData`)
-3. **Wire up conversion** in `cell_to_ir.rs` FSM to extract from Cell and populate IR
+3. **Wire up conversion** in `line_to_ir.rs` FSM to extract from Cell and populate IR
 4. **Verify emission** in `emitter.rs` / `builder.rs` to ensure MusicXML output is correct
 5. **Test end-to-end**: Document → Cell → IR → MusicXML → Inspector tab
 
