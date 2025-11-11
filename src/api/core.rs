@@ -832,6 +832,42 @@ pub fn set_line_new_system(
 }
 
 /// Set the staff role for a specific line
+/// Check if there's a group-header above the given line index
+/// Used for validating group-item role assignment
+///
+/// # Arguments
+/// * `document` - The document to check
+/// * `line_index` - Index of the line to check
+///
+/// # Returns
+/// true if a group-header exists above this line, false otherwise
+fn has_group_header_above(document: &Document, line_index: usize) -> bool {
+    if line_index == 0 {
+        return false; // First line can't have anything above it
+    }
+
+    // Search upwards for group-header
+    for i in (0..line_index).rev() {
+        let role = document.lines[i].staff_role;
+
+        match role {
+            StaffRole::GroupHeader => {
+                return true; // Found group-header above
+            }
+            StaffRole::Melody => {
+                // Stop at standalone staff (break the group chain)
+                return false;
+            }
+            StaffRole::GroupItem => {
+                // Continue searching upwards through group items
+                continue;
+            }
+        }
+    }
+
+    false // No group-header found
+}
+
 ///
 /// # Arguments
 /// * `line_index` - Index of the line to modify
@@ -857,11 +893,20 @@ pub fn set_line_staff_role(line_index: usize, role: String) -> Result<(), JsValu
         return Err(JsValue::from_str("Line index out of bounds"));
     }
 
-    // Parse and set the staff role
+    // Parse and validate the staff role
     let staff_role = match role.as_str() {
         "melody" => StaffRole::Melody,
         "group-header" => StaffRole::GroupHeader,
-        "group-item" => StaffRole::GroupItem,
+        "group-item" => {
+            // VALIDATION: group-item requires a group-header above
+            if !has_group_header_above(document, line_index) {
+                wasm_error!("Cannot set group-item role: no group-header found above line {}", line_index);
+                return Err(JsValue::from_str(
+                    "No staff group above this line. Set a \"Staff group\" line above first."
+                ));
+            }
+            StaffRole::GroupItem
+        }
         _ => {
             wasm_error!("Invalid staff role: {}", role);
             return Err(JsValue::from_str(&format!("Invalid role: {}", role)));
@@ -870,6 +915,10 @@ pub fn set_line_staff_role(line_index: usize, role: String) -> Result<(), JsValu
 
     document.lines[line_index].staff_role = staff_role;
     wasm_info!("  Line {} staff_role set to: {:?}", line_index, document.lines[line_index].staff_role);
+
+    // Recalculate system_id and part_id after role change
+    document.recalculate_system_and_part_ids();
+    wasm_info!("  System and part IDs recalculated");
 
     wasm_info!("setLineStaffRole completed successfully");
     Ok(())

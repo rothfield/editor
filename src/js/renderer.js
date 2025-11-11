@@ -103,21 +103,13 @@ class DOMRenderer {
 
       const currentRole = lineElement.dataset.role || 'melody';
 
-      // Check if "group-item" should be disabled
-      const disabledItems = {};
-      const hasHeaderAbove = this.findGroupHeaderAbove(lineElement);
-      if (!hasHeaderAbove) {
-        disabledItems['group-item'] = 'Requires a staff group above this line';
-      }
-
-      // Show context menu
+      // Show context menu (validation happens in WASM when user selects)
       this.contextMenu.show(
         e.pageX,
         e.pageY,
         currentRole,
         lineElement,
-        (choice, targetLine) => this.handleRoleChange(choice, targetLine),
-        { disabledItems }
+        (choice, targetLine) => this.handleRoleChange(choice, targetLine)
       );
     });
 
@@ -236,19 +228,10 @@ class DOMRenderer {
    * @param {HTMLElement} lineElement - Line element to update
    */
   async handleRoleChange(newRole, lineElement) {
-    // Validation: group-item must have a group-header above
-    if (newRole === 'group-item') {
-      const hasHeaderAbove = this.findGroupHeaderAbove(lineElement);
-      if (!hasHeaderAbove) {
-        alert('No staff group above this line. Set a "Staff group" line above first.');
-        return;
-      }
-    }
-
     // Get line index
     const lineIdx = parseInt(lineElement.dataset.line);
 
-    // Call WASM to update internal document
+    // Call WASM to update internal document (validation happens in WASM)
     try {
       this.editor.wasmModule.setLineStaffRole(lineIdx, newRole);
 
@@ -266,30 +249,6 @@ class DOMRenderer {
     }
   }
 
-  /**
-   * Find if there's a group-header above the given line
-   * @param {HTMLElement} lineElement - Line element to check
-   * @returns {HTMLElement|null} - Group header element or null
-   */
-  findGroupHeaderAbove(lineElement) {
-    const lines = Array.from(this.element.querySelectorAll('.notation-line'));
-    const idx = lines.indexOf(lineElement);
-    if (idx === -1) return null;
-
-    // Search upwards for group-header
-    for (let i = idx - 1; i >= 0; i--) {
-      const role = lines[i].dataset.role;
-      if (role === 'group-header') {
-        return lines[i];
-      }
-      if (role === 'melody') {
-        // Stop at standalone staff
-        break;
-      }
-    }
-
-    return null;
-  }
 
   /**
    * Render group brackets based on line roles (DOM-driven)
