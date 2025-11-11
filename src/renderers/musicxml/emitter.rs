@@ -394,10 +394,23 @@ fn emit_event(
     is_last_pitched_event: bool,
 ) -> Result<(), String> {
     match event {
-        ExportEvent::Rest { divisions } => {
+        ExportEvent::Rest { divisions, tuplet } => {
             let duration_divs = *divisions;
             let musical_duration = duration_divs as f64 / measure_divisions as f64;
-            builder.write_rest(duration_divs, musical_duration);
+
+            if let Some(tuplet_info) = tuplet {
+                let time_modification = Some((tuplet_info.actual_notes, tuplet_info.normal_notes));
+                let tuplet_bracket = if tuplet_info.bracket_start {
+                    Some("start")
+                } else if tuplet_info.bracket_stop {
+                    Some("stop")
+                } else {
+                    None
+                };
+                builder.write_rest_with_tuplet(duration_divs, musical_duration, time_modification, tuplet_bracket);
+            } else {
+                builder.write_rest(duration_divs, musical_duration);
+            }
         }
 
         ExportEvent::Note(note) => {
@@ -409,8 +422,9 @@ fn emit_event(
             divisions,
             lyrics,
             slur,
+            tuplet,
         } => {
-            emit_chord(builder, pitches, *divisions, measure_divisions, lyrics, slur, is_last_pitched_event)?;
+            emit_chord(builder, pitches, *divisions, measure_divisions, lyrics, slur, tuplet.as_ref(), is_last_pitched_event)?;
         }
     }
 
@@ -593,6 +607,7 @@ fn emit_chord(
     measure_divisions: usize,
     lyrics: &Option<LyricData>,
     _slur: &Option<SlurData>,
+    _tuplet: Option<&TupletInfo>,
     _is_last_pitched_event: bool,
 ) -> Result<(), String> {
     let duration_divs = divisions;
@@ -767,7 +782,6 @@ mod tests {
             system_id: 1,
             part_id: "P1".to_string(),
             staff_role: crate::models::core::StaffRole::Melody,
-            staff_role: crate::models::core::StaffRole::Melody,
             label: "Line 1".to_string(),
             key_signature: None,
             time_signature: None,
@@ -776,14 +790,13 @@ mod tests {
             show_bracket: true,
             measures: vec![ExportMeasure {
                 divisions: 4,
-                events: vec![ExportEvent::Rest { divisions: 4 }],
+                events: vec![ExportEvent::Rest { divisions: 4, tuplet: None }],
             }],
         };
 
         let export_line2 = ExportLine {
             system_id: 1, // Same system = grouped (bracketed)
             part_id: "P2".to_string(),
-            staff_role: crate::models::core::StaffRole::Melody,
             staff_role: crate::models::core::StaffRole::Melody,
             label: "Line 2".to_string(),
             key_signature: None,
@@ -793,7 +806,7 @@ mod tests {
             show_bracket: true,
             measures: vec![ExportMeasure {
                 divisions: 4,
-                events: vec![ExportEvent::Rest { divisions: 4 }],
+                events: vec![ExportEvent::Rest { divisions: 4, tuplet: None }],
             }],
         };
 
@@ -1395,6 +1408,297 @@ mod tests {
         // Verify bracket is hidden
         assert!(xml.contains("print-object=\"no\""),
                 "MusicXML should contain print-object=\"no\" when show_bracket is false");
+    }
+
+    /// Regression test: `--` should produce quarter note in 4/4, not half note
+    /// Bug was: GCD normalization reduced single-element beat [2] → [1]
+    /// Fix: Skip GCD normalization for single-element beats
+    #[test]
+    fn test_double_dash_produces_quarter_rest() {
+        // IR for input `--` (2 subdivisions in one beat)
+        let line = ExportLine {
+            system_id: 1,
+            part_id: "P1".to_string(),
+            staff_role: crate::models::core::StaffRole::Melody,
+            key_signature: None,
+            time_signature: Some("4/4".to_string()),
+            clef: "treble".to_string(),
+            label: String::new(),
+            show_bracket: false,
+            lyrics: String::new(),
+            measures: vec![ExportMeasure {
+                divisions: 2, // beat_div = 2 (not 1!)
+                events: vec![ExportEvent::Rest {
+                    divisions: 2, // 2/2 = 1 beat = 1/4 note
+                    tuplet: None,
+                }],
+            }],
+        };
+
+        let xml = emit_musicxml(&vec![line], None, None).expect("Failed to emit MusicXML");
+
+        // Verify divisions=2 (not 1!)
+        assert!(xml.contains("<divisions>2</divisions>"),
+                "MusicXML should have divisions=2 for double-dash beat");
+
+        // Verify rest duration=2
+        assert!(xml.contains("<duration>2</duration>"),
+                "Rest duration should be 2");
+
+        // Verify rest is quarter note (type=quarter or calculated as 2/2 = 1/4)
+        // With divisions=2 and duration=2, this is 2/2 = 1 beat = quarter note in 4/4
+    }
+
+    /// Regression test: `--1` should produce triplet with rest having tuplet marking
+    /// Bug was: Rest didn't get tuplet info, only Note did
+    /// Fix: Assign tuplet info to Rest and Chord events too
+    #[test]
+    fn test_rest_in_triplet_has_tuplet_marking() {
+        // IR for input `--1` (3 subdivisions = triplet: rest=2, note=1)
+        let line = ExportLine {
+            system_id: 1,
+            part_id: "P1".to_string(),
+            staff_role: crate::models::core::StaffRole::Melody,
+            key_signature: None,
+            time_signature: Some("4/4".to_string()),
+            clef: "treble".to_string(),
+            label: String::new(),
+            show_bracket: false,
+            lyrics: String::new(),
+            measures: vec![ExportMeasure {
+                divisions: 3, // beat_div = 3 (triplet)
+                events: vec![
+                    ExportEvent::Rest {
+                        divisions: 2, // 2/3 of beat
+                        tuplet: Some(TupletInfo {
+                            actual_notes: 3,
+                            normal_notes: 2,
+                            bracket_start: true,
+                            bracket_stop: false,
+                        }),
+                    },
+                    ExportEvent::Note(NoteData {
+                        pitch: PitchInfo::new(PitchCode::N1, 4),
+                        divisions: 1, // 1/3 of beat
+                        grace_notes_before: Vec::new(),
+                        grace_notes_after: Vec::new(),
+                        lyrics: None,
+                        slur: None,
+                        articulations: Vec::new(),
+                        beam: None,
+                        tie: None,
+                        tuplet: Some(TupletInfo {
+                            actual_notes: 3,
+                            normal_notes: 2,
+                            bracket_start: false,
+                            bracket_stop: true,
+                        }),
+                    }),
+                ],
+            }],
+        };
+
+        let xml = emit_musicxml(&vec![line], None, None).expect("Failed to emit MusicXML");
+
+        // Verify rest has time-modification (tuplet ratio)
+        let rest_section = xml.split("</note>").next().unwrap();
+        assert!(rest_section.contains("<rest/>"),
+                "First note should be a rest");
+        assert!(rest_section.contains("<time-modification>"),
+                "Rest should have time-modification for tuplet");
+        assert!(rest_section.contains("<actual-notes>3</actual-notes>"),
+                "Rest should have actual-notes=3");
+        assert!(rest_section.contains("<normal-notes>2</normal-notes>"),
+                "Rest should have normal-notes=2");
+
+        // Verify rest has tuplet bracket start
+        assert!(rest_section.contains("<tuplet type=\"start\""),
+                "Rest should have tuplet bracket start");
+
+        // Verify note has tuplet bracket stop
+        assert!(xml.contains("<tuplet type=\"stop\""),
+                "Note should have tuplet bracket stop");
+    }
+
+    /// Test: Single pitch with dashes preserves subdivision count
+    #[test]
+    fn test_single_pitch_with_dashes_preserves_subdivisions() {
+        // IR for input `1--` (3 subdivisions for one note)
+        let line = ExportLine {
+            system_id: 1,
+            part_id: "P1".to_string(),
+            staff_role: crate::models::core::StaffRole::Melody,
+            key_signature: None,
+            time_signature: Some("4/4".to_string()),
+            clef: "treble".to_string(),
+            label: String::new(),
+            show_bracket: false,
+            lyrics: String::new(),
+            measures: vec![ExportMeasure {
+                divisions: 3, // beat_div = 3 (single element, no GCD reduction)
+                events: vec![ExportEvent::Note(NoteData {
+                    pitch: PitchInfo::new(PitchCode::N1, 4),
+                    divisions: 3, // 3/3 = 1 whole beat
+                    grace_notes_before: Vec::new(),
+                    grace_notes_after: Vec::new(),
+                    lyrics: None,
+                    slur: None,
+                    articulations: Vec::new(),
+                    beam: None,
+                    tie: None,
+                    tuplet: None,
+                })],
+            }],
+        };
+
+        let xml = emit_musicxml(&vec![line], None, None).expect("Failed to emit MusicXML");
+
+        // Verify divisions=3 (preserved, not reduced to 1)
+        assert!(xml.contains("<divisions>3</divisions>"),
+                "Single-element beat should preserve subdivision count");
+    }
+
+    /// Test: Multiple elements get GCD normalization and tuplet detection
+    #[test]
+    fn test_triplet_123_all_notes_have_tuplet_info() {
+        // IR for input `1 2 3` (3 equal notes = triplet)
+        let line = ExportLine {
+            system_id: 1,
+            part_id: "P1".to_string(),
+            staff_role: crate::models::core::StaffRole::Melody,
+            key_signature: None,
+            time_signature: Some("4/4".to_string()),
+            clef: "treble".to_string(),
+            label: String::new(),
+            show_bracket: false,
+            lyrics: String::new(),
+            measures: vec![ExportMeasure {
+                divisions: 3, // GCD([1,1,1]) = 1, sum = 3
+                events: vec![
+                    ExportEvent::Note(NoteData {
+                        pitch: PitchInfo::new(PitchCode::N1, 4),
+                        divisions: 1,
+                        grace_notes_before: Vec::new(),
+                        grace_notes_after: Vec::new(),
+                        lyrics: None,
+                        slur: None,
+                        articulations: Vec::new(),
+                        beam: None,
+                        tie: None,
+                        tuplet: Some(TupletInfo {
+                            actual_notes: 3,
+                            normal_notes: 2,
+                            bracket_start: true,
+                            bracket_stop: false,
+                        }),
+                    }),
+                    ExportEvent::Note(NoteData {
+                        pitch: PitchInfo::new(PitchCode::N2, 4),
+                        divisions: 1,
+                        grace_notes_before: Vec::new(),
+                        grace_notes_after: Vec::new(),
+                        lyrics: None,
+                        slur: None,
+                        articulations: Vec::new(),
+                        beam: None,
+                        tie: None,
+                        tuplet: Some(TupletInfo {
+                            actual_notes: 3,
+                            normal_notes: 2,
+                            bracket_start: false,
+                            bracket_stop: false,
+                        }),
+                    }),
+                    ExportEvent::Note(NoteData {
+                        pitch: PitchInfo::new(PitchCode::N3, 4),
+                        divisions: 1,
+                        grace_notes_before: Vec::new(),
+                        grace_notes_after: Vec::new(),
+                        lyrics: None,
+                        slur: None,
+                        articulations: Vec::new(),
+                        beam: None,
+                        tie: None,
+                        tuplet: Some(TupletInfo {
+                            actual_notes: 3,
+                            normal_notes: 2,
+                            bracket_start: false,
+                            bracket_stop: true,
+                        }),
+                    }),
+                ],
+            }],
+        };
+
+        let xml = emit_musicxml(&vec![line], None, None).expect("Failed to emit MusicXML");
+
+        // Count tuplet start/stop markers
+        let tuplet_starts = xml.matches("<tuplet type=\"start\"").count();
+        let tuplet_stops = xml.matches("<tuplet type=\"stop\"").count();
+
+        assert_eq!(tuplet_starts, 1, "Should have exactly one tuplet start");
+        assert_eq!(tuplet_stops, 1, "Should have exactly one tuplet stop");
+
+        // All notes should have time-modification
+        let time_mod_count = xml.matches("<time-modification>").count();
+        assert_eq!(time_mod_count, 3, "All three notes should have time-modification");
+    }
+
+    /// Test: Multiple elements with different durations get GCD normalization
+    #[test]
+    fn test_mixed_durations_gcd_normalization() {
+        // IR for input `1-- 2--` (two notes, each 3 subdivisions)
+        // GCD([3,3]) = 3, normalized = [1,1], sum = 2
+        let line = ExportLine {
+            system_id: 1,
+            part_id: "P1".to_string(),
+            staff_role: crate::models::core::StaffRole::Melody,
+            key_signature: None,
+            time_signature: Some("4/4".to_string()),
+            clef: "treble".to_string(),
+            label: String::new(),
+            show_bracket: false,
+            lyrics: String::new(),
+            measures: vec![ExportMeasure {
+                divisions: 2, // GCD(3,3)=3, normalized=[1,1], sum=2
+                events: vec![
+                    ExportEvent::Note(NoteData {
+                        pitch: PitchInfo::new(PitchCode::N1, 4),
+                        divisions: 1, // Scaled from 3 by factor 1/3
+                        grace_notes_before: Vec::new(),
+                        grace_notes_after: Vec::new(),
+                        lyrics: None,
+                        slur: None,
+                        articulations: Vec::new(),
+                        beam: None,
+                        tie: None,
+                        tuplet: None,
+                    }),
+                    ExportEvent::Note(NoteData {
+                        pitch: PitchInfo::new(PitchCode::N2, 4),
+                        divisions: 1,
+                        grace_notes_before: Vec::new(),
+                        grace_notes_after: Vec::new(),
+                        lyrics: None,
+                        slur: None,
+                        articulations: Vec::new(),
+                        beam: None,
+                        tie: None,
+                        tuplet: None,
+                    }),
+                ],
+            }],
+        };
+
+        let xml = emit_musicxml(&vec![line], None, None).expect("Failed to emit MusicXML");
+
+        // Verify divisions=2 (GCD normalization applied)
+        assert!(xml.contains("<divisions>2</divisions>"),
+                "Multiple elements should have GCD-normalized divisions");
+
+        // Should NOT have tuplet marking (2 is power of 2, standard duration)
+        assert!(!xml.contains("<tuplet"),
+                "Standard binary divisions should not have tuplet marking");
     }
 
 }

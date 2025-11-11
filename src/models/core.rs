@@ -4,7 +4,7 @@
 //! for representing musical notation with glyph-safe indexing.
 
 use serde::{Deserialize, Serialize};
-use std::collections::VecDeque;
+use crate::undo::UndoStack;
 
 // Re-export from other modules
 pub use super::elements::{ElementKind, OrnamentPositionType, PitchSystem, SlurIndicator};
@@ -733,11 +733,9 @@ pub struct DocumentState {
     #[serde(default)]
     pub has_focus: bool,
 
-    /// Undo/Redo history
+    /// Undo/redo command stack
     #[serde(default)]
-    pub history: VecDeque<DocumentAction>,
-    #[serde(default)]
-    pub history_index: usize,
+    pub undo_stack: UndoStack,
 
     /// Performance and rendering state
     #[serde(default)]
@@ -753,8 +751,7 @@ impl DocumentState {
             primary_selection: PrimarySelection::default(),
             focused_element: None,
             has_focus: false,
-            history: VecDeque::new(),
-            history_index: 0,
+            undo_stack: UndoStack::default(),
             render_state: RenderState::new(),
         }
     }
@@ -807,61 +804,6 @@ impl DocumentState {
     pub fn get_primary_selection(&self) -> &PrimarySelection {
         &self.primary_selection
     }
-
-    /// Add an action to the history
-    pub fn add_action(&mut self, action: DocumentAction) {
-        // Remove any actions after current index
-        self.history.truncate(self.history_index);
-
-        // Add new action
-        self.history.push_back(action);
-        self.history_index = self.history.len();
-
-        // Limit history size
-        if self.history.len() > 100 {
-            self.history.pop_front();
-            self.history_index -= 1;
-        }
-    }
-
-    /// Check if undo is available
-    pub fn can_undo(&self) -> bool {
-        self.history_index > 0
-    }
-
-    /// Check if redo is available
-    pub fn can_redo(&self) -> bool {
-        self.history_index < self.history.len()
-    }
-}
-
-/// Represents an action that can be undone/redone
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct DocumentAction {
-    /// Type of action
-    pub action_type: ActionType,
-
-    /// Description of the action
-    pub description: String,
-
-    /// Previous state (for undo)
-    pub previous_state: Option<Document>,
-
-    /// New state (for redo)
-    pub new_state: Option<Document>,
-
-    /// Timestamp when the action was performed
-    pub timestamp: String,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub enum ActionType {
-    InsertText,
-    DeleteText,
-    ApplySlur,
-    ApplyOctave,
-    SetTala,
-    SetMetadata,
 }
 
 /// Rendering state information

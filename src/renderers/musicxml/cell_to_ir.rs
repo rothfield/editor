@@ -163,6 +163,7 @@ impl BeatAccumulator {
         if self.current_divisions > 0 {
             self.events.push(ExportEvent::Rest {
                 divisions: self.current_divisions,
+                tuplet: None,
             });
             self.current_divisions = 0;
         }
@@ -580,16 +581,23 @@ fn assign_tuplet_info_to_beat(events: &mut [ExportEvent], actual_notes: usize, n
         let is_first = idx == 0;
         let is_last = idx == event_count - 1;
 
+        let tuplet_info = TupletInfo {
+            actual_notes,
+            normal_notes,
+            bracket_start: is_first && event_count > 1,
+            bracket_stop: is_last && event_count > 1,
+        };
+
         match event {
             ExportEvent::Note(note) => {
-                note.tuplet = Some(TupletInfo {
-                    actual_notes,
-                    normal_notes,
-                    bracket_start: is_first && event_count > 1,
-                    bracket_stop: is_last && event_count > 1,
-                });
+                note.tuplet = Some(tuplet_info);
             }
-            _ => {}
+            ExportEvent::Rest { tuplet, .. } => {
+                *tuplet = Some(tuplet_info);
+            }
+            ExportEvent::Chord { tuplet, .. } => {
+                *tuplet = Some(tuplet_info);
+            }
         }
     }
 }
@@ -647,15 +655,27 @@ pub fn calculate_beat_subdivisions(beat_cells_refs: &[&Cell]) -> usize {
             // Standalone dash = rest
             if cell.char == "-" {
                 if !seen_pitched_element {
-                    // Leading dash before any pitch = rest
-                    slot_counts.push(1);
+                    // Leading dash(es) before any pitch = ONE rest
+                    // Count consecutive leading dashes together (like we do for trailing dashes after notes)
+                    let mut rest_count = 1;
+                    let mut j = i + 1;
+                    while j < beat_cells_refs.len() &&
+                          beat_cells_refs[j].kind == ElementKind::UnpitchedElement &&
+                          beat_cells_refs[j].char == "-" {
+                        rest_count += 1;
+                        j += 1;
+                    }
+                    slot_counts.push(rest_count);
+                    i = j;  // Skip all consumed dashes
+                } else {
+                    // Orphaned dash after extensions, skip it
+                    i += 1;
                 }
-                // else: orphaned dash, skip
             } else {
                 // Other unpitched = rest
                 slot_counts.push(1);
+                i += 1;
             }
-            i += 1;
         } else {
             i += 1;
         }
@@ -665,13 +685,21 @@ pub fn calculate_beat_subdivisions(beat_cells_refs: &[&Cell]) -> usize {
         return 0;
     }
 
-    // Find GCD of all slot counts and reduce
+    // Special case: single element in beat (e.g., `--` or `1--`)
+    // For single elements, return the slot count directly - no GCD reduction
+    // This preserves subdivision information for proper rhythm calculation
+    if slot_counts.len() == 1 {
+        return slot_counts[0];
+    }
+
+    // Multiple elements: apply GCD normalization to detect tuplets
+    // Example: `1 2 3` → [1,1,1] → GCD=1 → sum=3 (triplet)
+    // Example: `1-- 2--` → [3,3] → GCD=3 → [1,1] → sum=2 (two notes)
     let mut gcd_value = slot_counts[0];
     for &count in &slot_counts[1..] {
         gcd_value = gcd(gcd_value, count);
     }
 
-    // Return effective subdivisions after GCD reduction
     let normalized: Vec<usize> = slot_counts.iter().map(|&c| c / gcd_value).collect();
     normalized.iter().sum()
 }
@@ -864,7 +892,7 @@ pub fn build_export_measures_from_line(line: &Line) -> Vec<ExportMeasure> {
         if measure_cells.is_empty() {
             measures.push(ExportMeasure {
                 divisions: 4,
-                events: vec![ExportEvent::Rest { divisions: 4 }],
+                events: vec![ExportEvent::Rest { divisions: 4, tuplet: None }],
             });
             continue;
         }
@@ -917,7 +945,7 @@ pub fn build_export_measures_from_line(line: &Line) -> Vec<ExportMeasure> {
         if all_events.is_empty() {
             measures.push(ExportMeasure {
                 divisions: 4,
-                events: vec![ExportEvent::Rest { divisions: 4 }],
+                events: vec![ExportEvent::Rest { divisions: 4, tuplet: None }],
             });
             continue;
         }
@@ -931,6 +959,26 @@ pub fn build_export_measures_from_line(line: &Line) -> Vec<ExportMeasure> {
         } else {
             lcm_multiple(&beat_divisions_list)
         };
+
+        // Scale all event divisions from beat-relative to measure-relative
+        // Events are created with divisions relative to their beat, but must be scaled
+        // to match the measure's LCM divisions
+        for (beat_start_idx, beat_end_idx, beat_div) in &beat_event_ranges {
+            let scale_factor = measure_divisions / beat_div;
+            for event in &mut all_events[*beat_start_idx..*beat_end_idx] {
+                match event {
+                    ExportEvent::Rest { divisions, .. } => {
+                        *divisions *= scale_factor;
+                    }
+                    ExportEvent::Note(note) => {
+                        note.divisions *= scale_factor;
+                    }
+                    ExportEvent::Chord { divisions, .. } => {
+                        *divisions *= scale_factor;
+                    }
+                }
+            }
+        }
 
         // Assign tuplet information
         for (beat_start_idx, beat_end_idx, beat_div) in beat_event_ranges {
@@ -950,7 +998,7 @@ pub fn build_export_measures_from_line(line: &Line) -> Vec<ExportMeasure> {
     if measures.is_empty() {
         measures.push(ExportMeasure {
             divisions: 4,
-            events: vec![ExportEvent::Rest { divisions: 4 }],
+            events: vec![ExportEvent::Rest { divisions: 4, tuplet: None }],
         });
     }
 
@@ -1028,7 +1076,7 @@ mod tests {
 
         assert_eq!(events.len(), 1);
         match &events[0] {
-            ExportEvent::Rest { divisions } => assert_eq!(*divisions, 1),
+            ExportEvent::Rest { divisions, .. } => assert_eq!(*divisions, 1),
             _ => panic!("Expected Rest"),
         }
     }
@@ -1045,7 +1093,7 @@ mod tests {
         // Two consecutive dashes should be ONE rest with 2 divisions
         assert_eq!(events.len(), 1);
         match &events[0] {
-            ExportEvent::Rest { divisions } => assert_eq!(*divisions, 2),
+            ExportEvent::Rest { divisions, .. } => assert_eq!(*divisions, 2),
             _ => panic!("Expected Rest with divisions=2"),
         }
     }
@@ -1064,7 +1112,7 @@ mod tests {
         // -- bug: four dashes should be ONE rest with 4 divisions, not 1
         assert_eq!(events.len(), 1);
         match &events[0] {
-            ExportEvent::Rest { divisions } => {
+            ExportEvent::Rest { divisions, .. } => {
                 assert_eq!(*divisions, 4, "Four dashes should create rest with 4 divisions")
             }
             _ => panic!("Expected Rest"),
@@ -1085,7 +1133,7 @@ mod tests {
 
         assert_eq!(events.len(), 1, "Two dashes should create one rest element");
         match &events[0] {
-            ExportEvent::Rest { divisions } => {
+            ExportEvent::Rest { divisions, .. } => {
                 assert_eq!(*divisions, 2, "Two dashes = 2 divisions");
             }
             _ => panic!("Expected Rest"),
@@ -1096,6 +1144,79 @@ mod tests {
     fn test_empty_beat() {
         let events = group_cells_into_events(&[]);
         assert_eq!(events.len(), 0);
+    }
+
+    #[test]
+    fn test_rest_division_scaling_single_beat() {
+        // Test that rest divisions are correctly scaled to measure divisions
+        // This tests the fix for the bug where rests had incorrect durations
+
+        // Create a beat with: rest (1 dash) + two notes (1 cell each)
+        // In this beat: 3 total subdivisions
+        let cells = vec![
+            make_cell(ElementKind::UnpitchedElement, "-", None), // Rest: 1 subdivision
+            make_cell(ElementKind::PitchedElement, "1", Some(PitchCode::N1)), // Note: 1 subdivision
+            make_cell(ElementKind::PitchedElement, "2", Some(PitchCode::N2)), // Note: 1 subdivision
+        ];
+
+        let cell_refs: Vec<&Cell> = cells.iter().collect();
+        let beat_events = group_cells_into_events(&cell_refs);
+
+        // At beat level (before scaling):
+        // - Rest should have divisions=1 (1 subdivision out of 3)
+        // - Each note should have divisions=1
+        assert_eq!(beat_events.len(), 3);
+
+        // Now simulate measure-level scaling
+        // If measure divisions = 6 (LCM), and beat has 3 subdivisions:
+        // scale_factor = 6 / 3 = 2
+        // - Rest: 1 * 2 = 2 divisions
+        // - Note1: 1 * 2 = 2 divisions
+        // - Note2: 1 * 2 = 2 divisions
+        // Total: 2 + 2 + 2 = 6 ✓
+
+        let mut scaled_events = beat_events.clone();
+        let measure_divisions = 6;
+        let beat_subdivisions = 3;
+        let scale_factor = measure_divisions / beat_subdivisions;
+
+        for event in &mut scaled_events {
+            match event {
+                ExportEvent::Rest { divisions, .. } => {
+                    *divisions *= scale_factor;
+                }
+                ExportEvent::Note(note) => {
+                    note.divisions *= scale_factor;
+                }
+                _ => {}
+            }
+        }
+
+        // Verify scaled divisions
+        match &scaled_events[0] {
+            ExportEvent::Rest { divisions, .. } => {
+                assert_eq!(*divisions, 2, "Rest should be scaled: 1 * 2 = 2");
+            }
+            _ => panic!("Expected Rest as first event"),
+        }
+
+        match &scaled_events[1] {
+            ExportEvent::Note(note) => {
+                assert_eq!(note.divisions, 2, "Note1 should be scaled: 1 * 2 = 2");
+            }
+            _ => panic!("Expected Note as second event"),
+        }
+
+        match &scaled_events[2] {
+            ExportEvent::Note(note) => {
+                assert_eq!(note.divisions, 2, "Note2 should be scaled: 1 * 2 = 2");
+            }
+            _ => panic!("Expected Note as third event"),
+        }
+
+        // Verify invariant: sum equals measure divisions
+        let sum: usize = scaled_events.iter().map(|e| e.divisions()).sum();
+        assert_eq!(sum, measure_divisions, "Sum of event divisions must equal measure divisions");
     }
 
     // ===== PHASE 3: LYRICS, SLURS, CHORDS =====

@@ -1,7 +1,6 @@
-use crate::models::core::{Cell, Document};
+use crate::models::core::Cell;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Represents a reversible edit command
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -27,11 +26,11 @@ pub enum Command {
 }
 
 impl Command {
-    /// Execute this command on the document
-    pub fn execute(&self, doc: &mut Document) -> Result<(), String> {
+    /// Execute this command on the document lines
+    pub fn execute(&self, lines: &mut Vec<crate::models::core::Line>) -> Result<(), String> {
         match self {
             Command::InsertText { line, start_col, cells } => {
-                let line_obj = doc.lines.get_mut(*line)
+                let line_obj = lines.get_mut(*line)
                     .ok_or_else(|| format!("Line {} not found", line))?;
 
                 // Insert cells at the specified position
@@ -41,7 +40,7 @@ impl Command {
                 Ok(())
             }
             Command::DeleteText { line, start_col, deleted_cells } => {
-                let line_obj = doc.lines.get_mut(*line)
+                let line_obj = lines.get_mut(*line)
                     .ok_or_else(|| format!("Line {} not found", line))?;
 
                 // Remove the specified number of cells
@@ -54,7 +53,7 @@ impl Command {
             }
             Command::Batch { commands } => {
                 for cmd in commands {
-                    cmd.execute(doc)?;
+                    cmd.execute(lines)?;
                 }
                 Ok(())
             }
@@ -62,11 +61,11 @@ impl Command {
     }
 
     /// Undo this command (reverse the operation)
-    pub fn undo(&self, doc: &mut Document) -> Result<(), String> {
+    pub fn undo(&self, lines: &mut Vec<crate::models::core::Line>) -> Result<(), String> {
         match self {
             Command::InsertText { line, start_col, cells } => {
                 // Undo insert by deleting the inserted cells
-                let line_obj = doc.lines.get_mut(*line)
+                let line_obj = lines.get_mut(*line)
                     .ok_or_else(|| format!("Line {} not found", line))?;
 
                 for _ in 0..cells.len() {
@@ -78,7 +77,7 @@ impl Command {
             }
             Command::DeleteText { line, start_col, deleted_cells } => {
                 // Undo delete by re-inserting the deleted cells
-                let line_obj = doc.lines.get_mut(*line)
+                let line_obj = lines.get_mut(*line)
                     .ok_or_else(|| format!("Line {} not found", line))?;
 
                 for (i, cell) in deleted_cells.iter().enumerate() {
@@ -89,7 +88,7 @@ impl Command {
             Command::Batch { commands } => {
                 // Undo batch in reverse order
                 for cmd in commands.iter().rev() {
-                    cmd.undo(doc)?;
+                    cmd.undo(lines)?;
                 }
                 Ok(())
             }
@@ -112,9 +111,9 @@ impl Command {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct UndoStack {
     /// Stack of commands that can be undone
-    commands: VecDeque<Command>,
+    pub commands: VecDeque<Command>,
     /// Current position in the stack (for redo support)
-    current_index: usize,
+    pub current_index: usize,
     /// Maximum number of commands to keep in history
     max_size: usize,
     /// Current batch being accumulated (if any)
@@ -131,6 +130,15 @@ pub struct UndoStack {
 impl Default for UndoStack {
     fn default() -> Self {
         Self::new(100)
+    }
+}
+
+impl PartialEq for UndoStack {
+    fn eq(&self, other: &Self) -> bool {
+        // Only compare serialized fields (skip transient fields)
+        self.commands == other.commands
+            && self.current_index == other.current_index
+            && self.max_size == other.max_size
     }
 }
 
@@ -152,13 +160,12 @@ impl UndoStack {
     /// Batching breaks on:
     /// - Whitespace characters (space, newline)
     /// - Cursor movement to different position
-    /// - Pause > 500ms between keystrokes
+    /// - Pause > 500ms between keystrokes (DISABLED in WASM - not supported)
     /// - Different operation types (insert vs delete)
     pub fn push(&mut self, command: Command, cursor_pos: (usize, usize)) {
-        let current_time = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as u64;
+        // Note: Time-based batching is disabled in WASM since SystemTime::now() is not supported
+        // We rely on whitespace and cursor movement for batch breaks
+        let current_time = 0u64; // Placeholder - time-based batching disabled
 
         let should_break_batch = self.should_break_batch(&command, cursor_pos, current_time);
 
@@ -178,17 +185,18 @@ impl UndoStack {
     }
 
     /// Determine if the current batch should be finalized
-    fn should_break_batch(&self, command: &Command, cursor_pos: (usize, usize), current_time: u64) -> bool {
+    fn should_break_batch(&self, command: &Command, cursor_pos: (usize, usize), _current_time: u64) -> bool {
         if self.current_batch.is_none() {
             return false;
         }
 
-        // Break on timeout (500ms)
-        if let Some(last_time) = self.last_edit_time {
-            if current_time - last_time > 500 {
-                return true;
-            }
-        }
+        // Break on timeout (500ms) - DISABLED in WASM (SystemTime not supported)
+        // Time-based batching is disabled; we rely on whitespace and cursor movement
+        // if let Some(last_time) = self.last_edit_time {
+        //     if current_time - last_time > 500 {
+        //         return true;
+        //     }
+        // }
 
         // Break on cursor movement
         if let Some(last_pos) = self.last_cursor_pos {
@@ -246,7 +254,7 @@ impl UndoStack {
     }
 
     /// Undo the last command
-    pub fn undo(&mut self, doc: &mut Document) -> Result<(), String> {
+    pub fn undo(&mut self, lines: &mut Vec<crate::models::core::Line>) -> Result<(), String> {
         // Finalize any pending batch first
         self.finalize_batch();
 
@@ -256,17 +264,17 @@ impl UndoStack {
 
         self.current_index -= 1;
         let command = &self.commands[self.current_index];
-        command.undo(doc)
+        command.undo(lines)
     }
 
     /// Redo the last undone command
-    pub fn redo(&mut self, doc: &mut Document) -> Result<(), String> {
+    pub fn redo(&mut self, lines: &mut Vec<crate::models::core::Line>) -> Result<(), String> {
         if !self.can_redo() {
             return Err("No redo history available".to_string());
         }
 
         let command = &self.commands[self.current_index];
-        command.execute(doc)?;
+        command.execute(lines)?;
         self.current_index += 1;
         Ok(())
     }
@@ -304,34 +312,49 @@ impl UndoStack {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::core::{Cell, CellKind, Line};
+    use crate::models::core::{Cell, Document, StaffRole};
+    use crate::models::elements::{ElementKind, SlurIndicator};
 
     fn create_test_cell(ch: &str) -> Cell {
         Cell {
             char: ch.to_string(),
-            kind: CellKind::Pitch,
+            kind: ElementKind::PitchedElement,
             continuation: false,
             col: 0,
             flags: 0,
             pitch_code: None,
             pitch_system: None,
-            octave: None,
-            slur_indicator: None,
+            octave: 0,
+            slur_indicator: SlurIndicator::None,
             ornament: None,
             x: 0.0,
             y: 0.0,
             w: 0.0,
             h: 0.0,
-            bbox: None,
-            hit: None,
+            bbox: (0.0, 0.0, 0.0, 0.0),
+            hit: (0.0, 0.0, 0.0, 0.0),
         }
     }
 
     fn create_test_document() -> Document {
-        let mut doc = Document::default();
+        use crate::models::core::{Document, Line};
+        let mut doc = Document::new();
         let line = Line {
             cells: vec![],
-            ..Default::default()
+            label: String::new(),
+            tonic: String::new(),
+            pitch_system: None,
+            key_signature: String::new(),
+            tempo: String::new(),
+            time_signature: String::new(),
+            tala: String::new(),
+            lyrics: String::new(),
+            new_system: false,
+            system_id: 0,
+            part_id: String::new(),
+            staff_role: StaffRole::default(),
+            beats: vec![],
+            slurs: vec![],
         };
         doc.lines.push(line);
         doc
@@ -348,7 +371,7 @@ mod tests {
             cells: vec![cell.clone()],
         };
 
-        cmd.execute(&mut doc).unwrap();
+        cmd.execute(&mut doc.lines).unwrap();
         assert_eq!(doc.lines[0].cells.len(), 1);
         assert_eq!(doc.lines[0].cells[0].char, "S");
     }
@@ -364,8 +387,8 @@ mod tests {
             cells: vec![cell.clone()],
         };
 
-        cmd.execute(&mut doc).unwrap();
-        cmd.undo(&mut doc).unwrap();
+        cmd.execute(&mut doc.lines).unwrap();
+        cmd.undo(&mut doc.lines).unwrap();
         assert_eq!(doc.lines[0].cells.len(), 0);
     }
 
@@ -381,7 +404,7 @@ mod tests {
             deleted_cells: vec![create_test_cell("S")],
         };
 
-        cmd.execute(&mut doc).unwrap();
+        cmd.execute(&mut doc.lines).unwrap();
         assert_eq!(doc.lines[0].cells.len(), 1);
         assert_eq!(doc.lines[0].cells[0].char, "r");
     }
@@ -399,10 +422,10 @@ mod tests {
             deleted_cells: vec![cell_to_delete],
         };
 
-        cmd.execute(&mut doc).unwrap();
+        cmd.execute(&mut doc.lines).unwrap();
         assert_eq!(doc.lines[0].cells.len(), 0);
 
-        cmd.undo(&mut doc).unwrap();
+        cmd.undo(&mut doc.lines).unwrap();
         assert_eq!(doc.lines[0].cells.len(), 1);
         assert_eq!(doc.lines[0].cells[0].char, "S");
     }
@@ -426,10 +449,10 @@ mod tests {
             ],
         };
 
-        cmd.execute(&mut doc).unwrap();
+        cmd.execute(&mut doc.lines).unwrap();
         assert_eq!(doc.lines[0].cells.len(), 2);
 
-        cmd.undo(&mut doc).unwrap();
+        cmd.undo(&mut doc.lines).unwrap();
         assert_eq!(doc.lines[0].cells.len(), 0);
     }
 
@@ -450,11 +473,11 @@ mod tests {
         assert!(stack.can_undo());
         assert!(!stack.can_redo());
 
-        stack.undo(&mut doc).unwrap();
+        stack.undo(&mut doc.lines).unwrap();
         assert!(!stack.can_undo());
         assert!(stack.can_redo());
 
-        stack.redo(&mut doc).unwrap();
+        stack.redo(&mut doc.lines).unwrap();
         assert!(stack.can_undo());
         assert!(!stack.can_redo());
     }

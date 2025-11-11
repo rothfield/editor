@@ -81,15 +81,27 @@ fn normalize_beat(beat_cells: &[Cell]) -> (Vec<usize>, usize) {
             if cell.char == "-" {
                 // Dash: leading dash in START state is a rest, dash in AFTER_PITCHED is extension (already handled above)
                 if !seen_pitched_element {
-                    // Leading dash before any pitched note → treat as rest
-                    slot_counts.push(1);
+                    // Leading dash(es) before any pitched note → treat as ONE rest
+                    // Count consecutive leading dashes together (like we do for trailing dashes)
+                    let mut rest_count = 1;
+                    let mut j = i + 1;
+                    while j < beat_cells.len() &&
+                          beat_cells[j].kind == ElementKind::UnpitchedElement &&
+                          beat_cells[j].char == "-" {
+                        rest_count += 1;
+                        j += 1;
+                    }
+                    slot_counts.push(rest_count);
+                    i = j;  // Skip all consumed dashes
+                } else {
+                    // Orphaned dash after extensions, skip it
+                    i += 1;
                 }
-                // else: orphaned dash after extensions, skip it
             } else {
                 // Other unpitched elements (not dash) are rests
                 slot_counts.push(1);
+                i += 1;
             }
-            i += 1;
         } else {
             // Skip other elements
             i += 1;

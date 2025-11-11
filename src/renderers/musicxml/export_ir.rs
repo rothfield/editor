@@ -143,6 +143,8 @@ pub enum ExportEvent {
     Rest {
         /// Duration in beat divisions
         divisions: usize,
+        /// Tuplet information (if this rest is part of a tuplet)
+        tuplet: Option<TupletInfo>,
     },
 
     /// Single note or note with grace notes/ornaments
@@ -158,13 +160,15 @@ pub enum ExportEvent {
         lyrics: Option<LyricData>,
         /// Slur information
         slur: Option<SlurData>,
+        /// Tuplet information (if this chord is part of a tuplet)
+        tuplet: Option<TupletInfo>,
     },
 }
 
 impl ExportEvent {
     pub fn divisions(&self) -> usize {
         match self {
-            ExportEvent::Rest { divisions } => *divisions,
+            ExportEvent::Rest { divisions, .. } => *divisions,
             ExportEvent::Note(note) => note.divisions,
             ExportEvent::Chord { divisions, .. } => *divisions,
         }
@@ -344,7 +348,7 @@ mod tests {
 
     #[test]
     fn test_event_divisions() {
-        let rest = ExportEvent::Rest { divisions: 2 };
+        let rest = ExportEvent::Rest { divisions: 2, tuplet: None };
         assert_eq!(rest.divisions(), 2);
     }
 

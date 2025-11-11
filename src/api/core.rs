@@ -8,6 +8,7 @@ use crate::models::{Cell, PitchSystem, Document, Line, Pos, EditorDiff, CaretInf
 use crate::parse::grammar::{parse_single, mark_continuations};
 use crate::api::helpers::lock_document;
 use crate::{wasm_log, wasm_info, wasm_warn, wasm_error};
+use crate::undo::Command;
 
 #[cfg(test)]
 use crate::parse::grammar::parse;
@@ -747,10 +748,6 @@ pub fn edit_replace_range(
         }
     }
 
-    // TODO: Implement efficient undo (batching or incremental)
-    // Temporarily disabled to fix performance issue (was cloning entire document!)
-    // let previous_state = doc.clone();
-
     // 1. Delete the range [start, end)
     // If multi-line deletion, handle line merging
     if start_row == end_row {
@@ -811,17 +808,6 @@ pub fn edit_replace_range(
             mark_continuations(&mut doc.lines[start_row].cells);
         }
     }
-
-    // TODO: Record undo action (temporarily disabled for performance)
-    // let new_state = doc.clone();
-    // let action = crate::models::DocumentAction {
-    //     action_type: crate::models::ActionType::InsertText,
-    //     description: format!("Edit: delete [({},{})-({},{})] insert {:?}", start_row, start_col, end_row, end_col, text),
-    //     previous_state: Some(previous_state),
-    //     new_state: Some(new_state),
-    //     timestamp: String::from("WASM-edit"),
-    // };
-    // doc.state.add_action(action);
 
     // 4. Calculate dirty lines (all lines affected by the edit)
     let mut dirty_lines = Vec::new();
@@ -897,10 +883,6 @@ pub fn insert_text(text: &str) -> Result<JsValue, JsValue> {
         doc.effective_pitch_system(line)
     };
 
-    // TODO: Implement efficient undo (batching or incremental)
-    // Temporarily disabled to fix performance issue (was cloning entire document on every keystroke!)
-    // let previous_state = doc.clone();
-
     // Parse each character into cells
     let mut new_cells: Vec<Cell> = Vec::new();
     for (i, ch) in text.chars().enumerate() {
@@ -929,6 +911,15 @@ pub fn insert_text(text: &str) -> Result<JsValue, JsValue> {
     // Mark continuations (handle multi-char elements)
     mark_continuations(&mut line.cells);
 
+    // Record undo command
+    let command = Command::InsertText {
+        line: cursor_line,
+        start_col: insert_pos,
+        cells: new_cells.clone(),
+    };
+    let cursor_pos = (cursor_line, insert_pos);
+    doc.state.undo_stack.push(command, cursor_pos);
+
     // Update cursor position (move to after inserted text)
     let new_cursor_col = cursor_col + cells_inserted;
     doc.state.cursor.col = new_cursor_col;
@@ -937,18 +928,6 @@ pub fn insert_text(text: &str) -> Result<JsValue, JsValue> {
 
     // Capture dirty line cells before recording undo
     let dirty_line_cells = doc.lines[cursor_line].cells.clone();
-
-    // TODO: Implement efficient undo
-    // Temporarily disabled undo recording to fix performance issue
-    // let new_state = doc.clone();
-    // let action = crate::models::DocumentAction {
-    //     action_type: crate::models::ActionType::InsertText,
-    //     description: format!("Insert text: {:?} at ({}, {})", text, cursor_line, cursor_col),
-    //     previous_state: Some(previous_state),
-    //     new_state: Some(new_state),
-    //     timestamp: String::from("WASM-insertText"),
-    // };
-    // doc.state.add_action(action);
 
     // Return EditResult with dirty line
     let result = EditResult {
@@ -987,10 +966,6 @@ pub fn delete_at_cursor() -> Result<JsValue, JsValue> {
         return Err(JsValue::from_str("Cannot delete at start of document"));
     }
 
-    // TODO: Implement efficient undo (batching or incremental)
-    // Temporarily disabled to fix performance issue (was cloning entire document on every backspace!)
-    // let previous_state = doc.clone();
-
     let mut new_cursor_row = cursor_line;
     let mut new_cursor_col = cursor_col;
     let mut dirty_lines = Vec::new();
@@ -1000,6 +975,9 @@ pub fn delete_at_cursor() -> Result<JsValue, JsValue> {
         let line = &mut doc.lines[cursor_line];
 
         if cursor_col <= line.cells.len() {
+            // Capture deleted cell for undo BEFORE removing
+            let deleted_cell = line.cells[cursor_col - 1].clone();
+
             line.cells.remove(cursor_col - 1);
 
             // Update column indices for remaining cells
@@ -1008,6 +986,15 @@ pub fn delete_at_cursor() -> Result<JsValue, JsValue> {
             }
 
             new_cursor_col = cursor_col - 1;
+
+            // Record undo command
+            let command = Command::DeleteText {
+                line: cursor_line,
+                start_col: cursor_col - 1,
+                deleted_cells: vec![deleted_cell],
+            };
+            let cursor_pos = (cursor_line, cursor_col - 1);
+            doc.state.undo_stack.push(command, cursor_pos);
 
             dirty_lines.push(DirtyLine {
                 row: cursor_line,
@@ -1073,17 +1060,6 @@ pub fn delete_at_cursor() -> Result<JsValue, JsValue> {
     doc.state.cursor.line = new_cursor_row;
     doc.state.cursor.col = new_cursor_col;
 
-    // TODO: Record undo action (temporarily disabled for performance)
-    // let new_state = doc.clone();
-    // let action = crate::models::DocumentAction {
-    //     action_type: crate::models::ActionType::DeleteText,
-    //     description: format!("Delete at ({}, {})", cursor_line, cursor_col),
-    //     previous_state: Some(previous_state),
-    //     new_state: Some(new_state),
-    //     timestamp: String::from("WASM-deleteAtCursor"),
-    // };
-    // doc.state.add_action(action);
-
     // Return EditResult
     let result = EditResult {
         dirty_lines,
@@ -1120,10 +1096,6 @@ pub fn insert_newline() -> Result<JsValue, JsValue> {
             doc.lines.len()
         )));
     }
-
-    // TODO: Implement efficient undo
-    // Temporarily disabled to fix performance issue
-    // let previous_state = doc.clone();
 
     // Split current line at cursor position
     let current_line = &mut doc.lines[cursor_line];
@@ -1174,18 +1146,6 @@ pub fn insert_newline() -> Result<JsValue, JsValue> {
     doc.state.cursor.col = new_cursor_col;
 
     wasm_info!("  Created new line {}, cursor at ({}, {})", cursor_line + 1, new_cursor_row, new_cursor_col);
-
-    // TODO: Implement efficient undo
-    // Temporarily disabled to fix performance issue
-    // let new_state = doc.clone();
-    // let action = crate::models::DocumentAction {
-    //     action_type: crate::models::ActionType::InsertText,
-    //     description: format!("Insert newline at ({}, {})", cursor_line, cursor_col),
-    //     previous_state: Some(previous_state),
-    //     new_state: Some(new_state),
-    //     timestamp: String::from("WASM-insertNewline"),
-    // };
-    // doc.state.add_action(action);
 
     // Return EditResult with both affected lines
     let result = EditResult {
@@ -1603,37 +1563,37 @@ pub fn undo() -> Result<JsValue, JsValue> {
     let doc = doc_guard.as_mut()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
-    // Check if undo is available
-    if doc.state.history_index == 0 {
-        return Err(JsValue::from_str("No undo history available"));
-    }
+    // Undo using the command stack
+    doc.state.undo_stack.undo(&mut doc.lines)
+        .map_err(|e| JsValue::from_str(&e))?;
 
-    // Move back in history
-    doc.state.history_index -= 1;
-    let history_entry = &doc.state.history[doc.state.history_index];
-
-    // Restore the document state from the history entry
-    // DocumentAction stores previous_state and new_state
-    if let Some(prev_state) = &history_entry.previous_state {
-        doc.lines = prev_state.lines.clone();
+    // Get the affected line from the undone command
+    let affected_line = if doc.state.undo_stack.can_redo() {
+        // The command we just undid is now available for redo
+        let idx = doc.state.undo_stack.current_index;
+        if idx < doc.state.undo_stack.commands.len() {
+            doc.state.undo_stack.commands[idx].affected_line()
+        } else {
+            0
+        }
     } else {
-        return Err(JsValue::from_str("No previous state in history"));
-    }
+        0
+    };
 
-    // Build dirty lines list (all lines changed)
+    // Build dirty lines list with just the affected line
     let mut dirty_lines = Vec::new();
-    for (row, line) in doc.lines.iter().enumerate() {
+    if affected_line < doc.lines.len() {
         dirty_lines.push(DirtyLine {
-            row,
-            cells: line.cells.clone(),
+            row: affected_line,
+            cells: doc.lines[affected_line].cells.clone(),
         });
     }
 
-    // Return cursor to a sensible position (start of document after undo)
+    // Keep cursor position at affected line
     let result = EditResult {
         dirty_lines,
-        new_cursor_row: 0,
-        new_cursor_col: 0,
+        new_cursor_row: affected_line,
+        new_cursor_col: doc.state.cursor.col,
     };
 
     serde_wasm_bindgen::to_value(&result)
@@ -1652,38 +1612,36 @@ pub fn redo() -> Result<JsValue, JsValue> {
     let doc = doc_guard.as_mut()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
-    // Check if redo is available
-    if doc.state.history_index >= doc.state.history.len() {
-        return Err(JsValue::from_str("No redo history available"));
-    }
-
-    // Move forward in history
-    let history_entry = &doc.state.history[doc.state.history_index];
-
-    // Restore the document state from the history entry
-    // DocumentAction stores previous_state and new_state
-    if let Some(new_state) = &history_entry.new_state {
-        doc.lines = new_state.lines.clone();
+    // Get the affected line before redo (for dirty list)
+    let affected_line = if doc.state.undo_stack.can_redo() {
+        let idx = doc.state.undo_stack.current_index;
+        if idx < doc.state.undo_stack.commands.len() {
+            doc.state.undo_stack.commands[idx].affected_line()
+        } else {
+            0
+        }
     } else {
-        return Err(JsValue::from_str("No new state in history"));
-    }
+        return Err(JsValue::from_str("No redo history available"));
+    };
 
-    doc.state.history_index += 1;
+    // Redo using the command stack
+    doc.state.undo_stack.redo(&mut doc.lines)
+        .map_err(|e| JsValue::from_str(&e))?;
 
-    // Build dirty lines list (all lines changed)
+    // Build dirty lines list with just the affected line
     let mut dirty_lines = Vec::new();
-    for (row, line) in doc.lines.iter().enumerate() {
+    if affected_line < doc.lines.len() {
         dirty_lines.push(DirtyLine {
-            row,
-            cells: line.cells.clone(),
+            row: affected_line,
+            cells: doc.lines[affected_line].cells.clone(),
         });
     }
 
-    // Return cursor to a sensible position (start of document after redo)
+    // Keep cursor position at affected line
     let result = EditResult {
         dirty_lines,
-        new_cursor_row: 0,
-        new_cursor_col: 0,
+        new_cursor_row: affected_line,
+        new_cursor_col: doc.state.cursor.col,
     };
 
     serde_wasm_bindgen::to_value(&result)
@@ -1698,7 +1656,7 @@ pub fn redo() -> Result<JsValue, JsValue> {
 pub fn can_undo() -> Result<bool, JsValue> {
     let doc_guard = lock_document()?;
     Ok(doc_guard.as_ref().map_or(false, |d| {
-        d.state.history_index > 0
+        d.state.undo_stack.can_undo()
     }))
 }
 
@@ -1707,7 +1665,7 @@ pub fn can_undo() -> Result<bool, JsValue> {
 pub fn can_redo() -> Result<bool, JsValue> {
     let doc_guard = lock_document()?;
     Ok(doc_guard.as_ref().map_or(false, |d| {
-        d.state.history_index < d.state.history.len()
+        d.state.undo_stack.can_redo()
     }))
 }
 
@@ -1731,13 +1689,17 @@ pub fn load_document(document_js: JsValue) -> Result<(), JsValue> {
 
     // Preserve the SelectionManager state from the existing document (if any)
     // This prevents losing selection state when reloading the document
-    if let Some(existing_doc) = lock_document()?.as_ref() {
-        doc.state.selection_manager = existing_doc.state.selection_manager.clone();
-    }
+    {
+        let doc_guard = lock_document()?;
+        if let Some(existing_doc) = doc_guard.as_ref() {
+            doc.state.selection_manager = existing_doc.state.selection_manager.clone();
+        }
+    } // Lock is released here
 
     // Recalculate system_id and part_id for backward compatibility with old documents
     doc.recalculate_system_and_part_ids();
 
+    // Acquire lock again to store the document
     *lock_document()? = Some(doc);
     wasm_info!("loadDocument completed successfully");
     Ok(())
@@ -3169,7 +3131,7 @@ mod tests {
 
         // Store document in GLOBAL
         {
-            let mut guard = lock_document()?;
+            let mut guard = lock_document().unwrap();
             *guard = Some(doc);
         }
 
@@ -3211,7 +3173,7 @@ mod tests {
         doc.lines.push(line);
 
         {
-            let mut guard = lock_document()?;
+            let mut guard = lock_document().unwrap();
             *guard = Some(doc);
         }
 
@@ -3254,7 +3216,7 @@ mod tests {
         doc.lines.push(line);
 
         {
-            let mut guard = lock_document()?;
+            let mut guard = lock_document().unwrap();
             *guard = Some(doc);
         }
 
@@ -3315,7 +3277,7 @@ mod tests {
         doc.lines.push(line);
 
         {
-            let mut guard = lock_document()?;
+            let mut guard = lock_document().unwrap();
             *guard = Some(doc);
         }
 
@@ -3380,7 +3342,7 @@ mod tests {
         doc.lines.push(line);
 
         {
-            let mut guard = lock_document()?;
+            let mut guard = lock_document().unwrap();
             *guard = Some(doc);
         }
 
@@ -3429,7 +3391,7 @@ mod tests {
         doc.lines.push(line);
 
         {
-            let mut guard = lock_document()?;
+            let mut guard = lock_document().unwrap();
             *guard = Some(doc);
         }
 
@@ -3438,7 +3400,7 @@ mod tests {
         assert!(result.is_ok(), "edit_replace_range should succeed");
 
         // Check that line is now empty
-        let doc_guard = lock_document()?;
+        let doc_guard = lock_document().unwrap();
         let doc = doc_guard.as_ref().unwrap();
         assert_eq!(doc.lines[0].cells.len(), 0, "Should delete entire ':|' token, leaving 0 cells");
     }
