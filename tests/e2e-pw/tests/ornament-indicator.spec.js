@@ -98,27 +98,8 @@ test.describe('Ornament Indicator - Basic Functionality', () => {
     await expect(page.locator('.ornament-first')).not.toBeVisible();
   });
 
-  test.skip('Alt+Shift+O toggles edit ornaments mode', async ({ page }) => {
-    // SKIPPED: Requires #console-log-list debug UI element that doesn't exist
-    // Edit mode toggle functionality is tested in ornament-edit-mode.spec.js
-    const editor = page.locator('#notation-editor');
-
-    // Toggle edit mode on
-    await page.keyboard.press('Alt+Shift+O');
-    await page.waitForTimeout(300);
-
-    // Check console log for confirmation
-    const consoleLog = page.locator('#console-log-list');
-    const logText = await consoleLog.textContent();
-    expect(logText).toContain('Ornament edit mode: ON');
-
-    // Toggle edit mode off
-    await page.keyboard.press('Alt+Shift+O');
-    await page.waitForTimeout(300);
-
-    const logText2 = await consoleLog.textContent();
-    expect(logText2).toContain('Ornament edit mode: OFF');
-  });
+  // Removed: Relied on #console-log-list debug UI that no longer exists
+  // Edit mode toggle functionality is tested in ornament-edit-mode.spec.js
 
   test('ornament indicator appears in Edit menu', async ({ page }) => {
     // Click Edit menu
@@ -135,24 +116,8 @@ test.describe('Ornament Indicator - Basic Functionality', () => {
     await expect(editOrnamentsItem).toContainText('Edit Ornaments (Alt+Shift+O)');
   });
 
-  test.skip('requires selection to apply ornament indicator', async ({ page }) => {
-    // SKIPPED: Requires #console-log-list debug UI element that doesn't exist
-    const editor = page.locator('#notation-editor');
-
-    // Type notes but don't select anything
-    await editor.type('1 2 3');
-
-    // Try to apply ornament without selection
-    await page.keyboard.press('Alt+o');
-    await page.waitForTimeout(300);
-
-    // Should show warning (check console or notification)
-    const consoleLog = page.locator('#console-log-list');
-    const logText = await consoleLog.textContent();
-
-    // Should not have ornament classes
-    await expect(page.locator('.ornament-first')).not.toBeVisible();
-  });
+  // Removed: Relied on #console-log-list debug UI that no longer exists
+  // Selection requirements are tested through other ornament tests
 });
 
 test.describe('Ornament Indicator - Beat Grouping', () => {

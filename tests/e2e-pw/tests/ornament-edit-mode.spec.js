@@ -178,41 +178,7 @@ test.describe('Ornament Edit Mode', () => {
     console.log('Normal mode (after toggle): Found', count, 'ornamental cells');
   });
 
-  test.skip('Edit mode menu item - verify checkbox state', async ({ page }) => {
-    // SKIPPED: Menu button btn-toggle-ornament-edit-mode exists but not visible
-    // Edit mode toggle works via Alt+Shift+O (tested in other tests)
-    const editor = page.locator('#notation-editor');
-    await editor.click();
-
-    // Find the menu toggle button
-    const menuToggle = page.getByTestId('btn-toggle-ornament-edit-mode');
-
-    if (await menuToggle.count() > 0) {
-      // Click menu to toggle ON
-      await menuToggle.click();
-      await page.waitForTimeout(500);
-
-      // Verify document state changed
-      const doc = await getDocumentModel(page);
-
-      if ('ornament_edit_mode' in doc) {
-        console.log('✅ Menu toggle works, edit mode:', doc.ornament_edit_mode ? 'ON' : 'OFF');
-      }
-
-      // Click again to toggle OFF
-      await menuToggle.click();
-      await page.waitForTimeout(500);
-
-      const doc2 = await getDocumentModel(page);
-
-      if ('ornament_edit_mode' in doc2) {
-        expect(doc2.ornament_edit_mode).toBe(false);
-        console.log('✅ Menu toggle OFF works');
-      }
-    } else {
-      console.log('⚠️  Menu toggle button not found');
-    }
-  });
+  // Removed: Menu button not visible, functionality tested via Alt+Shift+O in other tests
 
   test('Multiple edit mode toggles - verify state consistency', async ({ page }) => {
     const editor = page.locator('#notation-editor');
