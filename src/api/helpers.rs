@@ -2,10 +2,30 @@
 //!
 //! This module contains common patterns and utilities for serialization,
 //! deserialization, error handling, and validation across all API operations.
+//!
+//! Also contains the canonical DOCUMENT storage (Mutex) and safe locking helpers.
 
 use wasm_bindgen::prelude::*;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use crate::models::Document;
+use std::sync::Mutex;
+use lazy_static::lazy_static;
+
+// ============================================================================
+// Document Storage (Canonical Source of Truth)
+// ============================================================================
+
+/// WASM-owned document storage (canonical source of truth)
+lazy_static! {
+    pub(crate) static ref DOCUMENT: Mutex<Option<Document>> = Mutex::new(None);
+}
+
+/// Safely lock the DOCUMENT mutex, converting poison errors to JsValue
+pub(crate) fn lock_document() -> Result<std::sync::MutexGuard<'static, Option<Document>>, JsValue> {
+    DOCUMENT.lock()
+        .map_err(|e| JsValue::from_str(&format!("Document lock poisoned: {}", e)))
+}
 
 // ============================================================================
 // Console Logging Functions

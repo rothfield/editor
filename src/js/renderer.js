@@ -51,8 +51,6 @@ class DOMRenderer {
       lastRenderTime: 0
     };
 
-    // System grouping (groups of parts bracketed together)
-    this.systemBlocks = []; // Array of {startLineIdx, endLineIdx, lines: []}
 
     this.setupBeatLoopStyles(); // Sets up octave dots CSS and barline styles
 
@@ -255,14 +253,16 @@ class DOMRenderer {
    * Replaces WASM-computed system blocks with user-editable roles
    */
   renderGroupBrackets() {
+    // Get bracket overlay container
+    const bracketOverlay = document.getElementById('bracket-overlay');
+    if (!bracketOverlay) return;
+
     // Remove old brace overlays
-    this.element.querySelectorAll('.group-brace')
+    bracketOverlay.querySelectorAll('.group-brace')
       .forEach(el => el.remove());
 
     const lines = Array.from(this.element.querySelectorAll('.notation-line'));
     if (lines.length === 0) return;
-
-    const editorRect = this.element.getBoundingClientRect();
 
     // Find groups: group-header followed by group-items
     for (let i = 0; i < lines.length; i++) {
@@ -284,7 +284,7 @@ class DOMRenderer {
 
         // Only draw bracket if there are group items below the header
         if (endIdx > startIdx) {
-          this.drawGroupBracket(lines, startIdx, endIdx, editorRect);
+          this.drawGroupBracket(lines, startIdx, endIdx, bracketOverlay);
         }
       }
     }
@@ -295,25 +295,42 @@ class DOMRenderer {
    * @param {HTMLElement[]} lines - Array of line elements
    * @param {number} startIdx - Index of group-header line
    * @param {number} endIdx - Index of last group-item line
-   * @param {DOMRect} editorRect - Editor bounding rect
+   * @param {HTMLElement} bracketOverlay - Bracket overlay container
    */
-  drawGroupBracket(lines, startIdx, endIdx, editorRect) {
+  drawGroupBracket(lines, startIdx, endIdx, bracketOverlay) {
     const firstLine = lines[startIdx];
     const lastLine = lines[endIdx];
 
+    // Get positions relative to viewport
     const firstRect = firstLine.getBoundingClientRect();
     const lastRect = lastLine.getBoundingClientRect();
 
-    const top = firstRect.top - editorRect.top;
-    const bottom = lastRect.bottom - editorRect.top;
+    // Get editor-section, editor-container, and notation-editor positions
+    const editorSection = document.getElementById('editor-section');
+    const editorContainer = document.getElementById('editor-container');
+    const notationEditor = document.getElementById('notation-editor');
+    if (!editorSection || !editorContainer || !notationEditor) return;
+
+    const sectionRect = editorSection.getBoundingClientRect();
+    const notationRect = notationEditor.getBoundingClientRect();
+
+    // Account for scroll position
+    const scrollTop = editorContainer.scrollTop;
+
+    // Calculate top/bottom relative to editor-section, accounting for scroll
+    const top = (firstRect.top - sectionRect.top) + scrollTop;
+    const bottom = (lastRect.bottom - sectionRect.top) + scrollTop;
     const height = bottom - top;
+
+    // Position 1em (16px) to the left of notation-editor's left edge
+    const leftPosition = (notationRect.left - sectionRect.left) - 16;
 
     // Create curly brace using Noto Music's MUSICAL SYMBOL BRACE (U+1D114: 𝄔)
     const brace = document.createElement('span');
     brace.className = 'group-brace';
     brace.textContent = '\uD834\uDD14'; // U+1D114 (𝄔)
     brace.style.top = `${top}px`;
-    brace.style.left = '8px'; // Position in left margin
+    brace.style.left = `${leftPosition}px`;
 
     // Scale brace to fit group height
     // Base height at 40px font-size ≈ 40px (measured empirically)
@@ -321,7 +338,7 @@ class DOMRenderer {
     const scale = height / baseHeight;
     brace.style.transform = `scaleY(${scale})`;
 
-    this.element.appendChild(brace);
+    bracketOverlay.appendChild(brace);
   }
 
   /**
@@ -435,16 +452,6 @@ class DOMRenderer {
         background-color: rgba(59, 130, 246, 0.05); /* very subtle blue tint */
       }
 
-      /* ===== SYSTEM GROUP BRACKETS ===== */
-      /* Container for system group bracket SVG overlay */
-      #system-group-brackets-svg {
-        position: absolute;
-        left: 0;
-        top: 0;
-        width: 100%;
-        pointer-events: none;
-        z-index: 1;
-      }
     `;
     document.head.appendChild(style);
 
@@ -504,86 +511,6 @@ class DOMRenderer {
     }
   }
 
-  /**
-   * Render system group brackets (visual grouping in left margin)
-   * System blocks are computed in WASM and provided in displayList.system_blocks
-   * @param {Object} displayList - Display list from WASM layout (contains line heights and system_blocks)
-   */
-  renderSystemGroupBrackets(displayList) {
-    // Find or create SVG overlay for brackets
-    let svgContainer = document.getElementById('system-group-brackets-svg');
-    if (!svgContainer) {
-      svgContainer = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-      svgContainer.id = 'system-group-brackets-svg';
-      this.element.parentElement?.insertBefore(svgContainer, this.element);
-    }
-
-    // Clear previous brackets
-    svgContainer.innerHTML = '';
-
-    if (!this.systemBlocks || this.systemBlocks.length === 0 || !displayList || !displayList.lines) {
-      return;
-    }
-
-    // Get editor container dimensions
-    const editorContainer = document.getElementById('editor-container');
-    if (!editorContainer) return;
-
-    const containerRect = editorContainer.getBoundingClientRect();
-    const marginWidth = 40; // Width of left margin for bracket
-    const bracketX = marginWidth - 15; // Position bracket near right edge of margin
-
-    // Account for editor element offset within container
-    const editorOffsetY = this.element.offsetTop;
-
-    // Render bracket for each block with multiple lines
-    this.systemBlocks.forEach((block, blockIdx) => {
-      // WASM already filters out single-line blocks, so no need to check
-      // Block structure from WASM: { start_line_idx, end_line_idx, system_id }
-
-      // Get Y coordinates from displayList (computed in WASM)
-      // Bracket aligns with .notation-line container borders (not cell content)
-      // Add editor offset since SVG is positioned relative to parent container
-      const topY = editorOffsetY + displayList.lines[block.start_line_idx].y;
-      const endLineHeight = displayList.lines[block.end_line_idx]?.height || 0;
-      const bottomY = editorOffsetY + displayList.lines[block.end_line_idx].y + endLineHeight;
-
-      // Validate coordinates
-      if (isNaN(topY) || isNaN(bottomY) || topY === undefined || bottomY === undefined) {
-        logger.warn(LOG_CATEGORIES.RENDERER, 'Invalid coordinates for stave block', { blockIdx, topY, bottomY });
-        return;
-      }
-
-      // Create bracket path (curved bracket on the left)
-      // Bracket extends from top border of first line to bottom border of last line
-      const radius = 8;
-      const brackets = `
-        <!-- Start curve (extends to top border) -->
-        <path d="M ${bracketX} ${topY}
-                 Q ${bracketX - radius} ${topY}
-                   ${bracketX - radius} ${topY + radius}"
-              stroke="#666" stroke-width="2" fill="none" stroke-linecap="round"/>
-
-        <!-- Vertical line -->
-        <line x1="${bracketX - radius}" y1="${topY + radius}"
-              x2="${bracketX - radius}" y2="${bottomY - radius}"
-              stroke="#666" stroke-width="2" stroke-linecap="round"/>
-
-        <!-- End curve (extends to bottom border) -->
-        <path d="M ${bracketX - radius} ${bottomY - radius}
-                 Q ${bracketX - radius} ${bottomY}
-                   ${bracketX} ${bottomY}"
-              stroke="#666" stroke-width="2" fill="none" stroke-linecap="round"/>
-      `;
-
-      svgContainer.innerHTML += brackets;
-    });
-
-    // Ensure SVG has proper dimensions
-    svgContainer.setAttribute('width', containerRect.width);
-    svgContainer.setAttribute('height', containerRect.height);
-    svgContainer.setAttribute('viewBox', `0 0 ${containerRect.width} ${containerRect.height}`);
-  }
 
   /**
    * Render entire document using Rust layout engine + thin JS DOM layer
@@ -658,11 +585,6 @@ class DOMRenderer {
       duration: `${layoutTime.toFixed(2)}ms`
     });
 
-    // Get system blocks from DisplayList (computed in WASM)
-    this.systemBlocks = displayList.system_blocks || [];
-    logger.debug(LOG_CATEGORIES.RENDERER, 'System blocks from WASM', {
-      count: this.systemBlocks.length
-    });
 
     // Cache DisplayList for cursor positioning
     this.displayList = displayList;

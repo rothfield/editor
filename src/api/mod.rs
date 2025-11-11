@@ -24,6 +24,9 @@
 //! Cell operations are also re-exported from the cells module.
 
 pub mod helpers;
+pub mod types;
+pub mod export;
+pub mod annotations;
 pub mod cells;
 pub mod position;
 pub mod core;
@@ -32,3 +35,5 @@ pub mod core;
 pub use core::*;
 pub use cells::{insert_character, parse_text, delete_character, apply_command};
 pub use position::{get_max_char_position, char_pos_to_cell_index, cell_index_to_char_pos, char_pos_to_pixel};
+pub use export::{export_musicxml, generate_ir_json, export_midi, convert_musicxml_to_lilypond};
+pub use annotations::{apply_slur, remove_slur, apply_slur_legacy, remove_slur_legacy, has_slur_in_selection};

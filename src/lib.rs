@@ -10,6 +10,7 @@ pub mod renderers;
 pub mod utils;
 pub mod api;
 pub mod converters;
+pub mod undo;
 
 // Include generated font constants from build.rs
 include!(concat!(env!("OUT_DIR"), "/font_constants.rs"));

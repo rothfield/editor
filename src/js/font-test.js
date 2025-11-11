@@ -128,8 +128,9 @@ export class FontTestUI {
     }
 
     // Display symbols grouped by kind
-    const kindOrder = ['accidental', 'barline', 'ornament'];
+    const kindOrder = ['bracket', 'accidental', 'barline', 'ornament'];
     const kindLabels = {
+      'bracket': 'Brackets (Staff Grouping)',
       'accidental': 'Accidentals',
       'barline': 'Barlines & Repeat Markers',
       'ornament': 'Ornaments'
@@ -424,8 +425,20 @@ function initFontSandbox() {
   const sandbox = document.getElementById('font-sandbox');
   if (!sandbox || !fontConfig) return;
 
-  // Start with provided Unicode music symbols
-  let content = '𝄆 𝄙𝆏 𝅗𝅘𝅥𝅘𝅥𝅯𝅘𝅥𝅱 𝄞𝄟𝄢 𝄾𝄿𝄎 𝄴 𝄶𝅁 𝄭𝄰 𝇛𝇜 𝄊 𝄇 𝀸𝀹𝀺𝀻𝀼𝀽 𝈀𝈁𝈂𝈃𝈄𝈅𝄃 𝄞♯ 𝅘𝅥𝄾 𝄀 ♭𝅗𝅥♫ 𝆑𝆏 𝄂\n\n';
+  // Start with brackets (staff grouping)
+  let content = '--- BRACKETS (from Bravura) ---\n';
+  if (fontMapData?.symbols) {
+    const brackets = fontMapData.symbols.filter(s => s.kind === 'bracket');
+    for (const bracket of brackets) {
+      const cp = parseInt(bracket.codepoint, 16);
+      content += String.fromCodePoint(cp) + ' ';
+    }
+  }
+  content += '\n\n';
+
+  // Add provided Unicode music symbols
+  content += '--- UNICODE MUSIC SYMBOLS ---\n';
+  content += '𝄆 𝄙𝆏 𝅗𝅘𝅥𝅘𝅥𝅯𝅘𝅥𝅱 𝄞𝄟𝄢 𝄾𝄿𝄎 𝄴 𝄶𝅁 𝄭𝄰 𝇛𝇜 𝄊 𝄇 𝀸𝀹𝀺𝀻𝀼𝀽 𝈀𝈁𝈂𝈃𝈄𝈅𝄃 𝄞♯ 𝅘𝅥𝄾 𝄀 ♭𝅗𝅥♫ 𝆑𝆏 𝄂\n\n';
 
   // Add all pitch systems with octave variants
   content += '--- CUSTOM NOTATION FONT GLYPHS ---\n\n';

@@ -4,7 +4,7 @@
   "pua_allocation": {
     "notes_start": "0xe600",
     "notes_end": "0xe6bb",
-    "symbols_start": "0xe260",
+    "symbols_start": "0xe003",
     "symbols_end": "0x1d108"
   },
   "notes": [
@@ -1127,11 +1127,35 @@
       "kind": "ornament",
       "label": "Trill",
       "codepoint": "0xe566"
+    },
+    {
+      "name": "bracketTop",
+      "kind": "bracket",
+      "label": "Bracket top cap",
+      "codepoint": "0xe003"
+    },
+    {
+      "name": "bracketBottom",
+      "kind": "bracket",
+      "label": "Bracket bottom cap",
+      "codepoint": "0xe004"
+    },
+    {
+      "name": "reversedBracketTop",
+      "kind": "bracket",
+      "label": "Reversed bracket top cap",
+      "codepoint": "0xe005"
+    },
+    {
+      "name": "reversedBracketBottom",
+      "kind": "bracket",
+      "label": "Reversed bracket bottom cap",
+      "codepoint": "0xe006"
     }
   ],
   "summary": {
     "total_notes": 47,
-    "total_symbols": 14,
+    "total_symbols": 18,
     "systems": {
       "number": {
         "count": 7,

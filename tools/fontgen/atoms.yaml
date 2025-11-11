@@ -409,14 +409,40 @@ smufl_symbols:
     smufl_codepoint: 0xE566  # SMuFL U+E566
     codepoint_offset: 13
 
+  # Brackets (SMuFL staff brackets range)
+  # Source: Bravura (not available in Noto Music)
+  - glyph_name: "bracketTop"
+    label: "Bracket top cap"
+    smufl_codepoint: 0xE003  # SMuFL U+E003
+    codepoint_offset: 14
+    source_font: "bravura"
+
+  - glyph_name: "bracketBottom"
+    label: "Bracket bottom cap"
+    smufl_codepoint: 0xE004  # SMuFL U+E004
+    codepoint_offset: 15
+    source_font: "bravura"
+
+  - glyph_name: "reversedBracketTop"
+    label: "Reversed bracket top cap"
+    smufl_codepoint: 0xE005  # SMuFL U+E005
+    codepoint_offset: 16
+    source_font: "bravura"
+
+  - glyph_name: "reversedBracketBottom"
+    label: "Reversed bracket bottom cap"
+    smufl_codepoint: 0xE006  # SMuFL U+E006
+    codepoint_offset: 17
+    source_font: "bravura"
+
 # Summary Statistics
 summary:
   total_systems: 4
   total_base_characters: 47
   total_octave_variant_glyphs: 188  # 47 characters × 4 variants each (1 dot above, 2 above, 1 below, 2 below)
   total_accidental_composite_glyphs: 188  # 47 characters × 4 accidental types (sharp, flat, double-sharp, double-flat)
-  total_smufl_symbols: 14  # Accidentals, barlines, ornaments
-  total_font_glyphs: 390  # 188 octave + 188 accidental + 14 symbols
+  total_smufl_symbols: 18  # Accidentals, barlines, ornaments, brackets
+  total_font_glyphs: 394  # 188 octave + 188 accidental + 18 symbols
 
   pua_allocations:
     octave_variants: "0xE600 - 0xE6BB"    # 188 glyphs (47 chars × 4 octave variants)
