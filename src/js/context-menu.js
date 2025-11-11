@@ -9,6 +9,7 @@ export class ContextMenuManager {
     this.menu = null;
     this.targetElement = null;
     this.onSelectCallback = null;
+    this.justOpened = false; // Track if menu was just opened to prevent immediate close
 
     // Bind event handlers
     this.handleDocumentClick = this.handleDocumentClick.bind(this);
@@ -50,6 +51,12 @@ export class ContextMenuManager {
 
     this.targetElement = target;
     this.onSelectCallback = onSelect;
+
+    // Set flag to prevent immediate close from document contextmenu handler
+    this.justOpened = true;
+    setTimeout(() => {
+      this.justOpened = false;
+    }, 100); // Small delay to let the opening event complete
 
     // Position menu
     this.menu.style.left = `${x}px`;
@@ -210,6 +217,11 @@ export class ContextMenuManager {
    * @param {Event} e - Contextmenu event
    */
   handleDocumentContextMenu(e) {
+    // Don't close if menu was just opened (prevents race condition)
+    if (this.justOpened) {
+      return;
+    }
+
     // If menu is visible and right-click is outside menu, hide it
     if (this.menu && this.menu.style.display !== 'none') {
       if (!this.menu.contains(e.target)) {
