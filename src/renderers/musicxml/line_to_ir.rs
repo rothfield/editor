@@ -433,6 +433,57 @@ pub fn collect_chord_notes(cells: &[Cell]) -> Vec<Vec<&Cell>> {
     by_column.into_values().collect()
 }
 
+/// Extend notes across beat boundaries when subsequent beat starts with dashes
+///
+/// For example, "1 -" should produce a half-note C using ties, not C + rest.
+/// This handles the case where dashes after spaces extend the previous note.
+///
+/// When a beat starts with a Rest and the previous beat ended with a Note,
+/// we convert them to tied notes (MusicXML standard for cross-beat notes).
+fn extend_notes_across_beat_boundaries(
+    all_events: &mut Vec<ExportEvent>,
+    beat_event_ranges: &[(usize, usize, usize)],
+) {
+    use super::export_ir::{TieData, TieType};
+
+    // Process each beat pair
+    for i in 1..beat_event_ranges.len() {
+        let (_prev_start, prev_end, _) = beat_event_ranges[i - 1];
+        let (curr_start, _curr_end, _) = beat_event_ranges[i];
+
+        // Check if current beat starts with a Rest
+        if curr_start < all_events.len() {
+            if let ExportEvent::Rest { divisions: rest_divs, tuplet: rest_tuplet } = &all_events[curr_start] {
+                let rest_divs_copy = *rest_divs;
+                let rest_tuplet_copy = *rest_tuplet;
+
+                // Check if previous beat ended with a Note
+                if prev_end > 0 && prev_end - 1 < all_events.len() {
+                    if let ExportEvent::Note(ref mut prev_note) = &mut all_events[prev_end - 1] {
+                        // Add tie-start to previous note
+                        prev_note.tie = Some(TieData { type_: TieType::Start });
+
+                        // Convert rest to tied note (tie-stop) with same pitch
+                        let tied_note = NoteData {
+                            pitch: prev_note.pitch.clone(),
+                            divisions: rest_divs_copy,
+                            grace_notes_before: Vec::new(),
+                            grace_notes_after: Vec::new(),
+                            lyrics: None,
+                            slur: None,
+                            articulations: Vec::new(),
+                            beam: None,
+                            tie: Some(TieData { type_: TieType::Stop }),
+                            tuplet: rest_tuplet_copy,
+                        };
+                        all_events[curr_start] = ExportEvent::Note(tied_note);
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// Fill in "continue" slur markers for notes between slur start and stop
 ///
 /// After processing beats separately, we need to add SlurType::Continue to notes that
@@ -944,6 +995,10 @@ pub fn build_export_measures_from_line(line: &Line) -> Vec<ExportMeasure> {
             });
             continue;
         }
+
+        // Extend notes across beat boundaries (e.g., "1 -" → half-note C)
+        // This must happen BEFORE scaling to maintain correct division arithmetic
+        extend_notes_across_beat_boundaries(&mut all_events, &beat_event_ranges);
 
         // Fill in "continue" slurs for notes between slur start and stop, using line-level state
         fill_slur_continue_markers(&mut all_events, &mut line_inside_slur);
@@ -1612,5 +1667,59 @@ mod tests {
         assert_eq!(measure_count, 2, "Expected 2 measures but got {}", measure_count);
         assert!(xml.contains("<measure number=\"1\""), "Missing measure 1");
         assert!(xml.contains("<measure number=\"2\""), "Missing measure 2");
+    }
+
+    #[test]
+    fn test_cross_beat_tie() {
+        // Test that "1 -" produces a tied half-note C
+        // Beat 1: "1" → Note C (1 division) with tie-start
+        // Beat 2: "-" → Note C (1 division) with tie-stop
+        use crate::models::{Document, Line};
+
+        let mut cells = Vec::new();
+
+        // Beat 1: "1"
+        let mut cell1 = make_cell(ElementKind::PitchedElement, "1", Some(PitchCode::N1));
+        cell1.col = 0;
+        cells.push(cell1);
+
+        // Space separator
+        let mut space = make_cell(ElementKind::UnpitchedElement, " ", None);
+        space.col = 1;
+        cells.push(space);
+
+        // Beat 2: "-"
+        let mut dash = make_cell(ElementKind::UnpitchedElement, "-", None);
+        dash.col = 2;
+        cells.push(dash);
+
+        let mut line = Line::new();
+        line.cells = cells;
+
+        let measures = build_export_measures_from_line(&line);
+
+        // Should have 1 measure with 2 notes (tied)
+        assert_eq!(measures.len(), 1, "Expected 1 measure");
+        assert_eq!(measures[0].events.len(), 2, "Expected 2 events (tied notes)");
+
+        // Check first note (tie-start)
+        match &measures[0].events[0] {
+            ExportEvent::Note(note) => {
+                assert_eq!(note.pitch.pitch_code, PitchCode::N1, "First note should be C");
+                assert!(note.tie.is_some(), "First note should have tie");
+                assert_eq!(note.tie.as_ref().unwrap().type_, TieType::Start, "First note should have tie-start");
+            }
+            _ => panic!("Expected Note, got {:?}", measures[0].events[0]),
+        }
+
+        // Check second note (tie-stop)
+        match &measures[0].events[1] {
+            ExportEvent::Note(note) => {
+                assert_eq!(note.pitch.pitch_code, PitchCode::N1, "Second note should be C");
+                assert!(note.tie.is_some(), "Second note should have tie");
+                assert_eq!(note.tie.as_ref().unwrap().type_, TieType::Stop, "Second note should have tie-stop");
+            }
+            _ => panic!("Expected Note, got {:?}", measures[0].events[1]),
+        }
     }
 }
