@@ -128,34 +128,16 @@
   pointer-events: none;
 }
 
-/* Group bracket overlays */
-.group-bracket {
+/* Group brace overlay (Noto Music curly brace U+1D114) */
+.group-brace {
   position: absolute;
-  width: 8px;
-  border-left: 2px solid #0057b8;
-  border-radius: 4px;
+  font-family: "Noto Music", "NotationFont", serif;
+  font-size: 40px;
+  line-height: 1;
+  transform-origin: center top;
+  color: #0057b8;
   pointer-events: none;
   z-index: 1;
-}
-
-.group-bracket-cap-top,
-.group-bracket-cap-bottom {
-  position: absolute;
-  width: 8px;
-  height: 8px;
-  border-left: 2px solid #0057b8;
-  pointer-events: none;
-  z-index: 1;
-}
-
-.group-bracket-cap-top {
-  border-top: 2px solid #0057b8;
-  border-radius: 4px 0 0 0;
-}
-
-.group-bracket-cap-bottom {
-  border-bottom: 2px solid #0057b8;
-  border-radius: 0 0 0 4px;
 }
 
 /* Context menu */

@@ -255,8 +255,8 @@ class DOMRenderer {
    * Replaces WASM-computed system blocks with user-editable roles
    */
   renderGroupBrackets() {
-    // Remove old bracket overlays
-    this.element.querySelectorAll('.group-bracket, .group-bracket-cap-top, .group-bracket-cap-bottom')
+    // Remove old brace overlays
+    this.element.querySelectorAll('.group-brace')
       .forEach(el => el.remove());
 
     const lines = Array.from(this.element.querySelectorAll('.notation-line'));
@@ -291,7 +291,7 @@ class DOMRenderer {
   }
 
   /**
-   * Draw a single group bracket
+   * Draw a single group brace using Noto Music's curly brace (U+1D114)
    * @param {HTMLElement[]} lines - Array of line elements
    * @param {number} startIdx - Index of group-header line
    * @param {number} endIdx - Index of last group-item line
@@ -308,27 +308,20 @@ class DOMRenderer {
     const bottom = lastRect.bottom - editorRect.top;
     const height = bottom - top;
 
-    // Create vertical bracket line
-    const bracket = document.createElement('div');
-    bracket.className = 'group-bracket';
-    bracket.style.top = `${top}px`;
-    bracket.style.height = `${height}px`;
-    bracket.style.left = '4px'; // Position in left margin
-    this.element.appendChild(bracket);
+    // Create curly brace using Noto Music's MUSICAL SYMBOL BRACE (U+1D114: 𝄔)
+    const brace = document.createElement('span');
+    brace.className = 'group-brace';
+    brace.textContent = '\uD834\uDD14'; // U+1D114 (𝄔)
+    brace.style.top = `${top}px`;
+    brace.style.left = '8px'; // Position in left margin
 
-    // Create top cap
-    const capTop = document.createElement('div');
-    capTop.className = 'group-bracket-cap-top';
-    capTop.style.top = `${top}px`;
-    capTop.style.left = '4px';
-    this.element.appendChild(capTop);
+    // Scale brace to fit group height
+    // Base height at 40px font-size ≈ 40px (measured empirically)
+    const baseHeight = 40;
+    const scale = height / baseHeight;
+    brace.style.transform = `scaleY(${scale})`;
 
-    // Create bottom cap
-    const capBottom = document.createElement('div');
-    capBottom.className = 'group-bracket-cap-bottom';
-    capBottom.style.top = `${bottom - 8}px`;
-    capBottom.style.left = '4px';
-    this.element.appendChild(capBottom);
+    this.element.appendChild(brace);
   }
 
   /**
