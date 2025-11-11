@@ -27,7 +27,10 @@ class Logger {
   constructor() {
     // In production, set level to WARN (only errors and warnings)
     // In development, set to DEBUG for more visibility
-    const isProduction = process.env.NODE_ENV === 'production';
+    // Check if running in Node.js (process exists) or browser (localhost)
+    const isProduction = typeof process !== 'undefined'
+      ? process.env.NODE_ENV === 'production'
+      : !(window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
     this.level = isProduction ? LOG_LEVELS.WARN : LOG_LEVELS.DEBUG;
     this.enabledCategories = new Set(Object.values(LOG_CATEGORIES));
     this.timers = new Map();
