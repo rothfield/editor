@@ -25,7 +25,10 @@ const LOG_CATEGORIES = {
 
 class Logger {
   constructor() {
-    this.level = LOG_LEVELS.INFO; // Default level
+    // In production, set level to WARN (only errors and warnings)
+    // In development, set to DEBUG for more visibility
+    const isProduction = process.env.NODE_ENV === 'production';
+    this.level = isProduction ? LOG_LEVELS.WARN : LOG_LEVELS.DEBUG;
     this.enabledCategories = new Set(Object.values(LOG_CATEGORIES));
     this.timers = new Map();
   }

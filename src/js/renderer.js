@@ -20,6 +20,7 @@ import {
 } from './constants.js';
 import ArcRenderer from './arc-renderer.js';
 import { ContextMenuManager } from './context-menu.js';
+import logger, { LOG_CATEGORIES } from './logger.js';
 
 class DOMRenderer {
   constructor(editorElement, editor, options = {}) {
@@ -258,9 +259,9 @@ class DOMRenderer {
       // Full re-render from WASM (regenerates DisplayList with new role)
       await this.editor.renderAndUpdate();
 
-      console.log(`Line ${lineIdx} role changed to: ${newRole}`);
+      logger.info(LOG_CATEGORIES.RENDERER, `Line ${lineIdx} role changed to: ${newRole}`);
     } catch (error) {
-      console.error('Error setting staff role:', error);
+      logger.error(LOG_CATEGORIES.RENDERER, 'Error setting staff role', { error: error.message || error });
       alert(`Error: ${error.message || error}`);
     }
   }
@@ -505,7 +506,7 @@ class DOMRenderer {
   addBarlineStyles() {
     const mapping = this.options.fontMapping;
     if (!mapping || !mapping.symbols) {
-      console.warn('Font mapping not available, using fallback barline styles');
+      logger.warn(LOG_CATEGORIES.RENDERER, 'Font mapping not available, using fallback barline styles');
       return;
     }
 
@@ -537,9 +538,9 @@ class DOMRenderer {
       }
       `;
 
-        console.log(`✅ Barline style: ${symbolName} -> U+${codePointHex}`);
+        logger.debug(LOG_CATEGORIES.RENDERER, `Barline style: ${symbolName} -> U+${codePointHex}`);
       } else {
-        console.warn(`⚠️ Symbol ${symbolName} not found in font mapping`);
+        logger.warn(LOG_CATEGORIES.RENDERER, `Symbol ${symbolName} not found in font mapping`);
       }
     }
 
@@ -547,7 +548,7 @@ class DOMRenderer {
       const style = document.createElement('style');
       style.textContent = barlineCss;
       document.head.appendChild(style);
-      console.log('✅ Barline styles injected from font mapping');
+      logger.debug(LOG_CATEGORIES.RENDERER, 'Barline styles injected from font mapping');
     }
   }
 
@@ -597,7 +598,7 @@ class DOMRenderer {
 
       // Validate coordinates
       if (isNaN(topY) || isNaN(bottomY) || topY === undefined || bottomY === undefined) {
-        console.warn(`Invalid coordinates for stave block ${blockIdx}: topY=${topY}, bottomY=${bottomY}`);
+        logger.warn(LOG_CATEGORIES.RENDERER, 'Invalid coordinates for stave block', { blockIdx, topY, bottomY });
         return;
       }
 
@@ -640,7 +641,10 @@ class DOMRenderer {
   renderDocument(doc, dirtyLineIndices = null) {
     const startTime = performance.now();
 
-    console.warn(`🚀 renderDocument called with ${doc.lines?.length || 0} lines, dirty: ${dirtyLineIndices}`);
+    logger.debug(LOG_CATEGORIES.RENDERER, 'renderDocument called', {
+      lines: doc.lines?.length || 0,
+      dirty: dirtyLineIndices
+    });
 
     this.theDocument = doc;
 
@@ -669,7 +673,9 @@ class DOMRenderer {
     this.characterWidthData = this.measureCharacterWidths(doc);
 
     const measureTime = performance.now() - measureStart;
-    console.log(`⏱️ Measurement time: ${measureTime.toFixed(2)}ms`);
+    logger.debug(LOG_CATEGORIES.PERFORMANCE, 'Measurement time', {
+      duration: `${measureTime.toFixed(2)}ms`
+    });
 
     // Flatten character widths for Rust
     const flattenedCharWidths = [];
@@ -696,11 +702,15 @@ class DOMRenderer {
 
     const displayList = this.editor.wasmModule.computeLayout(doc, config);
     const layoutTime = performance.now() - layoutStart;
-    console.log(`⏱️ Layout time: ${layoutTime.toFixed(2)}ms`);
+    logger.debug(LOG_CATEGORIES.PERFORMANCE, 'Layout time', {
+      duration: `${layoutTime.toFixed(2)}ms`
+    });
 
     // Get system blocks from DisplayList (computed in WASM)
     this.systemBlocks = displayList.system_blocks || [];
-    console.log(`📊 System blocks from WASM: ${this.systemBlocks.length}`);
+    logger.debug(LOG_CATEGORIES.RENDERER, 'System blocks from WASM', {
+      count: this.systemBlocks.length
+    });
 
     // Cache DisplayList for cursor positioning
     this.displayList = displayList;
@@ -710,7 +720,7 @@ class DOMRenderer {
     const renderStart = performance.now();
     this.renderFromDisplayList(displayList, savedScrollLeft, savedScrollTop, dirtyLineIndices);
     const renderTime = performance.now() - renderStart;
-    console.log(`⏱️ DOM render time: ${renderTime.toFixed(2)}ms`);
+    logger.debug(LOG_CATEGORIES.PERFORMANCE, 'DOM render time', { duration: `${renderTime.toFixed(2)}ms` });
 
     // Ornaments are now rendered from DisplayList in renderFromDisplayList()
 
@@ -718,7 +728,7 @@ class DOMRenderer {
     const bracketsStart = performance.now();
     this.renderGroupBrackets();
     const bracketsTime = performance.now() - bracketsStart;
-    console.log(`⏱️ Group bracket render time: ${bracketsTime.toFixed(2)}ms`);
+    logger.debug(LOG_CATEGORIES.PERFORMANCE, 'Group bracket render time', { duration: `${bracketsTime.toFixed(2)}ms` });
 
     // Update render statistics
     const endTime = performance.now();
@@ -750,14 +760,14 @@ class DOMRenderer {
     );
 
     if (canUseCache) {
-      console.log(`✨ Using cached cell widths (${totalCells} cells)`);
+      logger.debug(LOG_CATEGORIES.RENDERER, 'Using cached cell widths', { cells: totalCells });
       return {
         cellWidths: [...this.cachedCellWidths], // Return copy
         syllableWidths: [] // Syllables are rarely used, skip for now
       };
     }
 
-    console.log(`📏 Measuring ${totalCells} cells (cache miss)`);
+    logger.debug(LOG_CATEGORIES.RENDERER, 'Measuring cells (cache miss)', { cells: totalCells });
 
     // Create temporary invisible container for measurements
     const temp = document.createElement('div');
@@ -1017,18 +1027,18 @@ class DOMRenderer {
     const scrollContainer = document.getElementById('editor-container');
 
     if (!scrollContainer) {
-      console.error('Scroll container #editor-container not found!');
+      logger.error(LOG_CATEGORIES.RENDERER, 'Scroll container #editor-container not found!');
     }
 
-    console.log(`[Renderer] Using saved scroll position: left=${savedScrollLeft}, top=${savedScrollTop}`);
-    console.log(`[Renderer] Incremental render:`, dirtyLineIndices);
+    logger.debug(LOG_CATEGORIES.RENDERER, 'Using saved scroll position', { left: savedScrollLeft, top: savedScrollTop });
+    logger.debug(LOG_CATEGORIES.RENDERER, 'Incremental render', { dirtyLineIndices });
 
     // INCREMENTAL RENDERING: Only update dirty lines
     if (dirtyLineIndices !== null && dirtyLineIndices.length > 0) {
       // Incremental update - replace only dirty lines
       dirtyLineIndices.forEach(lineIndex => {
         if (lineIndex >= displayList.lines.length) {
-          console.warn(`[Renderer] Line index ${lineIndex} out of bounds`);
+          logger.warn(LOG_CATEGORIES.RENDERER, 'Line index out of bounds', { lineIndex });
           return;
         }
 
@@ -1092,7 +1102,7 @@ class DOMRenderer {
       scrollContainer.scrollLeft = savedScrollLeft;
       scrollContainer.scrollTop = savedScrollTop;
 
-      console.log(`[Renderer] Restored scroll to: left=${scrollContainer.scrollLeft}, top=${scrollContainer.scrollTop}`);
+      logger.debug(LOG_CATEGORIES.RENDERER, 'Restored scroll position', { left: scrollContainer.scrollLeft, top: scrollContainer.scrollTop });
 
       // Also restore after next frame as backup for browser quirks
       requestAnimationFrame(() => {
