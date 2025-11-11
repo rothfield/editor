@@ -1917,7 +1917,14 @@ class MusicNotationEditor {
       // Schedule staff notation update (debounced)
       this.scheduleStaffNotationUpdate();
     } catch (error) {
-      console.error('Failed to render document:', error);
+      logger.error(LOG_CATEGORIES.RENDERER, 'Failed to render document', {
+        error: error.message,
+        stack: error.stack
+      });
+      // Show user-friendly error notification
+      this.showError('Rendering error: Failed to render document', {
+        details: error.message
+      });
     }
   }
 
