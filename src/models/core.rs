@@ -211,7 +211,7 @@ impl Cell {
 }
 
 /// Staff role for grouping and bracketing in multi-staff systems
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub enum StaffRole {
     /// Standalone staff (not part of a group)
@@ -518,45 +518,86 @@ impl Document {
         }
     }
 
-    /// Recalculate system_id and part_id for all lines based on new_system flags
+    /// Recalculate system_id and part_id for all lines based on staff_role
     ///
-    /// Algorithm:
-    /// - Determine mode: grouped (if ANY line.new_system == true) or ungrouped
-    /// - Ungrouped mode: Each line gets unique system_id (1, 2, 3...)
-    /// - Grouped mode: Use new_system flags to group lines (increment system_id when new_system=true)
-    /// - Part IDs are always assigned sequentially ("P1", "P2", "P3"...)
+    /// Algorithm (Solo-Style Single Part for Melody):
+    ///
+    /// **Part ID Assignment:**
+    /// - All `Melody` lines → part_id = "P1" (ONE part with multiple measures)
+    /// - `GroupHeader` lines → unique part_id starting from P2
+    /// - `GroupItem` lines → unique part_id continuing sequence
+    ///
+    /// **System ID Assignment:**
+    /// - `Melody` lines → each gets unique system_id (1, 2, 3...) for `<print new-system/>`
+    /// - `GroupHeader` lines → start new system_id (begins bracket group)
+    /// - `GroupItem` lines → continue current system_id (joins bracket group)
+    ///
+    /// Examples:
+    /// - "M M M" → part_id: P1, P1, P1; system_id: 1, 2, 3 → ONE part, measures with new-system
+    /// - "G GI GI" → part_id: P2, P3, P4; system_id: 1, 1, 1 → THREE parts bracketed
+    /// - "G M M" → part_id: P2, P1, P1; system_id: 1, 2, 3 → Group part P2, then Melody part P1 with 2 measures
     ///
     /// Call this whenever:
-    /// - new_system flag changes on any line
+    /// - staff_role changes on any line
     /// - Lines are added or removed
-    /// - Document is loaded (for backward compatibility)
+    /// - Document is loaded
     pub fn recalculate_system_and_part_ids(&mut self) {
-        // Step 1: Determine mode
-        let grouped_mode = self.lines.iter().any(|l| l.new_system);
+        #[cfg(target_arch = "wasm32")]
+        {
+            web_sys::console::log_1(&format!("[recalculate_system_and_part_ids] {} lines",
+                self.lines.len()).into());
+        }
 
-        web_sys::console::log_1(&format!("[recalculate_system_and_part_ids] {} lines, grouped_mode={}",
-            self.lines.len(), grouped_mode).into());
+        // First pass: collect staff_roles to detect patterns
+        let staff_roles: Vec<StaffRole> = self.lines.iter().map(|line| line.staff_role).collect();
 
-        // Step 2: Apply algorithm based on mode
-        if grouped_mode {
-            // GROUPED MODE: Use new_system flags to group lines
-            let mut system_id = 1;
-            for (i, line) in self.lines.iter_mut().enumerate() {
-                if i > 0 && line.new_system {
-                    system_id += 1;
-                }
-                line.system_id = system_id;
-                line.part_id = format!("P{}", i + 1);
-                web_sys::console::log_1(&format!("  Line {}: new_system={}, system_id={}, part_id={}",
-                    i, line.new_system, line.system_id, line.part_id).into());
+        let mut system_id = 0;
+        let mut next_group_part_id = 2; // Group parts start from P2 (P1 reserved for Melody)
+
+        for (i, line) in self.lines.iter_mut().enumerate() {
+            // Determine if this line should start a new system
+            let start_new_system = match line.staff_role {
+                StaffRole::Melody => true,         // Melody ALWAYS starts new system
+                StaffRole::GroupHeader => true,    // GroupHeader starts new system (begins bracket group)
+                StaffRole::GroupItem => false,     // GroupItem continues current system (joins bracket group)
+            };
+
+            if i == 0 || start_new_system {
+                system_id += 1;
             }
-        } else {
-            // UNGROUPED MODE: Each line is independent (no explicit grouping)
-            for (i, line) in self.lines.iter_mut().enumerate() {
-                line.system_id = i + 1; // Each line in its own system
-                line.part_id = format!("P{}", i + 1); // Each line is a separate part
-                web_sys::console::log_1(&format!("  Line {}: system_id={}, part_id={}",
-                    i, line.system_id, line.part_id).into());
+
+            line.system_id = system_id;
+
+            // Assign part_id based on staff_role and context
+            match line.staff_role {
+                StaffRole::Melody => {
+                    line.part_id = "P1".to_string(); // All Melody lines share P1
+                }
+                StaffRole::GroupHeader => {
+                    // Check if this GroupHeader is followed by GroupItem (true group)
+                    // or followed by Melody/nothing (treat as solo melody)
+                    let next_is_group_item = i + 1 < staff_roles.len() &&
+                                             staff_roles[i + 1] == StaffRole::GroupItem;
+
+                    if next_is_group_item {
+                        // Real group: assign unique part_id starting from P2
+                        line.part_id = format!("P{}", next_group_part_id);
+                        next_group_part_id += 1;
+                    } else {
+                        // Solo melody disguised as GroupHeader: use P1
+                        line.part_id = "P1".to_string();
+                    }
+                }
+                StaffRole::GroupItem => {
+                    line.part_id = format!("P{}", next_group_part_id);
+                    next_group_part_id += 1;
+                }
+            }
+
+            #[cfg(target_arch = "wasm32")]
+            {
+                web_sys::console::log_1(&format!("  Line {}: staff_role={:?}, system_id={}, part_id={}",
+                    i, line.staff_role, line.system_id, line.part_id).into());
             }
         }
     }
@@ -1301,5 +1342,102 @@ mod tests {
         assert_eq!(ornament.cells[0].char, "r", "First ornament cell should be 'r'");
         assert_eq!(ornament.cells[1].char, "g", "Second ornament cell should be 'g'");
         assert_eq!(ornament.placement, OrnamentPlacement::Before, "Default placement should be Before");
+    }
+
+    #[test]
+    fn test_staff_role_system_id_assignment_g_m_m() {
+        // Test "G M M" pattern: GroupHeader + Melody + Melody → THREE SEPARATE SYSTEMS (no brackets)
+        let mut doc = Document::new();
+
+        // Add three lines with different roles
+        let mut line1 = Line::new();
+        line1.label = "Strings".to_string();
+        line1.staff_role = StaffRole::GroupHeader;
+        doc.lines.push(line1);
+
+        let mut line2 = Line::new();
+        line2.label = "Violin I".to_string();
+        line2.staff_role = StaffRole::Melody;
+        doc.lines.push(line2);
+
+        let mut line3 = Line::new();
+        line3.label = "Violin II".to_string();
+        line3.staff_role = StaffRole::Melody;
+        doc.lines.push(line3);
+
+        // Recalculate system IDs based on staff roles
+        doc.recalculate_system_and_part_ids();
+
+        // VERIFY: Each line should have a different system_id (separate systems, NO brackets)
+        assert_eq!(doc.lines[0].system_id, 1, "GroupHeader should be system 1");
+        assert_eq!(doc.lines[1].system_id, 2, "First Melody should be system 2 (separate)");
+        assert_eq!(doc.lines[2].system_id, 3, "Second Melody should be system 3 (separate)");
+
+        // VERIFY: Part IDs - GroupHeader gets P2, Melody lines share P1
+        assert_eq!(doc.lines[0].part_id, "P2", "GroupHeader should be P2");
+        assert_eq!(doc.lines[1].part_id, "P1", "First Melody should be P1");
+        assert_eq!(doc.lines[2].part_id, "P1", "Second Melody should be P1");
+    }
+
+    #[test]
+    fn test_staff_role_system_id_assignment_g_gi_gi() {
+        // Test "G GI GI" pattern: GroupHeader + GroupItem + GroupItem → ONE BRACKETED SYSTEM
+        let mut doc = Document::new();
+
+        // Add three lines: GroupHeader followed by two GroupItems
+        let mut line1 = Line::new();
+        line1.label = "Strings".to_string();
+        line1.staff_role = StaffRole::GroupHeader;
+        doc.lines.push(line1);
+
+        let mut line2 = Line::new();
+        line2.label = "Violin I".to_string();
+        line2.staff_role = StaffRole::GroupItem;
+        doc.lines.push(line2);
+
+        let mut line3 = Line::new();
+        line3.label = "Violin II".to_string();
+        line3.staff_role = StaffRole::GroupItem;
+        doc.lines.push(line3);
+
+        // Recalculate system IDs based on staff roles
+        doc.recalculate_system_and_part_ids();
+
+        // VERIFY: All three lines should have the SAME system_id (bracketed group)
+        assert_eq!(doc.lines[0].system_id, 1, "GroupHeader should be system 1");
+        assert_eq!(doc.lines[1].system_id, 1, "First GroupItem should be system 1 (same as header)");
+        assert_eq!(doc.lines[2].system_id, 1, "Second GroupItem should be system 1 (same as header)");
+
+        // VERIFY: Part IDs - Group lines get unique IDs starting from P2
+        assert_eq!(doc.lines[0].part_id, "P2", "GroupHeader should be P2");
+        assert_eq!(doc.lines[1].part_id, "P3", "First GroupItem should be P3");
+        assert_eq!(doc.lines[2].part_id, "P4", "Second GroupItem should be P4");
+    }
+
+    #[test]
+    fn test_staff_role_system_id_assignment_m_m_m() {
+        // Test "M M M" pattern: Three Melody lines → THREE SEPARATE SYSTEMS
+        let mut doc = Document::new();
+
+        // Add three Melody lines
+        for i in 0..3 {
+            let mut line = Line::new();
+            line.label = format!("Staff {}", i + 1);
+            line.staff_role = StaffRole::Melody;
+            doc.lines.push(line);
+        }
+
+        // Recalculate system IDs based on staff roles
+        doc.recalculate_system_and_part_ids();
+
+        // VERIFY: Each Melody line should have a different system_id
+        assert_eq!(doc.lines[0].system_id, 1, "First Melody should be system 1");
+        assert_eq!(doc.lines[1].system_id, 2, "Second Melody should be system 2");
+        assert_eq!(doc.lines[2].system_id, 3, "Third Melody should be system 3");
+
+        // VERIFY: Part IDs - All Melody lines share P1 (solo-style)
+        assert_eq!(doc.lines[0].part_id, "P1", "First Melody should be P1");
+        assert_eq!(doc.lines[1].part_id, "P1", "Second Melody should be P1");
+        assert_eq!(doc.lines[2].part_id, "P1", "Third Melody should be P1");
     }
 }

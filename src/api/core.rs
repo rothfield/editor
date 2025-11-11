@@ -275,18 +275,7 @@ pub fn has_slur_in_selection(
 // ============================================================================
 // Ornament Functions (WYSIWYG "Select and Apply" Pattern)
 // ============================================================================
-
-/// Apply ornament styling to cells in a selection range
-///
-/// # Parameters
-/// - `cells_js`: JavaScript array of Cell objects
-/// - `start`: Start of selection (0-based index)
-/// - `end`: End of selection (exclusive)
-/// - `position_type`: Position type - "before", "after", or "top"
-///
-/// # Returns
 // Old applyOrnament and removeOrnament functions removed - replaced by copy/paste workflow
-
 // Old resolveOrnamentAttachments and computeOrnamentLayout functions removed - replaced by copy/paste workflow
 
 /// Set the document title (LEGACY - Phase 0 API)
@@ -501,6 +490,7 @@ pub fn set_document_pitch_system(pitch_system: u8) -> Result<(), JsValue> {
 
 /// Expand ornaments from cell.ornaments into the cells vector
 /// Deprecated: ornament indicators have been removed. This is now a no-op.
+#[allow(dead_code)]
 fn expand_ornaments_to_cells(_line: &mut Line) {
     // With the new system, ornaments are stored inline with cells
     // No expansion/collapse logic is needed
@@ -508,6 +498,7 @@ fn expand_ornaments_to_cells(_line: &mut Line) {
 
 /// Collapse ornament cells back into cell.ornaments
 /// Deprecated: ornament indicators have been removed. This is now a no-op.
+#[allow(dead_code)]
 fn collapse_ornaments_from_cells(_line: &mut Line) {
     // With the new system, ornaments are stored inline with cells
     // No expansion/collapse logic is needed

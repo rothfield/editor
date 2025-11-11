@@ -55,11 +55,14 @@ pub fn emit_musicxml(
         }
     }
 
-    // Debug: Log export lines
-    web_sys::console::log_1(&format!("[MusicXML Emitter] Processing {} export lines:", export_lines.len()).into());
-    for (i, line) in export_lines.iter().enumerate() {
-        web_sys::console::log_1(&format!("  Line {}: system_id={}, part_id={}, label='{}', {} measures",
-            i, line.system_id, line.part_id, line.label, line.measures.len()).into());
+    // Debug: Log export lines (only in WASM/browser environment)
+    #[cfg(target_arch = "wasm32")]
+    {
+        web_sys::console::log_1(&format!("[MusicXML Emitter] Processing {} export lines:", export_lines.len()).into());
+        for (i, line) in export_lines.iter().enumerate() {
+            web_sys::console::log_1(&format!("  Line {}: system_id={}, part_id={}, label='{}', {} measures",
+                i, line.system_id, line.part_id, line.label, line.measures.len()).into());
+        }
     }
 
     // Group lines by part_id to combine document lines into single MusicXML parts
@@ -73,6 +76,7 @@ pub fn emit_musicxml(
     let mut unique_part_ids: Vec<String> = parts_map.keys().cloned().collect();
     unique_part_ids.sort(); // Ensure consistent ordering (P1, P2, P3...)
 
+    #[cfg(target_arch = "wasm32")]
     web_sys::console::log_1(&format!("[MusicXML Emitter] Grouped into {} unique parts", unique_part_ids.len()).into());
 
     // Group parts by system_id to determine bracket groups
@@ -97,7 +101,25 @@ pub fn emit_musicxml(
 
         // Add bracket if system has multiple parts
         if part_ids_in_system.len() > 1 {
-            xml.push_str(&format!("    <part-group type=\"start\" number=\"{}\">\n", group_number));
+            // Check if any line in this system wants to hide the bracket
+            let hide_bracket = part_ids_in_system.iter()
+                .any(|part_id| {
+                    parts_map[part_id].iter().any(|line| !line.show_bracket)
+                });
+
+            if hide_bracket {
+                xml.push_str(&format!("    <part-group type=\"start\" number=\"{}\" print-object=\"no\">\n", group_number));
+            } else {
+                xml.push_str(&format!("    <part-group type=\"start\" number=\"{}\">\n", group_number));
+            }
+
+            // Add group name from first line's label (if present)
+            let first_part_id = &part_ids_in_system[0];
+            let first_line = parts_map[first_part_id][0];
+            if !first_line.label.is_empty() {
+                xml.push_str(&format!("      <group-name>{}</group-name>\n", xml_escape(&first_line.label)));
+            }
+
             xml.push_str("      <group-symbol>bracket</group-symbol>\n");
             xml.push_str("      <group-barline>yes</group-barline>\n");
             xml.push_str("    </part-group>\n");
@@ -120,7 +142,17 @@ pub fn emit_musicxml(
 
         // Close bracket if system has multiple parts
         if part_ids_in_system.len() > 1 {
-            xml.push_str(&format!("    <part-group type=\"stop\" number=\"{}\"/>\n", group_number));
+            // Check if bracket was hidden (same logic as above)
+            let hide_bracket = part_ids_in_system.iter()
+                .any(|part_id| {
+                    parts_map[part_id].iter().any(|line| !line.show_bracket)
+                });
+
+            if hide_bracket {
+                xml.push_str(&format!("    <part-group type=\"stop\" number=\"{}\" print-object=\"no\"/>\n", group_number));
+            } else {
+                xml.push_str(&format!("    <part-group type=\"stop\" number=\"{}\"/>\n", group_number));
+            }
             group_number += 1;
         }
     }
@@ -128,15 +160,24 @@ pub fn emit_musicxml(
     xml.push_str("  </part-list>\n");
 
     // Emit one <part> per unique part_id, combining all lines with that part_id
+    let mut prev_system_id: Option<usize> = None;
+
     for part_id in &unique_part_ids {
         let lines = &parts_map[part_id];
+        let current_system_id = lines[0].system_id; // All lines in same part have same system_id
 
-        web_sys::console::log_1(&format!("[MusicXML Emitter] Emitting part {} with {} lines",
-            part_id, lines.len()).into());
+        #[cfg(target_arch = "wasm32")]
+        web_sys::console::log_1(&format!("[MusicXML Emitter] Emitting part {} with {} lines, system_id={}",
+            part_id, lines.len(), current_system_id).into());
+
+        // Check if this part starts a new system (different system_id from previous part)
+        let starts_new_system = prev_system_id.map_or(false, |prev_id| current_system_id != prev_id);
 
         // Combine all measures from all lines in this part
-        let combined_part_xml = emit_combined_part(lines, document_key_signature)?;
+        let combined_part_xml = emit_combined_part(lines, document_key_signature, starts_new_system)?;
         xml.push_str(&combined_part_xml);
+
+        prev_system_id = Some(current_system_id);
     }
 
     xml.push_str("</score-partwise>\n");
@@ -154,9 +195,15 @@ fn parse_beat_count(time_sig: Option<&str>) -> usize {
 
 /// Emit multiple ExportLines (with same part_id) as a single combined MusicXML <part>
 /// This combines all measures from all lines into one continuous part
+///
+/// # Arguments
+/// * `lines` - ExportLines with the same part_id to combine
+/// * `document_key_signature` - Document-level key signature (fallback)
+/// * `starts_new_system` - True if this part should start on a new system (different system_id from previous part)
 fn emit_combined_part(
     lines: &[&ExportLine],
     document_key_signature: Option<&str>,
+    starts_new_system: bool,
 ) -> Result<String, String> {
     if lines.is_empty() {
         return Ok(String::new());
@@ -176,26 +223,50 @@ fn emit_combined_part(
     // Parse beat count from first line's time signature
     let beat_count = parse_beat_count(lines[0].time_signature.as_deref());
 
-    // Combine all measures from all lines
-    let mut measure_index = 0;
-    for (line_idx, line) in lines.iter().enumerate() {
-        for (measure_idx_in_line, measure) in line.measures.iter().enumerate() {
-            let is_first_measure = measure_index == 0;
+    // Check if all lines have no measures (empty part)
+    let all_empty = lines.iter().all(|line| line.measures.is_empty());
 
-            // Emit <print new-system="yes"/> for first measure of each line (except first line)
-            // This creates visual system breaks that match the document structure
-            let emit_new_system = line_idx > 0 && measure_idx_in_line == 0;
+    if all_empty {
+        // Empty part: emit a single measure with a whole rest
+        // MusicXML requires at least one measure per part
+        builder.start_measure_with_divisions(Some(1), starts_new_system, beat_count);
+        builder.write_rest(beat_count, beat_count as f64);
+        builder.end_measure();
+    } else {
+        // Combine all measures from all lines
+        let mut measure_index = 0;
+        let mut prev_system_id: Option<usize> = None;
 
-            emit_measure(
-                &mut builder,
-                measure,
-                line,
-                is_first_measure,
-                emit_new_system,
-                beat_count,
-            )?;
+        for (_line_idx, line) in lines.iter().enumerate() {
+            for (measure_idx_in_line, measure) in line.measures.iter().enumerate() {
+                let is_first_measure = measure_index == 0;
+                let is_first_measure_of_line = measure_idx_in_line == 0;
 
-            measure_index += 1;
+                // Emit <print new-system="yes"/> if:
+                // 1. This is the first measure AND the part starts a new system (different from previous part)
+                // 2. This is the first measure of a line AND the line's system_id changed from previous line
+                let emit_new_system = if is_first_measure {
+                    starts_new_system
+                } else if is_first_measure_of_line {
+                    prev_system_id.map_or(false, |prev_id| line.system_id != prev_id)
+                } else {
+                    false
+                };
+
+                emit_measure(
+                    &mut builder,
+                    measure,
+                    line,
+                    is_first_measure,
+                    emit_new_system,
+                    beat_count,
+                )?;
+
+                measure_index += 1;
+            }
+
+            // Track this line's system_id for next iteration
+            prev_system_id = Some(line.system_id);
         }
     }
 
@@ -209,6 +280,7 @@ fn emit_combined_part(
 }
 
 /// Emit a single ExportLine as a complete MusicXML <part>
+#[allow(dead_code)]
 fn emit_single_line_as_part(
     export_line: &ExportLine,
     document_key_signature: Option<&str>,
@@ -228,19 +300,30 @@ fn emit_single_line_as_part(
     let beat_count = parse_beat_count(export_line.time_signature.as_deref());
 
     // Process each measure in the line
-    for (measure_index, measure) in export_line.measures.iter().enumerate() {
-        let is_first_measure = measure_index == 0;
-        // Emit new-system on first measure if this part starts a new visual system
-        let emit_new_system = is_first_measure && starts_new_system;
+    if export_line.measures.is_empty() {
+        // Empty line: emit a single measure with a whole rest
+        // MusicXML requires at least one measure per part
+        builder.start_measure_with_divisions(Some(1), starts_new_system, beat_count);
 
-        emit_measure(
-            &mut builder,
-            measure,
-            export_line,
-            is_first_measure,
-            emit_new_system,
-            beat_count,
-        )?;
+        // Add whole rest (duration 4 = whole note in 4/4 time)
+        builder.write_rest(beat_count, beat_count as f64);
+
+        builder.end_measure();
+    } else {
+        for (measure_index, measure) in export_line.measures.iter().enumerate() {
+            let is_first_measure = measure_index == 0;
+            // Emit new-system on first measure if this part starts a new visual system
+            let emit_new_system = is_first_measure && starts_new_system;
+
+            emit_measure(
+                &mut builder,
+                measure,
+                export_line,
+                is_first_measure,
+                emit_new_system,
+                beat_count,
+            )?;
+        }
     }
 
     // Get the accumulated measures from the builder buffer
@@ -683,11 +766,14 @@ mod tests {
         let export_line1 = ExportLine {
             system_id: 1,
             part_id: "P1".to_string(),
+            staff_role: crate::models::core::StaffRole::Melody,
+            staff_role: crate::models::core::StaffRole::Melody,
             label: "Line 1".to_string(),
             key_signature: None,
             time_signature: None,
             clef: "treble".to_string(),
             lyrics: String::new(),
+            show_bracket: true,
             measures: vec![ExportMeasure {
                 divisions: 4,
                 events: vec![ExportEvent::Rest { divisions: 4 }],
@@ -697,11 +783,14 @@ mod tests {
         let export_line2 = ExportLine {
             system_id: 1, // Same system = grouped (bracketed)
             part_id: "P2".to_string(),
+            staff_role: crate::models::core::StaffRole::Melody,
+            staff_role: crate::models::core::StaffRole::Melody,
             label: "Line 2".to_string(),
             key_signature: None,
             time_signature: None,
             clef: "treble".to_string(),
             lyrics: String::new(),
+            show_bracket: true,
             measures: vec![ExportMeasure {
                 divisions: 4,
                 events: vec![ExportEvent::Rest { divisions: 4 }],
@@ -924,6 +1013,388 @@ mod tests {
 
         assert!(before_grace_pos < main_note_pos, "Before-grace should come before main note");
         assert!(main_note_pos < after_grace_pos, "Main note should come before after-grace");
+    }
+
+    #[test]
+    fn test_group_name_in_part_list() {
+        // Test that <group-name> appears in MusicXML when lines have labels in the same system
+        let line1 = ExportLine {
+            system_id: 1,
+            part_id: "P1".to_string(),
+            staff_role: crate::models::core::StaffRole::Melody,
+            key_signature: Some("C major".to_string()),
+            time_signature: Some("4/4".to_string()),
+            clef: "treble".to_string(),
+            label: "Violin I".to_string(), // Should appear in <group-name>
+            show_bracket: true,
+            lyrics: String::new(),
+            measures: vec![ExportMeasure {
+                divisions: 4,
+                events: vec![ExportEvent::Note(NoteData {
+                    pitch: PitchInfo::new(PitchCode::N1, 4),
+                    divisions: 4,
+                    grace_notes_before: Vec::new(),
+                    grace_notes_after: Vec::new(),
+                    lyrics: None,
+                    slur: None,
+                    articulations: Vec::new(),
+                    beam: None,
+                    tie: None,
+                    tuplet: None,
+                })],
+            }],
+        };
+
+        let line2 = ExportLine {
+            system_id: 1, // Same system = grouped
+            part_id: "P2".to_string(),
+            staff_role: crate::models::core::StaffRole::Melody,
+            key_signature: Some("C major".to_string()),
+            time_signature: Some("4/4".to_string()),
+            clef: "treble".to_string(),
+            label: "Violin II".to_string(),
+            show_bracket: true,
+            lyrics: String::new(),
+            measures: vec![ExportMeasure {
+                divisions: 4,
+                events: vec![ExportEvent::Note(NoteData {
+                    pitch: PitchInfo::new(PitchCode::N1, 4),
+                    divisions: 4,
+                    grace_notes_before: Vec::new(),
+                    grace_notes_after: Vec::new(),
+                    lyrics: None,
+                    slur: None,
+                    articulations: Vec::new(),
+                    beam: None,
+                    tie: None,
+                    tuplet: None,
+                })],
+            }],
+        };
+
+        let lines = vec![line1, line2];
+
+        // Generate MusicXML
+        let xml = emit_musicxml(&lines, None, None).expect("Failed to emit MusicXML");
+
+        // Verify output contains:
+        // 1. <part-group> with type="start"
+        assert!(xml.contains("<part-group type=\"start\" number=\"1\">"),
+                "MusicXML should contain part-group start");
+
+        // 2. <group-name> with the first line's label
+        assert!(xml.contains("<group-name>Violin I</group-name>"),
+                "MusicXML should contain group-name with first line's label");
+
+        // 3. <group-symbol>bracket</group-symbol>
+        assert!(xml.contains("<group-symbol>bracket</group-symbol>"),
+                "MusicXML should contain group-symbol bracket");
+
+        // 4. <group-barline>yes</group-barline>
+        assert!(xml.contains("<group-barline>yes</group-barline>"),
+                "MusicXML should contain group-barline yes");
+
+        // 5. <part-group> with type="stop"
+        assert!(xml.contains("<part-group type=\"stop\" number=\"1\"/>"),
+                "MusicXML should contain part-group stop");
+    }
+
+    #[test]
+    fn test_group_header_with_two_melodies_separate_systems() {
+        // Test "G M M" pattern: Group Header + 2 Melody lines as SEPARATE systems
+        // Each line should be independent - NO bracket groups
+        let line1 = ExportLine {
+            system_id: 1, // Separate system
+            part_id: "P1".to_string(),
+            staff_role: crate::models::core::StaffRole::Melody,
+            key_signature: Some("C major".to_string()),
+            time_signature: Some("4/4".to_string()),
+            clef: "treble".to_string(),
+            label: "Strings".to_string(), // Group header
+            show_bracket: true,
+            lyrics: String::new(),
+            measures: vec![ExportMeasure {
+                divisions: 4,
+                events: vec![ExportEvent::Note(NoteData {
+                    pitch: PitchInfo::new(PitchCode::N1, 4),
+                    divisions: 4,
+                    grace_notes_before: Vec::new(),
+                    grace_notes_after: Vec::new(),
+                    lyrics: None,
+                    slur: None,
+                    articulations: Vec::new(),
+                    beam: None,
+                    tie: None,
+                    tuplet: None,
+                })],
+            }],
+        };
+
+        let line2 = ExportLine {
+            system_id: 2, // DIFFERENT system - separate
+            part_id: "P2".to_string(),
+            staff_role: crate::models::core::StaffRole::Melody,
+            key_signature: Some("C major".to_string()),
+            time_signature: Some("4/4".to_string()),
+            clef: "treble".to_string(),
+            label: "Violin I".to_string(), // Melody 1
+            show_bracket: true,
+            lyrics: String::new(),
+            measures: vec![ExportMeasure {
+                divisions: 4,
+                events: vec![ExportEvent::Note(NoteData {
+                    pitch: PitchInfo::new(PitchCode::N2, 4),
+                    divisions: 4,
+                    grace_notes_before: Vec::new(),
+                    grace_notes_after: Vec::new(),
+                    lyrics: None,
+                    slur: None,
+                    articulations: Vec::new(),
+                    beam: None,
+                    tie: None,
+                    tuplet: None,
+                })],
+            }],
+        };
+
+        let line3 = ExportLine {
+            system_id: 3, // DIFFERENT system - separate
+            part_id: "P3".to_string(),
+            staff_role: crate::models::core::StaffRole::Melody,
+            key_signature: Some("C major".to_string()),
+            time_signature: Some("4/4".to_string()),
+            clef: "treble".to_string(),
+            label: "Violin II".to_string(), // Melody 2
+            show_bracket: true,
+            lyrics: String::new(),
+            measures: vec![ExportMeasure {
+                divisions: 4,
+                events: vec![ExportEvent::Note(NoteData {
+                    pitch: PitchInfo::new(PitchCode::N3, 4),
+                    divisions: 4,
+                    grace_notes_before: Vec::new(),
+                    grace_notes_after: Vec::new(),
+                    lyrics: None,
+                    slur: None,
+                    articulations: Vec::new(),
+                    beam: None,
+                    tie: None,
+                    tuplet: None,
+                })],
+            }],
+        };
+
+        let lines = vec![line1, line2, line3];
+
+        // Generate MusicXML
+        let xml = emit_musicxml(&lines, None, None).expect("Failed to emit MusicXML");
+
+        // Debug output
+        eprintln!("\n=== G M M PATTERN (SEPARATE SYSTEMS) XML ===\n{}\n=== END ===\n", xml);
+
+        // Should have all three parts
+        assert!(xml.contains("<score-part id=\"P1\">"),
+                "Should have P1 (group header)");
+        assert!(xml.contains("<score-part id=\"P2\">"),
+                "Should have P2 (melody 1)");
+        assert!(xml.contains("<score-part id=\"P3\">"),
+                "Should have P3 (melody 2)");
+
+        // CRITICAL: Should NOT have any part-group elements
+        // Each line is a separate system, so no brackets
+        assert!(!xml.contains("<part-group"),
+                "FAIL: Should NOT have any part-group elements for separate systems (G M M pattern)");
+    }
+
+    #[test]
+    fn test_group_header_with_two_items_single_system() {
+        // Test "G GI GI" pattern: Group Header + 2 Group Items = ONE BRACKETED SYSTEM
+        // All lines have same system_id = bracketed together
+        let line1 = ExportLine {
+            system_id: 1, // SAME system
+            part_id: "P1".to_string(),
+            staff_role: crate::models::core::StaffRole::Melody,
+            key_signature: Some("C major".to_string()),
+            time_signature: Some("4/4".to_string()),
+            clef: "treble".to_string(),
+            label: "Strings".to_string(), // Group header
+            show_bracket: true,
+            lyrics: String::new(),
+            measures: vec![ExportMeasure {
+                divisions: 4,
+                events: vec![ExportEvent::Note(NoteData {
+                    pitch: PitchInfo::new(PitchCode::N1, 4),
+                    divisions: 4,
+                    grace_notes_before: Vec::new(),
+                    grace_notes_after: Vec::new(),
+                    lyrics: None,
+                    slur: None,
+                    articulations: Vec::new(),
+                    beam: None,
+                    tie: None,
+                    tuplet: None,
+                })],
+            }],
+        };
+
+        let line2 = ExportLine {
+            system_id: 1, // SAME system - bracketed
+            part_id: "P2".to_string(),
+            staff_role: crate::models::core::StaffRole::Melody,
+            key_signature: Some("C major".to_string()),
+            time_signature: Some("4/4".to_string()),
+            clef: "treble".to_string(),
+            label: "Violin I".to_string(), // Group item 1
+            show_bracket: true,
+            lyrics: String::new(),
+            measures: vec![ExportMeasure {
+                divisions: 4,
+                events: vec![ExportEvent::Note(NoteData {
+                    pitch: PitchInfo::new(PitchCode::N2, 4),
+                    divisions: 4,
+                    grace_notes_before: Vec::new(),
+                    grace_notes_after: Vec::new(),
+                    lyrics: None,
+                    slur: None,
+                    articulations: Vec::new(),
+                    beam: None,
+                    tie: None,
+                    tuplet: None,
+                })],
+            }],
+        };
+
+        let line3 = ExportLine {
+            system_id: 1, // SAME system - bracketed
+            part_id: "P3".to_string(),
+            staff_role: crate::models::core::StaffRole::Melody,
+            key_signature: Some("C major".to_string()),
+            time_signature: Some("4/4".to_string()),
+            clef: "treble".to_string(),
+            label: "Violin II".to_string(), // Group item 2
+            show_bracket: true,
+            lyrics: String::new(),
+            measures: vec![ExportMeasure {
+                divisions: 4,
+                events: vec![ExportEvent::Note(NoteData {
+                    pitch: PitchInfo::new(PitchCode::N3, 4),
+                    divisions: 4,
+                    grace_notes_before: Vec::new(),
+                    grace_notes_after: Vec::new(),
+                    lyrics: None,
+                    slur: None,
+                    articulations: Vec::new(),
+                    beam: None,
+                    tie: None,
+                    tuplet: None,
+                })],
+            }],
+        };
+
+        let lines = vec![line1, line2, line3];
+
+        // Generate MusicXML
+        let xml = emit_musicxml(&lines, None, None).expect("Failed to emit MusicXML");
+
+        // Debug output
+        eprintln!("\n=== G GI GI PATTERN (SINGLE BRACKETED SYSTEM) XML ===\n{}\n=== END ===\n", xml);
+
+        // Should have all three parts
+        assert!(xml.contains("<score-part id=\"P1\">"),
+                "Should have P1 (group header)");
+        assert!(xml.contains("<score-part id=\"P2\">"),
+                "Should have P2 (group item 1)");
+        assert!(xml.contains("<score-part id=\"P3\">"),
+                "Should have P3 (group item 2)");
+
+        // CRITICAL: Should have bracket group (all same system_id)
+        assert!(xml.contains("<part-group type=\"start\" number=\"1\">"),
+                "Should have part-group start for single system");
+        assert!(xml.contains("<group-name>Strings</group-name>"),
+                "Group name should be from group header (P1)");
+        assert!(xml.contains("<group-symbol>bracket</group-symbol>"),
+                "Should have bracket symbol");
+        assert!(xml.contains("<group-barline>yes</group-barline>"),
+                "Should have shared barlines");
+        assert!(xml.contains("<part-group type=\"stop\" number=\"1\"/>"),
+                "Should have part-group stop");
+
+        // Verify ordering
+        let group_start_pos = xml.find("<part-group type=\"start\"").expect("No group start");
+        let p1_pos = xml.find("<score-part id=\"P1\">").expect("No P1");
+        let p2_pos = xml.find("<score-part id=\"P2\">").expect("No P2");
+        let p3_pos = xml.find("<score-part id=\"P3\">").expect("No P3");
+        let group_stop_pos = xml.find("<part-group type=\"stop\"").expect("No group stop");
+
+        assert!(group_start_pos < p1_pos, "Group start before P1");
+        assert!(p1_pos < p2_pos, "P1 before P2");
+        assert!(p2_pos < p3_pos, "P2 before P3");
+        assert!(p3_pos < group_stop_pos, "P3 before group stop");
+    }
+
+    #[test]
+    fn test_group_name_hidden_bracket() {
+        // Test that print-object="no" appears when show_bracket is false
+        let line1 = ExportLine {
+            system_id: 1,
+            part_id: "P1".to_string(),
+            staff_role: crate::models::core::StaffRole::Melody,
+            key_signature: Some("C major".to_string()),
+            time_signature: Some("4/4".to_string()),
+            clef: "treble".to_string(),
+            label: "Piano".to_string(),
+            show_bracket: false, // Hide bracket
+            lyrics: String::new(),
+            measures: vec![ExportMeasure {
+                divisions: 4,
+                events: vec![ExportEvent::Note(NoteData {
+                    pitch: PitchInfo::new(PitchCode::N1, 4),
+                    divisions: 4,
+                    grace_notes_before: Vec::new(),
+                    grace_notes_after: Vec::new(),
+                    lyrics: None,
+                    slur: None,
+                    articulations: Vec::new(),
+                    beam: None,
+                    tie: None,
+                    tuplet: None,
+                })],
+            }],
+        };
+
+        let line2 = ExportLine {
+            system_id: 1,
+            part_id: "P2".to_string(),
+            staff_role: crate::models::core::StaffRole::Melody,
+            key_signature: Some("C major".to_string()),
+            time_signature: Some("4/4".to_string()),
+            clef: "bass".to_string(),
+            label: String::new(),
+            show_bracket: false, // Hide bracket
+            lyrics: String::new(),
+            measures: vec![ExportMeasure {
+                divisions: 4,
+                events: vec![ExportEvent::Note(NoteData {
+                    pitch: PitchInfo::new(PitchCode::N1, 4),
+                    divisions: 4,
+                    grace_notes_before: Vec::new(),
+                    grace_notes_after: Vec::new(),
+                    lyrics: None,
+                    slur: None,
+                    articulations: Vec::new(),
+                    beam: None,
+                    tie: None,
+                    tuplet: None,
+                })],
+            }],
+        };
+
+        let lines = vec![line1, line2];
+        let xml = emit_musicxml(&lines, None, None).expect("Failed to emit MusicXML");
+
+        // Verify bracket is hidden
+        assert!(xml.contains("print-object=\"no\""),
+                "MusicXML should contain print-object=\"no\" when show_bracket is false");
     }
 
 }

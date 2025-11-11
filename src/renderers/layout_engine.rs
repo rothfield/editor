@@ -715,11 +715,11 @@ impl LayoutEngine {
             .collect()
     }
 
-    /// TEMPORARILY DISABLED: Position ornaments relative to their target cells
-    /// This function uses old data structures (RenderOrnament, RenderOrnamentCell, cell.ornaments field)
-    /// Will be re-implemented for User Story 3 (edit mode ornaments with cell.ornaments field)
-    ///
-    /// For now, ornament positioning for User Story 1 is handled in JavaScript renderer (src/js/renderer.js)
+    // TEMPORARILY DISABLED: Position ornaments relative to their target cells
+    // This function uses old data structures (RenderOrnament, RenderOrnamentCell, cell.ornaments field)
+    // Will be re-implemented for User Story 3 (edit mode ornaments with cell.ornaments field)
+    //
+    // For now, ornament positioning for User Story 1 is handled in JavaScript renderer (src/js/renderer.js)
     /*
     fn position_ornaments(
         &self,
@@ -1076,9 +1076,6 @@ pub fn layout_with_collision_detection(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::core::Cell;
-    use crate::models::elements::{ElementKind, OrnamentPositionType};
-
 
     #[test]
     fn test_detect_collisions_no_overlap() {

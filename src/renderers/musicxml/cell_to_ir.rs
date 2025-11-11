@@ -969,6 +969,7 @@ pub fn build_export_measures_from_document(document: &Document) -> Vec<ExportLin
         let export_line = ExportLine {
             system_id: line.system_id,
             part_id: line.part_id.clone(),
+            staff_role: line.staff_role,
             key_signature: if line.key_signature.is_empty() {
                 document.key_signature.clone()
             } else {
@@ -981,6 +982,7 @@ pub fn build_export_measures_from_document(document: &Document) -> Vec<ExportLin
             },
             clef: "treble".to_string(), // TODO: derive from line metadata
             label: line.label.clone(),
+            show_bracket: true,  // Default to showing brackets; can be controlled per-line later
             lyrics: line.lyrics.clone(),
             measures,
         };

@@ -1195,11 +1195,24 @@ class DOMRenderer {
 
     // Create gutter column (icon + label)
     const gutter = document.createElement('div');
-    gutter.className = this.gutterCollapsed ? 'line-gutter gutter-collapsed' : 'line-gutter';
+    const hasLabel = !!renderLine.label;
+    const gutterClass = this.gutterCollapsed
+      ? 'line-gutter gutter-collapsed'
+      : hasLabel ? 'line-gutter has-label' : 'line-gutter';
+    gutter.className = gutterClass;
 
     // Gutter icon (role indicator)
     const gutterIcon = document.createElement('span');
     gutterIcon.className = 'gutter-icon';
+
+    // Add tooltip based on role
+    const roleTooltips = {
+      'melody': 'Melody - Independent staff line',
+      'group-header': 'Group Header - Groups multiple staves',
+      'group-item': 'Group Member - Part of a staff group'
+    };
+    gutterIcon.title = roleTooltips[lineRole] || 'Staff line';
+
     gutter.appendChild(gutterIcon);
 
     // Label in gutter (if present)

@@ -45,6 +45,11 @@ pub struct ExportLine {
     #[serde(default)]
     pub part_id: String,
 
+    /// Staff role (Melody, GroupHeader, GroupItem)
+    /// Used to determine part name assignment
+    #[serde(default)]
+    pub staff_role: crate::models::core::StaffRole,
+
     /// Key signature string (e.g., "G major" or "F#m")
     /// Set at part level in MusicXML, shared across all measures
     pub key_signature: Option<String>,
@@ -60,6 +65,12 @@ pub struct ExportLine {
     #[serde(default)]
     pub label: String,
 
+    /// Whether to show bracket/brace for this line's system group in MusicXML
+    /// If false, uses print-object="no" on <part-group>
+    /// Default: true
+    #[serde(default = "default_true")]
+    pub show_bracket: bool,
+
     /// Measures in this line
     pub measures: Vec<ExportMeasure>,
 
@@ -68,10 +79,15 @@ pub struct ExportLine {
     pub lyrics: String,
 }
 
+fn default_true() -> bool {
+    true
+}
+
 impl ExportLine {
     pub fn new(
         system_id: usize,
         part_id: String,
+        staff_role: crate::models::core::StaffRole,
         key_signature: Option<String>,
         time_signature: Option<String>,
         clef: String,
@@ -81,10 +97,12 @@ impl ExportLine {
         ExportLine {
             system_id,
             part_id,
+            staff_role,
             key_signature,
             time_signature,
             clef,
             label,
+            show_bracket: true,  // Default to showing brackets
             measures: Vec::new(),
             lyrics,
         }
@@ -342,6 +360,7 @@ mod tests {
         let line = ExportLine::new(
             1,
             "P1".to_string(),
+            crate::models::core::StaffRole::Melody,
             Some("G major".to_string()),
             Some("4/4".to_string()),
             "treble".to_string(),

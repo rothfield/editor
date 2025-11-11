@@ -10,8 +10,9 @@
 
 /* Gutter column (left side) */
 .line-gutter {
-  width: 80px;
-  min-width: 80px;
+  /* Default: narrow (icon only) */
+  width: 28px;
+  min-width: 28px;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -22,6 +23,12 @@
   user-select: none;
   transition: width 0.2s ease-in-out, min-width 0.2s ease-in-out, padding 0.2s ease-in-out, opacity 0.2s ease-in-out;
   overflow: hidden;
+}
+
+/* Gutter with label: wider to accommodate text */
+.line-gutter.has-label {
+  width: 80px;
+  min-width: 80px;
 }
 
 /* Gutter collapsed state */
@@ -91,6 +98,10 @@
 }
 
 /* Group item */
+.role-group-item .gutter-icon {
+  padding-left: 12px; /* Indent to show hierarchy */
+}
+
 .role-group-item .gutter-icon::before {
   content: "•";
   color: #666;
@@ -98,15 +109,19 @@
 }
 
 .role-group-item .line-label {
-  padding-left: 12px;
   font-weight: 400;
 }
 
+/* Add indent for group-item labels when gutter has label */
+.role-group-item .line-gutter.has-label .line-label {
+  padding-left: 12px;
+}
+
 /* Vertical line connecting group items */
-.role-group-item::before {
+.role-group-item .line-gutter::before {
   content: "";
   position: absolute;
-  left: 12px;
+  left: 8px;
   top: 0;
   bottom: 0;
   border-left: 1px solid #ccc;
