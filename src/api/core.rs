@@ -18,6 +18,13 @@ lazy_static! {
     static ref DOCUMENT: Mutex<Option<Document>> = Mutex::new(None);
 }
 
+// Helper functions for safe document access
+/// Safely lock the DOCUMENT mutex, converting poison errors to JsValue
+fn lock_document() -> Result<std::sync::MutexGuard<'static, Option<Document>>, JsValue> {
+    DOCUMENT.lock()
+        .map_err(|e| JsValue::from_str(&format!("Document lock poisoned: {}", e)))
+}
+
 // Logging macros for WASM
 #[wasm_bindgen]
 extern "C" {
@@ -325,7 +332,7 @@ pub fn set_title_legacy(
 pub fn set_title(title: &str) -> Result<(), JsValue> {
     wasm_info!("setTitle called (Phase 1): title='{}'", title);
 
-    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let mut doc_guard = lock_document()?;
     let doc = doc_guard.as_mut()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
@@ -386,7 +393,7 @@ pub fn set_composer_legacy(
 pub fn set_composer(composer: &str) -> Result<(), JsValue> {
     wasm_info!("setComposer called (Phase 1): composer='{}'", composer);
 
-    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let mut doc_guard = lock_document()?;
     let doc = doc_guard.as_mut()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
@@ -460,7 +467,7 @@ pub fn set_document_pitch_system_legacy(
 pub fn set_document_pitch_system(pitch_system: u8) -> Result<(), JsValue> {
     wasm_info!("setDocumentPitchSystem called (Phase 1): pitch_system={}", pitch_system);
 
-    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let mut doc_guard = lock_document()?;
     let doc = doc_guard.as_mut()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
@@ -837,7 +844,7 @@ pub fn set_line_staff_role(line_index: usize, role: String) -> Result<(), JsValu
     wasm_info!("setLineStaffRole called: line_index={}, role={}", line_index, role);
 
     // Access internal WASM document
-    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let mut doc_guard = lock_document()?;
     let document = doc_guard.as_mut()
         .ok_or_else(|| {
             wasm_error!("No document loaded");
@@ -887,7 +894,7 @@ pub fn edit_replace_range(
 ) -> Result<JsValue, JsValue> {
     wasm_info!("editReplaceRange: ({},{})-({},{}) text={:?}", start_row, start_col, end_row, end_col, text);
 
-    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let mut doc_guard = lock_document()?;
     let doc = doc_guard.as_mut()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
@@ -1056,7 +1063,7 @@ pub fn insert_text(text: &str) -> Result<JsValue, JsValue> {
         return Err(JsValue::from_str("Cannot insert empty text"));
     }
 
-    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let mut doc_guard = lock_document()?;
     let doc = doc_guard.as_mut()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
@@ -1163,7 +1170,7 @@ pub fn insert_text(text: &str) -> Result<JsValue, JsValue> {
 pub fn delete_at_cursor() -> Result<JsValue, JsValue> {
     wasm_info!("deleteAtCursor called (backspace behavior)");
 
-    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let mut doc_guard = lock_document()?;
     let doc = doc_guard.as_mut()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
@@ -1294,7 +1301,7 @@ pub fn delete_at_cursor() -> Result<JsValue, JsValue> {
 pub fn insert_newline() -> Result<JsValue, JsValue> {
     wasm_info!("insertNewline called");
 
-    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let mut doc_guard = lock_document()?;
     let doc = doc_guard.as_mut()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
@@ -1417,7 +1424,7 @@ pub fn apply_octave(octave: i8) -> Result<JsValue, JsValue> {
         return Err(JsValue::from_str(&format!("Invalid octave value: {}", octave)));
     }
 
-    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let mut doc_guard = lock_document()?;
     let doc = doc_guard.as_mut()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
@@ -1524,7 +1531,7 @@ pub fn apply_octave(octave: i8) -> Result<JsValue, JsValue> {
 pub fn apply_slur() -> Result<JsValue, JsValue> {
     wasm_info!("applySlur called");
 
-    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let mut doc_guard = lock_document()?;
     let doc = doc_guard.as_mut()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
@@ -1633,7 +1640,7 @@ pub fn apply_slur() -> Result<JsValue, JsValue> {
 pub fn remove_slur() -> Result<JsValue, JsValue> {
     wasm_info!("removeSlur called");
 
-    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let mut doc_guard = lock_document()?;
     let doc = doc_guard.as_mut()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
@@ -1719,7 +1726,7 @@ pub fn copy_cells(
 ) -> Result<JsValue, JsValue> {
     wasm_info!("copyCells: ({},{})-({},{})", start_row, start_col, end_row, end_col);
 
-    let doc_guard = DOCUMENT.lock().unwrap();
+    let doc_guard = lock_document()?;
     let doc = doc_guard.as_ref()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
@@ -1769,7 +1776,7 @@ pub fn paste_cells(
 ) -> Result<JsValue, JsValue> {
     wasm_info!("pasteCells: ({},{})-({},{})", start_row, start_col, end_row, end_col);
 
-    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let mut doc_guard = lock_document()?;
     let doc = doc_guard.as_mut()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
@@ -1908,7 +1915,7 @@ pub fn paste_cells(
 /// Returns { text: String, cells: Cell[] } or null if empty
 #[wasm_bindgen(js_name = getPrimarySelection)]
 pub fn get_primary_selection() -> Result<JsValue, JsValue> {
-    let doc_guard = DOCUMENT.lock().unwrap();
+    let doc_guard = lock_document()?;
     let doc = doc_guard.as_ref()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
@@ -1942,7 +1949,7 @@ pub fn update_primary_selection(
 ) -> Result<(), JsValue> {
     wasm_info!("updatePrimarySelection: ({},{})-({},{})", start_row, start_col, end_row, end_col);
 
-    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let mut doc_guard = lock_document()?;
     let doc = doc_guard.as_mut()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
@@ -1980,7 +1987,7 @@ pub fn update_primary_selection(
 pub fn undo() -> Result<JsValue, JsValue> {
     wasm_info!("undo called");
 
-    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let mut doc_guard = lock_document()?;
     let doc = doc_guard.as_mut()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
@@ -2029,7 +2036,7 @@ pub fn undo() -> Result<JsValue, JsValue> {
 pub fn redo() -> Result<JsValue, JsValue> {
     wasm_info!("redo called");
 
-    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let mut doc_guard = lock_document()?;
     let doc = doc_guard.as_mut()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
@@ -2077,7 +2084,7 @@ pub fn redo() -> Result<JsValue, JsValue> {
 /// Check if undo is available
 #[wasm_bindgen(js_name = canUndo)]
 pub fn can_undo() -> Result<bool, JsValue> {
-    let doc_guard = DOCUMENT.lock().unwrap();
+    let doc_guard = lock_document()?;
     Ok(doc_guard.as_ref().map_or(false, |d| {
         d.state.history_index > 0
     }))
@@ -2086,7 +2093,7 @@ pub fn can_undo() -> Result<bool, JsValue> {
 /// Check if redo is available
 #[wasm_bindgen(js_name = canRedo)]
 pub fn can_redo() -> Result<bool, JsValue> {
-    let doc_guard = DOCUMENT.lock().unwrap();
+    let doc_guard = lock_document()?;
     Ok(doc_guard.as_ref().map_or(false, |d| {
         d.state.history_index < d.state.history.len()
     }))
@@ -2112,14 +2119,14 @@ pub fn load_document(document_js: JsValue) -> Result<(), JsValue> {
 
     // Preserve the SelectionManager state from the existing document (if any)
     // This prevents losing selection state when reloading the document
-    if let Some(existing_doc) = DOCUMENT.lock().unwrap().as_ref() {
+    if let Some(existing_doc) = lock_document()?.as_ref() {
         doc.state.selection_manager = existing_doc.state.selection_manager.clone();
     }
 
     // Recalculate system_id and part_id for backward compatibility with old documents
     doc.recalculate_system_and_part_ids();
 
-    *DOCUMENT.lock().unwrap() = Some(doc);
+    *lock_document()? = Some(doc);
     wasm_info!("loadDocument completed successfully");
     Ok(())
 }
@@ -2129,7 +2136,7 @@ pub fn load_document(document_js: JsValue) -> Result<(), JsValue> {
 pub fn get_document_snapshot() -> Result<JsValue, JsValue> {
     wasm_info!("getDocumentSnapshot called");
 
-    let doc_guard = DOCUMENT.lock().unwrap();
+    let doc_guard = lock_document()?;
     match doc_guard.as_ref() {
         Some(doc) => {
             serde_wasm_bindgen::to_value(doc)
@@ -2172,7 +2179,7 @@ pub fn create_new_document() -> Result<JsValue, JsValue> {
     document.compute_glyphs();
 
     // Store in internal WASM storage for edit operations
-    *DOCUMENT.lock().unwrap() = Some(document.clone());
+    *lock_document()? = Some(document.clone());
 
     // Serialize to JavaScript
     let result = serde_wasm_bindgen::to_value(&document)
@@ -2198,7 +2205,7 @@ pub fn export_musicxml() -> Result<String, JsValue> {
 
     // Use WASM's internal document instead of accepting from JavaScript
     // This ensures we have the latest metadata (part_id, system_id) after edit operations
-    let doc_guard = DOCUMENT.lock().unwrap();
+    let doc_guard = lock_document()?;
     let document = doc_guard.as_ref()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
@@ -2240,7 +2247,7 @@ pub fn generate_ir_json() -> Result<String, JsValue> {
     wasm_info!("generateIRJson called (using internal WASM document)");
 
     // Use WASM's internal document instead of accepting from JavaScript
-    let doc_guard = DOCUMENT.lock().unwrap();
+    let doc_guard = lock_document()?;
     let document = doc_guard.as_ref()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
@@ -2282,7 +2289,7 @@ pub fn export_midi(tpq: u16) -> Result<js_sys::Uint8Array, JsValue> {
     wasm_info!("exportMIDI called with tpq={} (using internal WASM document)", tpq);
 
     // Use WASM's internal document instead of accepting from JavaScript
-    let doc_guard = DOCUMENT.lock().unwrap();
+    let doc_guard = lock_document()?;
     let document = doc_guard.as_ref()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
@@ -2566,7 +2573,7 @@ pub fn split_line_at_position(
 /// Returns CaretInfo with cursor position and desired column for vertical movement
 #[wasm_bindgen(js_name = getCaretInfo)]
 pub fn get_caret_info() -> Result<JsValue, JsValue> {
-    let doc_guard = DOCUMENT.lock().unwrap();
+    let doc_guard = lock_document()?;
     let doc = doc_guard.as_ref()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
@@ -2583,7 +2590,7 @@ pub fn get_caret_info() -> Result<JsValue, JsValue> {
 /// Returns SelectionInfo with anchor, head, start, end, direction, isEmpty
 #[wasm_bindgen(js_name = getSelectionInfo)]
 pub fn get_selection_info() -> Result<JsValue, JsValue> {
-    let doc_guard = DOCUMENT.lock().unwrap();
+    let doc_guard = lock_document()?;
     let doc = doc_guard.as_ref()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
@@ -2608,7 +2615,7 @@ pub fn set_selection(anchor: JsValue, head: JsValue) -> Result<(), JsValue> {
     let head_pos: crate::models::Pos = serde_wasm_bindgen::from_value(head)
         .map_err(|e| JsValue::from_str(&format!("Invalid head position: {}", e)))?;
 
-    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let mut doc_guard = lock_document()?;
     let doc = doc_guard.as_mut()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
@@ -2620,7 +2627,7 @@ pub fn set_selection(anchor: JsValue, head: JsValue) -> Result<(), JsValue> {
 /// Clear current selection
 #[wasm_bindgen(js_name = clearSelection)]
 pub fn clear_selection() -> Result<(), JsValue> {
-    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let mut doc_guard = lock_document()?;
     let doc = doc_guard.as_mut()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
@@ -2632,7 +2639,7 @@ pub fn clear_selection() -> Result<(), JsValue> {
 /// Start a new selection at the current cursor position
 #[wasm_bindgen(js_name = startSelection)]
 pub fn start_selection() -> Result<(), JsValue> {
-    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let mut doc_guard = lock_document()?;
     let doc = doc_guard.as_mut()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
@@ -2645,7 +2652,7 @@ pub fn start_selection() -> Result<(), JsValue> {
 /// Extend selection to the current cursor position (updates head, keeps anchor)
 #[wasm_bindgen(js_name = extendSelection)]
 pub fn extend_selection() -> Result<(), JsValue> {
-    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let mut doc_guard = lock_document()?;
     let doc = doc_guard.as_mut()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
@@ -2682,7 +2689,7 @@ fn create_editor_diff(doc: &Document, dirty_line: Option<usize>) -> EditorDiff {
 
 #[wasm_bindgen(js_name = moveLeft)]
 pub fn move_left(extend: bool) -> Result<JsValue, JsValue> {
-    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let mut doc_guard = lock_document()?;
     let doc = doc_guard.as_mut()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
@@ -2727,7 +2734,7 @@ pub fn move_left(extend: bool) -> Result<JsValue, JsValue> {
 
 #[wasm_bindgen(js_name = moveRight)]
 pub fn move_right(extend: bool) -> Result<JsValue, JsValue> {
-    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let mut doc_guard = lock_document()?;
     let doc = doc_guard.as_mut()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
@@ -2772,7 +2779,7 @@ pub fn move_right(extend: bool) -> Result<JsValue, JsValue> {
 
 #[wasm_bindgen(js_name = moveUp)]
 pub fn move_up(extend: bool) -> Result<JsValue, JsValue> {
-    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let mut doc_guard = lock_document()?;
     let doc = doc_guard.as_mut()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
@@ -2806,7 +2813,7 @@ pub fn move_up(extend: bool) -> Result<JsValue, JsValue> {
 
 #[wasm_bindgen(js_name = moveDown)]
 pub fn move_down(extend: bool) -> Result<JsValue, JsValue> {
-    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let mut doc_guard = lock_document()?;
     let doc = doc_guard.as_mut()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
@@ -2840,7 +2847,7 @@ pub fn move_down(extend: bool) -> Result<JsValue, JsValue> {
 
 #[wasm_bindgen(js_name = moveHome)]
 pub fn move_home(extend: bool) -> Result<JsValue, JsValue> {
-    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let mut doc_guard = lock_document()?;
     let doc = doc_guard.as_mut()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
@@ -2866,7 +2873,7 @@ pub fn move_home(extend: bool) -> Result<JsValue, JsValue> {
 
 #[wasm_bindgen(js_name = moveEnd)]
 pub fn move_end(extend: bool) -> Result<JsValue, JsValue> {
-    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let mut doc_guard = lock_document()?;
     let doc = doc_guard.as_mut()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
@@ -2892,7 +2899,7 @@ pub fn move_end(extend: bool) -> Result<JsValue, JsValue> {
 
 #[wasm_bindgen(js_name = mouseDown)]
 pub fn mouse_down(pos_js: JsValue) -> Result<JsValue, JsValue> {
-    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let mut doc_guard = lock_document()?;
     let doc = doc_guard.as_mut()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
@@ -2912,7 +2919,7 @@ pub fn mouse_down(pos_js: JsValue) -> Result<JsValue, JsValue> {
 
 #[wasm_bindgen(js_name = mouseMove)]
 pub fn mouse_move(pos_js: JsValue) -> Result<JsValue, JsValue> {
-    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let mut doc_guard = lock_document()?;
     let doc = doc_guard.as_mut()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
@@ -2931,7 +2938,7 @@ pub fn mouse_move(pos_js: JsValue) -> Result<JsValue, JsValue> {
 
 #[wasm_bindgen(js_name = mouseUp)]
 pub fn mouse_up(pos_js: JsValue) -> Result<JsValue, JsValue> {
-    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let mut doc_guard = lock_document()?;
     let doc = doc_guard.as_mut()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
@@ -2961,7 +2968,7 @@ pub fn mouse_up(pos_js: JsValue) -> Result<JsValue, JsValue> {
 /// Returns an EditorDiff with the updated selection and cursor state
 #[wasm_bindgen(js_name = selectBeatAtPosition)]
 pub fn select_beat_at_position(pos_js: JsValue) -> Result<JsValue, JsValue> {
-    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let mut doc_guard = lock_document()?;
     let doc = doc_guard.as_mut()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
@@ -3086,7 +3093,7 @@ pub fn select_beat_at_position(pos_js: JsValue) -> Result<JsValue, JsValue> {
 /// Returns an EditorDiff with the updated selection and cursor state
 #[wasm_bindgen(js_name = selectLineAtPosition)]
 pub fn select_line_at_position(pos_js: JsValue) -> Result<JsValue, JsValue> {
-    let mut doc_guard = DOCUMENT.lock().unwrap();
+    let mut doc_guard = lock_document()?;
     let doc = doc_guard.as_mut()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
@@ -3128,7 +3135,7 @@ pub fn select_line_at_position(pos_js: JsValue) -> Result<JsValue, JsValue> {
 pub fn copy_ornament() -> Result<String, JsValue> {
     wasm_info!("copyOrnament called");
 
-    let doc = DOCUMENT.lock().unwrap();
+    let doc = lock_document()?;
     let doc = doc.as_ref()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
@@ -3176,7 +3183,7 @@ pub fn copy_ornament() -> Result<String, JsValue> {
 pub fn clear_ornament() -> Result<JsValue, JsValue> {
     wasm_info!("clearOrnament called");
 
-    let mut doc = DOCUMENT.lock().unwrap();
+    let mut doc = lock_document()?;
     let doc = doc.as_mut()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
@@ -3223,7 +3230,7 @@ pub fn set_ornament_placement(placement: &str) -> Result<JsValue, JsValue> {
 
     wasm_info!("setOrnamentPlacement called: placement={}", placement);
 
-    let mut doc = DOCUMENT.lock().unwrap();
+    let mut doc = lock_document()?;
     let doc = doc.as_mut()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
@@ -3273,7 +3280,7 @@ pub fn set_ornament_placement(placement: &str) -> Result<JsValue, JsValue> {
 pub fn copy_ornament_as_notation(cell_index: usize) -> Result<String, JsValue> {
     wasm_warn!("copyOrnamentAsNotation is DEPRECATED - use copyOrnament instead");
 
-    let doc = DOCUMENT.lock().unwrap();
+    let doc = lock_document()?;
     let doc = doc.as_ref()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
@@ -3307,7 +3314,7 @@ pub fn paste_ornament(
 
     wasm_info!("pasteOrnament called: notation={:?}, placement={}", notation_text, placement);
 
-    let mut doc = DOCUMENT.lock().unwrap();
+    let mut doc = lock_document()?;
     let doc = doc.as_mut()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
@@ -3377,7 +3384,7 @@ pub fn paste_ornament_from_notation(
 
     use crate::models::elements::{Ornament, OrnamentPlacement};
 
-    let mut doc = DOCUMENT.lock().unwrap();
+    let mut doc = lock_document()?;
     let doc = doc.as_mut()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
@@ -3756,7 +3763,7 @@ mod tests {
 
         // Store document in GLOBAL
         {
-            let mut guard = DOCUMENT.lock().unwrap();
+            let mut guard = lock_document()?;
             *guard = Some(doc);
         }
 
@@ -3798,7 +3805,7 @@ mod tests {
         doc.lines.push(line);
 
         {
-            let mut guard = DOCUMENT.lock().unwrap();
+            let mut guard = lock_document()?;
             *guard = Some(doc);
         }
 
@@ -3841,7 +3848,7 @@ mod tests {
         doc.lines.push(line);
 
         {
-            let mut guard = DOCUMENT.lock().unwrap();
+            let mut guard = lock_document()?;
             *guard = Some(doc);
         }
 
@@ -3902,7 +3909,7 @@ mod tests {
         doc.lines.push(line);
 
         {
-            let mut guard = DOCUMENT.lock().unwrap();
+            let mut guard = lock_document()?;
             *guard = Some(doc);
         }
 
@@ -3967,7 +3974,7 @@ mod tests {
         doc.lines.push(line);
 
         {
-            let mut guard = DOCUMENT.lock().unwrap();
+            let mut guard = lock_document()?;
             *guard = Some(doc);
         }
 
@@ -4016,7 +4023,7 @@ mod tests {
         doc.lines.push(line);
 
         {
-            let mut guard = DOCUMENT.lock().unwrap();
+            let mut guard = lock_document()?;
             *guard = Some(doc);
         }
 
@@ -4025,7 +4032,7 @@ mod tests {
         assert!(result.is_ok(), "edit_replace_range should succeed");
 
         // Check that line is now empty
-        let doc_guard = DOCUMENT.lock().unwrap();
+        let doc_guard = lock_document()?;
         let doc = doc_guard.as_ref().unwrap();
         assert_eq!(doc.lines[0].cells.len(), 0, "Should delete entire ':|' token, leaving 0 cells");
     }
