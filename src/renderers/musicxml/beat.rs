@@ -135,28 +135,28 @@ pub fn process_beat(
     let mut slot_index = 0;
 
     // Handle leading divisions (tied note from previous beat)
-    if beat_starts_with_division(beat_cells) && builder.last_note.is_some() {
-        // Count leading "-" symbols
-        let mut leading_div_count = 0;
-        while i < beat_cells.len() &&
-              beat_cells[i].kind == ElementKind::UnpitchedElement &&
-              beat_cells[i].char == "-" {
-            leading_div_count += 1;
-            i += 1;
-        }
+    if beat_starts_with_division(beat_cells) {
+        if let Some((prev_pitch_code, prev_octave)) = builder.last_note.clone() {
+            // Count leading "-" symbols
+            let mut leading_div_count = 0;
+            while i < beat_cells.len() &&
+                  beat_cells[i].kind == ElementKind::UnpitchedElement &&
+                  beat_cells[i].char == "-" {
+                leading_div_count += 1;
+                i += 1;
+            }
 
-        if leading_div_count > 0 {
-            // Write tied note using previous note's pitch
-            let (prev_pitch_code, prev_octave) = builder.last_note.clone().unwrap();
+            if leading_div_count > 0 {
+                // Write tied note using previous note's pitch
+                // Calculate normalized duration for leading divisions
+                // IMPORTANT: Don't count continuation cells in rhythmic calculations!
+                let total_cells = beat_cells.iter().filter(|c| !c.continuation).count();
+                let duration_divs = (measure_divisions * leading_div_count) / total_cells;
+                let musical_duration = leading_div_count as f64 / total_cells as f64;
 
-            // Calculate normalized duration for leading divisions
-            // IMPORTANT: Don't count continuation cells in rhythmic calculations!
-            let total_cells = beat_cells.iter().filter(|c| !c.continuation).count();
-            let duration_divs = (measure_divisions * leading_div_count) / total_cells;
-            let musical_duration = leading_div_count as f64 / total_cells as f64;
-
-            // Write note with tie="stop" using PitchCode
-            builder.write_note_with_beam_from_pitch_code(&prev_pitch_code, prev_octave, duration_divs, musical_duration, None, None, None, Some("stop"), None, None, None)?;
+                // Write note with tie="stop" using PitchCode
+                builder.write_note_with_beam_from_pitch_code(&prev_pitch_code, prev_octave, duration_divs, musical_duration, None, None, None, Some("stop"), None, None, None)?;
+            }
         }
     }
 
