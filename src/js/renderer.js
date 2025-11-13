@@ -1,16 +1,18 @@
 /**
  * DOM Renderer for Music Notation Editor
  *
- * This class provides DOM-based rendering for Cell elements,
- * beat loops, slurs, and other musical notation components.
+ * Coordinator class that delegates rendering concerns to specialized modules:
+ * - StyleManager: CSS injection and font setup
+ * - MeasurementService: Width measurements and caching
+ * - CellRenderer: DisplayList to DOM conversion
+ * - GutterManager: Gutter interactions and role management
+ * - GroupBracketRenderer: Staff grouping visualization
+ * - ArcRenderer: Slurs and beat loops (SVG overlay)
  */
 
 import {
   BASE_FONT_SIZE,
   BASE_LINE_HEIGHT,
-  SMALL_FONT_SIZE,
-  SMUFL_FONT_SIZE,
-  SMUFL_VERTICAL_OFFSET,
   LEFT_MARGIN_PX,
   CELL_Y_OFFSET,
   CELL_HEIGHT,
@@ -19,7 +21,11 @@ import {
   SLUR_OFFSET_ABOVE
 } from './constants.js';
 import ArcRenderer from './arc-renderer.js';
-import { ContextMenuManager } from './context-menu.js';
+import StyleManager from './style-manager.js';
+import MeasurementService from './measurement-service.js';
+import CellRenderer from './cell-renderer.js';
+import GutterManager from './gutter-manager.js';
+import GroupBracketRenderer from './group-bracket-renderer.js';
 import logger, { LOG_CATEGORIES } from './logger.js';
 
 class DOMRenderer {
@@ -30,11 +36,6 @@ class DOMRenderer {
     this.beatLoopElements = new Map();
     this.theDocument = null;
     this.renderCache = new Map();
-
-    // Measurement caching
-    this.cachedCellWidths = [];
-    this.cachedCharWidths = [];
-    this.lastDocumentCellCount = 0;
 
     // Configuration options
     this.options = {
@@ -51,464 +52,40 @@ class DOMRenderer {
       lastRenderTime: 0
     };
 
+    // Initialize specialized rendering modules
+    this.styleManager = new StyleManager({ fontMapping: this.options.fontMapping });
+    this.styleManager.initialize();
 
-    this.setupBeatLoopStyles(); // Sets up octave dots CSS and barline styles
+    this.measurementService = new MeasurementService();
+    this.cellRenderer = new CellRenderer(this.theDocument);
+    this.gutterManager = new GutterManager(this.element, this.editor);
+    this.gutterManager.initialize();
+
+    this.groupBracketRenderer = new GroupBracketRenderer(this.element);
 
     // Initialize arc renderer (for slurs and beat loops)
     this.arcRenderer = new ArcRenderer(this.element, { skipBeatLoops: this.options.skipBeatLoops });
-
-    // Initialize context menu for gutter interactions
-    this.contextMenu = new ContextMenuManager();
-
-    // Initialize gutter toggle
-    this.gutterToggleBtn = null;
-    this.gutterCollapsed = false;
-    this.initializeGutterContextMenu();
   }
 
   /**
-   * Initialize gutter context menu system
+   * Get gutter collapsed state (delegate to GutterManager)
    */
-  initializeGutterContextMenu() {
-    // Wait for DOM to be ready
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', () => {
-        this.contextMenu.initialize('line-gutter-menu');
-        this.setupGutterEventListeners();
-        this.setupGutterToggle();
-      });
-    } else {
-      this.contextMenu.initialize('line-gutter-menu');
-      this.setupGutterEventListeners();
-      this.setupGutterToggle();
-    }
+  get gutterCollapsed() {
+    return this.gutterManager.gutterCollapsed;
   }
 
   /**
-   * Setup event listeners for gutter interactions
+   * Get gutter toggle button (delegate to GutterManager)
    */
-  setupGutterEventListeners() {
-    // Use event delegation on the editor element
-    this.element.addEventListener('contextmenu', (e) => {
-      const gutter = e.target.closest('.line-gutter');
-      if (!gutter) return; // Not in gutter, allow default context menu
-
-      e.preventDefault(); // Prevent browser context menu
-      e.stopPropagation(); // Prevent event from bubbling to document handlers
-
-      const lineElement = gutter.closest('.notation-line');
-      if (!lineElement) return;
-
-      const currentRole = lineElement.dataset.role || 'melody';
-
-      // Show context menu (validation happens in WASM when user selects)
-      this.contextMenu.show(
-        e.pageX,
-        e.pageY,
-        currentRole,
-        lineElement,
-        (choice, targetLine) => this.handleRoleChange(choice, targetLine)
-      );
-    });
-
-    // Listen for mousedown globally to close the context menu
-    // Use mousedown instead of click to catch the event earlier
-    document.addEventListener('mousedown', (e) => {
-      // Only hide if menu is visible
-      if (this.contextMenu.menu && this.contextMenu.menu.style.display !== 'none') {
-        // Don't close if clicking on the menu itself
-        if (!e.target.closest('#line-gutter-menu')) {
-          this.contextMenu.hide();
-        }
-      }
-    }, true); // Use capture phase
+  get gutterToggleBtn() {
+    return this.gutterManager.gutterToggleBtn;
   }
 
   /**
-   * Setup gutter toggle button
-   */
-  setupGutterToggle() {
-    // Restore collapsed state from localStorage
-    const savedCollapsed = localStorage.getItem('editor_gutter_collapsed') === 'true';
-
-    // Create toggle button
-    this.gutterToggleBtn = document.createElement('button');
-    this.gutterToggleBtn.className = 'gutter-toggle-btn';
-    this.gutterToggleBtn.title = 'Toggle line gutter';
-    this.gutterToggleBtn.setAttribute('data-testid', 'gutter-toggle-btn');
-    this.gutterToggleBtn.setAttribute('aria-label', 'Toggle line gutter visibility');
-
-    // SVG chevron icon (left-pointing)
-    this.gutterToggleBtn.innerHTML = `
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <polyline points="15 18 9 12 15 6"></polyline>
-      </svg>
-    `;
-
-    // Attach to notation-editor container
-    this.element.style.position = 'relative'; // Ensure positioning context
-    this.element.appendChild(this.gutterToggleBtn);
-
-    // Event handler
-    this.gutterToggleBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      e.stopImmediatePropagation();
-      this.toggleGutter();
-    });
-
-    // Apply saved state
-    if (savedCollapsed) {
-      this.collapseGutter(false); // false = don't animate on init
-    }
-  }
-
-  /**
-   * Toggle gutter visibility
-   */
-  toggleGutter() {
-    if (this.gutterCollapsed) {
-      this.expandGutter();
-    } else {
-      this.collapseGutter();
-    }
-  }
-
-  /**
-   * Collapse gutter (hide)
-   * @param {boolean} animate - Whether to animate the transition
-   */
-  collapseGutter(animate = true) {
-    this.gutterCollapsed = true;
-    document.body.classList.add('gutter-collapsed');
-
-    // Find all gutter elements
-    const gutters = this.element.querySelectorAll('.line-gutter');
-    gutters.forEach((gutter) => {
-      gutter.classList.add('gutter-collapsed');
-    });
-
-    // Save state
-    localStorage.setItem('editor_gutter_collapsed', 'true');
-
-    // Trigger full re-render to recalculate arc positions
-    if (this.editor) {
-      this.editor.render({ dirtyLineIndices: null });
-    }
-  }
-
-  /**
-   * Expand gutter (show)
-   * @param {boolean} animate - Whether to animate the transition
-   */
-  expandGutter(animate = true) {
-    this.gutterCollapsed = false;
-    document.body.classList.remove('gutter-collapsed');
-
-    // Find all gutter elements
-    const gutters = this.element.querySelectorAll('.line-gutter');
-    gutters.forEach(gutter => {
-      gutter.classList.remove('gutter-collapsed');
-    });
-
-    // Save state
-    localStorage.setItem('editor_gutter_collapsed', 'false');
-
-    // Trigger full re-render to recalculate arc positions
-    if (this.editor) {
-      this.editor.render({ dirtyLineIndices: null });
-    }
-  }
-
-  /**
-   * Handle line role change
-   * @param {string} newRole - New role (melody, group-header, group-item)
-   * @param {HTMLElement} lineElement - Line element to update
-   */
-  async handleRoleChange(newRole, lineElement) {
-    // Get line index
-    const lineIdx = parseInt(lineElement.dataset.line);
-
-    // Call WASM to update internal document (validation happens in WASM)
-    try {
-      this.editor.wasmModule.setLineStaffRole(lineIdx, newRole);
-
-      // Get fresh document snapshot from WASM with updated role
-      const updatedDoc = this.editor.wasmModule.getDocumentSnapshot();
-      this.editor.theDocument = updatedDoc;
-
-      // Full re-render from WASM (regenerates DisplayList with new role)
-      await this.editor.renderAndUpdate();
-
-      logger.info(LOG_CATEGORIES.RENDERER, `Line ${lineIdx} role changed to: ${newRole}`);
-    } catch (error) {
-      logger.error(LOG_CATEGORIES.RENDERER, 'Error setting staff role', { error: error.message || error });
-      alert(`Error: ${error.message || error}`);
-    }
-  }
-
-
-  /**
-   * Render group brackets based on line roles (DOM-driven)
-   * Replaces WASM-computed system blocks with user-editable roles
+   * Render group brackets (delegate to GroupBracketRenderer)
    */
   renderGroupBrackets() {
-    // Get bracket overlay container
-    const bracketOverlay = document.getElementById('bracket-overlay');
-    if (!bracketOverlay) return;
-
-    // Remove old brace overlays
-    bracketOverlay.querySelectorAll('.group-brace')
-      .forEach(el => el.remove());
-
-    const lines = Array.from(this.element.querySelectorAll('.notation-line'));
-    if (lines.length === 0) return;
-
-    // Find groups: group-header followed by group-items
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      const role = line.dataset.role;
-
-      if (role === 'group-header') {
-        // Collect contiguous group-item lines below
-        let startIdx = i;
-        let endIdx = i;
-
-        for (let j = i + 1; j < lines.length; j++) {
-          if (lines[j].dataset.role === 'group-item') {
-            endIdx = j;
-          } else {
-            break; // Stop at non-group-item
-          }
-        }
-
-        // Only draw bracket if there are group items below the header
-        if (endIdx > startIdx) {
-          this.drawGroupBracket(lines, startIdx, endIdx, bracketOverlay);
-        }
-      }
-    }
-  }
-
-  /**
-   * Draw a single group brace using Noto Music's curly brace (U+1D114)
-   * @param {HTMLElement[]} lines - Array of line elements
-   * @param {number} startIdx - Index of group-header line
-   * @param {number} endIdx - Index of last group-item line
-   * @param {HTMLElement} bracketOverlay - Bracket overlay container
-   */
-  drawGroupBracket(lines, startIdx, endIdx, bracketOverlay) {
-    const firstLine = lines[startIdx];
-    const lastLine = lines[endIdx];
-
-    // Get positions relative to viewport
-    const firstRect = firstLine.getBoundingClientRect();
-    const lastRect = lastLine.getBoundingClientRect();
-
-    // Get editor-section, editor-container, and notation-editor positions
-    const editorSection = document.getElementById('editor-section');
-    const editorContainer = document.getElementById('editor-container');
-    const notationEditor = document.getElementById('notation-editor');
-    if (!editorSection || !editorContainer || !notationEditor) return;
-
-    const sectionRect = editorSection.getBoundingClientRect();
-    const notationRect = notationEditor.getBoundingClientRect();
-
-    // Account for scroll position
-    const scrollTop = editorContainer.scrollTop;
-
-    // Calculate top/bottom relative to editor-section, accounting for scroll
-    const top = (firstRect.top - sectionRect.top) + scrollTop;
-    const bottom = (lastRect.bottom - sectionRect.top) + scrollTop;
-    const height = bottom - top;
-
-    // Position 1em (16px) to the left of notation-editor's left edge
-    const leftPosition = (notationRect.left - sectionRect.left) - 16;
-
-    // Create curly brace using Noto Music's MUSICAL SYMBOL BRACE (U+1D114: 𝄔)
-    const brace = document.createElement('span');
-    brace.className = 'group-brace';
-    brace.textContent = '\uD834\uDD14'; // U+1D114 (𝄔)
-    brace.style.top = `${top}px`;
-    brace.style.left = `${leftPosition}px`;
-
-    // Scale brace to fit group height
-    // Base height at 40px font-size ≈ 40px (measured empirically)
-    const baseHeight = 40;
-    const scale = height / baseHeight;
-    brace.style.transform = `scaleY(${scale})`;
-
-    bracketOverlay.appendChild(brace);
-  }
-
-  /**
-   * Setup CSS for octave dots and cell styling
-   * Note: Slurs and beat loops are now rendered using SVG overlay (see ArcRenderer)
-   */
-  setupBeatLoopStyles() {
-    const style = document.createElement('style');
-    style.textContent = `
-      /* ===== WEB FONTS ===== */
-      /* Load NotationFont (derived from Noto Music) for all pitch + music symbols */
-      @font-face {
-        font-family: 'NotationFont';
-        src: url('/static/fonts/NotationFont.ttf') format('truetype');
-        font-weight: normal;
-        font-style: normal;
-      }
-
-      /* Base cell styles */
-      .char-cell {
-        padding: 0;
-        margin: 0;
-        box-sizing: content-box;
-        font-size: ${BASE_FONT_SIZE}px;
-      }
-
-      /* Symbol elements styled in green */
-      .char-cell.kind-symbol {
-        color: #22c55e; /* green-500 */
-        font-weight: 500;
-      }
-
-      /* Pitch continuation cells contain non-breaking space (invisible but takes space) */
-      .char-cell.pitch-continuation {
-        /* No special styling needed - contains U+00A0 (non-breaking space) */
-      }
-
-      /* ===== ACCIDENTAL RENDERING (WASM-FIRST ARCHITECTURE) ===== */
-      /* Architecture: DOM contains typed text (textual truth), CSS overlay shows composite glyph (visual rendering)
-         See CLAUDE.md "Multi-Character Glyph Rendering: Textual Mental Model with Visual Overlays"
-      */
-
-      /* Pitched elements: rendered with pre-composed accidental glyphs from NotationFont */
-      .char-cell.kind-pitched {
-        font-family: 'NotationFont', monospace;
-      }
-
-      /* Multi-character glyphs with accidentals (e.g., 1#, 2b, 1##, 1bb)
-         Hide the typed text, show composite glyph via overlay
-      */
-      .char-cell.has-accidental {
-        color: transparent;
-        position: relative;
-      }
-
-      /* CSS overlay for accidental composite glyphs
-         The composite glyph codepoint is set via CSS custom property (--composite-glyph)
-         by JavaScript during rendering (see renderLineFromDisplayList)
-      */
-      .char-cell.has-accidental::after {
-        content: var(--composite-glyph, '');
-        position: absolute;
-        left: 0;
-        top: 0;
-        font-family: 'NotationFont', monospace;
-        color: #000;
-        pointer-events: none;
-        z-index: 2;
-        white-space: nowrap;
-      }
-
-      /* All barline overlays using SMuFL music font */
-      /* Hide underlying ASCII text and show fancy glyph overlay */
-      .char-cell.repeat-left-start,
-      .char-cell.repeat-right-start,
-      .char-cell.double-bar-start,
-      .char-cell.single-bar {
-        color: transparent;
-      }
-
-      /* Hide continuation cells that are part of multi-char barlines */
-      .char-cell.kind-barline[data-continuation="true"] {
-        color: transparent;
-      }
-
-      /* Base styles for all SMuFL barline glyphs */
-      /* Using NotationFont (derived from Noto Music) which includes barline glyphs */
-      .char-cell.repeat-left-start::after,
-      .char-cell.repeat-right-start::after,
-      .char-cell.double-bar-start::after,
-      .char-cell.single-bar::after {
-        font-family: 'NotationFont';
-        position: absolute;
-        left: 0;
-        top: ${BASE_FONT_SIZE * 0.75}px;
-        transform: translateY(-50%);
-        color: #000;
-        font-size: ${SMUFL_FONT_SIZE * 1.2}px;
-        line-height: 1;
-        pointer-events: none;
-        z-index: 4;
-      }
-
-      /* Barline styles generated from font mapping */
-
-      /* Current line border */
-      .notation-line.current-line {
-        outline: 2px solid #3b82f6; /* blue-500 */
-        outline-offset: -2px;
-        border-radius: 4px;
-        background-color: rgba(59, 130, 246, 0.05); /* very subtle blue tint */
-      }
-
-    `;
-    document.head.appendChild(style);
-
-    // Add dynamic barline styles from font mapping
-    this.addBarlineStyles();
-  }
-
-  /**
-   * Generate barline CSS from font mapping (single source of truth)
-   */
-  addBarlineStyles() {
-    const mapping = this.options.fontMapping;
-    if (!mapping || !mapping.symbols) {
-      logger.warn(LOG_CATEGORIES.RENDERER, 'Font mapping not available, using fallback barline styles');
-      return;
-    }
-
-    // Find barline symbols in mapping
-    const barlineSymbols = {
-      'barlineSingle': { selector: '.char-cell.single-bar', width: '100%', align: 'center' },
-      'barlineDouble': { selector: '.char-cell.double-bar-start', width: '200%', align: 'left' },
-      'barlineRepeatLeft': { selector: '.char-cell.repeat-left-start', width: '200%', align: 'left' },
-      'barlineRepeatRight': { selector: '.char-cell.repeat-right-start', width: '200%', align: 'left' },
-      'barlineRepeatBoth': { selector: '.char-cell.repeat-both', width: '200%', align: 'left' }
-    };
-
-    let barlineCss = '';
-    for (const [symbolName, config] of Object.entries(barlineSymbols)) {
-      const symbol = mapping.symbols.find(s => s.name === symbolName);
-      if (symbol) {
-        // Get codepoint and convert to CSS Unicode escape sequence
-        const codepoint = parseInt(symbol.codepoint, 16);
-        // CSS Unicode escapes: pad to 6 chars for > 0xFFFF, 4 for < 0xFFFF
-        const minPad = codepoint > 0xFFFF ? 6 : 4;
-        const codePointHex = codepoint.toString(16).toUpperCase().padStart(minPad, '0');
-
-        barlineCss += `
-      /* ${symbolName}: U+${codePointHex} from NotationFont-map.json */
-      ${config.selector}::after {
-        content: '\\${codePointHex}';
-        width: ${config.width};
-        text-align: ${config.align};
-      }
-      `;
-
-        logger.debug(LOG_CATEGORIES.RENDERER, `Barline style: ${symbolName} -> U+${codePointHex}`);
-      } else {
-        logger.warn(LOG_CATEGORIES.RENDERER, `Symbol ${symbolName} not found in font mapping`);
-      }
-    }
-
-    if (barlineCss) {
-      const style = document.createElement('style');
-      style.textContent = barlineCss;
-      document.head.appendChild(style);
-      logger.debug(LOG_CATEGORIES.RENDERER, 'Barline styles injected from font mapping');
-    }
+    this.groupBracketRenderer.render();
   }
 
 
@@ -544,12 +121,12 @@ class DOMRenderer {
       }
     }
 
-    // STEP 1: Measure all widths (JS-only, native DOM)
+    // STEP 1: Measure all widths (JS-only, native DOM) - delegate to MeasurementService
     const measureStart = performance.now();
-    const measurements = this.measureAllWidths(doc);
+    const measurements = this.measurementService.measureAllWidths(doc);
 
     // Also measure character widths for cursor positioning
-    this.characterWidthData = this.measureCharacterWidths(doc);
+    this.characterWidthData = this.measurementService.measureCharacterWidths(doc);
 
     const measureTime = performance.now() - measureStart;
     logger.debug(LOG_CATEGORIES.PERFORMANCE, 'Measurement time', {
@@ -574,6 +151,7 @@ class DOMRenderer {
       cell_y_offset: CELL_Y_OFFSET,
       cell_height: CELL_HEIGHT,
       min_syllable_padding: 4.0,
+      word_spacing: 10.0,
       slur_offset_above: SLUR_OFFSET_ABOVE,
       beat_loop_offset_below: BEAT_LOOP_OFFSET_BELOW,
       beat_loop_height: BEAT_LOOP_HEIGHT,
@@ -609,283 +187,6 @@ class DOMRenderer {
     this.renderStats.lastRenderTime = endTime - startTime;
   }
 
-  /**
-   * Measure all cell widths and syllable widths for the document
-   * This is done in JavaScript using temporary DOM elements
-   * Uses caching to avoid re-measuring unchanged cells
-   *
-   * @param {Object} doc - The document to measure
-   * @returns {Object} {cellWidths: number[], syllableWidths: number[]}
-   */
-  measureAllWidths(doc) {
-    const cellWidths = [];
-    const syllableWidths = [];
-
-    // Calculate total cell count
-    let totalCells = 0;
-    for (const line of doc.lines) {
-      totalCells += line.cells.length;
-    }
-
-    // Check if we can reuse cached measurements
-    const canUseCache = (
-      this.cachedCellWidths.length === totalCells &&
-      this.lastDocumentCellCount === totalCells
-    );
-
-    if (canUseCache) {
-      logger.debug(LOG_CATEGORIES.RENDERER, 'Using cached cell widths', { cells: totalCells });
-      return {
-        cellWidths: [...this.cachedCellWidths], // Return copy
-        syllableWidths: [] // Syllables are rarely used, skip for now
-      };
-    }
-
-    logger.debug(LOG_CATEGORIES.RENDERER, 'Measuring cells (cache miss)', { cells: totalCells });
-
-    // Create temporary invisible container for measurements
-    const temp = document.createElement('div');
-    temp.style.cssText = 'position:absolute; left:-9999px; visibility:hidden; pointer-events:none;';
-    document.body.appendChild(temp);
-
-    // OPTIMIZATION: Batch DOM operations to avoid forced layouts
-    // First pass: Create all spans and add to DOM
-    const spans = [];
-
-    for (const line of doc.lines) {
-      for (const cell of line.cells) {
-        if (cell.continuation && cell.kind.name !== 'text') {
-          // Continuation cells: use computed width, no need to measure
-          cellWidths.push(BASE_FONT_SIZE * 0.1);
-          spans.push(null); // Placeholder
-        } else {
-          const span = document.createElement('span');
-          span.className = 'char-cell';
-          span.textContent = cell.char === ' ' ? '\u00A0' : cell.char;
-
-          // Apply fonts based on cell kind
-          if (cell.kind && cell.kind.name === 'text') {
-            // Text cells use system fonts at reduced size
-            span.style.fontSize = `${BASE_FONT_SIZE * 0.6}px`; // 19.2px
-            span.style.fontFamily = "'Segoe UI', 'Helvetica Neue', system-ui, sans-serif";
-          } else if (cell.kind && (cell.kind.name === 'pitched_element' || cell.kind.name === 'unpitched_element')) {
-            // Pitch and dash cells always use NotationFont (from Noto Music)
-            span.style.fontFamily = "'NotationFont'";
-          }
-
-          temp.appendChild(span);
-          spans.push(span);
-          cellWidths.push(0); // Placeholder, will measure next
-        }
-      }
-    }
-
-    // Second pass: Measure all at once (single layout pass)
-    let widthIndex = 0;
-    for (let i = 0; i < spans.length; i++) {
-      if (spans[i] !== null) {
-        cellWidths[i] = spans[i].getBoundingClientRect().width;
-      }
-    }
-
-    // Measure lyrics syllables ACROSS ALL LINES (done separately to ensure they're captured)
-    // Measure syllables with their trailing spaces combined (as they'll be rendered)
-    for (const line of doc.lines) {
-      if (line.lyrics && line.lyrics.trim()) {
-        const syllables = this.extractSyllablesSimple(line.lyrics);
-        const lyricFontSize = BASE_FONT_SIZE * 0.5; // Match actual rendering (8px)
-
-        // Combine syllables with following spaces
-        let i = 0;
-        while (i < syllables.length) {
-          let text = syllables[i];
-          i++;
-
-          // Append any following spaces
-          while (i < syllables.length && !syllables[i].trim()) {
-            text += '\u00A0'; // Append nbsp
-            i++;
-          }
-
-          // Measure the combined text
-          const span = document.createElement('span');
-          span.style.cssText = `
-            font-size: ${lyricFontSize}px;
-            font-family: 'Segoe UI', 'Helvetica Neue', system-ui, sans-serif;
-            font-style: italic;
-          `;
-          span.textContent = text;
-          temp.appendChild(span);
-          syllableWidths.push(span.getBoundingClientRect().width);
-          temp.removeChild(span);
-        }
-      }
-    }
-
-    document.body.removeChild(temp);
-
-    // Cache the measurements
-    this.cachedCellWidths = [...cellWidths];
-    this.lastDocumentCellCount = totalCells;
-
-    return { cellWidths, syllableWidths };
-  }
-
-  /**
-   * Extract syllables from lyrics string (simple version for measurement)
-   * Splits on whitespace and hyphens, PRESERVING spaces
-   *
-   * @param {string} lyrics - Lyrics string
-   * @returns {string[]} Array of syllables
-   */
-  extractSyllablesSimple(lyrics) {
-    if (!lyrics) return [];
-
-    const syllables = [];
-    let currentWord = '';
-
-    for (let i = 0; i < lyrics.length; i++) {
-      const char = lyrics[i];
-
-      if (/\s/.test(char)) {
-        // Whitespace - finish current word and add space
-        if (currentWord) {
-          this.addSyllablesFromWord(currentWord, syllables);
-          currentWord = '';
-        }
-        syllables.push(char); // Add the space character
-      } else if (char === '-') {
-        // Hyphen - add current part with hyphen
-        if (currentWord) {
-          syllables.push(currentWord + '-');
-          currentWord = '';
-        }
-      } else {
-        // Regular character
-        currentWord += char;
-      }
-    }
-
-    // Add remaining word
-    if (currentWord) {
-      this.addSyllablesFromWord(currentWord, syllables);
-    }
-
-    return syllables;
-  }
-
-  /**
-   * Helper to add syllables from a word (handles hyphens within word)
-   */
-  addSyllablesFromWord(word, syllables) {
-    const parts = word.split(/(-)/);
-    for (let i = 0; i < parts.length; i++) {
-      const part = parts[i];
-      if (part === '') continue;
-
-      if (part === '-') {
-        // Skip standalone hyphens, they're handled in main loop
-        continue;
-      } else if (i < parts.length - 1 && parts[i + 1] === '-') {
-        syllables.push(part + '-');
-        i++; // Skip the hyphen
-      } else {
-        syllables.push(part);
-      }
-    }
-  }
-
-  /**
-   * Measure character widths within each cell for accurate cursor positioning
-   * Returns array of {cellIndex, charWidths:[]} for all cells in the document
-   *
-   * @param {Object} doc - The document to measure
-   * @returns {Array} Array of character width data per cell
-   */
-  measureCharacterWidths(doc) {
-    const characterData = [];
-
-    // Create temporary invisible container for measurements
-    const temp = document.createElement('div');
-    temp.style.cssText = 'position:absolute; left:-9999px; visibility:hidden; pointer-events:none;';
-    document.body.appendChild(temp);
-
-    // OPTIMIZATION: Batch all spans first, then measure
-    const allSpans = [];
-    const cellMetadata = [];
-
-    let cellIndex = 0;
-    for (const line of doc.lines) {
-      for (const cell of line.cells) {
-        const charWidths = [];
-        const spans = [];
-
-        // Measure each character in the cell's glyph
-        if (cell.continuation && cell.kind.name !== 'text') {
-          // Continuation cells with minimal width (for accidentals like #, b)
-          for (const char of cell.char) {
-            charWidths.push(BASE_FONT_SIZE * 0.1);
-            spans.push(null);
-          }
-        } else {
-          // Normal cells: create spans for measurement
-          // Cache the kind check once per cell (not per character!)
-          const isTextCell = cell.kind && cell.kind.name === 'text';
-          const fontSize = isTextCell ? `${BASE_FONT_SIZE * 0.6}px` : null;
-          const fontFamily = isTextCell ? "'Segoe UI', 'Helvetica Neue', system-ui, sans-serif" : null;
-
-          for (const char of cell.char) {
-            const span = document.createElement('span');
-            span.className = 'char-cell';
-            span.textContent = char === ' ' ? '\u00A0' : char;
-
-            // Apply proportional font and reduced size if this is a text cell
-            if (fontSize) {
-              span.style.fontSize = fontSize;
-            }
-            if (fontFamily) {
-              span.style.fontFamily = fontFamily;
-            }
-
-            temp.appendChild(span);
-            spans.push(span);
-            charWidths.push(0); // Placeholder
-          }
-        }
-
-        cellMetadata.push({
-          cellIndex,
-          cellCol: cell.col,
-          glyph: cell.char,
-          charWidths,
-          spans
-        });
-
-        cellIndex++;
-      }
-    }
-
-    // Measure all spans at once (single layout pass)
-    for (const meta of cellMetadata) {
-      for (let i = 0; i < meta.spans.length; i++) {
-        if (meta.spans[i] !== null) {
-          meta.charWidths[i] = meta.spans[i].getBoundingClientRect().width;
-        }
-      }
-
-      // Add to final result (without spans)
-      characterData.push({
-        cellIndex: meta.cellIndex,
-        cellCol: meta.cellCol,
-        glyph: meta.glyph,
-        charWidths: meta.charWidths
-      });
-    }
-
-    document.body.removeChild(temp);
-
-    return characterData;
-  }
 
   /**
    * Render document from DisplayList returned by Rust
@@ -989,375 +290,36 @@ class DOMRenderer {
   }
 
   /**
-   * Render document header from DisplayList
+   * Render document header from DisplayList (delegate to CellRenderer)
    *
    * @param {Object} header - Header data from DisplayList
    */
   renderHeaderFromDisplayList(header) {
-    const title = header.title;
-    const composer = header.composer;
-
-    // Skip if neither title nor composer
-    if ((!title || title === 'Untitled Document') && !composer) {
-      return;
+    const headerElement = this.cellRenderer.renderHeader(header);
+    if (headerElement) {
+      this.element.appendChild(headerElement);
     }
-
-    // Create container for title and composer
-    const headerContainer = document.createElement('div');
-    headerContainer.className = 'document-header';
-    headerContainer.style.cssText = `
-      position: relative;
-      width: 100%;
-      margin-top: 16px;
-      margin-bottom: 32px;
-      min-height: 24px;
-    `;
-
-    // Render title (centered)
-    if (title && title !== 'Untitled Document') {
-      const titleElement = document.createElement('div');
-      titleElement.className = 'document-title';
-      titleElement.setAttribute('data-testid', 'document-title');
-      titleElement.textContent = title;
-      titleElement.style.cssText = `
-        text-align: center;
-        font-size: ${BASE_FONT_SIZE * 0.8}px;
-        font-weight: bold;
-        color: #1f2937;
-        width: 100%;
-        margin-bottom: 8px;
-      `;
-      headerContainer.appendChild(titleElement);
-    }
-
-    // Render composer (flush right)
-    if (composer) {
-      const composerElement = document.createElement('div');
-      composerElement.className = 'document-composer';
-      composerElement.textContent = composer;
-      composerElement.style.cssText = `
-        text-align: right;
-        font-size: ${BASE_FONT_SIZE * 0.6}px;
-        font-style: italic;
-        color: #6b7280;
-        width: 100%;
-        display: block;
-        margin-top: 4px;
-        padding-right: 20px;
-      `;
-      headerContainer.appendChild(composerElement);
-    }
-
-    this.element.appendChild(headerContainer);
   }
 
   /**
-   * Render a single line from DisplayList
+   * Render a single line from DisplayList (delegate to CellRenderer)
    * Pure DOM rendering with pre-calculated positions
    *
    * @param {Object} renderLine - RenderLine data from DisplayList
+   * @param {Object} displayList - Full DisplayList (unused, kept for API compatibility)
    * @returns {HTMLElement} The created line element
    */
   renderLineFromDisplayList(renderLine, displayList) {
-    const line = document.createElement('div');
+    // Update cell renderer with current document
+    this.cellRenderer.setDocument(this.theDocument);
 
-    // Check if this is the current line (where the cursor is)
+    // Get current line index for highlighting
     const currentLineIndex = this.editor?.theDocument?.state?.cursor?.line ?? -1;
-    const isCurrentLine = renderLine.line_index === currentLineIndex;
 
-    // Read role from WASM DisplayList (source of truth)
-    const lineRole = renderLine.staff_role || 'melody';
-
-    line.className = isCurrentLine ? `notation-line current-line role-${lineRole}` : `notation-line role-${lineRole}`;
-    line.dataset.line = renderLine.line_index;
-    line.dataset.role = lineRole;
-    line.style.cssText = `height:${renderLine.height}px; width:100%;`;
-
-    // Store absolute Y position (computed in WASM)
-    const lineStartY = renderLine.y;
-    line.dataset.lineStartY = lineStartY;
-
-    // Create gutter column (icon + label)
-    const gutter = document.createElement('div');
-    const hasLabel = !!renderLine.label;
-    const gutterClass = this.gutterCollapsed
-      ? 'line-gutter gutter-collapsed'
-      : hasLabel ? 'line-gutter has-label' : 'line-gutter';
-    gutter.className = gutterClass;
-
-    // Gutter icon (role indicator)
-    const gutterIcon = document.createElement('span');
-    gutterIcon.className = 'gutter-icon';
-
-    // Add tooltip based on role
-    const roleTooltips = {
-      'melody': 'Melody - Independent staff line',
-      'group-header': 'Group Header - Groups multiple staves',
-      'group-item': 'Group Member - Part of a staff group'
-    };
-    gutterIcon.title = roleTooltips[lineRole] || 'Staff line';
-
-    gutter.appendChild(gutterIcon);
-
-    // Label in gutter (if present)
-    if (renderLine.label) {
-      const labelElement = document.createElement('span');
-      labelElement.className = 'line-label text-ui-disabled-text';
-      labelElement.textContent = renderLine.label;
-      gutter.appendChild(labelElement);
-    }
-
-    line.appendChild(gutter);
-
-    // Create content wrapper for cells
-    const lineContent = document.createElement('div');
-    lineContent.className = 'line-content';
-    lineContent.style.cssText = `position:relative; height:100%;`;
-
-    // Get line index from renderLine
-    const lineIndex = renderLine.line_index;
-
-    // T028: Collect ornamental cells for floating rendering (render filtering)
-    const ornamentalCells = [];
-
-    // Render cells with new DOM structure
-    renderLine.cells.forEach((cellData, idx) => {
-      // Get cellIndex from dataset
-      let cellIndex = idx;
-      if (cellData.dataset) {
-        if (cellData.dataset instanceof Map) {
-          cellIndex = parseInt(cellData.dataset.get('cellIndex'));
-        } else {
-          cellIndex = parseInt(cellData.dataset.cellIndex);
-        }
-      }
-      const cell = this.theDocument.lines[lineIndex].cells[cellIndex];
-
-      // T028: Filter rhythm-transparent cells from main rendering flow
-      if (cell && cell.ornament_indicator && cell.ornament_indicator.name !== 'none') {
-        // Collect ornamental cell for floating rendering
-        ornamentalCells.push({ cellData, cellIndex, cell });
-        return; // Skip normal rendering for this cell
-      }
-      // Create pitch span (the actual note character)
-      const cellChar = document.createElement('span');
-      // Filter out slur and beat-loop classes - these go on cell-container only
-      const cellCharClasses = cellData.classes.filter(cls =>
-        !cls.includes('slur-') && !cls.includes('beat-loop-')
-      );
-      cellChar.className = cellCharClasses.join(' ');
-      cellChar.textContent = cellData.char === ' ' ? '\u00A0' : cellData.char;
-
-      // Apply barline glyph class from Rust
-      if (cellData.barline_type) {
-        cellChar.classList.add(cellData.barline_type);
-      }
-
-      cellChar.style.cssText = `
-        display: inline-block;
-        position: relative;
-      `;
-
-      // Apply fonts based on cell kind
-      if (cell && cell.kind && cell.kind.name === 'text') {
-        // Text cells use system fonts at reduced size
-        cellChar.style.fontSize = `${BASE_FONT_SIZE * 0.6}px`;
-        cellChar.style.fontFamily = "'Segoe UI', 'Helvetica Neue', system-ui, sans-serif";
-        cellChar.style.transform = 'translateY(40%)';
-        cellChar.classList.add('text-cell');
-      } else if (cell && cell.kind && (cell.kind.name === 'pitched_element' || cell.kind.name === 'unpitched_element')) {
-        // Pitch and dash cells always use NotationFont (from Noto Music)
-        cellChar.style.fontFamily = "'NotationFont'";
-      }
-
-      // Set data attributes on cell-char
-      let compositeGlyphCodepoint = null;
-      if (cellData.dataset) {
-        if (cellData.dataset instanceof Map) {
-          for (const [key, value] of cellData.dataset.entries()) {
-            cellChar.dataset[key] = value;
-            if (key === 'compositeGlyph') {
-              compositeGlyphCodepoint = value;
-            }
-          }
-        } else {
-          for (const [key, value] of Object.entries(cellData.dataset)) {
-            cellChar.dataset[key] = value;
-            if (key === 'compositeGlyph') {
-              compositeGlyphCodepoint = value;
-            }
-          }
-        }
-      }
-
-      // Set CSS custom property for accidental composite glyph overlay
-      // This allows the ::after pseudo-element to display the correct composite glyph
-      if (cellChar.classList.contains('has-accidental') && compositeGlyphCodepoint) {
-        // Convert codepoint (e.g., "U+E1F0") to actual Unicode character
-        // Extract hex value from "U+XXXX" format
-        const hexMatch = compositeGlyphCodepoint.match(/U\+([0-9A-Fa-f]+)/);
-        if (hexMatch) {
-          const codepoint = parseInt(hexMatch[1], 16);
-          const glyphChar = String.fromCodePoint(codepoint);
-          cellChar.style.setProperty('--composite-glyph', `'${glyphChar}'`);
-        }
-      }
-
-      // Mouse events are now handled by MouseHandler in editor.js
-      // No cell-level handlers needed anymore
-
-      // Create cell-content wrapper (groups character + modifiers)
-      const cellContent = document.createElement('span');
-      cellContent.className = 'cell-content';
-      cellContent.style.cssText = `
-        position: relative;
-        display: inline-block;
-      `;
-      cellContent.appendChild(cellChar);
-
-      // Container width is just the cell width (lyrics are rendered separately at line level)
-
-      // Create cell-container wrapper - positioned at cell location (anchor for slurs/beats)
-      const cellContainer = document.createElement('span');
-      // Add only cell-container base class plus slur/beat-loop marker classes
-      const containerClasses = ['cell-container', ...cellData.classes.filter(cls =>
-        cls.includes('slur-') || cls.includes('beat-loop-')
-      )];
-      cellContainer.className = containerClasses.join(' ');
-
-      // Convert absolute Y to relative Y within this line
-      const relativeY = cellData.y - lineStartY;
-
-      cellContainer.style.cssText = `
-        position: absolute;
-        left: ${cellData.x}px;
-        top: ${relativeY}px;
-        width: ${cellData.w}px;
-        height: ${cellData.h}px;
-      `;
-      cellContainer.appendChild(cellContent);
-
-      // Lyrics are rendered at line level with absolute positioning using WASM coordinates
-      // (see renderLyrics loop below)
-
-      lineContent.appendChild(cellContainer);
-    });
-
-    // Render all lyrics using positions from WASM DisplayList
-    // Convert absolute Y to relative Y within this line
-    renderLine.lyrics.forEach(lyric => {
-      const lyricSpan = document.createElement('span');
-      lyricSpan.className = 'cell-text lyric';
-      lyricSpan.textContent = lyric.text;
-      const lyricFontSize = BASE_FONT_SIZE * 0.5; // 1/2 of base font size
-      const lyricRelativeY = lyric.y - lineStartY;
-      lyricSpan.style.cssText = `
-        position: absolute;
-        left: ${lyric.x}px;
-        top: ${lyricRelativeY}px;
-        font-size: ${lyricFontSize}px;
-        font-family: 'Segoe UI', 'Helvetica Neue', system-ui, sans-serif;
-        font-style: italic;
-        color: #6b7280;
-        pointer-events: none;
-        white-space: nowrap;
-      `;
-      lineContent.appendChild(lyricSpan);
-    });
-
-    // T029: Render ornamental cells (zero-width floating layout)
-    // These are cells with ornament indicators (rhythm-transparent)
-
-    ornamentalCells.forEach(({ cellData, cellIndex, cell }) => {
-      const ornamentChar = document.createElement('span');
-
-      // Apply CSS classes including ornament-cell
-      const ornamentClasses = cellData.classes.filter(cls =>
-        !cls.includes('slur-') && !cls.includes('beat-loop-')
-      );
-      ornamentChar.className = ornamentClasses.join(' ');
-      ornamentChar.textContent = cellData.char === ' ' ? '\u00A0' : cellData.char;
-
-      // Set data attributes for testing
-      if (cellData.dataset) {
-        if (cellData.dataset instanceof Map) {
-          for (const [key, value] of cellData.dataset.entries()) {
-            ornamentChar.dataset[key] = value;
-          }
-        } else {
-          for (const [key, value] of Object.entries(cellData.dataset)) {
-            ornamentChar.dataset[key] = value;
-          }
-        }
-      }
-
-      // Convert absolute Y to relative Y within this line
-      const ornamentRelativeY = cellData.y - lineStartY;
-
-      // Zero-width floating layout with absolute positioning
-      ornamentChar.style.cssText = `
-        position: absolute;
-        left: ${cellData.x}px;
-        top: ${ornamentRelativeY}px;
-        width: 0;
-        height: ${cellData.h}px;
-        pointer-events: none;
-        z-index: 5;
-      `;
-
-      lineContent.appendChild(ornamentChar);
-    });
-
-    // Render ornaments (positioned to the RIGHT and UP from anchor notes)
-    // Ornaments are positioned to the RIGHT and UP (70%) from anchor notes, scaled smaller
-    if (renderLine.ornaments && renderLine.ornaments.length > 0) {
-      renderLine.ornaments.forEach(ornament => {
-        const ornamentSpan = document.createElement('span');
-        ornamentSpan.className = 'char-cell ' + (ornament.classes || []).join(' ');
-        ornamentSpan.textContent = ornament.text;
-        ornamentSpan.dataset.testid = 'ornament-cell'; // For E2E tests
-        const ornamentRelativeY = ornament.y - lineStartY;
-        ornamentSpan.style.cssText = `
-          position: absolute;
-          left: ${ornament.x}px;
-          top: ${ornamentRelativeY}px;
-          font-size: ${BASE_FONT_SIZE * 0.6}px;
-          font-family: 'NotationFont', monospace;
-          color: #1e40af;
-          pointer-events: none;
-          white-space: nowrap;
-        `;
-        lineContent.appendChild(ornamentSpan);
-      });
-    }
-
-    // Render tala (positioned characters from DisplayList)
-    // Convert absolute Y to relative Y within this line
-    renderLine.tala.forEach(talaChar => {
-      const span = document.createElement('span');
-      span.className = 'tala-char text-xs';
-      span.textContent = talaChar.text;
-      const talaRelativeY = talaChar.y - lineStartY;
-      span.style.cssText = `
-        position: absolute;
-        left: ${talaChar.x}px;
-        top: ${talaRelativeY}px;
-        transform: translateX(-50%);
-        color: #4b5563;
-        font-weight: 600;
-        pointer-events: none;
-      `;
-      lineContent.appendChild(span);
-    });
-
-    // Note: Octave dots are embedded in NotationFont glyphs (U+E000-U+E0BB range, 4 variants per character)
-    // Font rendering handles all octave visualization
-
-    // Append lineContent to line
-    line.appendChild(lineContent);
-
-    return line;
+    // Delegate to CellRenderer
+    return this.cellRenderer.renderLine(renderLine, currentLineIndex, this.gutterCollapsed);
   }
+
 
   /**
    * Show empty state when no content

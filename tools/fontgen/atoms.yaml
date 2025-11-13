@@ -259,7 +259,7 @@ accidental_composites:
     sharp:
       range: "0xE1F0 - 0xE21E"
       count: 47
-      smufl_symbol: 0xE262  # accidentalSharp from Noto Music
+      smufl_symbol: 0x1D130  # 𝄰 Musical Symbol Sharp Up (proper notation sharp)
       examples:
         "1#": 0xE1F0  # 1 sharp at index 0
         "7#": 0xE1F6  # 7 sharp at index 6
@@ -268,7 +268,7 @@ accidental_composites:
     flat:
       range: "0xE220 - 0xE24E"
       count: 47
-      smufl_symbol: 0xE260  # accidentalFlat from Noto Music
+      smufl_symbol: 0x1D12D  # 𝄭 Musical Symbol Flat (Unicode standard position)
       examples:
         "1b": 0xE220  # 1 flat at index 0
         "7b": 0xE226  # 7 flat at index 6
@@ -277,7 +277,7 @@ accidental_composites:
     double_sharp:
       range: "0xE250 - 0xE27E"
       count: 47
-      smufl_symbol: 0xE263  # accidentalDoubleSharp from Noto Music
+      smufl_symbol: 0x1D12A  # 𝄪 Musical Symbol Double Sharp
       examples:
         "1##": 0xE250  # 1 double-sharp at index 0
         "7##": 0xE256  # 7 double-sharp at index 6
@@ -286,11 +286,57 @@ accidental_composites:
     double_flat:
       range: "0xE280 - 0xE2AE"
       count: 47
-      smufl_symbol: 0xE264  # accidentalDoubleFlat from Noto Music
+      smufl_symbol: 0x1D12B  # 𝄫 Musical Symbol Double Flat (Unicode standard position)
       examples:
         "1bb": 0xE280  # 1 double-flat at index 0
         "7bb": 0xE286  # 7 double-flat at index 6
         "Cbb": 0xE287  # C double-flat at index 7
+
+accidental_octave_composites:
+  description: "Triple composites combining base character + accidental + octave dots"
+  formula: "codepoint = pua_start + (character_index × 4) + variant_index"
+  count_per_type: 188  # 47 characters × 4 octave variants each
+  total_glyphs: 752    # 4 accidental types × 188 glyphs
+  types:
+    sharp_with_octave:
+      range: "0xE2B0 - 0xE36F"
+      count: 188  # 47 chars × 4 octave variants
+      description: "Sharp accidentals with octave dots"
+      examples:
+        "1# +1oct": 0xE2B0  # 1 sharp with 1 dot above
+        "1# +2oct": 0xE2B1  # 1 sharp with 2 dots above
+        "1# -1oct": 0xE2B2  # 1 sharp with 1 dot below
+        "1# -2oct": 0xE2B3  # 1 sharp with 2 dots below
+
+    flat_with_octave:
+      range: "0xE370 - 0xE42F"
+      count: 188
+      description: "Flat accidentals with octave dots"
+      examples:
+        "1b +1oct": 0xE370  # 1 flat with 1 dot above
+        "1b +2oct": 0xE371  # 1 flat with 2 dots above
+        "1b -1oct": 0xE372  # 1 flat with 1 dot below
+        "1b -2oct": 0xE373  # 1 flat with 2 dots below
+
+    double_sharp_with_octave:
+      range: "0xE430 - 0xE4EF"
+      count: 188
+      description: "Double-sharp accidentals with octave dots"
+      examples:
+        "1## +1oct": 0xE430  # 1 double-sharp with 1 dot above
+        "1## +2oct": 0xE431  # 1 double-sharp with 2 dots above
+        "1## -1oct": 0xE432  # 1 double-sharp with 1 dot below
+        "1## -2oct": 0xE433  # 1 double-sharp with 2 dots below
+
+    double_flat_with_octave:
+      range: "0xE4F0 - 0xE5AF"
+      count: 188
+      description: "Double-flat accidentals with octave dots"
+      examples:
+        "1bb +1oct": 0xE4F0  # 1 double-flat with 1 dot above
+        "1bb +2oct": 0xE4F1  # 1 double-flat with 2 dots above
+        "1bb -1oct": 0xE4F2  # 1 double-flat with 1 dot below
+        "1bb -2oct": 0xE4F3  # 1 double-flat with 2 dots below
 
 # Character Order (CRITICAL!)
 # This exact order must be preserved in:
@@ -318,7 +364,7 @@ geometry:
   symbols:
     # Future: scaling and positioning for Bravura symbols
     accidental_scale: 1.0      # Scale factor for # ♭ symbols (when accidentals added)
-    accidental_x_offset: 0     # Horizontal positioning relative to base note
+    accidental_x_offset: 50    # Horizontal gap between base note ink and accidental ink (font units)
     accidental_y_offset: 0     # Vertical positioning relative to base note
     barline_scale: 1.0         # Scale factor for barlines
     ornament_scale: 1.0        # Scale factor for mordent/trill/turn

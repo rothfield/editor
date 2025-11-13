@@ -44,11 +44,14 @@ pub enum ElementKind {
     /// Breath mark elements
     BreathMark = 10,
 
-    /// Whitespace elements for layout
+    /// Whitespace elements for layout (beat delimiter)
     Whitespace = 11,
 
     /// Symbol elements (single non-alphanumeric characters: @, #, !, ?, etc.)
     Symbol = 12,
+
+    /// Non-breaking space (beat content, used for spacing within beats)
+    Nbsp = 13,
 }
 
 // Custom serialization to show both name and value
@@ -185,6 +188,7 @@ impl ElementKind {
             ElementKind::DoubleBarline => "Double Barline",
             ElementKind::BreathMark => "Breath Mark",
             ElementKind::Whitespace => "Whitespace",
+            ElementKind::Nbsp => "Non-breaking Space",
             ElementKind::Symbol => "Symbol",
         }
     }
@@ -204,6 +208,7 @@ impl ElementKind {
             ElementKind::DoubleBarline => "double_barline",
             ElementKind::BreathMark => "breath_mark",
             ElementKind::Whitespace => "whitespace",
+            ElementKind::Nbsp => "nbsp",
             ElementKind::Symbol => "symbol",
         }
     }

@@ -22,6 +22,69 @@ impl<'a> LayoutLineComputer<'a> {
         Self { beat_deriver }
     }
 
+    /// Calculate total width needed for each beat
+    /// Returns a vector where each element is the sum of effective widths for cells in that beat
+    fn calculate_beat_widths(
+        &self,
+        beats: &[BeatSpan],
+        effective_widths: &[f32],
+    ) -> Vec<f32> {
+        beats.iter().map(|beat| {
+            (beat.start..=beat.end)
+                .map(|cell_idx| effective_widths.get(cell_idx).copied().unwrap_or(12.0))
+                .sum()
+        }).collect()
+    }
+
+    /// Distribute space evenly within a beat
+    ///
+    /// If beat has extra space, divide it evenly among gaps between cells.
+    /// Returns X positions for each cell in the beat (relative to beat start).
+    ///
+    /// # Arguments
+    /// * `beat` - The beat span defining which cells to position
+    /// * `total_beat_width` - Total width available for this beat
+    /// * `effective_widths` - Effective width of each cell
+    /// * `beat_start_x` - Absolute X position where beat starts
+    ///
+    /// # Returns
+    /// Vector of absolute X positions for each cell in the beat
+    fn distribute_space_within_beat(
+        &self,
+        beat: &BeatSpan,
+        total_beat_width: f32,
+        effective_widths: &[f32],
+        beat_start_x: f32,
+    ) -> Vec<f32> {
+        let num_cells = beat.width();
+
+        // Calculate sum of cell widths
+        let sum_widths: f32 = (beat.start..=beat.end)
+            .map(|cell_idx| effective_widths.get(cell_idx).copied().unwrap_or(12.0))
+            .sum();
+
+        // Calculate extra space and gap size
+        let extra_space = total_beat_width - sum_widths;
+        let num_gaps = if num_cells > 1 { num_cells - 1 } else { 0 };
+        let gap_size = if num_gaps > 0 && extra_space > 0.0 {
+            extra_space / num_gaps as f32
+        } else {
+            0.0
+        };
+
+        // Calculate X positions for each cell
+        let mut positions = Vec::with_capacity(num_cells);
+        let mut current_x = beat_start_x;
+
+        for cell_idx in beat.start..=beat.end {
+            positions.push(current_x);
+            let cell_width = effective_widths.get(cell_idx).copied().unwrap_or(12.0);
+            current_x += cell_width + gap_size;
+        }
+
+        positions
+    }
+
     /// Compute layout for a single line
     pub fn compute_line_layout(
         &self,
@@ -71,25 +134,57 @@ impl<'a> LayoutLineComputer<'a> {
         let working_cells = line.cells.to_vec();
         let cell_index_map: Vec<usize> = (0..working_cells.len()).collect();
 
-        // Render cells with cumulative X positioning
+        // Calculate beat widths (sum of effective widths for each beat)
+        let beat_widths = self.calculate_beat_widths(&beats, &effective_widths);
+
+        // Create a mapping of cell_idx -> beat_idx for quick lookup
+        let mut cell_to_beat: Vec<Option<usize>> = vec![None; working_cells.len()];
+        for (beat_idx, beat) in beats.iter().enumerate() {
+            for cell_idx in beat.start..=beat.end {
+                cell_to_beat[cell_idx] = Some(beat_idx);
+            }
+        }
+
+        // Render cells with beat-aware positioning (even spacing within beats)
+        // Cells outside beats (spaces, barlines, text) use tight-packed positioning
         let mut cells = Vec::new();
-        let mut cumulative_x = config.left_margin;
         let mut char_width_offset = 0;
-
-        // Calculate X positions and create render cells
-        // Note: When ornament_edit_mode is OFF, ornaments are extracted and stored in cell.ornaments
-        // working_cells contains the modified cells with ornaments attached
-        // cell_index_map maps working_cells indices to original line.cells indices
+        let mut cumulative_x = config.left_margin;
         let mut last_original_idx = 0;
-        for (working_idx, cell) in working_cells.iter().enumerate() {
-            // All cells use normal inline positioning
-            let cell_x = cumulative_x;
 
-            // Use original cell index from mapping for dataset
+        let mut beat_idx = 0;
+        let mut beat_start_x = config.left_margin;
+
+        for working_idx in 0..working_cells.len() {
+            let cell = &working_cells[working_idx];
             let original_cell_idx = cell_index_map[working_idx];
 
-            // Skip character widths for any cells we skipped (ornaments that were extracted)
-            // This ensures char_width_offset stays in sync with the actual characters we're rendering
+            let cell_x = if let Some(beat_id) = cell_to_beat[working_idx] {
+                // Cell is in a beat - use beat-aware positioning
+                if beat_id != beat_idx {
+                    // Starting a new beat
+                    beat_start_x = cumulative_x;
+                    beat_idx = beat_id;
+                }
+
+                let beat = &beats[beat_id];
+                let total_beat_width = beat_widths[beat_id];
+                let cell_positions = self.distribute_space_within_beat(
+                    beat,
+                    total_beat_width,
+                    &effective_widths,
+                    beat_start_x
+                );
+
+                // Find this cell's position within the beat
+                let beat_cell_idx = working_idx - beat.start;
+                cell_positions[beat_cell_idx]
+            } else {
+                // Cell is NOT in a beat (space, barline, text) - use tight-packed positioning
+                cumulative_x
+            };
+
+            // Skip character widths for any cells we skipped
             for skipped_idx in last_original_idx..original_cell_idx {
                 let skipped_char_count = line.cells[skipped_idx].char.chars().count();
                 char_width_offset += skipped_char_count;
@@ -98,12 +193,12 @@ impl<'a> LayoutLineComputer<'a> {
 
             let render_cell = cell_style_builder.build_render_cell(
                 cell,
-                original_cell_idx,  // Use original index so JavaScript can map back correctly
+                original_cell_idx,
                 line_idx,
                 cell_x,
                 config,
                 line_y_offset,
-                &effective_widths,  // Use effective widths (expanded for syllables)
+                &effective_widths,
                 char_widths,
                 &mut char_width_offset,
                 &beat_roles,
@@ -111,11 +206,20 @@ impl<'a> LayoutLineComputer<'a> {
                 &ornament_roles,
             );
 
-            // Advance X position for next cell
-            // Use effective_widths which accounts for syllable padding
-            // This ensures X positions match the actual rendered cell widths
+            // Advance cumulative position
             let effective_width = effective_widths.get(original_cell_idx).copied().unwrap_or(12.0);
-            cumulative_x += effective_width;
+
+            // Update cumulative_x based on whether we're in a beat or not
+            if let Some(beat_id) = cell_to_beat[working_idx] {
+                let beat = &beats[beat_id];
+                // If this is the last cell in the beat, advance by the total beat width
+                if working_idx == beat.end {
+                    cumulative_x = beat_start_x + beat_widths[beat_id];
+                }
+            } else {
+                // Not in a beat - just advance by cell width
+                cumulative_x += effective_width;
+            }
 
             cells.push(render_cell);
         }
@@ -266,20 +370,17 @@ impl<'a> LayoutLineComputer<'a> {
         &self,
         beats: &[BeatSpan],
         render_cells: &[RenderCell],
-        original_cells: &[Cell],
+        _original_cells: &[Cell],
         config: &LayoutConfig,
     ) -> Vec<RenderArc> {
         let mut arcs = Vec::new();
 
         for beat in beats {
-            // Only create beat loops for beats with 2+ non-continuation cells
-            let non_continuation_count = (beat.start..=beat.end)
-                .filter(|&i| {
-                    original_cells.get(i).map(|c| !c.continuation).unwrap_or(false)
-                })
-                .count();
+            // Only create beat loops for beats with 2+ cells
+            // NEW ARCHITECTURE: No continuation cells, so just count all cells in beat
+            let cell_count = (beat.start..=beat.end).count();
 
-            if non_continuation_count >= 2 {
+            if cell_count >= 2 {
                 // Multi-element beat (not counting continuations) - create beat loop
                 // Cell indices match render indices (no filtering)
                 if let (Some(start_cell), Some(end_cell)) =
@@ -429,7 +530,8 @@ impl<'a> LayoutLineComputer<'a> {
         color: &str,
         config: &LayoutConfig,
     ) -> RenderArc {
-        // Anchor points at cell centers
+        // Anchor points at cell edges (not centers)
+        // Beat arc spans from left edge of first cell to right edge of last cell
         let is_downward = direction == "down";
 
         // Position arcs using actual measurements from layout config
@@ -445,10 +547,11 @@ impl<'a> LayoutLineComputer<'a> {
             config.slur_offset_above
         };
 
-        let start_x = start_cell.x + (start_cell.w / 2.0);
+        // Arc anchors: left edge of first cell, right edge of last cell
+        let start_x = start_cell.x;
         let start_y = start_cell.y + baseline_offset;
 
-        let end_x = end_cell.x + (end_cell.w / 2.0);
+        let end_x = end_cell.x + end_cell.w;
         let end_y = end_cell.y + baseline_offset;
 
         // Calculate horizontal span
@@ -664,7 +767,7 @@ impl<'a> LayoutLineComputer<'a> {
         };
 
         // Check if line has any pitched elements (excluding continuation cells)
-        let has_pitched_elements = original_cells.iter().any(|c| !c.continuation && matches!(c.kind, ElementKind::PitchedElement));
+        let has_pitched_elements = original_cells.iter().any(|c| !false /* REMOVED: continuation field */ && matches!(c.kind, ElementKind::PitchedElement));
 
         // Special case: 0 pitched elements - just render entire lyrics as-is
         if !has_pitched_elements {
@@ -968,5 +1071,129 @@ mod ornament_collision_tests {
         // Accidentals should require collision avoidance
         assert!(LayoutLineComputer::char_requires_collision_avoidance("2")); // "b" (flat in some systems)
         assert!(LayoutLineComputer::char_requires_collision_avoidance("3")); // "#" (sharp in some systems)
+    }
+}
+
+// COMMENTED OUT: Even spacing tests (feature reverted)
+// Kept for future reference
+#[cfg(test)]
+mod even_spacing_tests {
+    use super::*;
+    use crate::parse::beats::BeatDeriver;
+
+    // Helper to create test fixtures
+    // Note: Can't use static lifetime for BeatDeriver, so tests create their own instances
+
+    #[test]
+    fn test_calculate_beat_widths() {
+        let beat_deriver = BeatDeriver::new();
+        let computer = LayoutLineComputer::new(&beat_deriver);
+        let effective_widths = vec![10.0, 20.0, 15.0, 12.0];
+
+        // Beat 1: cells 0-1
+        // Beat 2: cells 2-3
+        let beats = vec![
+            BeatSpan::new(0, 1, 1.0),
+            BeatSpan::new(2, 3, 1.0),
+        ];
+
+        let beat_widths = computer.calculate_beat_widths(&beats, &effective_widths);
+
+        assert_eq!(beat_widths.len(), 2);
+        assert_eq!(beat_widths[0], 30.0); // 10 + 20
+        assert_eq!(beat_widths[1], 27.0); // 15 + 12
+    }
+
+    #[test]
+    fn test_distribute_space_within_beat_no_extra_space() {
+        let beat_deriver = BeatDeriver::new();
+        let computer = LayoutLineComputer::new(&beat_deriver);
+        let beat = BeatSpan::new(0, 2, 1.0); // 3 cells
+        let effective_widths = vec![10.0, 20.0, 15.0];
+        let total_beat_width = 45.0; // Exactly sum of widths
+        let beat_start_x = 0.0;
+
+        let positions = computer.distribute_space_within_beat(
+            &beat,
+            total_beat_width,
+            &effective_widths,
+            beat_start_x,
+        );
+
+        // No extra space, so positions are tight-packed
+        assert_eq!(positions.len(), 3);
+        assert_eq!(positions[0], 0.0);   // First cell at start
+        assert_eq!(positions[1], 10.0);  // Second cell after first (no gap)
+        assert_eq!(positions[2], 30.0);  // Third cell after second (no gap)
+    }
+
+    #[test]
+    fn test_distribute_space_within_beat_with_extra_space() {
+        let beat_deriver = BeatDeriver::new();
+        let computer = LayoutLineComputer::new(&beat_deriver);
+        let beat = BeatSpan::new(0, 2, 1.0); // 3 cells
+        let effective_widths = vec![10.0, 20.0, 15.0];
+        let total_beat_width = 65.0; // 20 extra pixels beyond sum (45)
+        let beat_start_x = 100.0;
+
+        let positions = computer.distribute_space_within_beat(
+            &beat,
+            total_beat_width,
+            &effective_widths,
+            beat_start_x,
+        );
+
+        // Extra space = 65 - 45 = 20
+        // Num gaps = 3 - 1 = 2
+        // Gap size = 20 / 2 = 10
+        assert_eq!(positions.len(), 3);
+        assert_eq!(positions[0], 100.0);  // First cell at beat start
+        assert_eq!(positions[1], 120.0);  // 100 + 10 (width) + 10 (gap)
+        assert_eq!(positions[2], 150.0);  // 120 + 20 (width) + 10 (gap)
+    }
+
+    #[test]
+    fn test_distribute_space_single_cell_beat() {
+        let beat_deriver = BeatDeriver::new();
+        let computer = LayoutLineComputer::new(&beat_deriver);
+        let beat = BeatSpan::new(0, 0, 1.0); // 1 cell
+        let effective_widths = vec![10.0];
+        let total_beat_width = 30.0; // Extra space, but no gaps to distribute it to
+        let beat_start_x = 50.0;
+
+        let positions = computer.distribute_space_within_beat(
+            &beat,
+            total_beat_width,
+            &effective_widths,
+            beat_start_x,
+        );
+
+        // Single cell, no gaps
+        assert_eq!(positions.len(), 1);
+        assert_eq!(positions[0], 50.0);  // Just positioned at beat start
+    }
+
+    #[test]
+    fn test_distribute_space_two_cells_even_distribution() {
+        let beat_deriver = BeatDeriver::new();
+        let computer = LayoutLineComputer::new(&beat_deriver);
+        let beat = BeatSpan::new(0, 1, 1.0); // 2 cells
+        let effective_widths = vec![10.0, 10.0];
+        let total_beat_width = 30.0; // 10 extra pixels
+        let beat_start_x = 0.0;
+
+        let positions = computer.distribute_space_within_beat(
+            &beat,
+            total_beat_width,
+            &effective_widths,
+            beat_start_x,
+        );
+
+        // Extra space = 30 - 20 = 10
+        // Num gaps = 2 - 1 = 1
+        // Gap size = 10 / 1 = 10
+        assert_eq!(positions.len(), 2);
+        assert_eq!(positions[0], 0.0);   // First cell
+        assert_eq!(positions[1], 20.0);  // 0 + 10 (width) + 10 (gap)
     }
 }

@@ -159,9 +159,11 @@ impl UndoStack {
     ///
     /// Batching breaks on:
     /// - Whitespace characters (space, newline)
-    /// - Cursor movement to different position
+    /// - Non-sequential cursor movement (line change or column jump)
     /// - Pause > 500ms between keystrokes (DISABLED in WASM - not supported)
     /// - Different operation types (insert vs delete)
+    ///
+    /// Sequential forward typing (cursor advancing by 1) stays in the same batch
     pub fn push(&mut self, command: Command, cursor_pos: (usize, usize)) {
         // Note: Time-based batching is disabled in WASM since SystemTime::now() is not supported
         // We rely on whitespace and cursor movement for batch breaks
@@ -198,9 +200,14 @@ impl UndoStack {
         //     }
         // }
 
-        // Break on cursor movement
+        // Break on non-sequential cursor movement
+        // Allow sequential movement within same line (typing forward)
         if let Some(last_pos) = self.last_cursor_pos {
-            if last_pos != cursor_pos {
+            let (last_line, last_col) = last_pos;
+            let (curr_line, curr_col) = cursor_pos;
+
+            // Break if line changes or column doesn't advance sequentially
+            if last_line != curr_line || (curr_col != last_col && curr_col != last_col + 1) {
                 return true;
             }
         }
@@ -319,7 +326,6 @@ mod tests {
         Cell {
             char: ch.to_string(),
             kind: ElementKind::PitchedElement,
-            continuation: false,
             col: 0,
             flags: 0,
             pitch_code: None,

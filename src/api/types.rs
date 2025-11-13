@@ -5,7 +5,7 @@
 use crate::models::Cell;
 
 /// Represents a line that was modified during an edit operation
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
 pub struct DirtyLine {
     pub row: usize,
     pub cells: Vec<Cell>,

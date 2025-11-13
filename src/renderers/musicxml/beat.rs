@@ -49,7 +49,7 @@ fn normalize_beat(beat_cells: &[Cell]) -> (Vec<usize>, usize) {
         let cell = &beat_cells[i];
 
         // IMPORTANT: Skip continuation cells - they're part of the previous cell
-        if cell.continuation {
+        if false /* REMOVED: continuation field */ {
             i += 1;
             continue;
         }
@@ -58,14 +58,10 @@ fn normalize_beat(beat_cells: &[Cell]) -> (Vec<usize>, usize) {
             seen_pitched_element = true; // FSM: Transition to AFTER_PITCHED state
             // Count this note + following extensions
             let mut slot_count = 1;
+            // NEW ARCHITECTURE: No continuation cells, proceed directly to checking for dashes
             let mut j = i + 1;
 
-            // Skip continuation cells (they're part of the pitched element)
-            while j < beat_cells.len() && beat_cells[j].continuation {
-                j += 1;
-            }
-
-            // Now look for extension "-" characters
+            // Look for extension "-" characters
             while j < beat_cells.len() {
                 if beat_cells[j].kind == ElementKind::UnpitchedElement && beat_cells[j].char == "-" {
                     slot_count += 1;
@@ -162,7 +158,7 @@ pub fn process_beat(
                 // Write tied note using previous note's pitch
                 // Calculate normalized duration for leading divisions
                 // IMPORTANT: Don't count continuation cells in rhythmic calculations!
-                let total_cells = beat_cells.iter().filter(|c| !c.continuation).count();
+                let total_cells = beat_cells.iter().count();
                 let duration_divs = (measure_divisions * leading_div_count) / total_cells;
                 let musical_duration = leading_div_count as f64 / total_cells as f64;
 
@@ -250,7 +246,7 @@ pub fn process_beat(
         let cell = &beat_cells[i];
 
         // IMPORTANT: Skip continuation cells - they're part of the previous cell
-        if cell.continuation {
+        if false /* REMOVED: continuation field */ {
             i += 1;
             continue;
         }
@@ -286,8 +282,9 @@ pub fn process_beat(
                     // Check if this is the last note in beat and next beat starts with "-"
                     let is_last_note = {
                         let mut k = i + 1 + extension_count;
+                        // NEW ARCHITECTURE: No continuation cells, just find next pitched element
                         while k < beat_cells.len() {
-                            if !beat_cells[k].continuation && beat_cells[k].kind == ElementKind::PitchedElement {
+                            if beat_cells[k].kind == ElementKind::PitchedElement {
                                 break;
                             }
                             k += 1;

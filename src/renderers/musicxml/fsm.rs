@@ -296,7 +296,7 @@ pub fn beat_transition(
     accum: &mut BeatAccumulator,
 ) -> BeatProcessingState {
     // Skip continuation cells - they're part of previous element
-    if cell.continuation {
+    if false /* REMOVED: continuation field */ {
         return state;
     }
 
@@ -428,7 +428,7 @@ pub fn transition(
     measure_tracker: &mut MeasureTracker,
 ) -> MusicXMLState {
     // Skip continuation cells - they're part of previous element
-    if cell.continuation {
+    if false /* REMOVED: continuation field */ {
         return state;
     }
 

@@ -31,6 +31,50 @@
 use crate::models::{PitchCode, OrnamentPositionType};
 use serde::{Serialize, Deserialize};
 
+/// Fraction representing a duration as a portion of a beat
+///
+/// Stores rhythmic durations semantically (e.g., 3/4 of a beat)
+/// rather than as absolute divisions. This preserves the relationship
+/// between note duration and beat structure.
+///
+/// Example: In "1--2", the "1" occupies 3/4 of the beat, "2" occupies 1/4
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Fraction {
+    pub numerator: usize,
+    pub denominator: usize,
+}
+
+impl Fraction {
+    /// Create a new fraction
+    pub fn new(numerator: usize, denominator: usize) -> Self {
+        assert!(denominator > 0, "Fraction denominator must be positive");
+        Fraction { numerator, denominator }
+    }
+
+    /// Simplify the fraction by dividing by GCD
+    pub fn simplify(&self) -> Self {
+        fn gcd(a: usize, b: usize) -> usize {
+            if b == 0 { a } else { gcd(b, a % b) }
+        }
+        let g = gcd(self.numerator, self.denominator);
+        Fraction {
+            numerator: self.numerator / g,
+            denominator: self.denominator / g,
+        }
+    }
+
+    /// Convert to floating point (for debugging/display)
+    pub fn to_f64(&self) -> f64 {
+        self.numerator as f64 / self.denominator as f64
+    }
+
+    /// Scale fraction to absolute divisions given a measure division count
+    /// Example: 3/4 fraction with measure_divisions=16 → 12 divisions
+    pub fn to_divisions(&self, measure_divisions: usize) -> usize {
+        (self.numerator * measure_divisions) / self.denominator
+    }
+}
+
 /// Intermediate representation of a line (staff/part) for MusicXML export
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExportLine {
@@ -130,7 +174,11 @@ impl ExportMeasure {
     }
 
     /// Validate invariant: sum of event divisions equals measure divisions
+    /// Empty measures are also valid (intermediate state, will be filled during processing)
     pub fn validate(&self) -> bool {
+        if self.events.is_empty() {
+            return true; // Empty measures are valid
+        }
         let sum: usize = self.events.iter().map(|e| e.divisions()).sum();
         sum == self.divisions
     }
@@ -141,8 +189,11 @@ impl ExportMeasure {
 pub enum ExportEvent {
     /// Rest element
     Rest {
-        /// Duration in beat divisions
+        /// Duration in beat divisions (scaled for MusicXML)
         divisions: usize,
+        /// Duration as fraction of beat (semantic meaning)
+        /// Example: 2/4 means "occupies 2 out of 4 subdivisions of the beat"
+        fraction: Fraction,
         /// Tuplet information (if this rest is part of a tuplet)
         tuplet: Option<TupletInfo>,
     },
@@ -154,8 +205,10 @@ pub enum ExportEvent {
     Chord {
         /// Pitches in the chord (unison or multi-pitch)
         pitches: Vec<PitchInfo>,
-        /// Duration in beat divisions
+        /// Duration in beat divisions (scaled for MusicXML)
         divisions: usize,
+        /// Duration as fraction of beat (semantic meaning)
+        fraction: Fraction,
         /// Lyrics attached to first note of chord
         lyrics: Option<LyricData>,
         /// Slur information
@@ -181,8 +234,12 @@ pub struct NoteData {
     /// The pitch of the note
     pub pitch: PitchInfo,
 
-    /// Duration in beat divisions
+    /// Duration in beat divisions (scaled for MusicXML)
     pub divisions: usize,
+
+    /// Duration as fraction of beat (semantic meaning)
+    /// Example: 3/4 means "occupies 3 out of 4 subdivisions of the beat"
+    pub fraction: Fraction,
 
     /// Grace notes before this note
     pub grace_notes_before: Vec<GraceNoteData>,
@@ -348,7 +405,11 @@ mod tests {
 
     #[test]
     fn test_event_divisions() {
-        let rest = ExportEvent::Rest { divisions: 2, tuplet: None };
+        let rest = ExportEvent::Rest {
+            divisions: 2,
+            fraction: Fraction { numerator: 1, denominator: 2 },
+            tuplet: None
+        };
         assert_eq!(rest.divisions(), 2);
     }
 

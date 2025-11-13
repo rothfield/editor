@@ -92,6 +92,8 @@ export class FontTestUI {
     this.grid = document.getElementById('font-test-grid');
     this.showAllBtn = document.getElementById('font-test-show-all');
     this.tableBtn = document.getElementById('font-test-show-table');
+    this.fontSizeSelector = document.getElementById('font-test-size');
+    this.currentFontSize = 20; // Default 20pt
 
     this.setupEventListeners();
   }
@@ -99,6 +101,18 @@ export class FontTestUI {
   setupEventListeners() {
     this.showAllBtn?.addEventListener('click', () => this.showComprehensiveView());
     this.tableBtn?.addEventListener('click', () => this.showUnicodeTable());
+    this.fontSizeSelector?.addEventListener('change', (e) => this.handleFontSizeChange(e));
+  }
+
+  handleFontSizeChange(e) {
+    this.currentFontSize = parseInt(e.target.value);
+    // Re-render the current view with new font size
+    const currentView = this.grid.querySelector('.mb-6') ? 'comprehensive' : 'table';
+    if (currentView === 'comprehensive') {
+      this.showComprehensiveView();
+    } else {
+      this.showUnicodeTable();
+    }
   }
 
   showComprehensiveView() {
@@ -127,10 +141,9 @@ export class FontTestUI {
       symbolsByKind[symbol.kind].push(symbol);
     }
 
-    // Display symbols grouped by kind
-    const kindOrder = ['bracket', 'accidental', 'barline', 'ornament'];
+    // Display symbols grouped by kind (excluding brackets)
+    const kindOrder = ['accidental', 'barline', 'ornament'];
     const kindLabels = {
-      'bracket': 'Brackets (Staff Grouping)',
       'accidental': 'Accidentals',
       'barline': 'Barlines & Repeat Markers',
       'ornament': 'Ornaments'
@@ -201,21 +214,37 @@ export class FontTestUI {
 
       charContainer.appendChild(variantGrid);
 
-      // Sharp accidental for this character
+      // All accidentals for this character (sharp, flat, double-sharp, double-flat)
       if (charIndex !== -1 && charIndex < fontConfig.all_chars.length) {
-        const sharpLabel = document.createElement('h4');
-        sharpLabel.className = 'text-xs font-semibold text-gray-600 mt-3 mb-2';
-        sharpLabel.textContent = 'With Sharp Accidental';
-        charContainer.appendChild(sharpLabel);
+        const accidentalsLabel = document.createElement('h4');
+        accidentalsLabel.className = 'text-xs font-semibold text-gray-600 mt-3 mb-2';
+        accidentalsLabel.textContent = 'With Accidentals';
+        charContainer.appendChild(accidentalsLabel);
 
-        const sharpGrid = document.createElement('div');
-        sharpGrid.className = 'grid grid-cols-4 gap-2';
+        const accidentalsGrid = document.createElement('div');
+        accidentalsGrid.className = 'grid grid-cols-4 gap-2';
 
-        const sharpCp = fontConfig.accidental_pua_start + charIndex;
-        const sharpItem = this.createGlyphItem(sharpCp, `${char}#`, `U+${sharpCp.toString(16).toUpperCase().padStart(4, '0')}`);
-        sharpGrid.appendChild(sharpItem);
+        // Sharp (♯): 0xE1F0 + charIndex
+        const sharpCp = 0xE1F0 + charIndex;
+        const sharpItem = this.createGlyphItem(sharpCp, `${char}♯`, `U+${sharpCp.toString(16).toUpperCase().padStart(4, '0')}`);
+        accidentalsGrid.appendChild(sharpItem);
 
-        charContainer.appendChild(sharpGrid);
+        // Flat (♭): 0xE220 + charIndex
+        const flatCp = 0xE220 + charIndex;
+        const flatItem = this.createGlyphItem(flatCp, `${char}♭`, `U+${flatCp.toString(16).toUpperCase().padStart(4, '0')}`);
+        accidentalsGrid.appendChild(flatItem);
+
+        // Double-sharp (𝄪): 0xE250 + charIndex
+        const doubleSharpCp = 0xE250 + charIndex;
+        const doubleSharpItem = this.createGlyphItem(doubleSharpCp, `${char}𝄪`, `U+${doubleSharpCp.toString(16).toUpperCase().padStart(4, '0')}`);
+        accidentalsGrid.appendChild(doubleSharpItem);
+
+        // Double-flat (𝄫): 0xE280 + charIndex
+        const doubleFlatCp = 0xE280 + charIndex;
+        const doubleFlatItem = this.createGlyphItem(doubleFlatCp, `${char}𝄫`, `U+${doubleFlatCp.toString(16).toUpperCase().padStart(4, '0')}`);
+        accidentalsGrid.appendChild(doubleFlatItem);
+
+        charContainer.appendChild(accidentalsGrid);
       }
 
       pitchGrid.appendChild(charContainer);
@@ -251,8 +280,9 @@ export class FontTestUI {
 
     // Glyph display
     const glyphDiv = document.createElement('div');
-    glyphDiv.className = 'font-test-glyph-display font-bold mb-2 text-center text-[20pt]';
+    glyphDiv.className = 'font-test-glyph-display font-bold mb-2 text-center';
     glyphDiv.style.fontFamily = "'NotationFont', monospace";
+    glyphDiv.style.fontSize = `${this.currentFontSize}pt`;
     glyphDiv.style.minHeight = '40px';
     glyphDiv.style.display = 'flex';
     glyphDiv.style.alignItems = 'center';
@@ -362,17 +392,29 @@ export class FontTestUI {
       }
     }
 
-    // Add sharp accidentals
-    for (let charIdx = 0; charIdx < allChars.length; charIdx++) {
-      const char = allChars[charIdx];
-      const cp = fontConfig.accidental_pua_start + charIdx;
-      const systemName = this.getCharacterSystem(char);
-      tbody.appendChild(this.createTableRow(cp, String.fromCodePoint(cp), `${char}# (sharp)`, 'Accidental', `${systemName} +sharp`));
+    // Add all accidentals (sharp, flat, double-sharp, double-flat)
+    const accidentalTypes = [
+      { name: 'sharp', pua: 0xE1F0, symbol: '♯' },
+      { name: 'flat', pua: 0xE220, symbol: '♭' },
+      { name: 'double-sharp', pua: 0xE250, symbol: '𝄪' },
+      { name: 'double-flat', pua: 0xE280, symbol: '𝄫' }
+    ];
+
+    for (const accType of accidentalTypes) {
+      for (let charIdx = 0; charIdx < allChars.length; charIdx++) {
+        const char = allChars[charIdx];
+        const cp = accType.pua + charIdx;
+        const systemName = this.getCharacterSystem(char);
+        tbody.appendChild(this.createTableRow(cp, String.fromCodePoint(cp), `${char}${accType.symbol} (${accType.name})`, 'Accidental', `${systemName} +${accType.name}`));
+      }
     }
 
-    // Add symbols (from font map data - single source of truth)
+    // Add symbols (from font map data - single source of truth, excluding brackets)
     if (fontMapData?.symbols && fontMapData.symbols.length > 0) {
       for (const symbol of fontMapData.symbols) {
+        // Skip brackets
+        if (symbol.kind === 'bracket') continue;
+
         const cp = parseInt(symbol.codepoint, 16);
         const kind = symbol.kind.charAt(0).toUpperCase() + symbol.kind.slice(1);
         tbody.appendChild(this.createTableRow(cp, String.fromCodePoint(cp), symbol.label, 'Symbol', kind));
@@ -394,7 +436,7 @@ export class FontTestUI {
 
     row.innerHTML = `
       <td class="px-4 py-2 font-mono text-blue-600 font-bold">${cpHex}</td>
-      <td class="px-4 py-2 text-center text-xl" style="font-family: 'NotationFont', monospace">${glyph}</td>
+      <td class="px-4 py-2 text-center" style="font-family: 'NotationFont', monospace; font-size: ${this.currentFontSize}pt;">${glyph}</td>
       <td class="px-4 py-2 text-gray-700">${pitch}</td>
       <td class="px-4 py-2"><span class="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-semibold">${type}</span></td>
       <td class="px-4 py-2 text-gray-600">${description}</td>
@@ -423,7 +465,17 @@ export class FontTestUI {
 /// Initialize Font Sandbox with all custom glyphs
 function initFontSandbox() {
   const sandbox = document.getElementById('font-sandbox');
+  const sandboxSizeSelector = document.getElementById('font-sandbox-size');
   if (!sandbox || !fontConfig) return;
+
+  // Set initial font size
+  sandbox.style.fontSize = '18pt';
+
+  // Handle font size changes
+  sandboxSizeSelector?.addEventListener('change', (e) => {
+    const newSize = parseInt(e.target.value);
+    sandbox.style.fontSize = `${newSize}pt`;
+  });
 
   // Start with brackets (staff grouping)
   let content = '--- BRACKETS (from Bravura) ---\n';
@@ -462,9 +514,18 @@ function initFontSandbox() {
         content += String.fromCodePoint(cp);
       }
 
-      // Sharp accidental
-      const sharpCp = fontConfig.accidental_pua_start + charIndex;
+      // All accidentals (sharp, flat, double-sharp, double-flat)
+      const sharpCp = 0xE1F0 + charIndex;
       content += String.fromCodePoint(sharpCp);
+
+      const flatCp = 0xE220 + charIndex;
+      content += String.fromCodePoint(flatCp);
+
+      const doubleSharpCp = 0xE250 + charIndex;
+      content += String.fromCodePoint(doubleSharpCp);
+
+      const doubleFlatCp = 0xE280 + charIndex;
+      content += String.fromCodePoint(doubleFlatCp);
 
       content += ' ';
     }

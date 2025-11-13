@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Sharp Accidentals - Complete Feature Test', () => {
-  test('1# renders as single U+E1F0 glyph from NotationMono font', async ({ page }) => {
+  test('1# renders as single U+E1F0 glyph from NotationFont font', async ({ page }) => {
     await page.goto('/');
 
     const editor = page.getByTestId('editor-root');
@@ -23,7 +23,7 @@ test.describe('Sharp Accidentals - Complete Feature Test', () => {
     const fontFamily = await pitchCell.evaluate(el =>
       window.getComputedStyle(el).fontFamily
     );
-    expect(fontFamily).toContain('NotationMono');
+    expect(fontFamily).toContain('NotationFont');
 
     // Verify no data-accidental attribute (we're using the glyph, not CSS workaround)
     const hasAccidental = await pitchCell.evaluate(el =>
@@ -39,6 +39,7 @@ test.describe('Sharp Accidentals - Complete Feature Test', () => {
     await editor.click();
 
     await page.keyboard.type('2#');
+    await page.waitForTimeout(200); // Allow rendering to complete
 
     const pitchCell = page.locator('.char-cell.kind-pitched').first();
     await expect(pitchCell).toBeVisible();
@@ -66,27 +67,9 @@ test.describe('Sharp Accidentals - Complete Feature Test', () => {
     expect(codepoint).toBe(0xE1F2);
   });
 
-  test('Sharp accidental continuation character is replaced with non-breaking space', async ({ page }) => {
-    await page.goto('/');
-    const editor = page.getByTestId('editor-root');
-    await expect(editor).toBeVisible();
-    await editor.click();
-
-    await page.keyboard.type('1#');
-
-    // Get the continuation cell (the # character that's now rendered as nbsp)
-    const continuationCell = page.locator('.pitch-continuation').first();
-
-    // The continuation cell should exist in the DOM
-    await expect(continuationCell).toBeInViewport();
-
-    // The continuation cell should contain non-breaking space (U+00A0)
-    const content = await continuationCell.evaluate(el => {
-      return el.textContent;
-    });
-
-    // Should be non-breaking space (not visible but takes space)
-    expect(content).toBe('\u{00A0}'); // non-breaking space
+  test.skip('Sharp accidental continuation character - OBSOLETE (no continuation cells in new architecture)', async ({ page }) => {
+    // This test is no longer relevant: continuation cells have been removed.
+    // Accidentals like "1#" are now single cells with composite glyph rendering.
   });
 
   test('4# renders as single U+E1F3 glyph', async ({ page }) => {
@@ -106,7 +89,7 @@ test.describe('Sharp Accidentals - Complete Feature Test', () => {
     expect(codepoint).toBe(0xE1F3);
   });
 
-  test('Sharp glyphs use NotationMono font consistently', async ({ page }) => {
+  test('Sharp glyphs use NotationFont font consistently', async ({ page }) => {
     await page.goto('/');
     const editor = page.getByTestId('editor-root');
     await expect(editor).toBeVisible();
@@ -131,7 +114,7 @@ test.describe('Sharp Accidentals - Complete Feature Test', () => {
         window.getComputedStyle(el).fontFamily
       );
 
-      expect(fontFamily).toContain('NotationMono');
+      expect(fontFamily).toContain('NotationFont');
     }
   });
 

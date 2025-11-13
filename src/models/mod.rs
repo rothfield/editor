@@ -11,9 +11,11 @@ pub mod pitch_code;
 pub mod pitch_systems;
 pub mod barlines;
 pub mod serde_helpers;
+// pub mod editor_state;  // Commented out - not needed, Document.state already has cursor/selection
 
 // Re-export commonly used types
 pub use core::*;
 pub use elements::*;
 pub use notation::*;
 pub use pitch_code::PitchCode;
+// pub use editor_state::EditorState;

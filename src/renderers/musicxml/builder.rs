@@ -908,15 +908,15 @@ mod tests {
         let grace_pitch_code = PitchCode::N5; // G natural
         builder.write_grace_note(&grace_pitch_code, 0, true, None).unwrap();
 
-        // Should contain grace element with slash
-        assert!(builder.buffer.contains("<grace slash=\"yes\"/>"));
+        // Should contain grace element with slash and default steal-time attribute
+        assert!(builder.buffer.contains("<grace slash=\"yes\" steal-time-previous=\"10\"/>"));
 
         // Should contain pitch information
         assert!(builder.buffer.contains("<step>G</step>"));
         assert!(builder.buffer.contains("<octave>4</octave>"));
 
-        // Should have eighth note type (default for grace notes)
-        assert!(builder.buffer.contains("<type>eighth</type>"));
+        // Should have sixteenth note type (default for grace notes)
+        assert!(builder.buffer.contains("<type>sixteenth</type>"));
 
         // Should NOT contain duration element (grace notes have no duration)
         assert!(!builder.buffer.contains("<duration>"));
@@ -931,8 +931,8 @@ mod tests {
         let grace_pitch_code = PitchCode::N1; // C natural
         builder.write_grace_note(&grace_pitch_code, 0, false, None).unwrap();
 
-        // Should contain grace element without slash
-        assert!(builder.buffer.contains("<grace/>"));
+        // Should contain grace element without slash but with default steal-time
+        assert!(builder.buffer.contains("<grace steal-time-previous=\"10\"/>"));
         assert!(!builder.buffer.contains("slash=\"yes\""));
     }
 

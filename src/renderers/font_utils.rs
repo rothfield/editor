@@ -163,6 +163,72 @@ pub fn get_accidental_glyph_codepoint(base_char: char, accidental: u8) -> char {
     char::from_u32(codepoint).unwrap_or(base_char)
 }
 
+/// Get codepoint for combined accidental + octave glyph
+///
+/// This function handles the case where a note has BOTH an accidental AND an octave shift.
+/// For example: "1# with octave +1" (1 sharp with dot above)
+///
+/// Code point allocation (752 glyphs total):
+/// - Sharp + octave:        0xE2B0 - 0xE36F (188 glyphs: 47 chars × 4 octave variants)
+/// - Flat + octave:         0xE370 - 0xE42F (188 glyphs: 47 chars × 4 octave variants)
+/// - Double-sharp + octave: 0xE430 - 0xE4EF (188 glyphs: 47 chars × 4 octave variants)
+/// - Double-flat + octave:  0xE4F0 - 0xE5AF (188 glyphs: 47 chars × 4 octave variants)
+///
+/// Formula: `pua_start + (char_index × 4) + variant_index`
+///
+/// # Arguments
+/// * `base_char` - The base note character ('1', '2', ..., 'C', 'D', etc.)
+/// * `accidental` - Accidental type (1=sharp, 2=flat, 3=double-sharp, 4=double-flat)
+/// * `octave_shift` - Octave shift (-2 to +2)
+///
+/// # Examples
+/// ```
+/// assert_eq!(get_combined_accidental_octave_glyph('1', 1, 1), '\u{E2B0}');  // 1# with +1 octave
+/// assert_eq!(get_combined_accidental_octave_glyph('1', 1, -1), '\u{E2B2}');  // 1# with -1 octave
+/// assert_eq!(get_combined_accidental_octave_glyph('2', 2, 2), '\u{E375}');  // 2b with +2 octaves
+/// ```
+pub fn get_combined_accidental_octave_glyph(base_char: char, accidental: u8, octave_shift: i8) -> char {
+    // No octave shift: use plain accidental glyph
+    if octave_shift == 0 {
+        return get_accidental_glyph_codepoint(base_char, accidental);
+    }
+
+    // No accidental: use plain octave glyph
+    if accidental == 0 || accidental == b'n' {
+        return get_glyph_codepoint(base_char, octave_shift);
+    }
+
+    // Find the character index in our canonical string
+    let char_index = match ALL_CHARS.find(base_char) {
+        Some(idx) => idx as u32,
+        None => return base_char, // Unknown character, return as-is
+    };
+
+    // Map octave shift to variant index (0-3)
+    let variant_index = match octave_shift {
+        1 => 0,   // +1 octave (1 dot above)
+        2 => 1,   // +2 octaves (2 dots above)
+        -1 => 2,  // -1 octave (1 dot below)
+        -2 => 3,  // -2 octaves (2 dots below)
+        _ => return get_accidental_glyph_codepoint(base_char, accidental), // Invalid octave, fallback to plain accidental
+    };
+
+    // Map accidental code to PUA range start (for combined accidental+octave glyphs)
+    let pua_start: u32 = match accidental {
+        1 | b's' => 0xE2B0,  // Sharp + octave composites
+        2 | b'b' => 0xE370,  // Flat + octave composites
+        3 | b'x' => 0xE430,  // Double-sharp + octave composites
+        4 | b'y' => 0xE4F0,  // Double-flat + octave composites
+        _ => return get_accidental_glyph_codepoint(base_char, accidental), // Unknown accidental, fallback
+    };
+
+    // Calculate the codepoint: pua_start + (char_index × 4) + variant_index
+    let codepoint = pua_start + (char_index * 4) + variant_index;
+
+    // Convert to character, fallback to plain accidental if conversion fails
+    char::from_u32(codepoint).unwrap_or_else(|| get_accidental_glyph_codepoint(base_char, accidental))
+}
+
 // Deprecated: use get_accidental_glyph_codepoint instead
 pub fn get_sharp_glyph_codepoint(base_char: char, accidental: u8) -> char {
     get_accidental_glyph_codepoint(base_char, accidental)

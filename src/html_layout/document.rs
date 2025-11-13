@@ -41,6 +41,9 @@ pub struct LayoutConfig {
     /// Minimum padding between syllables
     pub min_syllable_padding: f32,
 
+    /// Extra spacing after word-ending syllables (pixels)
+    pub word_spacing: f32,
+
     /// Slur positioning: distance above cell top (pixels)
     pub slur_offset_above: f32,
 

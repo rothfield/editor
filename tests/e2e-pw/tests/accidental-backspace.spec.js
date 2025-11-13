@@ -1,21 +1,18 @@
 import { test, expect } from '@playwright/test';
 
 /**
- * TEST: Accidental backspace preserves accidental type with composite glyph overlay
+ * TEST: Accidental backspace removes last character and reparses pitch
  *
- * Architecture (See CLAUDE.md "Multi-Character Glyph Rendering"):
- * - "1#" creates 2 cells:
- *   1. Root cell: char="1", pitch_code=Sharp (accidental type stored in pitch_code)
- *   2. Continuation cell: char="#" (continuation marker for multi-char glyph)
+ * NEW ARCHITECTURE (Single-Cell):
+ * - "1#" creates 1 cell: char="1#", pitch_code=Sharp (stored as single cell)
+ * - When user presses backspace:
+ *   - WASM: Removes "#" from cell.char, making it "1"
+ *   - Reparses pitch_code from "1" → Natural (N1)
+ *   - Cell no longer has accidental attributes
  *
- * - When user presses backspace (deletes continuation):
- *   - WASM: Deletes continuation cell, keeps root cell with char="1" and pitch_code=Sharp
- *   - Reason: Preserves what user intended (accidental type in pitch_code)
- *   - Rendering: Invisible "1" + CSS overlay shows composite glyph U+E1F0 (represents "1#" visually)
- *
- * Result: Accidental type preserved, displays as composite glyph overlay (DOM contains "1" with accidental metadata)
+ * Result: After backspace, "1#" becomes "1" (natural), accidental is removed
  */
-test('Accidental backspace preserves typed text with composite glyph display', async ({ page }) => {
+test('Accidental backspace removes accidental and reparses as natural', async ({ page }) => {
   await page.goto('http://localhost:8080');
 
   const editor = page.getByTestId('editor-root');
@@ -30,9 +27,17 @@ test('Accidental backspace preserves typed text with composite glyph display', a
 
   console.log('Before backspace:');
   const cellsBefore = page.locator('[data-cell-index]');
-  console.log(`  Cell count: ${await cellsBefore.count()}`);
+  const countBefore = await cellsBefore.count();
+  console.log(`  Cell count: ${countBefore}`);
+  expect(countBefore).toBe(1); // Single cell for "1#"
 
-  // Press backspace once to delete the "#" continuation character
+  const cellBefore = cellsBefore.first();
+  const textBefore = await cellBefore.textContent();
+  const codepointBefore = textBefore.charCodeAt(0);
+  console.log(`  Text: "${textBefore}", Codepoint: U+${codepointBefore.toString(16).toUpperCase().padStart(4, '0')}`);
+  expect(codepointBefore).toBe(0xE1F0); // U+E1F0 = 1# composite glyph
+
+  // Press backspace once to delete the "#" character
   await page.keyboard.press('Backspace');
 
   await page.waitForTimeout(100);
@@ -42,44 +47,15 @@ test('Accidental backspace preserves typed text with composite glyph display', a
   const cellsAfter = page.locator('[data-cell-index]');
   const countAfter = await cellsAfter.count();
   console.log(`  Cell count: ${countAfter}`);
+  expect(countAfter).toBe(1); // Still 1 cell, now just "1"
 
-  // Should have exactly 1 cell remaining (the base "1")
-  expect(countAfter).toBe(1);
+  const cellAfter = cellsAfter.first();
+  const textAfter = await cellAfter.textContent();
+  const codepointAfter = textAfter.charCodeAt(0);
+  console.log(`  Text: "${textAfter}", Codepoint: U+${codepointAfter.toString(16).toUpperCase().padStart(4, '0')}`);
 
-  if (countAfter >= 1) {
-    const firstCell = cellsAfter.first();
-
-    // Get cell's data attributes
-    const cellIndex = await firstCell.getAttribute('data-cellIndex');
-    const lineIndex = await firstCell.getAttribute('data-lineIndex');
-    const column = await firstCell.getAttribute('data-column');
-
-    console.log(`  Cell attributes: lineIndex=${lineIndex}, cellIndex=${cellIndex}, column=${column}`);
-
-    // Verify the cell renders with accidental overlay
-    const firstCellAfterHtml = await firstCell.innerHTML();
-    console.log(`After backspace - cell HTML: "${firstCellAfterHtml}"`);
-
-    // Verify the cell has the has-accidental class for CSS overlay
-    const hasAccidentalClass = await firstCell.evaluate(el => el.classList.contains('has-accidental'));
-    console.log(`  Has accidental class: ${hasAccidentalClass}`);
-    expect(hasAccidentalClass).toBe(true);
-
-    // Verify the accidental type is stored in data attribute
-    const accidentalType = await firstCell.getAttribute('data-accidental-type');
-    console.log(`  Accidental type: ${accidentalType}`);
-    expect(accidentalType).toBe('sharp');
-
-    // Verify composite glyph codepoint is available for overlay
-    const compositeGlyph = await firstCell.getAttribute('data-composite-glyph');
-    console.log(`  Composite glyph: ${compositeGlyph}`);
-    expect(compositeGlyph).toBeDefined();
-
-    // The cell should display the sharp composite glyph (U+E1F0) via CSS overlay
-    // Screenshots should show: before="1#", after="1#" (both show the composite glyph)
-    const afterScreenshotData = await page.screenshot();
-    expect(afterScreenshotData).toBeDefined();
-  }
+  // After backspace, cell should contain natural "1" (not composite glyph)
+  expect(codepointAfter).toBe(0x0031); // U+0031 = ASCII "1" (natural)
 });
 
 test.describe('Visual verification of accidental overlay rendering', () => {

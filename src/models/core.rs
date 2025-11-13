@@ -15,14 +15,11 @@ pub use super::pitch_code::PitchCode;
 #[repr(C)]
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Cell {
-    /// The visible character (always single character)
+    /// The visible character (can be multi-character like "1#" or "||")
     pub char: String,
 
     /// Type of musical element this cell represents
     pub kind: ElementKind,
-
-    /// True if this cell is a continuation of the previous cell (e.g., "#" after "C")
-    pub continuation: bool,
 
     /// Physical column index (0-based) for layout calculations
     pub col: usize,
@@ -31,6 +28,7 @@ pub struct Cell {
     pub flags: u8,
 
     /// Canonical pitch representation (for pitched elements only)
+    /// This encodes the accidental (Sharp, Flat, Natural, etc.)
     pub pitch_code: Option<PitchCode>,
 
     /// Pitch system used for this element (for pitched elements only)
@@ -72,7 +70,6 @@ impl Cell {
         Self {
             char,
             kind,
-            continuation: false,
             col,
             flags: 0,
             pitch_code: None,
@@ -574,19 +571,9 @@ impl Document {
                     line.part_id = "P1".to_string(); // All Melody lines share P1
                 }
                 StaffRole::GroupHeader => {
-                    // Check if this GroupHeader is followed by GroupItem (true group)
-                    // or followed by Melody/nothing (treat as solo melody)
-                    let next_is_group_item = i + 1 < staff_roles.len() &&
-                                             staff_roles[i + 1] == StaffRole::GroupItem;
-
-                    if next_is_group_item {
-                        // Real group: assign unique part_id starting from P2
-                        line.part_id = format!("P{}", next_group_part_id);
-                        next_group_part_id += 1;
-                    } else {
-                        // Solo melody disguised as GroupHeader: use P1
-                        line.part_id = "P1".to_string();
-                    }
+                    // GroupHeader always gets unique part_id starting from P2
+                    line.part_id = format!("P{}", next_group_part_id);
+                    next_group_part_id += 1;
                 }
                 StaffRole::GroupItem => {
                     line.part_id = format!("P{}", next_group_part_id);
@@ -764,6 +751,33 @@ impl DocumentState {
     /// Get the current selection range
     pub fn selection_range(&self) -> Option<Range> {
         self.selection_manager.get_range()
+    }
+
+    /// Create an EditorDiff from current state (needs document ref for cell data)
+    pub fn to_editor_diff(&self, document: &Document, dirty_line_indices: Vec<usize>) -> crate::models::EditorDiff {
+        use crate::models::{EditorDiff, CaretInfo, SelectionInfo};
+        use crate::api::types::DirtyLine;
+
+        // Convert line indices to DirtyLine with cell data
+        let dirty_lines: Vec<DirtyLine> = dirty_line_indices
+            .into_iter()
+            .filter_map(|row| {
+                document.lines.get(row).map(|line| DirtyLine {
+                    row,
+                    cells: line.cells.clone(),
+                })
+            })
+            .collect();
+
+        EditorDiff {
+            dirty_lines,
+            caret: CaretInfo {
+                caret: self.cursor,
+                desired_col: self.selection_manager.desired_col,
+            },
+            selection: self.selection_manager.current_selection.as_ref()
+                .map(|sel| SelectionInfo::from_selection(sel)),
+        }
     }
 
     /// Get the current selection

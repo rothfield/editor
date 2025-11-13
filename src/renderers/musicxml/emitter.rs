@@ -223,6 +223,19 @@ fn emit_combined_part(
     // Parse beat count from first line's time signature
     let beat_count = parse_beat_count(lines[0].time_signature.as_deref());
 
+    // Parse lyrics from first line (assuming all lines in same part share lyrics)
+    let syllables = parse_lyrics_to_syllables(&lines[0].lyrics);
+    let mut lyric_index = 0;
+
+    // Count total pitched events across ALL lines and measures
+    let total_pitched_event_count: usize = lines.iter()
+        .flat_map(|line| &line.measures)
+        .map(|m| m.events.iter().filter(|e| {
+            matches!(e, ExportEvent::Note(_) | ExportEvent::Chord { .. })
+        }).count())
+        .sum();
+    let mut global_pitched_index = 0;
+
     // Check if all lines have no measures (empty part)
     let all_empty = lines.iter().all(|line| line.measures.is_empty());
 
@@ -256,10 +269,13 @@ fn emit_combined_part(
                 emit_measure(
                     &mut builder,
                     measure,
-                    line,
                     is_first_measure,
                     emit_new_system,
                     beat_count,
+                    &syllables,
+                    &mut lyric_index,
+                    total_pitched_event_count,
+                    &mut global_pitched_index,
                 )?;
 
                 measure_index += 1;
@@ -299,6 +315,18 @@ fn emit_single_line_as_part(
     // Parse beat count from time signature
     let beat_count = parse_beat_count(export_line.time_signature.as_deref());
 
+    // Parse lyrics once for the entire line
+    let syllables = parse_lyrics_to_syllables(&export_line.lyrics);
+    let mut lyric_index = 0;
+
+    // Count total pitched events across ALL measures
+    let total_pitched_event_count: usize = export_line.measures.iter()
+        .map(|m| m.events.iter().filter(|e| {
+            matches!(e, ExportEvent::Note(_) | ExportEvent::Chord { .. })
+        }).count())
+        .sum();
+    let mut global_pitched_index = 0;
+
     // Process each measure in the line
     if export_line.measures.is_empty() {
         // Empty line: emit a single measure with a whole rest
@@ -318,10 +346,13 @@ fn emit_single_line_as_part(
             emit_measure(
                 &mut builder,
                 measure,
-                export_line,
                 is_first_measure,
                 emit_new_system,
                 beat_count,
+                &syllables,
+                &mut lyric_index,
+                total_pitched_event_count,
+                &mut global_pitched_index,
             )?;
         }
     }
@@ -341,43 +372,30 @@ fn emit_single_line_as_part(
 fn emit_measure(
     builder: &mut MusicXmlBuilder,
     measure: &ExportMeasure,
-    export_line: &ExportLine,
-    is_first_measure: bool,
+    _is_first_measure: bool,
     is_new_system: bool,
     beat_count: usize,
+    syllables: &[(String, Syllabic)],
+    lyric_index: &mut usize,
+    total_pitched_event_count: usize,
+    global_pitched_index: &mut usize,
 ) -> Result<(), String> {
     // Start measure with divisions
     builder.start_measure_with_divisions(Some(measure.divisions), is_new_system, beat_count);
 
-    // Write key and clef only on first measure
-    if is_first_measure {
-        if let Some(ref _key_sig) = export_line.key_signature {
-            // Key signature is handled by builder.set_key_signature() at part level
-        }
-        // Clef is hardcoded in builder for now
-    }
-
-    // Parse lyrics once for this measure
-    let syllables = parse_lyrics_to_syllables(&export_line.lyrics);
-    let mut lyric_index = 0;
-
-    // Count pitched events (notes that can receive lyrics, excluding rests)
-    let pitched_event_count = measure.events.iter().filter(|e| {
-        matches!(e, ExportEvent::Note(_) | ExportEvent::Chord { .. })
-    }).count();
-    let mut current_pitched_index = 0;
+    // Write key and clef only on first measure (handled elsewhere)
 
     // Emit all events in the measure
     for event in &measure.events {
         // Track if this is a pitched event for the remaining syllables feature
         let is_pitched = matches!(event, ExportEvent::Note(_) | ExportEvent::Chord { .. });
-        let is_last_pitched_event = is_pitched && current_pitched_index == pitched_event_count - 1;
+        let is_last_pitched_event = is_pitched && *global_pitched_index == total_pitched_event_count - 1;
 
         if is_pitched {
-            current_pitched_index += 1;
+            *global_pitched_index += 1;
         }
 
-        emit_event(builder, event, measure.divisions, &syllables, &mut lyric_index, is_last_pitched_event)?;
+        emit_event(builder, event, measure.divisions, syllables, lyric_index, is_last_pitched_event)?;
     }
 
     builder.end_measure();
@@ -394,7 +412,7 @@ fn emit_event(
     is_last_pitched_event: bool,
 ) -> Result<(), String> {
     match event {
-        ExportEvent::Rest { divisions, tuplet } => {
+        ExportEvent::Rest { divisions, tuplet, .. } => {
             let duration_divs = *divisions;
             let musical_duration = duration_divs as f64 / measure_divisions as f64;
 
@@ -423,6 +441,7 @@ fn emit_event(
             lyrics,
             slur,
             tuplet,
+            ..
         } => {
             emit_chord(builder, pitches, *divisions, measure_divisions, lyrics, slur, tuplet.as_ref(), is_last_pitched_event)?;
         }
@@ -516,9 +535,15 @@ fn emit_note(
     });
 
     // Get lyric if available
+    // MELISMA LOGIC: Don't assign syllables to notes inside slurs (except slur start)
+    let is_melisma_note = note.slur.as_ref().map_or(false, |slur_data| {
+        matches!(slur_data.type_, SlurType::Continue | SlurType::Stop)
+    });
+
     let lyric = if let Some(ref lyric_data) = note.lyrics {
         Some(lyric_data.clone())
-    } else if *lyric_index < syllables.len() {
+    } else if !is_melisma_note && *lyric_index < syllables.len() {
+        // Only assign syllables to non-melisma notes
         // Check if there are multiple remaining syllables
         let remaining_count = syllables.len() - *lyric_index;
 
@@ -739,6 +764,7 @@ mod tests {
         let mut note = NoteData {
             pitch: PitchInfo::new(PitchCode::N1, 4),
             divisions: 2,
+            fraction: Fraction { numerator: 1, denominator: 2 },
             grace_notes_before: Vec::new(),
             grace_notes_after: Vec::new(),
             lyrics: Some(LyricData {
@@ -790,7 +816,11 @@ mod tests {
             show_bracket: true,
             measures: vec![ExportMeasure {
                 divisions: 4,
-                events: vec![ExportEvent::Rest { divisions: 4, tuplet: None }],
+                events: vec![ExportEvent::Rest {
+                    divisions: 4,
+                    fraction: Fraction { numerator: 1, denominator: 1 },
+                    tuplet: None
+                }],
             }],
         };
 
@@ -806,7 +836,11 @@ mod tests {
             show_bracket: true,
             measures: vec![ExportMeasure {
                 divisions: 4,
-                events: vec![ExportEvent::Rest { divisions: 4, tuplet: None }],
+                events: vec![ExportEvent::Rest {
+                    divisions: 4,
+                    fraction: Fraction { numerator: 1, denominator: 1 },
+                    tuplet: None
+                }],
             }],
         };
 
@@ -853,6 +887,7 @@ mod tests {
         let note = NoteData {
             pitch: PitchInfo::new(PitchCode::N1, 4),
             divisions: 4,
+            fraction: Fraction { numerator: 1, denominator: 1 },
             grace_notes_before: grace_notes,
             grace_notes_after: Vec::new(),
             lyrics: None,
@@ -898,6 +933,7 @@ mod tests {
         let note = NoteData {
             pitch: PitchInfo::new(PitchCode::N1, 4),
             divisions: 4,
+            fraction: Fraction { numerator: 1, denominator: 1 },
             grace_notes_before: Vec::new(),
             grace_notes_after: grace_notes,
             lyrics: None,
@@ -944,6 +980,7 @@ mod tests {
         let note = NoteData {
             pitch: PitchInfo::new(PitchCode::N1, 4),
             divisions: 4,
+            fraction: Fraction { numerator: 1, denominator: 1 },
             grace_notes_before: grace_notes,
             grace_notes_after: Vec::new(),
             lyrics: None,
@@ -992,6 +1029,7 @@ mod tests {
         let note = NoteData {
             pitch: PitchInfo::new(PitchCode::N1, 4),
             divisions: 4,
+            fraction: Fraction { numerator: 1, denominator: 1 },
             grace_notes_before: grace_before,
             grace_notes_after: grace_after,
             lyrics: None,
@@ -1046,6 +1084,7 @@ mod tests {
                 events: vec![ExportEvent::Note(NoteData {
                     pitch: PitchInfo::new(PitchCode::N1, 4),
                     divisions: 4,
+                    fraction: Fraction { numerator: 1, denominator: 1 },
                     grace_notes_before: Vec::new(),
                     grace_notes_after: Vec::new(),
                     lyrics: None,
@@ -1073,6 +1112,7 @@ mod tests {
                 events: vec![ExportEvent::Note(NoteData {
                     pitch: PitchInfo::new(PitchCode::N1, 4),
                     divisions: 4,
+                    fraction: Fraction { numerator: 1, denominator: 1 },
                     grace_notes_before: Vec::new(),
                     grace_notes_after: Vec::new(),
                     lyrics: None,
@@ -1131,6 +1171,7 @@ mod tests {
                 events: vec![ExportEvent::Note(NoteData {
                     pitch: PitchInfo::new(PitchCode::N1, 4),
                     divisions: 4,
+                    fraction: Fraction { numerator: 1, denominator: 1 },
                     grace_notes_before: Vec::new(),
                     grace_notes_after: Vec::new(),
                     lyrics: None,
@@ -1158,6 +1199,7 @@ mod tests {
                 events: vec![ExportEvent::Note(NoteData {
                     pitch: PitchInfo::new(PitchCode::N2, 4),
                     divisions: 4,
+                    fraction: Fraction { numerator: 1, denominator: 1 },
                     grace_notes_before: Vec::new(),
                     grace_notes_after: Vec::new(),
                     lyrics: None,
@@ -1185,6 +1227,7 @@ mod tests {
                 events: vec![ExportEvent::Note(NoteData {
                     pitch: PitchInfo::new(PitchCode::N3, 4),
                     divisions: 4,
+                    fraction: Fraction { numerator: 1, denominator: 1 },
                     grace_notes_before: Vec::new(),
                     grace_notes_after: Vec::new(),
                     lyrics: None,
@@ -1238,6 +1281,7 @@ mod tests {
                 events: vec![ExportEvent::Note(NoteData {
                     pitch: PitchInfo::new(PitchCode::N1, 4),
                     divisions: 4,
+                    fraction: Fraction { numerator: 1, denominator: 1 },
                     grace_notes_before: Vec::new(),
                     grace_notes_after: Vec::new(),
                     lyrics: None,
@@ -1265,6 +1309,7 @@ mod tests {
                 events: vec![ExportEvent::Note(NoteData {
                     pitch: PitchInfo::new(PitchCode::N2, 4),
                     divisions: 4,
+                    fraction: Fraction { numerator: 1, denominator: 1 },
                     grace_notes_before: Vec::new(),
                     grace_notes_after: Vec::new(),
                     lyrics: None,
@@ -1292,6 +1337,7 @@ mod tests {
                 events: vec![ExportEvent::Note(NoteData {
                     pitch: PitchInfo::new(PitchCode::N3, 4),
                     divisions: 4,
+                    fraction: Fraction { numerator: 1, denominator: 1 },
                     grace_notes_before: Vec::new(),
                     grace_notes_after: Vec::new(),
                     lyrics: None,
@@ -1363,6 +1409,7 @@ mod tests {
                 events: vec![ExportEvent::Note(NoteData {
                     pitch: PitchInfo::new(PitchCode::N1, 4),
                     divisions: 4,
+                    fraction: Fraction { numerator: 1, denominator: 1 },
                     grace_notes_before: Vec::new(),
                     grace_notes_after: Vec::new(),
                     lyrics: None,
@@ -1390,6 +1437,7 @@ mod tests {
                 events: vec![ExportEvent::Note(NoteData {
                     pitch: PitchInfo::new(PitchCode::N1, 4),
                     divisions: 4,
+                    fraction: Fraction { numerator: 1, denominator: 1 },
                     grace_notes_before: Vec::new(),
                     grace_notes_after: Vec::new(),
                     lyrics: None,
@@ -1430,6 +1478,7 @@ mod tests {
                 divisions: 2, // beat_div = 2 (not 1!)
                 events: vec![ExportEvent::Rest {
                     divisions: 2, // 2/2 = 1 beat = 1/4 note
+                    fraction: Fraction { numerator: 1, denominator: 1 },
                     tuplet: None,
                 }],
             }],
@@ -1470,6 +1519,7 @@ mod tests {
                 events: vec![
                     ExportEvent::Rest {
                         divisions: 2, // 2/3 of beat
+                        fraction: Fraction { numerator: 2, denominator: 3 },
                         tuplet: Some(TupletInfo {
                             actual_notes: 3,
                             normal_notes: 2,
@@ -1480,6 +1530,7 @@ mod tests {
                     ExportEvent::Note(NoteData {
                         pitch: PitchInfo::new(PitchCode::N1, 4),
                         divisions: 1, // 1/3 of beat
+                        fraction: Fraction { numerator: 1, denominator: 3 },
                         grace_notes_before: Vec::new(),
                         grace_notes_after: Vec::new(),
                         lyrics: None,
@@ -1539,6 +1590,7 @@ mod tests {
                 events: vec![ExportEvent::Note(NoteData {
                     pitch: PitchInfo::new(PitchCode::N1, 4),
                     divisions: 3, // 3/3 = 1 whole beat
+                    fraction: Fraction { numerator: 1, denominator: 1 },
                     grace_notes_before: Vec::new(),
                     grace_notes_after: Vec::new(),
                     lyrics: None,
@@ -1578,7 +1630,8 @@ mod tests {
                     ExportEvent::Note(NoteData {
                         pitch: PitchInfo::new(PitchCode::N1, 4),
                         divisions: 1,
-                        grace_notes_before: Vec::new(),
+                    fraction: Fraction { numerator: 1, denominator: 1 },
+                    grace_notes_before: Vec::new(),
                         grace_notes_after: Vec::new(),
                         lyrics: None,
                         slur: None,
@@ -1595,7 +1648,8 @@ mod tests {
                     ExportEvent::Note(NoteData {
                         pitch: PitchInfo::new(PitchCode::N2, 4),
                         divisions: 1,
-                        grace_notes_before: Vec::new(),
+                    fraction: Fraction { numerator: 1, denominator: 1 },
+                    grace_notes_before: Vec::new(),
                         grace_notes_after: Vec::new(),
                         lyrics: None,
                         slur: None,
@@ -1612,7 +1666,8 @@ mod tests {
                     ExportEvent::Note(NoteData {
                         pitch: PitchInfo::new(PitchCode::N3, 4),
                         divisions: 1,
-                        grace_notes_before: Vec::new(),
+                    fraction: Fraction { numerator: 1, denominator: 1 },
+                    grace_notes_before: Vec::new(),
                         grace_notes_after: Vec::new(),
                         lyrics: None,
                         slur: None,
@@ -1665,6 +1720,7 @@ mod tests {
                     ExportEvent::Note(NoteData {
                         pitch: PitchInfo::new(PitchCode::N1, 4),
                         divisions: 1, // Scaled from 3 by factor 1/3
+                        fraction: Fraction { numerator: 1, denominator: 2 },
                         grace_notes_before: Vec::new(),
                         grace_notes_after: Vec::new(),
                         lyrics: None,
@@ -1677,7 +1733,8 @@ mod tests {
                     ExportEvent::Note(NoteData {
                         pitch: PitchInfo::new(PitchCode::N2, 4),
                         divisions: 1,
-                        grace_notes_before: Vec::new(),
+                    fraction: Fraction { numerator: 1, denominator: 1 },
+                    grace_notes_before: Vec::new(),
                         grace_notes_after: Vec::new(),
                         lyrics: None,
                         slur: None,

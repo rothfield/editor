@@ -59,13 +59,15 @@ pub fn parse_lyrics(lyrics: &str) -> Vec<String> {
                 parse_word_into_syllables(&current_word, &mut syllables);
                 current_word.clear();
             }
-            // Add the space
-            syllables.push(ch.to_string());
+            // Skip the whitespace (don't add as syllable)
         } else if ch == '-' {
             // Add current part with hyphen
             if !current_word.is_empty() {
                 syllables.push(current_word.clone() + "-");
                 current_word.clear();
+            } else {
+                // Standalone hyphen (e.g., double hyphen "he--llo")
+                syllables.push("-".to_string());
             }
         } else {
             // Regular character
@@ -169,14 +171,14 @@ pub fn distribute_lyrics(lyrics: &str, cells: &[Cell]) -> Vec<SyllableAssignment
 
     // Count pitched elements (excluding continuation cells which are part of accidentals)
     let pitched_count = cells.iter()
-        .filter(|c| !c.continuation && matches!(c.kind, ElementKind::PitchedElement))
+        .filter(|c| !false /* REMOVED: continuation field */ && matches!(c.kind, ElementKind::PitchedElement))
         .count();
 
     // Special case: 0 or 1 pitched notes - assign entire lyrics as-is (no splitting)
     if pitched_count <= 1 {
         // Find first pitched element index (excluding continuations), or use 0 if none exist
         let cell_index = cells.iter()
-            .position(|c| !c.continuation && matches!(c.kind, ElementKind::PitchedElement))
+            .position(|c| !false /* REMOVED: continuation field */ && matches!(c.kind, ElementKind::PitchedElement))
             .unwrap_or(0);
 
         // Assign entire lyrics string unchanged
@@ -208,13 +210,39 @@ pub fn distribute_lyrics(lyrics: &str, cells: &[Cell]) -> Vec<SyllableAssignment
 
     for (cell_index, cell) in cells.iter().enumerate() {
         // Only process pitched elements (kind == 1 / PitchedElement) that are not continuations
-        if cell.continuation || !matches!(cell.kind, ElementKind::PitchedElement) {
+        if false /* REMOVED: continuation field */ || !matches!(cell.kind, ElementKind::PitchedElement) {
             continue;
         }
 
         let is_last_pitched_element = pitched_index == pitched_count - 1;
         pitched_index += 1;
 
+        // Track slur state
+        let slur_indicator = cell.slur_indicator;
+
+        // CHECK SLUR STATE FIRST - before consuming syllables
+        // For melisma notes (SlurEnd or inside slur), don't consume syllables
+        match slur_indicator {
+            SlurIndicator::SlurEnd => {
+                // Slur ends - this pitch is still part of melisma, don't consume syllable
+                slur_depth = slur_depth.saturating_sub(1);
+                if slur_depth == 0 {
+                    state = LyricsState::SeekingPitch;
+                }
+                continue;
+            }
+            SlurIndicator::None => {
+                if state == LyricsState::InMelisma {
+                    // Inside slur - skip this pitch (part of melisma), don't consume syllable
+                    continue;
+                }
+            }
+            SlurIndicator::SlurStart => {
+                // Will consume and assign syllable below
+            }
+        }
+
+        // NOW consume syllable (only reached if we're going to assign)
         // Skip whitespace syllables (don't assign them to cells)
         while syllable_index < syllables.len() && syllables[syllable_index].trim().is_empty() {
             syllable_index += 1;
@@ -259,9 +287,7 @@ pub fn distribute_lyrics(lyrics: &str, cells: &[Cell]) -> Vec<SyllableAssignment
             syll_text
         };
 
-        // Track slur state
-        let slur_indicator = cell.slur_indicator;
-
+        // Assign syllable based on slur state
         match slur_indicator {
             SlurIndicator::SlurStart => {
                 // Slur starts - assign syllable to this pitch, then enter melisma
@@ -269,33 +295,19 @@ pub fn distribute_lyrics(lyrics: &str, cells: &[Cell]) -> Vec<SyllableAssignment
                     cell_index,
                     syllable: syll_text,
                 });
-
                 slur_depth += 1;
                 state = LyricsState::InMelisma;
-                continue;
-            }
-            SlurIndicator::SlurEnd => {
-                // Slur ends - this pitch is still part of melisma, don't assign
-                slur_depth = slur_depth.saturating_sub(1);
-
-                if slur_depth == 0 {
-                    state = LyricsState::SeekingPitch;
-                }
-                continue;
             }
             SlurIndicator::None => {
-                // Normal pitch or inside melisma
-                if state == LyricsState::InMelisma {
-                    // Inside slur - skip this pitch (part of melisma)
-                    continue;
-                }
-
-                // Assign syllable to this pitch
+                // Normal pitch (not in melisma) - assign syllable
                 assignments.push(SyllableAssignment {
                     cell_index,
                     syllable: syll_text,
                 });
                 state = LyricsState::SyllableAssigned;
+            }
+            SlurIndicator::SlurEnd => {
+                unreachable!("SlurEnd already handled above");
             }
         }
     }

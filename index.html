@@ -700,9 +700,25 @@
                     <div id="tab-content-font-test" data-tab-content="font-test" class="tab-content hidden flex-1 flex flex-col p-4">
                         <div class="mb-2">
                             <h3 class="text-sm font-bold mb-2">NotationFont Glyphs & Unicode Mapping</h3>
-                            <div class="flex gap-2 mb-2 flex-wrap">
+                            <div class="flex gap-2 mb-2 flex-wrap items-center">
                                 <button id="font-test-show-all" class="px-2 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600">Comprehensive View</button>
                                 <button id="font-test-show-table" class="px-2 py-1 bg-green-500 text-white rounded text-xs hover:bg-green-600">Unicode Table</button>
+                                <div class="flex items-center gap-2 ml-auto">
+                                    <label for="font-test-size" class="text-xs text-gray-700">Font Size:</label>
+                                    <select id="font-test-size" class="px-2 py-1 border border-gray-300 rounded text-xs">
+                                        <option value="12">12pt</option>
+                                        <option value="14">14pt</option>
+                                        <option value="16">16pt</option>
+                                        <option value="18">18pt</option>
+                                        <option value="20" selected>20pt</option>
+                                        <option value="24">24pt</option>
+                                        <option value="28">28pt</option>
+                                        <option value="32">32pt</option>
+                                        <option value="36">36pt</option>
+                                        <option value="48">48pt</option>
+                                        <option value="64">64pt</option>
+                                    </select>
+                                </div>
                             </div>
                         </div>
                         <div id="font-test-grid" class="flex-1 bg-white p-3 border-2 border-gray-300 rounded overflow-auto"></div>
@@ -710,6 +726,22 @@
 
                     <!-- Font Sandbox Tab -->
                     <div id="tab-content-font-sandbox" data-tab-content="font-sandbox" class="tab-content hidden flex-1 flex flex-col p-4">
+                        <div class="mb-2 flex items-center justify-end gap-2">
+                            <label for="font-sandbox-size" class="text-xs text-gray-700">Font Size:</label>
+                            <select id="font-sandbox-size" class="px-2 py-1 border border-gray-300 rounded text-xs">
+                                <option value="12">12pt</option>
+                                <option value="14">14pt</option>
+                                <option value="16">16pt</option>
+                                <option value="18" selected>18pt</option>
+                                <option value="20">20pt</option>
+                                <option value="24">24pt</option>
+                                <option value="28">28pt</option>
+                                <option value="32">32pt</option>
+                                <option value="36">36pt</option>
+                                <option value="48">48pt</option>
+                                <option value="64">64pt</option>
+                            </select>
+                        </div>
                         <textarea id="font-sandbox" class="flex-1 bg-white p-3 border-2 border-gray-300 rounded overflow-auto font-sandbox resize-none" placeholder="Type NotationFont characters here (1-7, A-G, S-N, d-t, etc.)"></textarea>
                     </div>
                 </div>

@@ -122,7 +122,8 @@ export class WASMBridge {
       'selectBeatAtPosition', 'selectLineAtPosition',
 
       // Position Conversion API
-      'getMaxCharPosition', 'charPosToCellIndex', 'cellIndexToCharPos', 'charPosToPixel'
+      'getMaxCharPosition', 'charPosToCellIndex', 'cellIndexToCharPos', 'charPosToPixel',
+      'cellColToPixel' // NEW: Direct cell column → pixel (one cell = one glyph model)
     ];
 
     // Automatically wrap all functions with error handling

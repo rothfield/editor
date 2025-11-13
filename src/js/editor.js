@@ -714,6 +714,7 @@ class MusicNotationEditor {
 
   getCursorPosition() {
     if (this.theDocument && this.theDocument.state) {
+      // Return cell column directly (one cell = one glyph model)
       return this.theDocument.state.cursor.col;
     }
     return 0;
@@ -968,6 +969,24 @@ class MusicNotationEditor {
     }
   }
 
+  /**
+   * Calculate pixel position for a cell column (NEW: one cell = one glyph model)
+   * @param {number} cellCol - Cell column index (0 = before first cell, N = after Nth cell)
+   * @returns {number} Pixel X position
+   */
+  cellColToPixel(cellCol) {
+    // Direct cell column → pixel mapping (no intermediate character position)
+    if (!this.theDocument || !this.renderer || !this.renderer.displayList) {
+      return LEFT_MARGIN_PX;
+    }
+    try {
+      return this.wasmModule.cellColToPixel(this.theDocument, this.renderer.displayList, cellCol);
+    } catch (error) {
+      console.error('Error converting cell col to pixel from WASM:', error);
+      return LEFT_MARGIN_PX;
+    }
+  }
+
 
   // ==================== SELECTION MANAGEMENT ====================
 
@@ -998,7 +1017,8 @@ class MusicNotationEditor {
 
     try {
       const selectionInfo = this.wasmModule.getSelectionInfo();
-      return selectionInfo && !selectionInfo.is_empty;
+      // Ensure we return boolean false, not null
+      return !!(selectionInfo && !selectionInfo.is_empty);
     } catch (error) {
       console.warn('Failed to get selection info from WASM:', error);
       return false;
@@ -1461,11 +1481,44 @@ class MusicNotationEditor {
      * Validate that a selection is valid for musical commands
      */
   /**
+   * Get visually selected cells from the DOM
+   * Returns {start, end} or null if no cells have .selected class
+   */
+  getVisuallySelectedCells() {
+    const selectedCells = this.element.querySelectorAll('.char-cell.selected');
+    if (selectedCells.length === 0) {
+      return null;
+    }
+
+    // Extract cell indices from data-cell-index attributes
+    const indices = Array.from(selectedCells)
+      .map(cell => parseInt(cell.dataset.cellIndex))
+      .filter(idx => !isNaN(idx))
+      .sort((a, b) => a - b);
+
+    if (indices.length === 0) {
+      return null;
+    }
+
+    return {
+      start: Math.min(...indices),
+      end: Math.max(...indices) + 1 // Half-open range
+    };
+  }
+
+  /**
    * Get effective selection: either user selection or single element to left of cursor
    * Returns {start, end} or null if no valid selection available
+   * Priority: 1) Visual DOM selection, 2) WASM selection, 3) Cursor position
    */
   getEffectiveSelection() {
-    // If there's a user selection, use it (returns {start: {line, col}, end: {line, col}})
+    // FIRST: Check for visually highlighted cells in DOM
+    const visualSelection = this.getVisuallySelectedCells();
+    if (visualSelection) {
+      return visualSelection;
+    }
+
+    // SECOND: If there's a user selection in WASM, use it (returns {start: {line, col}, end: {line, col}})
     if (this.hasSelection()) {
       const sel = this.getSelection();
       // Convert to simple numeric range for single-line selection
@@ -1479,7 +1532,7 @@ class MusicNotationEditor {
       return null;
     }
 
-    // No selection: get cell at cursor position
+    // THIRD: No selection, get cell at cursor position
     const line = this.getCurrentLine();
     if (!line || !line.cells || line.cells.length === 0) {
       return null;
@@ -1772,6 +1825,10 @@ class MusicNotationEditor {
         });
 
         this.addToConsoleLog(`Applied ${command} to "${selectedText}"`);
+
+        // CRITICAL: Sync JavaScript document back to WASM
+        // This ensures MusicXML export uses the updated octave values
+        this.wasmModule.loadDocument(this.theDocument);
       }
 
       await this.renderAndUpdate();
@@ -1871,7 +1928,6 @@ class MusicNotationEditor {
     this.staffNotationTimer = setTimeout(async () => {
       // Only render if staff notation tab is active
       if (this.ui && this.ui.activeTab === 'staff-notation') {
-        console.log('[Staff Notation] Auto-updating (debounced 100ms)');
         await this.renderStaffNotation();
       }
     }, 100);
@@ -2216,10 +2272,10 @@ class MusicNotationEditor {
       return;
     }
 
-    const charPos = this.getCursorPosition(); // Character position (0, 1, 2, ...)
+    const cellCol = this.getCursorPosition(); // Cell column (0 = before first cell, N = after Nth cell)
     const currentStave = this.getCurrentStave();
 
-    // console.log(`📍 updateCursorVisualPosition: currentStave=${currentStave}, charPos=${charPos}`);
+    // console.log(`📍 updateCursorVisualPosition: currentStave=${currentStave}, cellCol=${cellCol}`);
 
     // SIMPLIFIED: Cursor is now a child of the current .notation-line
     // So it's positioned absolutely relative to its line container
@@ -2251,9 +2307,9 @@ class MusicNotationEditor {
       // console.log(`📍 No cells found for line ${currentStave}, using default yOffset=${yOffset}px`);
     }
 
-    // Calculate pixel position using character-level positioning
-    const pixelPos = this.charPosToPixel(charPos);
-    // console.log(`📍 charPosToPixel(${charPos}) returned: ${pixelPos}px`);
+    // Calculate pixel position using cell column (one cell = one glyph)
+    const pixelPos = this.cellColToPixel(cellCol);
+    // console.log(`📍 cellColToPixel(${cellCol}) returned: ${pixelPos}px`);
 
     // console.log(`📍 Setting cursor: left=${pixelPos}px, top=${yOffset}px, height=${cellHeight}px`);
 

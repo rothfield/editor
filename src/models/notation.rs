@@ -173,7 +173,10 @@ pub struct Pos {
     /// Line index (0-based, line number)
     pub line: usize,
 
-    /// Column within the line (0-based, cell index)
+    /// Column position: number of cells before the cursor (0-based)
+    /// - col = 0: before first cell (empty line or start of line)
+    /// - col = N: after Nth cell (between cell N-1 and cell N)
+    /// Each cell renders as one glyph (e.g., "1#" = one composite glyph)
     pub col: usize,
 }
 
@@ -657,8 +660,8 @@ impl SelectionInfo {
 /// Note: This is serialized to JsValue manually, not using wasm_bindgen directly
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct EditorDiff {
-    /// Which lines changed (for efficient re-rendering)
-    pub dirty_lines: Vec<usize>,
+    /// Which lines changed (includes cell data for rendering)
+    pub dirty_lines: Vec<crate::api::types::DirtyLine>,
 
     /// New caret information
     pub caret: CaretInfo,

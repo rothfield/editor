@@ -30,7 +30,7 @@ pub fn calculate_measure_divisions(cells: &[Cell], beat_deriver: &BeatDeriver) -
         let beat_cells = &cells[beat.start..=beat.end];
         // IMPORTANT: Don't count continuation cells in rhythmic calculations!
         // Continuation cells are part of the same logical element (e.g., "#" in "C#")
-        let subdivision_count = beat_cells.iter().filter(|c| !c.continuation).count();
+        let subdivision_count = beat_cells.iter().count();
         if subdivision_count > 0 {
             divisions = lcm(divisions, subdivision_count);
         }

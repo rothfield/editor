@@ -109,6 +109,7 @@ impl BeatDeriver {
 
     /// Check if element is a beat-element per grammar
     /// beat-element = pitched-element | unpitched-element | breath-mark
+    /// Note: Whitespace acts as a beat DELIMITER, not a beat element
     fn is_beat_element(&self, cell: &Cell) -> bool {
         matches!(
             cell.kind,

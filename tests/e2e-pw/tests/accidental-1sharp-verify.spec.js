@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('1# Sharp Accidental Glyph - Verification', () => {
-  test('1# should render with NotationMono font (glyph verification)', async ({ page }) => {
+  test('1# should render with NotationFont font (glyph verification)', async ({ page }) => {
     // Navigate to editor
     await page.goto('/');
 
@@ -29,16 +29,16 @@ test.describe('1# Sharp Accidental Glyph - Verification', () => {
     );
     console.log(`Font family: ${fontFamily}`);
 
-    // The font-family should be NotationMono
-    expect(fontFamily).toContain('NotationMono');
+    // The font-family should be NotationFont
+    expect(fontFamily).toContain('NotationFont');
 
     // The text content should be a single character with codepoint U+E1F0
-    // (for '1' sharp in the NotationMono font)
+    // (for '1' sharp in the NotationFont font)
     const codepoint = textContent.charCodeAt(0);
     console.log(`Expecting: U+E1F0 (${0xE1F0}), Got: U+${codepoint.toString(16).toUpperCase().padStart(4, '0')} (${codepoint})`);
 
     // Verify it's the correct glyph
-    expect(codepoint).toBe(0xE1F0); // Single glyph from NotationMono PUA
+    expect(codepoint).toBe(0xE1F0); // Single glyph from NotationFont PUA
   });
 
   test('1# character should not have data-accidental attribute (using glyph instead)', async ({ page }) => {

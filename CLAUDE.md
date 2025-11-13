@@ -204,9 +204,9 @@ test('feature works correctly', async ({ page }) => {
 
 ## Music Notation Font System
 
-### NotationFont - Custom Font Based on Google Noto Music
+### NotationFont - Custom Font for Text-Based Music Notation
 
-The main line of music uses a **custom font called NotationFont** derived from [Google Noto Music](https://github.com/notofonts/music).
+Text-based music notation (main notation line, ornaments) uses **NotationFont**, which is based on **Noto Sans** - a general purpose sans-serif font from Google - with music glyphs from [Noto Music](https://github.com/notofonts/music) added to the Private Use Area (PUA). This provides proper text rendering and spacing while supporting music-specific glyphs. Variants include different pitch systems (Number, Western, Sargam, Doremi) with all combinations of octave dots and accidentals. Source: `tools/`
 
 **Font Architecture:**
 - **Single source of truth:** `tools/fontgen/atoms.yaml` defines all characters, code points, and allocations

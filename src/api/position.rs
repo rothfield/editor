@@ -72,7 +72,7 @@ pub fn char_pos_to_cell_index(doc_js: JsValue, char_pos: usize) -> Result<JsValu
         // All cells are now in the flow (ornaments are inline, not separate marker cells)
         let cell_length = cell.char.chars().count();
 
-        if char_pos <= accumulated_chars + cell_length {
+        if char_pos < accumulated_chars + cell_length {
             let result = CharPosToCellResult {
                 cell_index,
                 char_offset_in_cell: char_pos - accumulated_chars,
@@ -201,6 +201,56 @@ pub fn char_pos_to_pixel(
     let cell_width = cell.cursor_right - cell.cursor_left;
     let char_width = cell_width / cell_length as f32;
     Ok(cell.cursor_left + (char_width * char_offset_in_cell as f32))
+}
+
+/// Convert cell column to pixel X coordinate (NEW: one cell = one glyph model)
+///
+/// Maps cell column index directly to pixel position using DisplayList.
+/// This replaces the legacy charPosToPixel() for the new NotationFont model
+/// where each cell renders as exactly one glyph.
+///
+/// # Arguments
+/// * `doc_js` - Serialized Document
+/// * `display_list_js` - Serialized DisplayList with pre-calculated positions
+/// * `cell_col` - Cell column index (0 = before first cell, N = after Nth cell)
+///
+/// # Returns
+/// Pixel X coordinate for cursor at that column position
+#[wasm_bindgen(js_name = cellColToPixel)]
+pub fn cell_col_to_pixel(
+    doc_js: JsValue,
+    display_list_js: JsValue,
+    cell_col: usize,
+) -> Result<f32, JsValue> {
+    // Deserialize document and display list
+    let doc: Document = serde_wasm_bindgen::from_value(doc_js)
+        .map_err(|e| JsValue::from_str(&format!("Failed to deserialize document: {}", e)))?;
+    let display_list: DisplayList = serde_wasm_bindgen::from_value(display_list_js)
+        .map_err(|e| JsValue::from_str(&format!("Failed to deserialize display list: {}", e)))?;
+
+    // Get current line from display list
+    let line_index = doc.state.cursor.line;
+    let current_line = display_list.lines.get(line_index)
+        .ok_or_else(|| JsValue::from_str("Current line not found in display list"))?;
+
+    // Empty line: return left margin
+    if current_line.cells.is_empty() {
+        return Ok(LEFT_MARGIN_PX);
+    }
+
+    // Before first cell (col = 0)
+    if cell_col == 0 {
+        return Ok(current_line.cells[0].cursor_left);
+    }
+
+    // After all cells
+    if cell_col >= current_line.cells.len() {
+        let last_cell = &current_line.cells[current_line.cells.len() - 1];
+        return Ok(last_cell.cursor_right);
+    }
+
+    // Between cells: use cursor_right of previous cell
+    Ok(current_line.cells[cell_col - 1].cursor_right)
 }
 
 // TODO: Add unit tests after resolving Document/Line struct construction complexity

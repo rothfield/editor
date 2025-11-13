@@ -22,7 +22,7 @@
 use crate::models::{Cell, ElementKind, SlurIndicator, Line, Document};
 use super::export_ir::{
     ExportLine, ExportMeasure, ExportEvent, NoteData, GraceNoteData, PitchInfo,
-    LyricData, Syllabic, SlurData, SlurPlacement, SlurType, TupletInfo,
+    LyricData, Syllabic, SlurData, SlurPlacement, SlurType, TupletInfo, Fraction,
 };
 
 /// FSM state for cell-to-event grouping
@@ -44,6 +44,8 @@ pub struct BeatAccumulator {
     pub events: Vec<ExportEvent>,
     /// Current dash count (micro-beats) or pitch duration
     pub current_divisions: usize,
+    /// Total subdivisions in this beat (for creating fractions)
+    pub beat_subdivisions: usize,
     /// Pending grace notes to attach before next main element
     pub pending_grace_notes_before: Vec<GraceNoteData>,
     /// Pending grace notes to attach after the main element (ornaments with After placement)
@@ -63,6 +65,21 @@ impl BeatAccumulator {
         BeatAccumulator {
             events: Vec::new(),
             current_divisions: 0,
+            beat_subdivisions: 1, // Default to 1, will be set properly in group_cells_into_events
+            pending_grace_notes_before: Vec::new(),
+            pending_grace_notes_after: Vec::new(),
+            pending_pitch: None,
+            has_main_element: false,
+            pending_slur_indicator: SlurIndicator::None,
+            inside_slur: false,
+        }
+    }
+
+    pub fn new_with_subdivisions(beat_subdivisions: usize) -> Self {
+        BeatAccumulator {
+            events: Vec::new(),
+            current_divisions: 0,
+            beat_subdivisions,
             pending_grace_notes_before: Vec::new(),
             pending_grace_notes_after: Vec::new(),
             pending_pitch: None,
@@ -163,6 +180,7 @@ impl BeatAccumulator {
         if self.current_divisions > 0 {
             self.events.push(ExportEvent::Rest {
                 divisions: self.current_divisions,
+                fraction: Fraction::new(self.current_divisions, self.beat_subdivisions),
                 tuplet: None,
             });
             self.current_divisions = 0;
@@ -175,6 +193,7 @@ impl BeatAccumulator {
             let mut note = NoteData {
                 pitch,
                 divisions: self.current_divisions,
+                fraction: Fraction::new(self.current_divisions, self.beat_subdivisions),
                 grace_notes_before: self.pending_grace_notes_before.clone(),
                 grace_notes_after: self.pending_grace_notes_after.clone(),
                 lyrics: None,
@@ -334,7 +353,9 @@ pub fn group_cells_into_events(beat_cells: &[&Cell]) -> Vec<ExportEvent> {
         return Vec::new();
     }
 
-    let mut accum = BeatAccumulator::new();
+    // Calculate beat subdivisions FIRST to preserve semantic meaning
+    let beat_subdivisions = calculate_beat_subdivisions(beat_cells);
+    let mut accum = BeatAccumulator::new_with_subdivisions(beat_subdivisions);
     let mut state = CellGroupingState::InBeat;
 
     // Process each cell through the FSM
@@ -453,8 +474,9 @@ fn extend_notes_across_beat_boundaries(
 
         // Check if current beat starts with a Rest
         if curr_start < all_events.len() {
-            if let ExportEvent::Rest { divisions: rest_divs, tuplet: rest_tuplet } = &all_events[curr_start] {
+            if let ExportEvent::Rest { divisions: rest_divs, fraction: rest_frac, tuplet: rest_tuplet, .. } = &all_events[curr_start] {
                 let rest_divs_copy = *rest_divs;
+                let rest_frac_copy = *rest_frac;
                 let rest_tuplet_copy = *rest_tuplet;
 
                 // Check if previous beat ended with a Note
@@ -467,6 +489,7 @@ fn extend_notes_across_beat_boundaries(
                         let tied_note = NoteData {
                             pitch: prev_note.pitch.clone(),
                             divisions: rest_divs_copy,
+                            fraction: rest_frac_copy,
                             grace_notes_before: Vec::new(),
                             grace_notes_after: Vec::new(),
                             lyrics: None,
@@ -738,16 +761,18 @@ pub fn calculate_beat_subdivisions(beat_cells_refs: &[&Cell]) -> usize {
         return slot_counts[0];
     }
 
-    // Multiple elements: apply GCD normalization to detect tuplets
-    // Example: `1 2 3` → [1,1,1] → GCD=1 → sum=3 (triplet)
-    // Example: `1-- 2--` → [3,3] → GCD=3 → [1,1] → sum=2 (two notes)
-    let mut gcd_value = slot_counts[0];
-    for &count in &slot_counts[1..] {
-        gcd_value = gcd(gcd_value, count);
-    }
-
-    let normalized: Vec<usize> = slot_counts.iter().map(|&c| c / gcd_value).collect();
-    normalized.iter().sum()
+    // Multiple elements: return total slot count to preserve subdivision information
+    // This is critical for correct rhythm fractions!
+    //
+    // Example: "1--2" → [3, 1] → sum = 4 subdivisions
+    // Example: "--3-" → [2, 2] → sum = 4 subdivisions (NOT 2!)
+    //
+    // The old GCD normalization was destroying subdivision information:
+    // "--3-" → [2,2] → GCD=2 → [1,1] → sum=2 ❌ WRONG!
+    //
+    // Without GCD, we preserve the fact that both "1--2" and "--3-" have 4 subdivisions,
+    // which is essential for creating correct fractions (e.g., 2/4 of a beat)
+    slot_counts.iter().sum()
 }
 
 /// Find all barline positions in a line of cells
@@ -938,7 +963,7 @@ pub fn build_export_measures_from_line(line: &Line) -> Vec<ExportMeasure> {
         if measure_cells.is_empty() {
             measures.push(ExportMeasure {
                 divisions: 4,
-                events: vec![ExportEvent::Rest { divisions: 4, tuplet: None }],
+                events: vec![ExportEvent::Rest { divisions: 4, fraction: Fraction::new(4, 4), tuplet: None }],
             });
             continue;
         }
@@ -991,7 +1016,7 @@ pub fn build_export_measures_from_line(line: &Line) -> Vec<ExportMeasure> {
         if all_events.is_empty() {
             measures.push(ExportMeasure {
                 divisions: 4,
-                events: vec![ExportEvent::Rest { divisions: 4, tuplet: None }],
+                events: vec![ExportEvent::Rest { divisions: 4, fraction: Fraction::new(4, 4), tuplet: None }],
             });
             continue;
         }
@@ -1010,22 +1035,19 @@ pub fn build_export_measures_from_line(line: &Line) -> Vec<ExportMeasure> {
             lcm_multiple(&beat_divisions_list)
         };
 
-        // Scale all event divisions from beat-relative to measure-relative
-        // Events are created with divisions relative to their beat, but must be scaled
-        // to match the measure's LCM divisions
-        for (beat_start_idx, beat_end_idx, beat_div) in &beat_event_ranges {
-            let scale_factor = measure_divisions / beat_div;
-            for event in &mut all_events[*beat_start_idx..*beat_end_idx] {
-                match event {
-                    ExportEvent::Rest { divisions, .. } => {
-                        *divisions *= scale_factor;
-                    }
-                    ExportEvent::Note(note) => {
-                        note.divisions *= scale_factor;
-                    }
-                    ExportEvent::Chord { divisions, .. } => {
-                        *divisions *= scale_factor;
-                    }
+        // Convert event fractions to measure-relative divisions
+        // Events are created with fractions (portion of beat), now convert to absolute divisions
+        // using the measure's LCM divisions
+        for event in &mut all_events {
+            match event {
+                ExportEvent::Rest { divisions, fraction, .. } => {
+                    *divisions = fraction.to_divisions(measure_divisions);
+                }
+                ExportEvent::Note(note) => {
+                    note.divisions = note.fraction.to_divisions(measure_divisions);
+                }
+                ExportEvent::Chord { divisions, fraction, .. } => {
+                    *divisions = fraction.to_divisions(measure_divisions);
                 }
             }
         }
@@ -1048,7 +1070,7 @@ pub fn build_export_measures_from_line(line: &Line) -> Vec<ExportMeasure> {
     if measures.is_empty() {
         measures.push(ExportMeasure {
             divisions: 4,
-            events: vec![ExportEvent::Rest { divisions: 4, tuplet: None }],
+            events: vec![ExportEvent::Rest { divisions: 4, fraction: Fraction::new(4, 4), tuplet: None }],
         });
     }
 
@@ -1095,6 +1117,7 @@ pub fn build_export_measures_from_document(document: &Document) -> Vec<ExportLin
 mod tests {
     use super::*;
     use crate::models::pitch_code::PitchCode;
+    use crate::renderers::export_ir::TieType;
 
     /// Helper to create a Cell
     fn make_cell(kind: ElementKind, char: &str, pitch_code: Option<PitchCode>) -> Cell {
@@ -1364,6 +1387,7 @@ mod tests {
         let mut note = NoteData {
             pitch: PitchInfo::new(PitchCode::N1, 4),
             divisions: 1,
+            fraction: Fraction { numerator: 1, denominator: 4 },
             grace_notes_before: Vec::new(),
             grace_notes_after: Vec::new(),
             lyrics: None,
@@ -1388,6 +1412,7 @@ mod tests {
         let mut note = NoteData {
             pitch: PitchInfo::new(PitchCode::N1, 4),
             divisions: 1,
+            fraction: Fraction { numerator: 1, denominator: 4 },
             grace_notes_before: Vec::new(),
             grace_notes_after: Vec::new(),
             lyrics: None,
@@ -1412,6 +1437,7 @@ mod tests {
         let mut note = NoteData {
             pitch: PitchInfo::new(PitchCode::N1, 4),
             divisions: 1,
+            fraction: Fraction { numerator: 1, denominator: 4 },
             grace_notes_before: Vec::new(),
             grace_notes_after: Vec::new(),
             lyrics: None,
@@ -1436,6 +1462,7 @@ mod tests {
         let mut note = NoteData {
             pitch: PitchInfo::new(PitchCode::N1, 4),
             divisions: 1,
+            fraction: Fraction { numerator: 1, denominator: 4 },
             grace_notes_before: Vec::new(),
             grace_notes_after: Vec::new(),
             lyrics: None,
@@ -1463,6 +1490,7 @@ mod tests {
         let mut note = NoteData {
             pitch: PitchInfo::new(PitchCode::N1, 4),
             divisions: 1,
+            fraction: Fraction { numerator: 1, denominator: 4 },
             grace_notes_before: Vec::new(),
             grace_notes_after: Vec::new(),
             lyrics: None,

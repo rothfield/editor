@@ -42,6 +42,9 @@ pub struct LayoutConfig {
     /// Minimum padding between syllables
     pub min_syllable_padding: f32,
 
+    /// Extra spacing after word-ending syllables (pixels)
+    pub word_spacing: f32,
+
     /// Ornament edit mode: true = editable (inline), false = locked (attached to anchors)
     #[serde(default)]
     pub ornament_edit_mode: bool,
@@ -302,7 +305,7 @@ impl LayoutEngine {
             dataset.insert("column".to_string(), cell.col.to_string());
             dataset.insert("octave".to_string(), cell.octave.to_string());
             dataset.insert("glyphLength".to_string(), cell.char.chars().count().to_string());
-            dataset.insert("continuation".to_string(), cell.continuation.to_string());
+            dataset.insert("continuation".to_string(), false /* REMOVED: continuation field */.to_string());
 
             // Get effective width for this cell
             let effective_width = effective_widths.get(cell_idx).copied().unwrap_or(12.0);
@@ -452,7 +455,7 @@ impl LayoutEngine {
             dataset.insert("column".to_string(), cell.col.to_string());
             dataset.insert("octave".to_string(), cell.octave.to_string());
             dataset.insert("glyphLength".to_string(), cell.char.chars().count().to_string());
-            dataset.insert("continuation".to_string(), cell.continuation.to_string());
+            dataset.insert("continuation".to_string(), false /* REMOVED: continuation field */.to_string());
 
             let effective_width = effective_widths.get(cell_idx).copied().unwrap_or(12.0);
             let actual_cell_width = cell_widths.get(cell_idx).copied().unwrap_or(12.0);
@@ -602,7 +605,20 @@ impl LayoutEngine {
         // For each syllable assignment, ensure the cell is wide enough
         for (syll_idx, assignment) in syllable_assignments.iter().enumerate() {
             if let Some(syll_width) = syllable_widths.get(syll_idx) {
-                let required = syll_width + config.min_syllable_padding;
+                // Base padding
+                let mut padding = config.min_syllable_padding;
+
+                // Detect word boundary: syllable doesn't end with hyphen
+                // (Strip trailing nbsp before checking, since lyrics parser adds nbsp after words)
+                let syllable_text = assignment.syllable.trim_end_matches('\u{00A0}');
+                let is_word_end = !syllable_text.ends_with('-');
+
+                // Add extra spacing after word-ending syllables
+                if is_word_end {
+                    padding += config.word_spacing;
+                }
+
+                let required = syll_width + padding;
                 if let Some(eff) = effective.get_mut(assignment.cell_index) {
                     *eff = eff.max(required);
                 }
@@ -620,7 +636,7 @@ impl LayoutEngine {
             // Collect non-continuation cell indices in this beat
             let non_continuation_indices: Vec<usize> = (beat.start..=beat.end)
                 .filter(|&i| {
-                    cells.get(i).map(|c| !c.continuation).unwrap_or(false)
+                    cells.get(i).map(|_c| true /* All cells are now non-continuation */).unwrap_or(false)
                 })
                 .collect();
 
@@ -869,6 +885,7 @@ impl LayoutEngine {
             | ElementKind::RepeatRightBarline
             | ElementKind::DoubleBarline => "barline",
             ElementKind::Whitespace => "whitespace",
+            ElementKind::Nbsp => "nbsp",
             ElementKind::Text => "text",
             ElementKind::Symbol => "symbol",
             ElementKind::Unknown => "unknown",

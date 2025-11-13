@@ -6,7 +6,7 @@
 
 use wasm_bindgen::prelude::*;
 use crate::models::{Cell, PitchSystem};
-use crate::parse::grammar::{parse, parse_single, mark_continuations};
+use crate::parse::grammar::parse_single;
 
 // Re-export logging macros from helpers module
 #[allow(unused_imports)]
@@ -116,7 +116,6 @@ pub fn insert_character(
 
     // Mark continuations (replaces old token combination)
     wasm_log!("  Marking continuations");
-    mark_continuations(&mut cells);
 
     let cells_after = cells.len();
     let cells_delta = cells_after as i32 - cells_before as i32;
@@ -212,7 +211,6 @@ pub fn parse_text(text: &str, pitch_system: u8) -> Result<js_sys::Array, JsValue
     wasm_log!("  Parsed {} cells, marking continuations...", cells.len());
 
     // Mark continuations (replaces old token combination)
-    mark_continuations(&mut cells);
 
     wasm_info!("  Marking continuations complete: {} cells", cells.len());
 
@@ -275,37 +273,14 @@ pub fn delete_character(
         return Err(JsValue::from_str("Cannot delete ornament cells - toggle ornament edit mode first"));
     }
 
-    // IMPORTANT: When deleting from a multi-cell glyph, we need to reparse!
-    // Find the root cell (trace back to non-continuation)
-    let mut root_idx = cursor_pos;
-    while root_idx > 0 && cells[root_idx].continuation {
-        root_idx -= 1;
-    }
+    // NEW ARCHITECTURE: No continuation cells
+    // Multi-character glyphs (like "1#", "||") are stored as single cells
+    // Deletion simply removes the cell
 
-    // Find the end of this glyph (all continuation cells)
-    let mut glyph_end = root_idx + 1;
-    while glyph_end < cells.len() && cells[glyph_end].continuation {
-        glyph_end += 1;
-    }
-
-    let is_multi_cell_glyph = glyph_end - root_idx > 1;
-
-    wasm_log!("  Cell at position {}: char='{}', continuation={}",
-             cursor_pos, cells[cursor_pos].char, cells[cursor_pos].continuation);
-    wasm_log!("  Glyph spans cells {}..{} (multi_cell={})", root_idx, glyph_end, is_multi_cell_glyph);
-
-    // Preserve data from root cell BEFORE deletion (for reparsing)
-    let preserved_pitch_system = cells[root_idx].pitch_system;
-    let _preserved_col = cells[root_idx].col;
-    let preserved_flags = cells[root_idx].flags;
-    let preserved_octave = cells[root_idx].octave;
-    let preserved_slur_indicator = cells[root_idx].slur_indicator;
+    wasm_log!("  Cell at position {}: char='{}'", cursor_pos, cells[cursor_pos].char);
 
     // Delete the cell at cursor_pos
     cells.remove(cursor_pos);
-
-    // Adjust root index after deletion
-    let new_root_idx = if cursor_pos <= root_idx { root_idx.saturating_sub(1) } else { root_idx };
 
     // Update column indices for cells after deletion
     for i in cursor_pos..cells.len() {
@@ -314,67 +289,7 @@ pub fn delete_character(
         }
     }
 
-    // CRITICAL LOGIC: Multi-Character Glyph Handling After Deletion
-    // See CLAUDE.md "Multi-Character Glyph Rendering" for full architecture
-    //
-    // Example: User types "1#", creating cells [root: "1#"/Sharp, continuation: "#"]
-    //          User backspaces continuation cell
-    //          Result: Keep root cell as "1#"/Sharp (what user typed)
-    //          Rendering: Invisible "1#" + CSS overlay shows composite glyph
-    //
-    // ONLY reparse if continuations REMAIN - otherwise preserve typed text
-    if is_multi_cell_glyph && new_root_idx < cells.len() {
-        // Build combined string from remaining cells starting at root
-        let mut combined = String::new();
-        let mut end_idx = new_root_idx;
-
-        // Add root cell char
-        combined.push_str(&cells[new_root_idx].char);
-        end_idx += 1;
-
-        // Add any continuation cells
-        let mut has_continuations = false;
-        while end_idx < cells.len() && cells[end_idx].continuation {
-            combined.push_str(&cells[end_idx].char);
-            has_continuations = true;
-            end_idx += 1;
-        }
-
-        wasm_log!("  Remaining glyph: combined='{}', has_continuations={}", combined, has_continuations);
-
-        // CRITICAL: Preserve what user typed - only reparse if continuations remain
-        // If all continuations deleted (e.g., deleted "#" from "1#"):
-        //   - Keep original char="1#" and pitch_code=Sharp
-        //   - Preserves textual mental model and DOM truth
-        //   - Rendering layer extracts base char and applies composite glyph overlay
-        if has_continuations {
-            wasm_log!("  Reparsing because continuations remain: '{}'", combined);
-
-            // Reparse the combined string to get correct pitch_code
-            let pitch_system = preserved_pitch_system.unwrap_or(PitchSystem::Unknown);
-            let reparsed = parse(&combined, pitch_system, cells[new_root_idx].col);
-
-            // Update root cell with reparsed data, preserving musical attributes
-            cells[new_root_idx].kind = reparsed.kind;
-            cells[new_root_idx].pitch_code = reparsed.pitch_code;
-            cells[new_root_idx].pitch_system = reparsed.pitch_system;
-            cells[new_root_idx].flags = preserved_flags;
-            cells[new_root_idx].octave = preserved_octave;
-            cells[new_root_idx].slur_indicator = preserved_slur_indicator;
-        } else {
-            wasm_log!("  No continuations remain - keeping original char='{}' and pitch_code", combined);
-            // WASM-FIRST PRINCIPLE: Keep the typed text (char="1#")
-            // Rendering layer handles display via composite glyph overlay
-            // This preserves round-trip fidelity and textual mental model
-        }
-
-        wasm_info!("  Updated root cell[{}]: pitch_code={:?}, octave={}, flags={}",
-                  new_root_idx, cells[new_root_idx].pitch_code, cells[new_root_idx].octave, cells[new_root_idx].flags);
-    }
-
-    // Re-mark continuations for entire array to fix continuation flags
-    wasm_log!("  Re-marking continuations for entire array");
-    mark_continuations(&mut cells);
+    // No reparsing needed - each cell is self-contained
 
     let cells_after = cells.len();
     let delta = cells_after as i32 - cells_before as i32;

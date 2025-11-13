@@ -37,8 +37,27 @@ S---   = 4 time units
 ```
 
 **Important:** In the lexer, dashes are tokenized as individual PITCH tokens (not flat accidentals). During staff notation conversion, these dash tokens are processed as:
-- **Rhythmic extensions** when following a pitch (extending the previous note's duration)
-- **Rests** when appearing alone or in groups without a preceding pitch
+- **Rhythmic extensions** when there is a preceding pitch (extending the previous note's duration)
+- **Rests** ONLY when there is NO preceding pitch
+
+**Critical Rule: When Dashes Become Rests vs. Extensions**
+
+Dashes become **rests** ONLY in these cases:
+1. **No previous pitch** - Dashes at the very beginning of a line with no preceding note
+2. **After a breath mark** - Breath marks reset the pitch context, so following dashes are rests
+3. **After end of line** - New line starts with no pitch context
+
+**Spaces (beat boundaries) do NOT reset the pitch context!** Dashes at the start of a beat will extend the previous note if there was a pitch before them.
+
+**Default Behavior: Dashes Always Extend**
+
+Otherwise, dashes always extend the previous pitch. This is represented in traditional music notation using **ties** - a fundamental feature of music notation that connects notes across beats, measures, or any rhythmic boundary.
+
+Example: `1--2 --3-`
+- Beat 1: `1--2` → "1" gets 3 subdivisions (dotted), "2" gets 1 subdivision
+- Beat 2: `--3-` → The leading `--` **extends the previous "2"** (not a rest!), then "3" gets remaining subdivisions
+- Result: `c8. d16~ d4 e4` (the "2" ties across the beat boundary)
+- The tie (`~`) is a standard music notation element that extends notes beyond their written duration
 
 This two-stage approach (lexical tokenization → rhythmic interpretation) allows the parser to maintain spatial relationships while correctly generating musical durations in the final output.
 

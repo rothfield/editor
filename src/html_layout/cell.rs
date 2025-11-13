@@ -7,7 +7,7 @@ use crate::models::*;
 use crate::models::pitch_code::AccidentalType;
 use super::display_list::*;
 use super::document::LayoutConfig;
-use crate::renderers::{get_glyph_codepoint, get_accidental_glyph_codepoint};
+use crate::renderers::{get_glyph_codepoint, get_accidental_glyph_codepoint, get_combined_accidental_octave_glyph};
 use std::collections::HashMap;
 
 /// Builder for cell styling and layout
@@ -29,7 +29,7 @@ impl CellStyleBuilder {
         config: &LayoutConfig,
         line_y_offset: f32,
         cell_widths: &[f32],
-        char_widths: &[f32],
+        _char_widths: &[f32],
         char_width_offset: &mut usize,
         beat_roles: &HashMap<usize, String>,
         slur_roles: &HashMap<usize, String>,
@@ -66,86 +66,37 @@ impl CellStyleBuilder {
         dataset.insert("lineIndex".to_string(), line_idx.to_string());
         dataset.insert("cellIndex".to_string(), cell_idx.to_string());
         dataset.insert("column".to_string(), cell.col.to_string());
-        dataset.insert("glyphLength".to_string(), cell.char.chars().count().to_string());
-        dataset.insert("continuation".to_string(), cell.continuation.to_string());
 
         // Pitch system class
         if let Some(pitch_system) = cell.pitch_system {
             classes.push(format!("pitch-system-{}", self.pitch_system_to_css(pitch_system)));
         }
 
-        // Accidental rendering - extract accidental type for JavaScript to render
-        let accidental_type = if !cell.continuation && cell.kind == ElementKind::PitchedElement {
-            if let Some(pitch_code) = cell.pitch_code {
-                Some(pitch_code.accidental_type())
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-
-        // Add accidental type to dataset for CSS overlay rendering
-        if let Some(acc_type) = accidental_type {
-            if acc_type != AccidentalType::None {
-                // Add CSS class to mark cells with accidentals for styling
-                classes.push("has-accidental".to_string());
-
-                // Store accidental type for JavaScript overlay calculation
-                let acc_str = match acc_type {
-                    AccidentalType::None => "none",
-                    AccidentalType::Sharp => "sharp",
-                    AccidentalType::Flat => "flat",
-                    AccidentalType::DoubleSharp => "double-sharp",
-                    AccidentalType::DoubleFlat => "double-flat",
-                };
-                dataset.insert("accidentalType".to_string(), acc_str.to_string());
-
-                // Calculate and store the composite glyph codepoint for CSS overlay
-                if cell.pitch_code.is_some() {
-                    let base_char = cell.char.chars().next().unwrap_or(' ');
-                    let acc_type_num = match acc_type {
-                        AccidentalType::Sharp => 1,
-                        AccidentalType::Flat => 2,
-                        AccidentalType::DoubleSharp => 3,
-                        AccidentalType::DoubleFlat => 4,
-                        _ => 0,
-                    };
-                    let glyph_codepoint = get_accidental_glyph_codepoint(base_char, acc_type_num);
-                    dataset.insert("compositeGlyph".to_string(), format!("U+{:X}", glyph_codepoint as u32));
-                }
-            }
-        }
-
-        // Hide continuation cells of pitched elements (they're part of accidentals)
-        if cell.continuation && cell.kind == ElementKind::PitchedElement {
-            classes.push("pitch-continuation".to_string());
-        }
+        // No continuation cells in new architecture - multi-char glyphs rendered as single cell
+        // Composite glyphs (e.g., 1#, 2♭) are stored directly in cell.char field
 
         // Get actual cell width (for cursor positioning)
+        // Whitespace cells need a minimum width so cursor advances
         let actual_cell_width = cell_widths.get(cell_idx).copied().unwrap_or(12.0);
+        let actual_cell_width = if cell.kind == ElementKind::Whitespace {
+            actual_cell_width.max(8.0) // Whitespace minimum 8px
+        } else {
+            actual_cell_width
+        };
 
-        // Calculate character positions for this cell
+        // NEW: One cell = one glyph (NotationFont composite glyphs)
+        // char_positions only needs [cursor_left, cursor_right] for each cell
+        let char_positions = vec![
+            cumulative_x,                    // cursor_left (before glyph)
+            cumulative_x + actual_cell_width // cursor_right (after glyph)
+        ];
+
+        // Track character count for char_widths array offset (legacy compatibility)
         let char_count = cell.char.chars().count();
-        let mut char_positions = Vec::with_capacity(char_count + 1);
-        char_positions.push(cumulative_x); // Position before first character
-
-        // Add position after each character
-        let mut char_x = cumulative_x;
-        for i in 0..char_count {
-            if let Some(&width) = char_widths.get(*char_width_offset + i) {
-                char_x += width;
-            } else {
-                // Fallback to proportional width
-                char_x += actual_cell_width / char_count as f32;
-            }
-            char_positions.push(char_x);
-        }
-
         *char_width_offset += char_count;
 
-        // cursor_right should be at the position after the last character
-        let cursor_right = *char_positions.last().unwrap_or(&(cumulative_x + actual_cell_width));
+        // cursor_right is at the right edge of the cell
+        let cursor_right = cumulative_x + actual_cell_width;
 
         // Calculate Y position for cells (with line offset for multi-line documents)
         let y = line_y_offset + config.cell_y_offset;
@@ -153,50 +104,47 @@ impl CellStyleBuilder {
         // Get barline type from ElementKind for SMuFL rendering (CSS class name)
         let barline_type = match cell.kind {
             ElementKind::SingleBarline => "single-bar".to_string(),
-            ElementKind::RepeatLeftBarline => {
-                if !cell.continuation {
-                    "repeat-left-start".to_string()
-                } else {
-                    String::new()
-                }
-            }
-            ElementKind::RepeatRightBarline => {
-                if !cell.continuation {
-                    "repeat-right-start".to_string()
-                } else {
-                    String::new()
-                }
-            }
-            ElementKind::DoubleBarline => {
-                if !cell.continuation {
-                    "double-bar-start".to_string()
-                } else {
-                    String::new()
-                }
-            }
+            ElementKind::RepeatLeftBarline => "repeat-left-start".to_string(),
+            ElementKind::RepeatRightBarline => "repeat-right-start".to_string(),
+            ElementKind::DoubleBarline => "double-bar-start".to_string(),
             _ => String::new(),
         };
 
-        // Character rendering strategy (see CLAUDE.md "Multi-Character Glyph Rendering")
-        // IMPORTANT: For accidentals, keep the original typed text in DOM (textual truth)
-        // and let JavaScript/CSS handle the visual presentation via overlay.
-        // This preserves:
-        // - What user typed (mental model)
-        // - Accessibility (screen readers see "1#")
-        // - Copy/paste (get "1#" not composite glyph codepoint)
-        // - Round-trip fidelity (save/load preserves intent)
-        let char = if cell.continuation && cell.kind == ElementKind::PitchedElement {
-            // Continuation cells (like the '#' in "1#") are rendered as non-breaking space
-            // This makes them invisible while preserving layout
-            "\u{00A0}".to_string()
-        } else if cell.kind == ElementKind::PitchedElement && !cell.char.is_empty() {
-            // For pitched elements, handle octave display but NOT accidentals
-            // (Accidentals are handled by CSS overlay in JavaScript renderer)
-            if cell.octave != 0 {
+        // Character rendering strategy: render composite glyph from pitch_code
+        // For pitched elements with accidentals, compute the composite glyph codepoint
+        // For barlines, render the multi-char string (||, |:, :|)
+        let char = if cell.kind == ElementKind::PitchedElement && !cell.char.is_empty() {
+            if let Some(pitch_code) = cell.pitch_code {
+                // Extract base character (first char of cell.char, e.g., '1' from "1#")
                 let base_char = cell.char.chars().next().unwrap_or(' ');
-                get_glyph_codepoint(base_char, cell.octave).to_string()
+
+                // Get accidental type
+                let acc_type = pitch_code.accidental_type();
+                let acc_type_num = match acc_type {
+                    AccidentalType::Sharp => 1,
+                    AccidentalType::Flat => 2,
+                    AccidentalType::DoubleSharp => 3,
+                    AccidentalType::DoubleFlat => 4,
+                    _ => 0,
+                };
+
+                // Compute composite glyph based on accidental AND octave
+                if acc_type != AccidentalType::None && cell.octave != 0 {
+                    // BOTH accidental and octave: use combined glyph (e.g., "1# with dot above")
+                    let composite_glyph = get_combined_accidental_octave_glyph(base_char, acc_type_num, cell.octave);
+                    composite_glyph.to_string()
+                } else if acc_type != AccidentalType::None {
+                    // Only accidental, no octave: use accidental glyph (e.g., "1#")
+                    let composite_glyph = get_accidental_glyph_codepoint(base_char, acc_type_num);
+                    composite_glyph.to_string()
+                } else if cell.octave != 0 {
+                    // Only octave, no accidental: use octave glyph (e.g., "1 with dot above")
+                    get_glyph_codepoint(base_char, cell.octave).to_string()
+                } else {
+                    // No accidental, no octave - just base char
+                    base_char.to_string()
+                }
             } else {
-                // Keep original typed text (e.g., "1#" for sharp, "1b" for flat)
                 cell.char.clone()
             }
         } else {
@@ -219,25 +167,20 @@ impl CellStyleBuilder {
         }
     }
 
-    /// Build map of cell index to beat role class (includes both pitched and continuation cells)
-    pub fn build_beat_role_map(&self, beats: &[BeatSpan], cells: &[Cell]) -> HashMap<usize, String> {
+    /// Build map of cell index to beat role class
+    pub fn build_beat_role_map(&self, beats: &[BeatSpan], _cells: &[Cell]) -> HashMap<usize, String> {
         let mut map = HashMap::new();
 
         for beat in beats {
-            // Collect non-continuation cell indices in this beat
-            let non_continuation_indices: Vec<usize> = (beat.start..=beat.end)
-                .filter(|&i| {
-                    cells.get(i).map(|c| !c.continuation).unwrap_or(false)
-                })
-                .collect();
+            // Count cells in this beat
+            let cell_count = (beat.start..=beat.end).count();
 
-            // Only draw loops for beats with 2+ non-continuation cells
-            if non_continuation_indices.len() >= 2 {
-                // Multi-element beat - include ALL cells (continuation and non-continuation)
+            // Only draw loops for beats with 2+ cells
+            if cell_count >= 2 {
                 let first_idx = beat.start;
                 let last_idx = beat.end;
 
-                // Mark ALL cells in the beat span (including continuations)
+                // Mark all cells in the beat span
                 for i in first_idx..=last_idx {
                     let role = if i == first_idx {
                         "beat-loop-first"
@@ -307,6 +250,7 @@ impl CellStyleBuilder {
             | ElementKind::RepeatRightBarline
             | ElementKind::DoubleBarline => "barline",
             ElementKind::Whitespace => "whitespace",
+            ElementKind::Nbsp => "nbsp",
             ElementKind::Text => "text",
             ElementKind::Symbol => "symbol",
             ElementKind::Unknown => "unknown",

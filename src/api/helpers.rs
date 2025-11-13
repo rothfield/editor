@@ -16,7 +16,8 @@ use lazy_static::lazy_static;
 // Document Storage (Canonical Source of Truth)
 // ============================================================================
 
-/// WASM-owned document storage (canonical source of truth)
+// WASM-owned document storage (canonical source of truth)
+// NOTE: This is kept for backward compatibility. New code should use EDITOR_STATE.
 lazy_static! {
     pub(crate) static ref DOCUMENT: Mutex<Option<Document>> = Mutex::new(None);
 }
@@ -26,6 +27,22 @@ pub(crate) fn lock_document() -> Result<std::sync::MutexGuard<'static, Option<Do
     DOCUMENT.lock()
         .map_err(|e| JsValue::from_str(&format!("Document lock poisoned: {}", e)))
 }
+
+// ============================================================================
+// Editor State Storage (COMMENTED OUT - Not needed, Document.state has cursor/selection)
+// ============================================================================
+
+// NOTE: Decided not to use a separate EditorState - Document.state already contains
+// cursor and selection. Just use DOCUMENT above and return EditorDiff from operations.
+
+// lazy_static! {
+//     pub(crate) static ref EDITOR_STATE: Mutex<Option<EditorState>> = Mutex::new(None);
+// }
+
+// pub(crate) fn lock_editor_state() -> Result<std::sync::MutexGuard<'static, Option<EditorState>>, JsValue> {
+//     EDITOR_STATE.lock()
+//         .map_err(|e| JsValue::from_str(&format!("Editor state lock poisoned: {}", e)))
+// }
 
 // ============================================================================
 // Console Logging Functions

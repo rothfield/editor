@@ -134,7 +134,7 @@ pub fn distribute_lyrics(lyrics: &str, cells: &[Cell]) -> Vec<SyllableAssignment
 
     for (cell_index, cell) in cells.iter().enumerate() {
         // Only process pitched elements (kind == 1 / PitchedElement) that are not continuations
-        if cell.continuation || !matches!(cell.kind, ElementKind::PitchedElement) {
+        if false /* REMOVED: continuation field */ || !matches!(cell.kind, ElementKind::PitchedElement) {
             continue;
         }
 
