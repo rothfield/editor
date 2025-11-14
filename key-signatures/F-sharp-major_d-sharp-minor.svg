@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <line x1="5" y1="30" x2="115" y2="30" stroke="#333" stroke-width="1"/>
+  <line x1="5" y1="40" x2="115" y2="40" stroke="#333" stroke-width="1"/>
+  <line x1="5" y1="50" x2="115" y2="50" stroke="#333" stroke-width="1"/>
+  <line x1="5" y1="60" x2="115" y2="60" stroke="#333" stroke-width="1"/>
+  <line x1="5" y1="70" x2="115" y2="70" stroke="#333" stroke-width="1"/>
+  <g transform="translate(12, 30)"><line x1="0" y1="-8" x2="0" y2="8" stroke="#333" stroke-width="1.5"/><line x1="4" y1="-8" x2="4" y2="8" stroke="#333" stroke-width="1.5"/><line x1="-2" y1="-2" x2="6" y2="-4" stroke="#333" stroke-width="1.5"/><line x1="-2" y1="2" x2="6" y2="4" stroke="#333" stroke-width="1.5"/></g>
+  <g transform="translate(22, 40)"><line x1="0" y1="-8" x2="0" y2="8" stroke="#333" stroke-width="1.5"/><line x1="4" y1="-8" x2="4" y2="8" stroke="#333" stroke-width="1.5"/><line x1="-2" y1="-2" x2="6" y2="-4" stroke="#333" stroke-width="1.5"/><line x1="-2" y1="2" x2="6" y2="4" stroke="#333" stroke-width="1.5"/></g>
+  <g transform="translate(32, 35)"><line x1="0" y1="-8" x2="0" y2="8" stroke="#333" stroke-width="1.5"/><line x1="4" y1="-8" x2="4" y2="8" stroke="#333" stroke-width="1.5"/><line x1="-2" y1="-2" x2="6" y2="-4" stroke="#333" stroke-width="1.5"/><line x1="-2" y1="2" x2="6" y2="4" stroke="#333" stroke-width="1.5"/></g>
+  <g transform="translate(42, 45)"><line x1="0" y1="-8" x2="0" y2="8" stroke="#333" stroke-width="1.5"/><line x1="4" y1="-8" x2="4" y2="8" stroke="#333" stroke-width="1.5"/><line x1="-2" y1="-2" x2="6" y2="-4" stroke="#333" stroke-width="1.5"/><line x1="-2" y1="2" x2="6" y2="4" stroke="#333" stroke-width="1.5"/></g>
+  <g transform="translate(52, 40)"><line x1="0" y1="-8" x2="0" y2="8" stroke="#333" stroke-width="1.5"/><line x1="4" y1="-8" x2="4" y2="8" stroke="#333" stroke-width="1.5"/><line x1="-2" y1="-2" x2="6" y2="-4" stroke="#333" stroke-width="1.5"/><line x1="-2" y1="2" x2="6" y2="4" stroke="#333" stroke-width="1.5"/></g>
+  <g transform="translate(62, 50)"><line x1="0" y1="-8" x2="0" y2="8" stroke="#333" stroke-width="1.5"/><line x1="4" y1="-8" x2="4" y2="8" stroke="#333" stroke-width="1.5"/><line x1="-2" y1="-2" x2="6" y2="-4" stroke="#333" stroke-width="1.5"/><line x1="-2" y1="2" x2="6" y2="4" stroke="#333" stroke-width="1.5"/></g>
+  <text x="60" y="95" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="#333">F# major</text>
+  <text x="60" y="110" font-family="Arial, sans-serif" font-size="10" text-anchor="middle" fill="#666">D# minor</text>
+</svg>
