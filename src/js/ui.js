@@ -14,6 +14,7 @@ class UI {
     this.activeTab = 'staff-notation';
     this.isInitialized = false; // Track initialization state to prevent timer scheduling during init
     this.menuListeners = new Map();
+    this.keySignatureSelector = null; // Will be initialized after DOM is ready
 
     // localStorage settings
     this.tabSaveDebounceMs = 2000;
@@ -35,12 +36,31 @@ class UI {
     this.setupEventListeners();
     this.updateCurrentPitchSystemDisplay();
     this.restoreTabPreference();
+    this.initializeKeySignatureSelector();
+
+    // Update key signature display after a short delay (wait for document to load)
+    setTimeout(() => {
+      this.updateKeySignatureCornerDisplay();
+    }, 500);
 
     // Mark UI as initialized - this prevents staff notation timer scheduling during init
     // (prevents double-render: one from autosave timer, one from switchTab)
     this.isInitialized = true;
 
     console.log('UI components initialized');
+  }
+
+  /**
+   * Initialize the Key Signature Selector modal
+   */
+  initializeKeySignatureSelector() {
+    // Import and initialize the key signature selector
+    import('./key-signature-selector.js').then(module => {
+      this.keySignatureSelector = module.initKeySignatureSelector(this);
+      console.log('Key Signature Selector initialized');
+    }).catch(error => {
+      console.error('Failed to load key signature selector:', error);
+    });
   }
 
   /**
@@ -188,9 +208,9 @@ class UI {
   setupLineMenu() {
     // Get current line's new_system state if a line is selected
     let currentLineNewSystem = false;
-    if (this.editor && this.editor.theDocument) {
-      const cursor = this.editor.theDocument.state.cursor;
-      const line = this.editor.theDocument.lines[cursor.line];
+    if (this.editor && this.editor.getDocument()) {
+      const cursor = this.editor.getDocument().state.cursor;
+      const line = this.editor.getDocument().lines[cursor.line];
       if (line) {
         currentLineNewSystem = line.new_system || false;
       }
@@ -271,9 +291,9 @@ class UI {
 
     // Get current cell's ornament (if any)
     let currentOrnament = null;
-    if (this.editor && this.editor.theDocument) {
-      const cursor = this.editor.theDocument.state.cursor;
-      const line = this.editor.theDocument.lines[cursor.line];
+    if (this.editor && this.editor.getDocument()) {
+      const cursor = this.editor.getDocument().state.cursor;
+      const line = this.editor.getDocument().lines[cursor.line];
       if (line && cursor.col > 0) {
         const cellIndex = cursor.col - 1;
         if (cellIndex < line.cells.length) {
@@ -434,7 +454,7 @@ class UI {
   /**
      * Handle menu item clicks
      */
-  handleMenuItemClick(event) {
+  async handleMenuItemClick(event) {
     console.log('[UI] handleMenuItemClick event received');
     const menuItem = event.target.closest('.menu-item');
     if (!menuItem) {
@@ -453,7 +473,7 @@ class UI {
     event.preventDefault();
     event.stopPropagation();
 
-    this.executeMenuAction(action);
+    await this.executeMenuAction(action);
 
     // Close menu after action
     this.closeAllMenus();
@@ -477,6 +497,8 @@ class UI {
      * Switch to a specific tab
      */
   async switchTab(tabName) {
+    console.log(`[UI] switchTab('${tabName}') called`);
+
     // Hide all tab contents
     document.querySelectorAll('[data-tab-content]').forEach(content => {
       content.classList.add('hidden');
@@ -500,6 +522,7 @@ class UI {
     }
 
     this.activeTab = tabName;
+    console.log(`[UI] activeTab set to: '${this.activeTab}'`);
 
     // Save tab preference to localStorage with debounce
     this.scheduleTabSave();
@@ -595,7 +618,7 @@ class UI {
   /**
      * Execute menu action
      */
-  executeMenuAction(action) {
+  async executeMenuAction(action) {
     console.log('[UI] executeMenuAction called with action:', action);
     switch (action) {
       case 'new-document':
@@ -671,22 +694,22 @@ class UI {
         this.clearOrnament();
         break;
       case 'apply-slur':
-        this.applySlur();
+        await this.applySlur();
         break;
       case 'octave-highest':
-        this.applyOctave(2);
+        await this.applyOctave(2);
         break;
       case 'octave-upper':
-        this.applyOctave(1);
+        await this.applyOctave(1);
         break;
       case 'octave-middle':
-        this.applyOctave(0);
+        await this.applyOctave(0);
         break;
       case 'octave-lower':
-        this.applyOctave(-1);
+        await this.applyOctave(-1);
         break;
       case 'octave-lowest':
-        this.applyOctave(-2);
+        await this.applyOctave(-2);
         break;
       case 'select-all':
         this.selectAll();
@@ -832,18 +855,19 @@ class UI {
     if (newTitle !== null) {
       this.updateDocumentTitle(newTitle);
 
-      if (this.editor && this.editor.theDocument && this.editor.wasmModule) {
+      if (this.editor && this.editor.getDocument() && this.editor.wasmModule) {
         // Call WASM setTitle function
         try {
           // Preserve the state field before WASM call
-          const preservedState = this.editor.theDocument.state;
+          const preservedState = this.editor.getDocument().state;
 
-          const updatedDocument = await this.editor.wasmModule.setTitle(this.editor.theDocument, newTitle);
+          const updatedDocument = await this.editor.wasmModule.setTitle(this.editor.getDocument(), newTitle);
 
           // Restore the state field after WASM call
           updatedDocument.state = preservedState;
 
-          this.editor.theDocument = updatedDocument;
+          // Load updated document back into WASM (WASM owns the state)
+          this.editor.wasmModule.loadDocument(updatedDocument);
           this.editor.addToConsoleLog(`Document title set to: ${newTitle}`);
           await this.editor.render(); // Re-render to show title on canvas
         } catch (error) {
@@ -862,18 +886,18 @@ class UI {
     const newComposer = prompt('Enter composer name:', currentComposer);
 
     if (newComposer !== null && newComposer.trim() !== '') {
-      if (this.editor && this.editor.theDocument && this.editor.wasmModule) {
+      if (this.editor && this.editor.getDocument() && this.editor.wasmModule) {
         // Call WASM setComposer function
         try {
           // Preserve the state field before WASM call
-          const preservedState = this.editor.theDocument.state;
+          const preservedState = this.editor.getDocument().state;
 
-          const updatedDocument = await this.editor.wasmModule.setComposer(this.editor.theDocument, newComposer);
+          const updatedDocument = await this.editor.wasmModule.setComposer(this.editor.getDocument(), newComposer);
 
           // Restore the state field after WASM call
           updatedDocument.state = preservedState;
 
-          this.editor.theDocument = updatedDocument;
+          this.editor.wasmModule.loadDocument(updatedDocument);
           this.editor.addToConsoleLog(`Composer set to: ${newComposer}`);
           await this.editor.render(); // Re-render to show composer on canvas
         } catch (error) {
@@ -894,8 +918,8 @@ class UI {
     if (newTonic !== null && newTonic.trim() !== '') {
       this.updateTonicDisplay(newTonic);
 
-      if (this.editor && this.editor.theDocument) {
-        this.editor.theDocument.tonic = newTonic;
+      if (this.editor && this.editor.getDocument()) {
+        this.editor.getDocument().tonic = newTonic;
         this.editor.addToConsoleLog(`Document tonic set to: ${newTonic}`);
         await this.editor.renderAndUpdate();
       }
@@ -914,15 +938,15 @@ class UI {
 
     if (newSystem !== null && newSystem !== currentSystem) {
       console.log('🎵 Updating pitch system...');
-      if (this.editor && this.editor.theDocument && this.editor.wasmModule) {
+      if (this.editor && this.editor.getDocument() && this.editor.wasmModule) {
         try {
           // Preserve the state field before WASM call
-          const preservedState = this.editor.theDocument.state;
+          const preservedState = this.editor.getDocument().state;
 
           // Call WASM function to set pitch system
           console.log('🎵 Calling WASM setDocumentPitchSystem with system:', newSystem);
           const updatedDocument = await this.editor.wasmModule.setDocumentPitchSystem(
-            this.editor.theDocument,
+            this.editor.getDocument(),
             newSystem
           );
           console.log('🎵 WASM returned updated document:', updatedDocument?.pitch_system);
@@ -931,7 +955,7 @@ class UI {
           updatedDocument.state = preservedState;
 
           // Update the editor's document reference
-          this.editor.theDocument = updatedDocument;
+          this.editor.wasmModule.loadDocument(updatedDocument);
 
           this.editor.addToConsoleLog(`Document pitch system set to: ${this.getPitchSystemName(newSystem)}`);
           console.log('🎨 Rendering after document pitch system change...');
@@ -973,21 +997,53 @@ class UI {
   }
 
   /**
-     * Set key signature
+     * Set key signature (document-level)
      */
   async setKeySignature() {
-    const currentSignature = this.getKeySignature();
-    const newSignature = prompt('Enter key signature (e.g., C, G, D major, etc.):', currentSignature);
+    if (this.keySignatureSelector) {
+      const currentSignature = this.getKeySignature();
+      this.keySignatureSelector.open('document', currentSignature);
+    } else {
+      // Fallback to prompt if selector not loaded yet
+      const currentSignature = this.getKeySignature();
+      const newSignature = prompt('Enter key signature (e.g., C major, G major, etc.):', currentSignature);
 
-    if (newSignature !== null && newSignature.trim() !== '') {
-      this.updateKeySignatureDisplay(newSignature);
+      if (newSignature !== null && newSignature.trim() !== '') {
+        this.updateKeySignatureDisplay(newSignature);
 
-      if (this.editor && this.editor.theDocument) {
-        this.editor.theDocument.key_signature = newSignature;
-        this.editor.addToConsoleLog(`Document key signature set to: ${newSignature}`);
-        await this.editor.renderAndUpdate();
+        if (this.editor && this.editor.getDocument()) {
+          this.editor.getDocument().key_signature = newSignature;
+          this.editor.addToConsoleLog(`Document key signature set to: ${newSignature}`);
+          await this.editor.renderAndUpdate();
+
+          // Update the display in corner
+          this.updateKeySignatureCornerDisplay();
+        }
       }
     }
+  }
+
+  /**
+   * Update the key signature display in the upper left corner
+   */
+  updateKeySignatureCornerDisplay() {
+    // Get the current key signature (document or line level)
+    const keySignature = this.getKeySignature() || this.getLineKeySignature();
+
+    // Create click handler that opens the key signature selector
+    const clickHandler = () => {
+      if (this.keySignatureSelector) {
+        const currentSig = this.getKeySignature() || this.getLineKeySignature();
+        this.keySignatureSelector.open('document', currentSig);
+      }
+    };
+
+    // Import and call the display update function
+    import('./key-signature-selector.js').then(module => {
+      module.updateKeySignatureDisplay(keySignature, clickHandler);
+    }).catch(error => {
+      console.error('Failed to update key signature display:', error);
+    });
   }
 
   /**
@@ -995,18 +1051,18 @@ class UI {
    * Uses WASM to handle selection logic
    */
   async selectAll() {
-    if (!this.editor || !this.editor.theDocument) {
+    if (!this.editor || !this.editor.getDocument()) {
       console.warn('Cannot select all: editor or document not available');
       return;
     }
 
     try {
       // Ensure WASM has the latest document state
-      this.editor.wasmModule.loadDocument(this.editor.theDocument);
+      this.editor.wasmModule.loadDocument(this.editor.getDocument());
 
       // Get current cursor position to determine which line
-      const lineIndex = this.editor.theDocument.state.cursor.line || 0;
-      const col = this.editor.theDocument.state.cursor.col || 0;
+      const lineIndex = this.editor.getDocument().state.cursor.line || 0;
+      const col = this.editor.getDocument().state.cursor.col || 0;
 
       // Call WASM to select entire line
       const pos = { line: lineIndex, col: col };
@@ -1031,19 +1087,19 @@ class UI {
     if (newLabel !== null && newLabel.trim() !== '') {
       this.updateLineLabelDisplay(newLabel);
 
-      if (this.editor && this.editor.theDocument && this.editor.theDocument.lines.length > 0 && this.editor.wasmModule) {
+      if (this.editor && this.editor.getDocument() && this.editor.getDocument().lines.length > 0 && this.editor.wasmModule) {
         // Call WASM setStaveLabel function
         try {
           // Preserve the state field before WASM call
-          const preservedState = this.editor.theDocument.state;
+          const preservedState = this.editor.getDocument().state;
 
           const lineIdx = this.getCurrentLineIndex();
-          const updatedDocument = await this.editor.wasmModule.setLineLabel(this.editor.theDocument, lineIdx, newLabel);
+          const updatedDocument = await this.editor.wasmModule.setLineLabel(this.editor.getDocument(), lineIdx, newLabel);
 
           // Restore the state field after WASM call
           updatedDocument.state = preservedState;
 
-          this.editor.theDocument = updatedDocument;
+          this.editor.wasmModule.loadDocument(updatedDocument);
           this.editor.addToConsoleLog(`Line label set to: ${newLabel}`);
           await this.editor.render();
         } catch (error) {
@@ -1064,9 +1120,9 @@ class UI {
     if (newTonic !== null && newTonic.trim() !== '') {
       this.updateLineTonicDisplay(newTonic);
 
-      if (this.editor && this.editor.theDocument && this.editor.theDocument.lines.length > 0) {
+      if (this.editor && this.editor.getDocument() && this.editor.getDocument().lines.length > 0) {
         const lineIdx = this.getCurrentLineIndex();
-        this.editor.theDocument.lines[lineIdx].tonic = newTonic;
+        this.editor.getDocument().lines[lineIdx].tonic = newTonic;
         this.editor.addToConsoleLog(`Line tonic set to: ${newTonic}`);
         await this.editor.renderAndUpdate();
       }
@@ -1078,7 +1134,7 @@ class UI {
      */
   async setLinePitchSystem() {
     // Check if document has lines
-    if (!this.editor || !this.editor.theDocument || this.editor.theDocument.lines.length === 0) {
+    if (!this.editor || !this.editor.getDocument() || this.editor.getDocument().lines.length === 0) {
       alert('No lines in document. Please add content first.');
       return;
     }
@@ -1087,15 +1143,15 @@ class UI {
     const newSystem = this.showPitchSystemDialog(currentSystem);
 
     if (newSystem !== null && newSystem !== currentSystem) {
-      if (this.editor && this.editor.theDocument && this.editor.wasmModule) {
+      if (this.editor && this.editor.getDocument() && this.editor.wasmModule) {
         try {
           // Preserve the state field before WASM call
-          const preservedState = this.editor.theDocument.state;
+          const preservedState = this.editor.getDocument().state;
 
           // Call WASM function to set line pitch system
           const lineIdx = this.getCurrentLineIndex();
           const updatedDocument = await this.editor.wasmModule.setLinePitchSystem(
-            this.editor.theDocument,
+            this.editor.getDocument(),
             lineIdx,
             newSystem
           );
@@ -1104,7 +1160,7 @@ class UI {
           updatedDocument.state = preservedState;
 
           // Update the editor's document reference
-          this.editor.theDocument = updatedDocument;
+          this.editor.wasmModule.loadDocument(updatedDocument);
 
           this.editor.addToConsoleLog(`Line pitch system set to: ${this.getPitchSystemName(newSystem)}`);
           console.log('🎨 Rendering after line pitch system change...');
@@ -1128,19 +1184,19 @@ class UI {
 
     // Allow empty string to clear lyrics - all validation and updates handled in WASM
     if (newLyrics !== null) {
-      if (this.editor && this.editor.theDocument && this.editor.theDocument.lines.length > 0 && this.editor.wasmModule) {
+      if (this.editor && this.editor.getDocument() && this.editor.getDocument().lines.length > 0 && this.editor.wasmModule) {
         // Call WASM setLineLyrics function (handles empty string to clear)
         try {
           // Preserve the state field before WASM call
-          const preservedState = this.editor.theDocument.state;
+          const preservedState = this.editor.getDocument().state;
 
           const lineIdx = this.getCurrentLineIndex();
-          const updatedDocument = await this.editor.wasmModule.setLineLyrics(this.editor.theDocument, lineIdx, newLyrics);
+          const updatedDocument = await this.editor.wasmModule.setLineLyrics(this.editor.getDocument(), lineIdx, newLyrics);
 
           // Restore the state field after WASM call
           updatedDocument.state = preservedState;
 
-          this.editor.theDocument = updatedDocument;
+          this.editor.wasmModule.loadDocument(updatedDocument);
           const displayMsg = newLyrics === '' ? 'Lyrics cleared' : `Lyrics set to: ${newLyrics}`;
           this.editor.addToConsoleLog(displayMsg);
           await this.editor.render();
@@ -1184,18 +1240,30 @@ class UI {
   /**
      * Set line key signature
      */
+  /**
+   * Set line key signature (line-level)
+   */
   async setLineKeySignature() {
-    const currentSignature = this.getLineKeySignature();
-    const newSignature = prompt('Enter line key signature:', currentSignature);
+    if (this.keySignatureSelector) {
+      const currentSignature = this.getLineKeySignature();
+      this.keySignatureSelector.open('line', currentSignature);
+    } else {
+      // Fallback to prompt if selector not loaded yet
+      const currentSignature = this.getLineKeySignature();
+      const newSignature = prompt('Enter line key signature:', currentSignature);
 
-    if (newSignature !== null && newSignature.trim() !== '') {
-      this.updateLineKeySignatureDisplay(newSignature);
+      if (newSignature !== null && newSignature.trim() !== '') {
+        this.updateLineKeySignatureDisplay(newSignature);
 
-      if (this.editor && this.editor.theDocument && this.editor.theDocument.lines.length > 0) {
-        const lineIdx = this.getCurrentLineIndex();
-        this.editor.theDocument.lines[lineIdx].key_signature = newSignature;
-        this.editor.addToConsoleLog(`Line key signature set to: ${newSignature}`);
-        await this.editor.renderAndUpdate();
+        if (this.editor && this.editor.getDocument() && this.editor.getDocument().lines.length > 0) {
+          const lineIdx = this.getCurrentLineIndex();
+          this.editor.getDocument().lines[lineIdx].key_signature = newSignature;
+          this.editor.addToConsoleLog(`Line key signature set to: ${newSignature}`);
+          await this.editor.renderAndUpdate();
+
+          // Update the display in corner
+          this.updateKeySignatureCornerDisplay();
+        }
       }
     }
   }
@@ -1359,70 +1427,70 @@ class UI {
      * Getters
      */
   getDocumentTitle() {
-    return this.editor?.theDocument?.title || 'Untitled Document';
+    return this.editor?.getDocument()?.title || 'Untitled Document';
   }
 
   getComposer() {
-    return this.editor?.theDocument?.composer || '';
+    return this.editor?.getDocument()?.composer || '';
   }
 
   getTonic() {
-    return this.editor?.theDocument?.tonic || '';
+    return this.editor?.getDocument()?.tonic || '';
   }
 
   getCurrentPitchSystem() {
-    return this.editor?.theDocument?.pitch_system || 1;
+    return this.editor?.getDocument()?.pitch_system || 1;
   }
 
   getKeySignature() {
-    return this.editor?.theDocument?.key_signature || '';
+    return this.editor?.getDocument()?.key_signature || '';
   }
 
   getLineLabel() {
     const lineIdx = this.getCurrentLineIndex();
-    if (this.editor?.theDocument?.lines?.length > lineIdx) {
-      return this.editor.theDocument.lines[lineIdx].label || '';
+    if (this.editor?.getDocument()?.lines?.length > lineIdx) {
+      return this.editor.getDocument().lines[lineIdx].label || '';
     }
     return '';
   }
 
   getLineTonic() {
     const lineIdx = this.getCurrentLineIndex();
-    if (this.editor?.theDocument?.lines?.length > lineIdx) {
-      return this.editor.theDocument.lines[lineIdx].tonic || '';
+    if (this.editor?.getDocument()?.lines?.length > lineIdx) {
+      return this.editor.getDocument().lines[lineIdx].tonic || '';
     }
     return '';
   }
 
   getLinePitchSystem() {
     const lineIdx = this.getCurrentLineIndex();
-    if (this.editor?.theDocument?.lines?.length > lineIdx) {
-      return this.editor.theDocument.lines[lineIdx].pitch_system || 1;
+    if (this.editor?.getDocument()?.lines?.length > lineIdx) {
+      return this.editor.getDocument().lines[lineIdx].pitch_system || 1;
     }
     return 1;
   }
 
   getLyrics() {
     const lineIdx = this.getCurrentLineIndex();
-    if (this.editor?.theDocument?.lines?.length > lineIdx) {
-      return this.editor.theDocument.lines[lineIdx].lyrics || '';
+    if (this.editor?.getDocument()?.lines?.length > lineIdx) {
+      return this.editor.getDocument().lines[lineIdx].lyrics || '';
     }
     return '';
   }
 
   getTala() {
     const lineIdx = this.getCurrentLineIndex();
-    const tala = this.editor?.theDocument?.lines?.length > lineIdx
-      ? this.editor.theDocument.lines[lineIdx].tala || '' : '';
-    console.log(`🎯 getTala: lineIdx=${lineIdx}, tala="${tala}", lines.length=${this.editor?.theDocument?.lines?.length}`);
-    console.log(`   Line[${lineIdx}]:`, this.editor?.theDocument?.lines?.[lineIdx]);
+    const tala = this.editor?.getDocument()?.lines?.length > lineIdx
+      ? this.editor.getDocument().lines[lineIdx].tala || '' : '';
+    console.log(`🎯 getTala: lineIdx=${lineIdx}, tala="${tala}", lines.length=${this.editor?.getDocument()?.lines?.length}`);
+    console.log(`   Line[${lineIdx}]:`, this.editor?.getDocument()?.lines?.[lineIdx]);
     return tala;
   }
 
   getLineKeySignature() {
     const lineIdx = this.getCurrentLineIndex();
-    if (this.editor?.theDocument?.lines?.length > lineIdx) {
-      return this.editor.theDocument.lines[lineIdx].key_signature || '';
+    if (this.editor?.getDocument()?.lines?.length > lineIdx) {
+      return this.editor.getDocument().lines[lineIdx].key_signature || '';
     }
     return '';
   }
@@ -1471,20 +1539,20 @@ class UI {
   }
 
   /**
-     * Apply slur to current selection
+     * Apply slur to current selection (delegates to keyboard handler)
      */
-  applySlur() {
-    if (this.editor) {
-      this.editor.applySlur();
+  async applySlur() {
+    if (this.editor && this.editor.keyboardHandler) {
+      await this.editor.keyboardHandler._applySlurLayered();
     }
   }
 
   /**
-     * Apply octave to current selection
+     * Apply octave to current selection (delegates to keyboard handler)
      */
-  applyOctave(octave) {
-    if (this.editor) {
-      this.editor.applyOctave(octave);
+  async applyOctave(octave) {
+    if (this.editor && this.editor.keyboardHandler) {
+      await this.editor.keyboardHandler._applyOctaveLayered(octave);
     }
   }
 
@@ -1654,8 +1722,8 @@ class UI {
     // Cells-array pattern (like octave operations)
     if (this.editor) {
       try {
-        const cursor = this.editor.theDocument.state.cursor;
-        const line = this.editor.theDocument.lines[cursor.line];
+        const cursor = this.editor.getDocument().state.cursor;
+        const line = this.editor.getDocument().lines[cursor.line];
 
         // Effective selection logic: cursor.col - 1
         if (cursor.col > 0 && cursor.col - 1 < line.cells.length) {
@@ -1700,8 +1768,8 @@ class UI {
 
     try {
       // Get cursor position and calculate target cell index
-      const cursor = this.editor.theDocument.state.cursor;
-      const line = this.editor.theDocument.lines[cursor.line];
+      const cursor = this.editor.getDocument().state.cursor;
+      const line = this.editor.getDocument().lines[cursor.line];
 
       // Effective selection logic: cursor.col - 1
       if (cursor.col === 0) {
@@ -1753,8 +1821,8 @@ class UI {
       const placement = this.pendingOrnamentPosition || 'before';
 
       // Get cursor position and calculate target cell index
-      const cursor = this.editor.theDocument.state.cursor;
-      const line = this.editor.theDocument.lines[cursor.line];
+      const cursor = this.editor.getDocument().state.cursor;
+      const line = this.editor.getDocument().lines[cursor.line];
 
       // Effective selection logic: cursor.col - 1
       if (cursor.col === 0) {
@@ -1808,8 +1876,8 @@ class UI {
 
     try {
       // Get cursor position and calculate target cell index
-      const cursor = this.editor.theDocument.state.cursor;
-      const line = this.editor.theDocument.lines[cursor.line];
+      const cursor = this.editor.getDocument().state.cursor;
+      const line = this.editor.getDocument().lines[cursor.line];
 
       // Effective selection logic: cursor.col - 1
       if (cursor.col === 0) {

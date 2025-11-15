@@ -12,7 +12,6 @@ use crate::undo::Command;
 
 #[cfg(test)]
 use crate::parse::grammar::parse;
-use js_sys;
 
 // ============================================================================
 // Shared Infrastructure (moved to other modules)
@@ -263,59 +262,6 @@ fn expand_ornaments_to_cells(_line: &mut Line) {
 fn collapse_ornaments_from_cells(_line: &mut Line) {
     // With the new system, ornaments are stored inline with cells
     // No expansion/collapse logic is needed
-}
-
-/// Get navigable cell indices for a line
-///
-/// In normal mode (edit_mode = false), ornament cells are excluded from navigation.
-/// In edit mode (edit_mode = true), all cells are navigable.
-///
-/// # Parameters
-/// - `line_js`: JavaScript Line object
-/// - `edit_mode`: Whether ornament edit mode is enabled
-///
-/// # Returns
-/// JavaScript Uint32Array of navigable cell indices
-#[wasm_bindgen(js_name = getNavigableIndices)]
-pub fn get_navigable_indices(
-    line_js: JsValue,
-    edit_mode: bool,
-) -> Result<js_sys::Uint32Array, JsValue> {
-    wasm_info!("getNavigableIndices called: edit_mode={}", edit_mode);
-
-    // Deserialize line from JavaScript
-    let line: Line = serde_wasm_bindgen::from_value(line_js)
-        .map_err(|e| {
-            wasm_error!("Deserialization error: {}", e);
-            JsValue::from_str(&format!("Deserialization error: {}", e))
-        })?;
-
-    wasm_log!("  Line has {} cells", line.cells.len());
-
-    // Filter cells based on ornament edit mode
-    let navigable_indices: Vec<u32> = line.cells.iter()
-        .enumerate()
-        .filter(|(_, cell)| {
-            if edit_mode {
-                // In edit mode, all cells are navigable
-                true
-            } else {
-                // In normal mode, skip ornament cells
-                !cell.has_ornament_indicator()
-            }
-        })
-        .map(|(idx, _)| idx as u32)
-        .collect();
-
-    wasm_info!("  Found {} navigable cells (out of {})", navigable_indices.len(), line.cells.len());
-
-    // Convert to JavaScript Uint32Array for efficient transfer
-    let result = js_sys::Uint32Array::new_with_length(navigable_indices.len() as u32);
-    for (i, &idx) in navigable_indices.iter().enumerate() {
-        result.set_index(i as u32, idx);
-    }
-
-    Ok(result)
 }
 
 /// Set lyrics for a specific line
@@ -965,6 +911,9 @@ pub fn insert_text(text: &str) -> Result<JsValue, JsValue> {
         // Insert new cells at cursor position
         for (i, cell) in new_cells.iter().enumerate() {
             line.cells.insert(insert_pos + i, cell.clone());
+
+            // Update annotation positions
+            doc.annotation_layer.on_insert(crate::text::cursor::TextPos::new(cursor_line, insert_pos + i));
         }
 
         // Update column indices for cells after insertion
@@ -1084,6 +1033,9 @@ pub fn delete_at_cursor() -> Result<JsValue, JsValue> {
 
                 line.cells.remove(cursor_col - 1);
 
+                // Update annotation positions
+                doc.annotation_layer.on_delete(crate::text::cursor::TextPos::new(cursor_line, cursor_col - 1));
+
                 // Update column indices for remaining cells
                 for i in (cursor_col - 1)..line.cells.len() {
                     line.cells[i].col = i;
@@ -1162,6 +1114,135 @@ pub fn delete_at_cursor() -> Result<JsValue, JsValue> {
     // Update cursor position
     doc.state.cursor.line = new_cursor_row;
     doc.state.cursor.col = new_cursor_col;
+
+    // Convert DirtyLine to just line indices for EditorDiff
+    let dirty_line_indices: Vec<usize> = dirty_lines.into_iter().map(|dl| dl.row).collect();
+
+    // Return EditorDiff with cursor state
+    let diff = doc.state.to_editor_diff(&doc, dirty_line_indices);
+
+    serde_wasm_bindgen::to_value(&diff)
+        .map_err(|e| {
+            wasm_error!("EditorDiff serialization error: {}", e);
+            JsValue::from_str(&format!("EditorDiff serialization error: {}", e))
+        })
+}
+
+/// Delete character after cursor (Delete key behavior)
+#[wasm_bindgen(js_name = deleteForward)]
+pub fn delete_forward() -> Result<JsValue, JsValue> {
+    wasm_info!("deleteForward called (Delete key behavior)");
+
+    let mut doc_guard = lock_document()?;
+    let doc = doc_guard.as_mut()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    let cursor_line = doc.state.cursor.line;
+    let cursor_col = doc.state.cursor.col;
+
+    wasm_info!("  Cursor at ({}, {})", cursor_line, cursor_col);
+
+    // Validate cursor position
+    if cursor_line >= doc.lines.len() {
+        return Err(JsValue::from_str("Cursor line out of bounds"));
+    }
+
+    let line = &mut doc.lines[cursor_line];
+
+    // Can't delete if at end of line and no next line
+    if cursor_col >= line.cells.len() {
+        if cursor_line + 1 >= doc.lines.len() {
+            wasm_info!("  At end of document, nothing to delete");
+            return Err(JsValue::from_str("Cannot delete at end of document"));
+        }
+
+        // TODO: Join with next line (similar to backspace at line start)
+        // For now, just return error
+        return Err(JsValue::from_str("Delete at end of line not yet implemented"));
+    }
+
+    let mut dirty_lines = Vec::new();
+
+    // Delete character at cursor position (not before it)
+    let cell_idx = cursor_col;
+    let cell = &line.cells[cell_idx];
+
+    // TWO-STAGE DELETE: Check if cell has multiple characters
+    let char_count = cell.char.chars().count();
+
+    if char_count > 1 {
+        // STAGE 1: Remove first character from multi-char cell
+        wasm_info!("  Two-stage delete: removing first char from '{}'", cell.char);
+
+        let mut chars: Vec<char> = cell.char.chars().collect();
+        chars.remove(0); // Remove first character
+        let new_char: String = chars.into_iter().collect();
+
+        let cell = &mut line.cells[cell_idx];
+        cell.char = new_char.clone();
+
+        // Update kind and pitch_code based on remaining content
+        if cell.kind == ElementKind::PitchedElement {
+            // Reparse pitch_code after removing accidental
+            if let Some(pitch_system) = cell.pitch_system {
+                cell.pitch_code = PitchCode::from_string(&cell.char, pitch_system);
+                wasm_info!("  Updated pitch_code after delete: {:?}", cell.pitch_code);
+            }
+        } else if cell.kind == ElementKind::RepeatLeftBarline {
+            // |: → : (remove |)
+            cell.kind = ElementKind::Symbol;
+            wasm_info!("  Changed RepeatLeftBarline to Symbol");
+        } else if cell.kind == ElementKind::RepeatRightBarline {
+            // :| → | (remove :)
+            cell.kind = ElementKind::SingleBarline;
+            wasm_info!("  Changed RepeatRightBarline to SingleBarline");
+        } else if cell.kind == ElementKind::DoubleBarline {
+            // || → | (remove first |)
+            cell.kind = ElementKind::SingleBarline;
+            wasm_info!("  Changed DoubleBarline to SingleBarline");
+        }
+
+        // Cursor stays at same position
+        // TODO: Record undo for modification
+
+        dirty_lines.push(DirtyLine {
+            row: cursor_line,
+            cells: line.cells.clone(),
+        });
+    } else {
+        // STAGE 2: Delete entire cell (single character)
+        wasm_info!("  Deleting entire cell '{}'", cell.char);
+
+        // Capture deleted cell for undo BEFORE removing
+        let deleted_cell = line.cells[cursor_col].clone();
+
+        line.cells.remove(cursor_col);
+
+        // Update annotation positions
+        doc.annotation_layer.on_delete(crate::text::cursor::TextPos::new(cursor_line, cursor_col));
+
+        // Update column indices for remaining cells
+        for i in cursor_col..line.cells.len() {
+            line.cells[i].col = i;
+        }
+
+        // Cursor stays at same position (now pointing to next cell)
+        // Record undo command
+        let command = Command::DeleteText {
+            line: cursor_line,
+            start_col: cursor_col,
+            deleted_cells: vec![deleted_cell],
+        };
+        let cursor_pos = (cursor_line, cursor_col);
+        doc.state.undo_stack.push(command, cursor_pos);
+
+        dirty_lines.push(DirtyLine {
+            row: cursor_line,
+            cells: line.cells.clone(),
+        });
+    }
+
+    // Cursor position doesn't change for forward delete
 
     // Convert DirtyLine to just line indices for EditorDiff
     let dirty_line_indices: Vec<usize> = dirty_lines.into_iter().map(|dl| dl.row).collect();
@@ -1261,109 +1342,6 @@ pub fn insert_newline() -> Result<JsValue, JsValue> {
 
 // ============================================================================
 // Octave operations (Phase 2 - WASM-first pattern)
-// ============================================================================
-
-/// Apply octave to current selection (toggle behavior for -1, 0, 1)
-/// Uses internal DOCUMENT mutex - no cell-based parameters needed
-#[wasm_bindgen(js_name = applyOctave)]
-pub fn apply_octave(octave: i8) -> Result<JsValue, JsValue> {
-    wasm_info!("applyOctave called (Phase 1): octave={}", octave);
-
-    // Validate octave value
-    if ![-2, -1, 0, 1, 2].contains(&octave) {
-        wasm_error!("Invalid octave value: {}", octave);
-        return Err(JsValue::from_str(&format!("Invalid octave value: {}", octave)));
-    }
-
-    let mut doc_guard = lock_document()?;
-    let doc = doc_guard.as_mut()
-        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
-
-    // Get current selection from document state
-    let selection = doc.state.selection_manager.current_selection.clone()
-        .ok_or_else(|| JsValue::from_str("No selection active"))?;
-
-    // Validate selection is not empty
-    if selection.is_empty() {
-        return Err(JsValue::from_str("Selection is empty"));
-    }
-
-    // Normalize selection (handle both forward and backward selections)
-    let (start_pos, end_pos) = if selection.anchor <= selection.head {
-        (selection.anchor, selection.head)
-    } else {
-        (selection.head, selection.anchor)
-    };
-
-    wasm_info!("  Selection: ({},{}) to ({},{})",
-              start_pos.line, start_pos.col, end_pos.line, end_pos.col);
-
-    // For now, only support single-line octave changes
-    if start_pos.line != end_pos.line {
-        return Err(JsValue::from_str("Multi-line octave changes not yet supported"));
-    }
-
-    let line_idx = start_pos.line;
-    if line_idx >= doc.lines.len() {
-        return Err(JsValue::from_str("Invalid line index"));
-    }
-
-    let start_col = start_pos.col;
-    let end_col = end_pos.col;
-
-    // Validate range
-    let line = &mut doc.lines[line_idx];
-    if start_col >= line.cells.len() || end_col > line.cells.len() {
-        return Err(JsValue::from_str("Invalid column range"));
-    }
-
-    // Apply octave to pitched elements in range
-    let mut modified_count = 0;
-
-    // Check if all pitched elements already have the target octave (for toggle behavior)
-    let mut all_have_target = true;
-    for i in start_col..end_col {
-        if line.cells[i].kind == crate::models::ElementKind::PitchedElement {
-            if line.cells[i].octave != octave {
-                all_have_target = false;
-                break;
-            }
-        }
-    }
-
-    if all_have_target && octave != 0 {
-        // Toggle off: set all to 0 (middle octave)
-        wasm_info!("  Toggling octave off (all have target octave {})", octave);
-        for i in start_col..end_col {
-            if line.cells[i].kind == crate::models::ElementKind::PitchedElement {
-                line.cells[i].octave = 0;
-                modified_count += 1;
-            }
-        }
-    } else {
-        // Apply target octave
-        wasm_info!("  Applying octave {} to range {}..{}", octave, start_col, end_col);
-        for i in start_col..end_col {
-            if line.cells[i].kind == crate::models::ElementKind::PitchedElement {
-                line.cells[i].octave = octave;
-                modified_count += 1;
-            }
-        }
-    }
-
-    wasm_info!("  Modified {} pitched cells", modified_count);
-
-    // Return EditorDiff with dirty line
-    let diff = doc.state.to_editor_diff(&doc, vec![line_idx]);
-
-    serde_wasm_bindgen::to_value(&diff)
-        .map_err(|e| {
-            wasm_error!("EditorDiff serialization error: {}", e);
-            JsValue::from_str(&format!("EditorDiff serialization error: {}", e))
-        })
-}
-
-
 // ============================================================================
 // Copy/Paste operations
 // ============================================================================
@@ -1877,6 +1855,14 @@ pub fn compute_layout(
             JsValue::from_str(&format!("Document deserialization error: {}", e))
         })?;
 
+    // Debug: Check if selection survived deserialization
+    if let Some(sel) = document.state.selection_manager.get_selection() {
+        wasm_log!("  ✅ Selection after deserialize: ({}, {}) to ({}, {})",
+            sel.start().line, sel.start().col, sel.end().line, sel.end().col);
+    } else {
+        wasm_log!("  ❌ NO selection after deserialize!");
+    }
+
     // Deserialize config from JavaScript
     let config: crate::html_layout::LayoutConfig = serde_wasm_bindgen::from_value(config_js)
         .map_err(|e| {
@@ -1893,6 +1879,15 @@ pub fn compute_layout(
     let display_list = engine.compute_layout(&document, &config);
 
     wasm_info!("  DisplayList generated: {} lines", display_list.lines.len());
+
+    // Debug: Check if first cell has "selected" class
+    if let Some(first_line) = display_list.lines.first() {
+        if let Some(first_cell) = first_line.cells.first() {
+            wasm_log!("  First cell classes: {:?}", first_cell.classes);
+            let has_selected = first_cell.classes.iter().any(|c| c == "selected");
+            wasm_log!("  Has 'selected' class: {}", has_selected);
+        }
+    }
 
     // Serialize display list back to JavaScript
     let result = serde_wasm_bindgen::to_value(&display_list)
@@ -2106,8 +2101,15 @@ pub fn extend_selection() -> Result<(), JsValue> {
 
 /// Helper to create EditorDiff from current document state
 fn create_editor_diff(doc: &Document, dirty_line: Option<usize>) -> EditorDiff {
-    let dirty_lines = if let Some(line) = dirty_line {
-        vec![line]
+    let dirty_lines = if let Some(line_idx) = dirty_line {
+        if let Some(line) = doc.lines.get(line_idx) {
+            vec![DirtyLine {
+                row: line_idx,
+                cells: line.cells.clone(),
+            }]
+        } else {
+            vec![]
+        }
     } else {
         vec![]
     };

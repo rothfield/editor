@@ -34,7 +34,7 @@ class StorageManager {
         throw new Error('Document name cannot be empty');
       }
 
-      if (!this.editor.theDocument) {
+      if (!this.editor.getDocument()) {
         throw new Error('No document to save');
       }
 
@@ -48,7 +48,7 @@ class StorageManager {
       const timestamp = new Date().toISOString();
 
       // Serialize document
-      const documentJson = JSON.stringify(this.editor.theDocument);
+      const documentJson = JSON.stringify(this.editor.getDocument());
 
       // Save to localStorage
       localStorage.setItem(saveKey, documentJson);
@@ -158,7 +158,7 @@ class StorageManager {
         name: displayName,
         key: saveKey,
         savedAt: new Date().toISOString(),
-        title: this.editor.theDocument?.title || 'Untitled'
+        title: this.editor.getDocument()?.title || 'Untitled'
       });
 
       localStorage.setItem(this.SAVED_INDEX_KEY, JSON.stringify(index));
@@ -192,12 +192,12 @@ class StorageManager {
    */
   async exportAsJSON(filename = null) {
     try {
-      if (!this.editor.theDocument) {
+      if (!this.editor.getDocument()) {
         throw new Error('No document to export');
       }
 
-      const name = filename || this.editor.theDocument.title || 'music-notation';
-      const jsonString = JSON.stringify(this.editor.theDocument, null, 2);
+      const name = filename || this.editor.getDocument().title || 'music-notation';
+      const jsonString = JSON.stringify(this.editor.getDocument(), null, 2);
       const blob = new Blob([jsonString], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -325,11 +325,11 @@ class StorageManager {
    */
   async autoSave() {
     try {
-      if (!this.editor.theDocument) {
+      if (!this.editor.getDocument()) {
         return false;
       }
 
-      const documentJson = JSON.stringify(this.editor.theDocument);
+      const documentJson = JSON.stringify(this.editor.getDocument());
       const autosaveKey = 'music-editor-autosave-current';
 
       // Save to autosave slot

@@ -677,10 +677,10 @@ const DevUtils = {
     }
 
     console.log(`Testing notation: "${notation}"`);
-    await appInstance.editor.parseText(notation);
+    await appInstance.editor.insertText(notation);
 
-    const state = appInstance.editor.theDocument;
-    console.log('Parsed state:', state);
+    const state = appInstance.editor.getDocument();
+    console.log('Inserted state:', state);
   },
 
   /**
@@ -721,9 +721,15 @@ window.MusicNotationApp = {
 
 /**
  * Backwards compatibility: expose editor directly
- * Some tests may still use window.musicEditor
+ * Some tests may still use window.musicEditor or window.editor
  */
 Object.defineProperty(window, 'musicEditor', {
+  get() {
+    return appInstance?.editor;
+  }
+});
+
+Object.defineProperty(window, 'editor', {
   get() {
     return appInstance?.editor;
   }

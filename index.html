@@ -9,6 +9,7 @@
     <!-- External CSS -->
     <link rel="stylesheet" href="dist/main.css">
     <link rel="stylesheet" href="src/css/gutter.css">
+    <link rel="stylesheet" href="src/css/key-signature-selector.css">
 
     <!-- Custom UI styles -->
     <style>
@@ -76,13 +77,13 @@
 
         /* Tab styling */
         .tab {
-            padding: 0.5rem 0.75rem;
+            padding: 0.3rem 0.45rem;
             border: none;
             border-bottom: 2px solid transparent;
             background: #f9fafb;
             text-align: center;
             cursor: pointer;
-            font-size: 18px;
+            font-size: 11px;
             white-space: nowrap;
             transition: all 0.2s;
             flex: 0 0 auto;
@@ -95,17 +96,17 @@
         /* Icon-only tabs */
         .tab.tab-icon {
             font-size: 0;
-            padding: 0.5rem;
-            min-width: 32px;
-            min-height: 32px;
+            padding: 0.3rem;
+            min-width: 19px;
+            min-height: 19px;
             display: flex;
             align-items: center;
             justify-content: center;
         }
 
         .tab.tab-icon svg {
-            width: 16px;
-            height: 16px;
+            width: 10px;
+            height: 10px;
             color: #6b7280;
             transition: color 0.2s;
         }
@@ -120,18 +121,18 @@
 
         /* Large icon tabs (like LilyPond PNG) */
         .tab.tab-icon.large-icon {
-            min-width: 120px;
-            min-height: 120px;
+            min-width: 72px;
+            min-height: 72px;
         }
 
         .tab.tab-icon.large-icon svg {
-            width: 110px !important;
-            height: 110px !important;
+            width: 66px !important;
+            height: 66px !important;
         }
 
         .tab.tab-icon.large-icon img {
-            width: 110px !important;
-            height: 110px !important;
+            width: 66px !important;
+            height: 66px !important;
             object-fit: contain;
         }
 
@@ -321,6 +322,7 @@
         /* Default text font */
         .char-cell {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            white-space: pre; /* Preserve spaces as normal font glyphs */
         }
 
         /* Music font for barlines and musical symbols (NotationFont derived from Noto Music) */
@@ -496,7 +498,7 @@
                                 <li><button id="menu-set-pitch-system" class="menu-item">Set Pitch System...</button></li>
                                 <li><button id="menu-set-lyrics" class="menu-item">Set Lyrics...</button></li>
                                 <li><button id="menu-set-tala" class="menu-item">Set Tala...</button></li>
-                                <li><button id="menu-set-key-signature" class="menu-item">Set Key Signature...</button></li>
+                                <li><button id="menu-line-set-key-signature" class="menu-item">Set Key Signature...</button></li>
                             </ul>
                         </li>
 
@@ -543,6 +545,10 @@
             <!-- Editor Canvas -->
             <section class="flex-1 flex flex-col overflow-hidden relative pl-16" id="editor-section">
                 <div id="bracket-overlay"></div>
+                <!-- Key Signature Display (upper left corner) -->
+                <div id="key-signature-display" class="key-sig-display hidden" title="Current key signature (click to change)">
+                    <img id="key-sig-display-svg" class="key-sig-display-svg" alt="Key signature" />
+                </div>
                 <div id="editor-container" class="flex-1 relative overflow-auto p-4">
                     <!-- Notation Editor -->
                     <div id="notation-editor"
@@ -762,6 +768,82 @@
         <div class="context-menu-item" data-choice="group-item">
             <span class="context-menu-radio" data-radio="group-item"></span>
             Group item (member of group above)
+        </div>
+    </div>
+
+    <!-- Key Signature Selector Modal -->
+    <div id="key-signature-modal" class="key-sig-modal hidden">
+        <div class="key-sig-overlay"></div>
+        <div class="key-sig-container">
+            <div class="key-sig-header">
+                <h2>Select Key Signature</h2>
+                <button id="key-sig-close" class="key-sig-close-btn" aria-label="Close">&times;</button>
+            </div>
+            <div class="key-sig-body">
+                <div class="key-sig-circle">
+                    <!-- Circle of Fifths arranged clockwise -->
+                    <!-- Top: C major -->
+                    <div class="key-sig-item" data-key="C major" data-minor="A minor" data-position="0">
+                        <img src="key-signatures/C-major_a-minor.svg" alt="C major / A minor">
+                    </div>
+                    <!-- 1 o'clock: G major -->
+                    <div class="key-sig-item" data-key="G major" data-minor="E minor" data-position="1">
+                        <img src="key-signatures/G-major_e-minor.svg" alt="G major / E minor">
+                    </div>
+                    <!-- 2 o'clock: D major -->
+                    <div class="key-sig-item" data-key="D major" data-minor="B minor" data-position="2">
+                        <img src="key-signatures/D-major_b-minor.svg" alt="D major / B minor">
+                    </div>
+                    <!-- 3 o'clock: A major -->
+                    <div class="key-sig-item" data-key="A major" data-minor="F-sharp minor" data-position="3">
+                        <img src="key-signatures/A-major_f-sharp-minor.svg" alt="A major / F# minor">
+                    </div>
+                    <!-- 4 o'clock: E major -->
+                    <div class="key-sig-item" data-key="E major" data-minor="C-sharp minor" data-position="4">
+                        <img src="key-signatures/E-major_c-sharp-minor.svg" alt="E major / C# minor">
+                    </div>
+                    <!-- 5 o'clock: B major / Cb major -->
+                    <div class="key-sig-item" data-key="B major" data-minor="G-sharp minor" data-position="5">
+                        <img src="key-signatures/B-major_g-sharp-minor.svg" alt="B major / G# minor">
+                    </div>
+                    <!-- 6 o'clock (bottom): F# / Gb major -->
+                    <div class="key-sig-item" data-key="F-sharp major" data-minor="D-sharp minor" data-position="6">
+                        <img src="key-signatures/F-sharp-major_d-sharp-minor.svg" alt="F# major / D# minor">
+                    </div>
+                    <div class="key-sig-item" data-key="G-flat major" data-minor="E-flat minor" data-position="6-alt">
+                        <img src="key-signatures/G-flat-major_e-flat-minor.svg" alt="Gb major / Eb minor">
+                    </div>
+                    <!-- 7 o'clock: Db major -->
+                    <div class="key-sig-item" data-key="D-flat major" data-minor="B-flat minor" data-position="7">
+                        <img src="key-signatures/D-flat-major_b-flat-minor.svg" alt="Db major / Bb minor">
+                    </div>
+                    <!-- 8 o'clock: Ab major -->
+                    <div class="key-sig-item" data-key="A-flat major" data-minor="F minor" data-position="8">
+                        <img src="key-signatures/A-flat-major_f-minor.svg" alt="Ab major / F minor">
+                    </div>
+                    <!-- 9 o'clock: Eb major -->
+                    <div class="key-sig-item" data-key="E-flat major" data-minor="C minor" data-position="9">
+                        <img src="key-signatures/E-flat-major_c-minor.svg" alt="Eb major / C minor">
+                    </div>
+                    <!-- 10 o'clock: Bb major -->
+                    <div class="key-sig-item" data-key="B-flat major" data-minor="G minor" data-position="10">
+                        <img src="key-signatures/B-flat-major_g-minor.svg" alt="Bb major / G minor">
+                    </div>
+                    <!-- 11 o'clock: F major -->
+                    <div class="key-sig-item" data-key="F major" data-minor="D minor" data-position="11">
+                        <img src="key-signatures/F-major_d-minor.svg" alt="F major / D minor">
+                    </div>
+                </div>
+                <div class="key-sig-footer">
+                    <label class="key-sig-mode-toggle">
+                        <input type="checkbox" id="key-sig-mode" />
+                        <span id="key-sig-mode-label">Show Major Keys</span>
+                    </label>
+                    <div class="key-sig-selected">
+                        Selected: <strong id="key-sig-display">None</strong>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 

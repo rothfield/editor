@@ -64,8 +64,16 @@ test.describe('Basic Editor Operations', () => {
   test('should handle accidentals', async ({ editorPage: page }) => {
     await typeInEditor(page, '1# 2b 3##');
 
-    const content = await getRenderedContent(page);
-    expect(content).toMatch(/[#b]/);
+    // Check document model (WASM owns the truth)
+    const docState = await page.evaluate(() => {
+      const app = window.MusicNotationApp?.app();
+      const doc = app?.editor?.getDocument?.();
+      return doc?.lines?.[0]?.cells?.map(cell => cell.char) || [];
+    });
+
+    // Should have cells with # and b in their char values
+    expect(docState.some(char => char.includes('#'))).toBe(true);
+    expect(docState.some(char => char.includes('b'))).toBe(true);
   });
 
   test('should clear editor content', async ({ editorPage: page }) => {

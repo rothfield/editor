@@ -793,14 +793,23 @@ pub fn find_barlines(cells: &[Cell]) -> Vec<usize> {
     barlines
 }
 
-/// Find beat boundaries by whitespace (space or empty cells)
+/// Find beat boundaries by whitespace or non-beat elements
+/// Beat elements: PitchedElement or dash ("-")
+/// Everything else separates beats
 /// Returns indices where beats start
 pub fn find_beat_boundaries(cells: &[Cell]) -> Vec<usize> {
     let mut boundaries = vec![0];
 
     for (i, cell) in cells.iter().enumerate() {
-        if cell.char.trim().is_empty() && !false /* REMOVED: continuation field */ {
-            // Found a beat separator (space)
+        // Only pitched elements and dashes are part of beats
+        let is_beat_element = matches!(cell.kind, ElementKind::PitchedElement)
+            || (matches!(cell.kind, ElementKind::UnpitchedElement) && cell.char == "-");
+
+        // Everything else is a separator
+        let is_separator = !is_beat_element;
+
+        if is_separator && !false /* REMOVED: continuation field */ {
+            // Found a beat separator
             if i + 1 < cells.len() {
                 boundaries.push(i + 1);
             }
@@ -816,12 +825,21 @@ pub fn find_beat_boundaries(cells: &[Cell]) -> Vec<usize> {
 }
 
 /// Find beat boundaries in a slice of cell references
+/// Beat elements: PitchedElement or dash ("-")
+/// Everything else separates beats
 pub fn find_beat_boundaries_refs(cells: &[&Cell]) -> Vec<usize> {
     let mut boundaries = vec![0];
 
     for (i, cell) in cells.iter().enumerate() {
-        if cell.char.trim().is_empty() && !false /* REMOVED: continuation field */ {
-            // Found a beat separator (space)
+        // Only pitched elements and dashes are part of beats
+        let is_beat_element = matches!(cell.kind, ElementKind::PitchedElement)
+            || (matches!(cell.kind, ElementKind::UnpitchedElement) && cell.char == "-");
+
+        // Everything else is a separator
+        let is_separator = !is_beat_element;
+
+        if is_separator && !false /* REMOVED: continuation field */ {
+            // Found a beat separator
             if i + 1 < cells.len() {
                 boundaries.push(i + 1);
             }
@@ -838,9 +856,10 @@ pub fn find_beat_boundaries_refs(cells: &[&Cell]) -> Vec<usize> {
 
 /// Transfer slur indicators from space/separator cells to pitched cells
 ///
-/// The UI sometimes places slur_start/slur_end indicators on space cells rather than
-/// on the pitched cells themselves. This causes an off-by-one bug. This function detects
-/// separator cells with slur indicators and transfers them to the appropriate pitched cell:
+/// The UI sometimes places slur_start/slur_end indicators on separator cells
+/// (whitespace, annotations, breath marks, text) rather than on the pitched cells themselves.
+/// This causes an off-by-one bug. This function detects separator cells with slur indicators
+/// and transfers them to the appropriate pitched cell:
 /// - SlurStart on a separator → transfer to the NEXT pitched cell (start of new slur)
 /// - SlurEnd on a separator → transfer to the PREVIOUS pitched cell (end of current slur)
 fn transfer_slur_indicators_from_separators(cells: &mut [&Cell]) {

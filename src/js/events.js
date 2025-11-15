@@ -156,7 +156,7 @@ class EventManager {
   /**
      * Handle global keyboard events
      */
-  handleGlobalKeyDown(event) {
+  async handleGlobalKeyDown(event) {
     // Close any open menus when user starts typing (except for menu navigation keys)
     const menuNavigationKeys = ['Escape', 'ArrowUp', 'ArrowDown', 'Enter'];
     if (this.editor?.ui?.activeMenu && !menuNavigationKeys.includes(event.key)) {
@@ -234,7 +234,7 @@ class EventManager {
       // Route to editor
       if (this.editor && this.editor.handleKeyboardEvent) {
         console.log('[EventManager] Calling editor.handleKeyboardEvent');
-        this.editor.handleKeyboardEvent(event);
+        await this.editor.handleKeyboardEvent(event);
         // Prevent further propagation after editor handles the event
         event.stopPropagation();
       } else {

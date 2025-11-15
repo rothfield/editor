@@ -1,0 +1,305 @@
+/* Key Signature Display (upper left corner of editor) */
+.key-sig-display {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    background: rgba(255, 255, 255, 0.98);
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    padding: 3px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    z-index: 100;
+    cursor: pointer;
+    transition: all 0.2s;
+    user-select: none;
+}
+
+.key-sig-display:hover {
+    background: rgba(255, 255, 255, 1);
+    border-color: #3b82f6;
+    box-shadow: 0 2px 6px rgba(59, 130, 246, 0.2);
+    transform: scale(1.05);
+}
+
+.key-sig-display.hidden {
+    display: none;
+}
+
+.key-sig-display-svg {
+    display: block;
+    width: 64px;
+    height: auto;
+    max-height: 76px;
+}
+
+/* Key Signature Selector Modal */
+.key-sig-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.key-sig-modal.hidden {
+    display: none;
+}
+
+.key-sig-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+}
+
+.key-sig-container {
+    position: relative;
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    max-width: 90vw;
+    max-height: 90vh;
+    overflow: hidden;
+    z-index: 1;
+    animation: key-sig-fade-in 0.3s ease-out;
+}
+
+@keyframes key-sig-fade-in {
+    from {
+        opacity: 0;
+        transform: scale(0.95) translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.key-sig-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.5rem 2rem;
+    border-bottom: 1px solid #e5e7eb;
+    background: linear-gradient(to bottom, #f9fafb, #ffffff);
+}
+
+.key-sig-header h2 {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #1f2937;
+}
+
+.key-sig-close-btn {
+    background: none;
+    border: none;
+    font-size: 2rem;
+    line-height: 1;
+    color: #6b7280;
+    cursor: pointer;
+    padding: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.key-sig-close-btn:hover {
+    background: #f3f4f6;
+    color: #1f2937;
+}
+
+.key-sig-body {
+    padding: 2rem;
+    overflow-y: auto;
+    max-height: calc(90vh - 120px);
+}
+
+/* Circle of Fifths Layout */
+.key-sig-circle {
+    position: relative;
+    width: 600px;
+    height: 600px;
+    margin: 0 auto 2rem;
+}
+
+.key-sig-item {
+    position: absolute;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border-radius: 12px;
+    padding: 8px;
+    background: white;
+    border: 2px solid #e5e7eb;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.key-sig-item:hover {
+    transform: scale(1.1);
+    border-color: #3b82f6;
+    box-shadow: 0 10px 25px rgba(59, 130, 246, 0.3);
+    z-index: 10;
+}
+
+.key-sig-item.selected {
+    border-color: #2563eb;
+    background: #eff6ff;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+}
+
+.key-sig-item img {
+    display: block;
+    width: 100px;
+    height: auto;
+    pointer-events: none;
+}
+
+/* Position items in a circle - 12 positions like a clock */
+/* Radius from center */
+.key-sig-item[data-position="0"] {
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.key-sig-item[data-position="1"] {
+    top: 60px;
+    right: 110px;
+    transform: rotate(0deg);
+}
+
+.key-sig-item[data-position="2"] {
+    top: 140px;
+    right: 40px;
+}
+
+.key-sig-item[data-position="3"] {
+    top: 250px;
+    right: 20px;
+}
+
+.key-sig-item[data-position="4"] {
+    top: 370px;
+    right: 40px;
+}
+
+.key-sig-item[data-position="5"] {
+    bottom: 60px;
+    right: 110px;
+}
+
+.key-sig-item[data-position="6"],
+.key-sig-item[data-position="6-alt"] {
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.key-sig-item[data-position="6-alt"] {
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-120%);
+}
+
+.key-sig-item[data-position="7"] {
+    bottom: 60px;
+    left: 110px;
+}
+
+.key-sig-item[data-position="8"] {
+    top: 370px;
+    left: 40px;
+}
+
+.key-sig-item[data-position="9"] {
+    top: 250px;
+    left: 20px;
+}
+
+.key-sig-item[data-position="10"] {
+    top: 140px;
+    left: 40px;
+}
+
+.key-sig-item[data-position="11"] {
+    top: 60px;
+    left: 110px;
+}
+
+/* Footer */
+.key-sig-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.5rem 2rem;
+    border-top: 1px solid #e5e7eb;
+    background: #f9fafb;
+    margin: -2rem -2rem 0;
+}
+
+.key-sig-mode-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    user-select: none;
+}
+
+.key-sig-mode-toggle input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+}
+
+.key-sig-mode-toggle span {
+    font-size: 0.95rem;
+    color: #374151;
+}
+
+.key-sig-selected {
+    font-size: 0.95rem;
+    color: #6b7280;
+}
+
+.key-sig-selected strong {
+    color: #1f2937;
+    font-weight: 600;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .key-sig-circle {
+        width: 500px;
+        height: 500px;
+    }
+
+    .key-sig-item img {
+        width: 80px;
+    }
+}
+
+@media (max-width: 640px) {
+    .key-sig-circle {
+        width: 400px;
+        height: 400px;
+    }
+
+    .key-sig-item img {
+        width: 60px;
+    }
+
+    .key-sig-header h2 {
+        font-size: 1.25rem;
+    }
+}

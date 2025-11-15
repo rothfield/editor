@@ -268,6 +268,184 @@ You:
 - `FONT_MIGRATION_NOTO_MUSIC.md` - Complete migration guide
 - `FONT_ARCHITECTURE_NOTO.md` - Technical deep-dive on font system
 
+### ⚠️ NEW ARCHITECTURE: Layered Text-First Design
+
+**Core Principle: Text Editor with Music Brain**
+
+This editor is fundamentally a **text editor** with music notation semantics layered on top:
+
+```
+Layer 0: Text Buffer (source of truth)
+    ↓
+Layer 1: Glyph Semantics (char ↔ musical meaning)
+    ↓
+Layer 2: Musical Structure (beats, measures, phrases)
+    ↓
+Layer 3: Export (IR, MusicXML, LilyPond)
+```
+
+**Mental Model Shift: From Calculation to Lookup**
+
+The NotationFont system uses a **simple, direct lookup table** approach. Every pitch system has a straightforward mapping:
+
+```
+(PitchCode, octave) → char (glyph in NotationFont)
+```
+
+**This is ONE-TO-ONE. SIMPLE. KISS (Keep It Simple, Stupid).**
+
+**Key Invariant:**
+- One glyph = one musical note
+- One char = one code point (no grapheme clusters)
+- Column = char index (no multi-byte complexity)
+
+#### Why This Architecture?
+
+**OLD (Complex):**
+```rust
+// Formula-based calculation
+let variant_index = calculate_variant_from_octave(octave);
+let char_index = pitch_to_index(pitch);
+let codepoint = PUA_START + (char_index * CHARS_PER_VARIANT) + variant_index;
+```
+
+**NEW (Simple):**
+```rust
+// Direct lookup
+let codepoint = PITCH_SYSTEM_TABLE[(normalized_pitch, octave)];
+```
+
+#### Benefits
+
+1. **Clarity**: No complex formulas to understand or maintain
+2. **Correctness**: Lookup tables match exactly what's in the font
+3. **Debuggability**: Easy to verify - just check the table
+4. **Flexibility**: Easy to add special cases or exceptions
+5. **Performance**: O(1) lookup, no calculations needed
+
+#### Implementation Pattern
+
+Each pitch system (Number, Western, Sargam, Doremi) has its own lookup table:
+
+```rust
+// Example: Number system (1-7)
+const NUMBER_SYSTEM_TABLE: &[(NormalizedPitch, Octave, char)] = &[
+    // Base octave (0)
+    (NormalizedPitch::Do,  0, '\u{E010}'),  // "1" base
+    (NormalizedPitch::Re,  0, '\u{E014}'),  // "2" base
+    (NormalizedPitch::Mi,  0, '\u{E018}'),  // "3" base
+    // ... etc
+
+    // Octave +1 (1 dot above)
+    (NormalizedPitch::Do,  1, '\u{E000}'),  // "1" with dot above
+    (NormalizedPitch::Re,  1, '\u{E004}'),  // "2" with dot above
+    // ... etc
+
+    // Octave -1 (1 dot below)
+    (NormalizedPitch::Do, -1, '\u{E002}'),  // "1" with dot below
+    // ... etc
+];
+```
+
+#### Usage Pattern
+
+```rust
+fn get_glyph_for_pitch(pitch: NormalizedPitch, octave: Octave, system: PitchSystem) -> char {
+    match system {
+        PitchSystem::Number => NUMBER_SYSTEM_TABLE.lookup(pitch, octave),
+        PitchSystem::Western => WESTERN_SYSTEM_TABLE.lookup(pitch, octave),
+        PitchSystem::Sargam => SARGAM_SYSTEM_TABLE.lookup(pitch, octave),
+        PitchSystem::Doremi => DOREMI_SYSTEM_TABLE.lookup(pitch, octave),
+    }
+}
+```
+
+#### Key Principle
+
+**The lookup table IS the font. The font IS the lookup table.**
+
+No formulas, no calculations, no confusion. What you see in the table is exactly what renders on screen.
+
+### Layer Details
+
+**Layer 0: Text Buffer (Source of Truth)**
+- Simple line-based text storage
+- Character = Unicode scalar value
+- Operations: insert, delete, get_line, set_line
+- Undo/redo operates on text edits, not cell snapshots
+- Future: Can upgrade to Rope, CRDT, etc. without affecting higher layers
+
+**Layer 1: Glyph Semantics (Bidirectional Mapping)**
+- **Forward:** `glyph_for_pitch(PitchCode, octave, system) -> char`
+- **Reverse:** `pitch_from_glyph(char, system) -> (PitchCode, octave)` (coming soon)
+- Stateless lookup tables generated from atoms.yaml
+- No parsing, no formulas, just direct array/map lookups
+
+**Layer 2: Musical Structure (Derived, Not Stored)**
+- Analyze text → beats, measures, barlines
+- Tokenize: spaces = beat boundaries, `|` = barlines
+- Attach metadata: ornaments, slurs, dynamics (via annotations)
+- This layer doesn't store anything - it computes on demand
+
+**Layer 3: Export (Leave Mostly Alone)**
+- Text + annotations → IR → MusicXML → LilyPond/OSMD
+- Current IR pipeline works fine
+- Future: Might skip Cells entirely (text → IR directly)
+
+### Cells as Views, Not Storage
+
+**CRITICAL: Cells are generated, not stored.**
+
+The `Cell` struct is a **view** derived from text + annotations:
+
+```rust
+/// View-only: generated from text + annotations.
+/// DO NOT treat this as source-of-truth or store it in Document.
+pub struct Cell {
+    pub char: String,        // Display text
+    pub kind: ElementKind,   // Pitch, rest, barline, etc.
+    pub pitch_code: Option<PitchCode>,  // Semantic meaning
+    pub col: usize,          // Position in line
+    pub flags: u8,           // UI state (selected, focused)
+    // ... layout fields for rendering
+}
+```
+
+**Generate cells from text:**
+```rust
+fn cells_from_text(text: &str, annotations: &AnnotationLayer, system: PitchSystem) -> Vec<Cell>
+```
+
+**Why this matters:**
+- No sync bugs (text is truth)
+- Undo is simple (text edits only)
+- Smaller memory footprint (don't store cells)
+- Can re-derive cells anytime with different pitch system
+
+### Design Principles
+
+1. **All stateful operations go through Layer 0 (text buffer)**
+   - No "mutate annotations and hope buffer follows"
+   - No "move Cells around directly"
+   - Text edits are the only mutation
+
+2. **Layers 1-2 are pure functions**
+   - Input: text, annotations, system
+   - Output: derived data (glyphs, structure, cells)
+   - No side effects, no state
+
+3. **Migration strategy: Additive, not destructive**
+   - Keep old APIs working during transition
+   - Build new paths alongside existing code
+   - Cut over aggressively once POC works
+   - Don't maintain dual systems for months
+
+**Related files for new architecture:**
+- `src/renderers/font_utils.rs` - Glyph lookup tables (Layer 1)
+- `tools/fontgen/atoms.yaml` - Source of truth for all code point assignments
+- `build.rs` - Generates lookup tables from atoms.yaml at compile time
+- `LOOKUP_TABLE_ARCHITECTURE.md` - Detailed implementation guide
+
 ## Export Architecture: From Document Model to Multiple Formats
 
 The editor uses a **three-layer export pipeline** to support multiple output formats:

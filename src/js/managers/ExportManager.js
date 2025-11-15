@@ -20,6 +20,8 @@ export class ExportManager {
    * @returns {Promise<string|null>} MusicXML string or null on error
    */
   async exportMusicXML() {
+    console.log(`[ExportManager] exportMusicXML() called`);
+
     if (!this.editor.wasmModule) {
       console.error('Cannot export MusicXML: WASM module not initialized');
       return null;
@@ -28,6 +30,18 @@ export class ExportManager {
     try {
       const startTime = performance.now();
       console.log(`[JS] exportMusicXML: using WASM internal document`);
+
+      // Apply annotation layer slurs to cells before export
+      if (typeof this.editor.wasmModule.applyAnnotationSlursToCells === 'function') {
+        console.log(`[ExportManager] Calling applyAnnotationSlursToCells()...`);
+        const slurResult = this.editor.wasmModule.applyAnnotationSlursToCells();
+        console.log(`[ExportManager] applyAnnotationSlursToCells() returned:`, slurResult);
+        if (slurResult?.success) {
+          console.log(`[JS] Applied ${slurResult.slurs_applied} slurs from annotation layer to cells`);
+        }
+      } else {
+        console.warn(`[ExportManager] applyAnnotationSlursToCells function not available`);
+      }
 
       const musicxml = this.editor.wasmModule.exportMusicXML();
       const exportTime = performance.now() - startTime;
@@ -87,7 +101,7 @@ export class ExportManager {
    */
   async updateMusicXMLDisplay() {
     const musicxmlSource = document.getElementById('musicxml-source');
-    if (!musicxmlSource || !this.editor.theDocument) {
+    if (!musicxmlSource || !this.editor.getDocument()) {
       return;
     }
 
@@ -111,7 +125,7 @@ export class ExportManager {
    */
   async updateLilyPondDisplay() {
     const lilypondSource = document.getElementById('lilypond-source');
-    if (!lilypondSource || !this.editor.theDocument) {
+    if (!lilypondSource || !this.editor.getDocument()) {
       return;
     }
 

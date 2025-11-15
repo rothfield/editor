@@ -34,13 +34,43 @@ impl CellStyleBuilder {
         beat_roles: &HashMap<usize, String>,
         slur_roles: &HashMap<usize, String>,
         ornament_roles: &HashMap<usize, String>,
+        selection: Option<&crate::models::notation::Selection>,
     ) -> RenderCell {
         // Build CSS classes
         let mut classes = vec!["char-cell".to_string()];
         classes.push(format!("kind-{}", self.element_kind_to_css(cell.kind)));
 
-        // State classes
-        if cell.flags & 0x02 != 0 {
+        // State classes - check both cell flags AND selection manager
+        let mut is_selected = cell.flags & 0x02 != 0;
+
+        // If not selected by flags, check selection manager
+        if !is_selected {
+            if let Some(sel) = selection {
+                // Check if this cell is within the selection range
+                let cell_line = line_idx;
+                let cell_col = cell.col; // Use cell.col (physical column)
+
+                // Selection range is [start, end) - exclusive of end
+                let in_range = cell_line >= sel.start().line && cell_line <= sel.end().line;
+                if in_range {
+                    is_selected = if sel.start().line == sel.end().line {
+                        // Single-line selection
+                        cell_col >= sel.start().col && cell_col < sel.end().col
+                    } else if cell_line == sel.start().line {
+                        // First line of multi-line selection
+                        cell_col >= sel.start().col
+                    } else if cell_line == sel.end().line {
+                        // Last line of multi-line selection
+                        cell_col < sel.end().col
+                    } else {
+                        // Middle line of multi-line selection
+                        true
+                    };
+                }
+            }
+        }
+
+        if is_selected {
             classes.push("selected".to_string());
         }
         if cell.flags & 0x04 != 0 {

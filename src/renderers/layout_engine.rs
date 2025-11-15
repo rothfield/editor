@@ -81,6 +81,22 @@ impl LayoutEngine {
         let mut char_width_offset = 0;
         let mut cumulative_y = 0.0;
 
+        // Get selection range from document state
+        let selection = document.state.selection_manager.get_selection();
+
+        // Debug: Log selection state at layout engine entry
+        if let Some(sel) = selection {
+            use web_sys::console;
+            console::log_2(
+                &"🎨 Layout engine: Selection present -".into(),
+                &format!("start: ({}, {}), end: ({}, {})",
+                    sel.start().line, sel.start().col, sel.end().line, sel.end().col).into()
+            );
+        } else {
+            use web_sys::console;
+            console::log_1(&"🎨 Layout engine: NO SELECTION!".into());
+        }
+
         // Process each line
         for (line_idx, line) in document.lines.iter().enumerate() {
             // Get cell widths for this line
@@ -122,6 +138,7 @@ impl LayoutEngine {
                 syllable_widths,
                 char_widths,
                 cumulative_y,
+                selection,
             );
 
             cell_width_offset += line.cells.len();
@@ -130,6 +147,13 @@ impl LayoutEngine {
 
             cumulative_y += render_line.height;
             lines.push(render_line);
+        }
+
+        // Debug: Check if first cell has "selected" class
+        if let Some(first_line) = lines.first() {
+            if let Some(first_cell) = first_line.cells.first() {
+                console::log_1(&format!("🎨 DisplayList first cell classes: {:?}", first_cell.classes).into());
+            }
         }
 
         DisplayList {
@@ -151,6 +175,7 @@ impl LayoutEngine {
         syllable_widths: &[f32],
         char_widths: &[f32],
         y: f32,
+        selection: Option<&crate::models::Selection>,
     ) -> RenderLine {
         // Derive beats using WASM BeatDeriver
         let beats = self.beat_deriver.extract_implicit_beats(&line.cells);
@@ -194,6 +219,7 @@ impl LayoutEngine {
                 &slur_roles,
                 &ornament_roles,
                 config,
+                selection,
             )
         } else {
             // LOCKED MODE: Layout main cells tighter, position ornaments attached to anchors
@@ -208,6 +234,7 @@ impl LayoutEngine {
                 &slur_roles,
                 &ornament_roles,
                 config,
+                selection,
             )
         };
 
@@ -253,10 +280,14 @@ impl LayoutEngine {
         slur_roles: &HashMap<usize, String>,
         ornament_roles: &HashMap<usize, String>,
         config: &LayoutConfig,
+        selection: Option<&crate::models::Selection>,
     ) -> Vec<RenderCell> {
         let mut cells = Vec::new();
         let mut cumulative_x = config.left_margin;
         let mut char_width_offset = 0;
+
+        use web_sys::console;
+        console::log_1(&"🔵 INLINE layout path starting...".into());
 
         for (cell_idx, cell) in line_cells.iter().enumerate() {
             // Build CSS classes
@@ -264,7 +295,37 @@ impl LayoutEngine {
             classes.push(format!("kind-{}", self.element_kind_to_css(cell.kind)));
 
             // State classes
-            if cell.flags & 0x02 != 0 {
+            // Check selection state from both cell flags AND selection manager
+            let mut is_selected = cell.flags & 0x02 != 0;
+
+            // If not selected by flags, check selection manager
+            if !is_selected {
+                if let Some(sel) = selection {
+                    // Check if this cell is within the selection range
+                    let cell_line = line_idx;
+                    let cell_col = cell.col; // Use cell.col (physical column), not cell_idx (array index)
+
+                    // Selection range is [start, end) - exclusive of end
+                    let in_range = cell_line >= sel.start().line && cell_line <= sel.end().line;
+                    if in_range {
+                        is_selected = if sel.start().line == sel.end().line {
+                            // Single-line selection
+                            cell_col >= sel.start().col && cell_col < sel.end().col
+                        } else if cell_line == sel.start().line {
+                            // First line of multi-line selection
+                            cell_col >= sel.start().col
+                        } else if cell_line == sel.end().line {
+                            // Last line of multi-line selection
+                            cell_col < sel.end().col
+                        } else {
+                            // Middle line of multi-line selection
+                            true
+                        };
+                    }
+                }
+            }
+
+            if is_selected {
                 classes.push("selected".to_string());
             }
             if cell.flags & 0x04 != 0 {
@@ -372,7 +433,11 @@ impl LayoutEngine {
         slur_roles: &HashMap<usize, String>,
         ornament_roles: &HashMap<usize, String>,
         config: &LayoutConfig,
+        selection: Option<&crate::models::Selection>,
     ) -> Vec<RenderCell> {
+        use web_sys::console;
+        console::log_1(&"🔴 LOCKED layout path starting...".into());
+
         let mut cells = Vec::with_capacity(line_cells.len());
 
         // Step 1: Extract ornament spans to identify all cells inside ornament ranges
@@ -414,7 +479,37 @@ impl LayoutEngine {
             classes.push(format!("kind-{}", self.element_kind_to_css(cell.kind)));
 
             // State classes
-            if cell.flags & 0x02 != 0 {
+            // Check selection state from both cell flags AND selection manager
+            let mut is_selected = cell.flags & 0x02 != 0;
+
+            // If not selected by flags, check selection manager
+            if !is_selected {
+                if let Some(sel) = selection {
+                    // Check if this cell is within the selection range
+                    let cell_line = line_idx;
+                    let cell_col = cell.col; // Use cell.col (physical column), not cell_idx (array index)
+
+                    // Selection range is [start, end) - exclusive of end
+                    let in_range = cell_line >= sel.start().line && cell_line <= sel.end().line;
+                    if in_range {
+                        is_selected = if sel.start().line == sel.end().line {
+                            // Single-line selection
+                            cell_col >= sel.start().col && cell_col < sel.end().col
+                        } else if cell_line == sel.start().line {
+                            // First line of multi-line selection
+                            cell_col >= sel.start().col
+                        } else if cell_line == sel.end().line {
+                            // Last line of multi-line selection
+                            cell_col < sel.end().col
+                        } else {
+                            // Middle line of multi-line selection
+                            true
+                        };
+                    }
+                }
+            }
+
+            if is_selected {
                 classes.push("selected".to_string());
             }
             if cell.flags & 0x04 != 0 {
@@ -536,7 +631,37 @@ impl LayoutEngine {
                     let mut classes = vec!["char-cell".to_string(), "ornament-cell".to_string()];
                     classes.push(format!("kind-{}", self.element_kind_to_css(cell.kind)));
 
-                    if cell.flags & 0x02 != 0 {
+                    // Check selection state from both cell flags AND selection manager
+                    let mut is_selected = cell.flags & 0x02 != 0;
+
+                    // If not selected by flags, check selection manager
+                    if !is_selected {
+                        if let Some(sel) = selection {
+                            // Check if this cell is within the selection range
+                            let cell_line = line_idx;
+                            let cell_col = cell.col; // Use cell.col (physical column)
+
+                            // Selection range is [start, end) - exclusive of end
+                            let in_range = cell_line >= sel.start().line && cell_line <= sel.end().line;
+                            if in_range {
+                                is_selected = if sel.start().line == sel.end().line {
+                                    // Single-line selection
+                                    cell_col >= sel.start().col && cell_col < sel.end().col
+                                } else if cell_line == sel.start().line {
+                                    // First line of multi-line selection
+                                    cell_col >= sel.start().col
+                                } else if cell_line == sel.end().line {
+                                    // Last line of multi-line selection
+                                    cell_col < sel.end().col
+                                } else {
+                                    // Middle line of multi-line selection
+                                    true
+                                };
+                            }
+                        }
+                    }
+
+                    if is_selected {
                         classes.push("selected".to_string());
                     }
                     if cell.flags & 0x04 != 0 {

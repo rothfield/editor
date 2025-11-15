@@ -85,13 +85,13 @@ class LilyPondTab {
     if (!this.sourceElement) return;
 
     try {
-      if (!this.editor || !this.editor.theDocument || !this.editor.wasmModule) {
+      if (!this.editor || !this.editor.getDocument() || !this.editor.wasmModule) {
         this.sourceElement.textContent = '// Waiting for document...';
         return;
       }
 
       // Convert document to MusicXML, then to LilyPond
-      const musicxml = this.editor.wasmModule.exportMusicXML(this.editor.theDocument);
+      const musicxml = this.editor.wasmModule.exportMusicXML(this.editor.getDocument());
       const settings = JSON.stringify({
         target_lilypond_version: "2.24.0",
         language: "English",

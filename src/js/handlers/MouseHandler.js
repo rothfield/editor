@@ -44,11 +44,11 @@ export class MouseHandler {
 
     try {
       // Ensure WASM has the latest document state
-      if (!this.editor.theDocument) {
+      if (!this.editor.getDocument()) {
         console.warn('No document available for mouse interaction');
         return;
       }
-      this.editor.wasmModule.loadDocument(this.editor.theDocument);
+      this.editor.wasmModule.loadDocument(this.editor.getDocument());
 
       // Calculate cell position from click
       const rect = this.editor.element.getBoundingClientRect();
@@ -181,11 +181,11 @@ export class MouseHandler {
 
     try {
       // Ensure WASM has the latest document state
-      if (!this.editor.theDocument) {
+      if (!this.editor.getDocument()) {
         console.warn('No document available for mouse interaction');
         return;
       }
-      this.editor.wasmModule.loadDocument(this.editor.theDocument);
+      this.editor.wasmModule.loadDocument(this.editor.getDocument());
 
       const rect = this.editor.element.getBoundingClientRect();
       const x = event.clientX - rect.left;
@@ -216,11 +216,11 @@ export class MouseHandler {
     if (this.editor.isDragging) {
       try {
         // Ensure WASM has the latest document state
-        if (!this.editor.theDocument) {
+        if (!this.editor.getDocument()) {
           console.warn('No document available for mouse interaction');
           return;
         }
-        this.editor.wasmModule.loadDocument(this.editor.theDocument);
+        this.editor.wasmModule.loadDocument(this.editor.getDocument());
 
         // Calculate final mouse position
         const rect = this.editor.element.getBoundingClientRect();
@@ -301,16 +301,16 @@ export class MouseHandler {
    * @param {number} cellIndex - Cell index to select
    */
   async selectBeatOrCharGroup(cellIndex) {
-    if (!this.editor.theDocument) {
+    if (!this.editor.getDocument()) {
       return;
     }
 
     try {
       // Ensure WASM has the latest document state
-      this.editor.wasmModule.loadDocument(this.editor.theDocument);
+      this.editor.wasmModule.loadDocument(this.editor.getDocument());
 
       // Get current line index
-      const lineIndex = this.editor.theDocument.state.cursor.line || 0;
+      const lineIndex = this.editor.getDocument().state.cursor.line || 0;
 
       // Call WASM - it handles all selection logic and returns EditorDiff
       const pos = { line: lineIndex, col: cellIndex };
@@ -329,16 +329,16 @@ export class MouseHandler {
    * @param {number} cellIndex - Cell index to select (used to determine line)
    */
   async selectLine(cellIndex) {
-    if (!this.editor.theDocument) {
+    if (!this.editor.getDocument()) {
       return;
     }
 
     try {
       // Ensure WASM has the latest document state
-      this.editor.wasmModule.loadDocument(this.editor.theDocument);
+      this.editor.wasmModule.loadDocument(this.editor.getDocument());
 
       // Get current line index
-      const lineIndex = this.editor.theDocument.state.cursor.line || 0;
+      const lineIndex = this.editor.getDocument().state.cursor.line || 0;
 
       // Call WASM - it handles all selection logic and returns EditorDiff
       const pos = { line: lineIndex, col: cellIndex };
@@ -427,26 +427,9 @@ export class MouseHandler {
       return 0;
     }
 
-    // Get navigable cell indices from WASM (WASM-first architecture)
-    // BUG FIX: Use the CLICKED line, not the current cursor line!
-    const line = this.editor.theDocument?.lines?.[lineIndex];
-
-    // Get navigable indices from WASM (ornament edit mode disabled)
-    let navigableIndices = new Set();
-    if (line) {
-      const navigableIndicesArray = this.editor.wasmModule.getNavigableIndices(line, false);
-      navigableIndices = new Set(Array.from(navigableIndicesArray));
-    }
-
-    const navigableCellElements = Array.from(allCellElements).filter(cellElement => {
-      if (!line) return true; // Fallback if no line data
-      const cellIndex = parseInt(cellElement.getAttribute('data-cell-index'), 10);
-      return navigableIndices.has(cellIndex);
-    });
-
-    if (navigableCellElements.length === 0) {
-      return 0;
-    }
+    // Use ALL rendered cells for click detection - no filtering
+    // Mouse clicks should work on any visible cell (notes, spaces, barlines, etc.)
+    const navigableCellElements = Array.from(allCellElements);
 
     // Measure actual rendered cell positions from DOM
     const editorRect = this.editor.element.getBoundingClientRect();

@@ -171,7 +171,7 @@ class LilyPondPngTab {
   getLilyPondSource() {
     console.log('[LilyPondDisplay] getLilyPondSource called');
 
-    if (!this.editor?.theDocument || !this.editor?.wasmModule) {
+    if (!this.editor?.getDocument() || !this.editor?.wasmModule) {
       console.error('[LilyPondDisplay] Document or WASM module not available');
       return null;
     }
@@ -179,7 +179,7 @@ class LilyPondPngTab {
     try {
       console.log('[LilyPondDisplay] Exporting to MusicXML...');
       // Export to MusicXML
-      const musicxml = this.editor.wasmModule.exportMusicXML(this.editor.theDocument);
+      const musicxml = this.editor.wasmModule.exportMusicXML(this.editor.getDocument());
       console.log('[LilyPondDisplay] MusicXML export: ', musicxml?.length || 0, 'bytes');
 
       if (!musicxml) {

@@ -12,6 +12,11 @@ pub use super::notation::{BeatSpan, SlurSpan, Position, Selection, PrimarySelect
 pub use super::pitch_code::PitchCode;
 
 /// The fundamental unit representing one character in musical notation
+///
+/// **ARCHITECTURE NOTE:**
+/// This struct is intended to be a **view** generated from text + annotations.
+/// Future: Text buffer will be source of truth, Cells will be derived on demand.
+/// Do not add business logic that assumes Cells are stored permanently.
 #[repr(C)]
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Cell {
@@ -397,6 +402,10 @@ pub struct Document {
     #[serde(default)]
     pub ornament_edit_mode: bool,
 
+    /// Annotation layer for slurs, ornaments, etc.
+    #[serde(default)]
+    pub annotation_layer: crate::text::annotations::AnnotationLayer,
+
     /// Application state (cursor position, selection, etc.)
     pub state: DocumentState,
 }
@@ -415,6 +424,7 @@ impl Document {
             version: None,
             lines: Vec::new(),
             ornament_edit_mode: false,
+            annotation_layer: crate::text::annotations::AnnotationLayer::new(),
             state: DocumentState::new(),
         }
     }
@@ -546,7 +556,7 @@ impl Document {
         }
 
         // First pass: collect staff_roles to detect patterns
-        let staff_roles: Vec<StaffRole> = self.lines.iter().map(|line| line.staff_role).collect();
+        let _staff_roles: Vec<StaffRole> = self.lines.iter().map(|line| line.staff_role).collect();
 
         let mut system_id = 0;
         let mut next_group_part_id = 2; // Group parts start from P2 (P1 reserved for Melody)

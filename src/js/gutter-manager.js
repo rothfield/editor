@@ -190,11 +190,7 @@ class GutterManager {
     try {
       this.editor.wasmModule.setLineStaffRole(lineIdx, newRole);
 
-      // Get fresh document snapshot from WASM with updated role
-      const updatedDoc = this.editor.wasmModule.getDocumentSnapshot();
-      this.editor.theDocument = updatedDoc;
-
-      // Full re-render from WASM (regenerates DisplayList with new role)
+      // WASM now owns the updated state - just re-render
       await this.editor.renderAndUpdate();
 
       logger.info(LOG_CATEGORIES.RENDERER, `Line ${lineIdx} role changed to: ${newRole}`);

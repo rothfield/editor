@@ -17,13 +17,21 @@ import KeyboardHandler from './handlers/KeyboardHandler.js';
 import MouseHandler from './handlers/MouseHandler.js';
 import ExportManager from './managers/ExportManager.js';
 
+// Coordinators
+import CursorCoordinator from './coordinators/CursorCoordinator.js';
+import SelectionCoordinator from './coordinators/SelectionCoordinator.js';
+import ClipboardCoordinator from './coordinators/ClipboardCoordinator.js';
+import InspectorCoordinator from './coordinators/InspectorCoordinator.js';
+import RenderCoordinator from './coordinators/RenderCoordinator.js';
+import ConsoleCoordinator from './coordinators/ConsoleCoordinator.js';
+
 class MusicNotationEditor {
   constructor(editorElement) {
     this.element = editorElement;
     // Ensure editor element has position: relative for absolute positioning of child elements
     this.element.style.position = 'relative';
     this.wasmModule = null;
-    this.theDocument = null;
+    // REMOVED: this.theDocument = null; (WASM is now the only source of truth)
     this.renderer = null;
     this.eventHandlers = new Map();
     this.isInitialized = false;
@@ -61,13 +69,35 @@ class MusicNotationEditor {
     // Export manager (handles all export operations and inspector updates)
     this.exportManager = new ExportManager(this);
 
+    // Coordinators (specialized functionality extraction)
+    this.cursorCoordinator = new CursorCoordinator(this);
+    this.selectionCoordinator = new SelectionCoordinator(this);
+    this.clipboardCoordinator = new ClipboardCoordinator(this);
+    this.inspectorCoordinator = new InspectorCoordinator(this);
+    this.renderCoordinator = new RenderCoordinator(this);
+    this.consoleCoordinator = new ConsoleCoordinator(this);
   }
 
   /**
-     * Get the document (alias for theDocument)
+     * Get the current document from WASM (WASM is the only source of truth)
+     */
+  getDocument() {
+    if (!this.wasmModule) {
+      return null;
+    }
+    try {
+      return this.wasmModule.getDocumentSnapshot();
+    } catch (error) {
+      console.error('Failed to get document snapshot from WASM:', error);
+      return null;
+    }
+  }
+
+  /**
+     * Get the document (alias for getDocument for backward compatibility)
      */
   get document() {
-    return this.theDocument;
+    return this.getDocument();
   }
 
   /**
@@ -132,6 +162,7 @@ class MusicNotationEditor {
 
   /**
      * Create a new empty document
+     * WASM owns the document - we just call WASM and render
      */
   async createNewDocument() {
     if (!this.isInitialized || !this.wasmModule) {
@@ -139,67 +170,39 @@ class MusicNotationEditor {
       return;
     }
 
-    // Create document using WASM
-    const document = this.wasmModule.createNewDocument();
+    // Create document in WASM (WASM stores it internally)
+    this.wasmModule.createNewDocument();
 
-    // Ensure pitch_system is set from WASM (should be 1 = Number system)
-    if (!document.pitch_system && document.pitch_system !== 0) {
-      console.warn('WASM did not set pitch_system, defaulting to Number (1)');
-      document.pitch_system = 1;
-    }
+    console.log('✅ New document created in WASM');
 
-    console.log('✅ New document created with pitch_system:', document.pitch_system);
-
-    // Set timestamps (WASM can't access system time)
-    const now = new Date().toISOString();
-    document.created_at = now;
-    document.modified_at = now;
-
-    // Add runtime state (not persisted by WASM)
-    document.state = {
-      cursor: { line: 0, col: 0 },
-      selection: null
-      // Note: has_focus removed - now queried from EventManager (single source of truth)
-    };
-
-    await this.loadDocument(document);
+    // Render the document from WASM
+    await this.renderAndUpdate();
   }
 
   /**
      * Load document from JSON string
+     * WASM owns the document - we just send it to WASM and render
      */
   async loadDocument(jsonString) {
     try {
       if (this.wasmModule) {
-        this.theDocument = typeof jsonString === 'string' ? JSON.parse(jsonString) : jsonString;
+        const document = typeof jsonString === 'string' ? JSON.parse(jsonString) : jsonString;
 
         // Ensure pitch_system is set to default if missing (backward compatibility)
-        if (!this.theDocument.pitch_system && this.theDocument.pitch_system !== 0) {
-          this.theDocument.pitch_system = 1; // Default to Number system
+        if (!document.pitch_system && document.pitch_system !== 0) {
+          document.pitch_system = 1; // Default to Number system
         }
 
-        // Validate and fix cursor position after loading document
-        if (this.theDocument && this.theDocument.state && this.theDocument.state.cursor) {
-          const currentCursor = this.theDocument.state.cursor.col;
-          const validatedCursor = this.validateCursorPosition(currentCursor);
-          if (validatedCursor !== currentCursor) {
-            logger.warn(LOG_CATEGORIES.CURSOR, 'Document loaded with invalid cursor position, correcting', {
-              loaded: currentCursor,
-              corrected: validatedCursor
-            });
-            this.theDocument.state.cursor.col = validatedCursor;
-          }
-        }
-
-        // CRITICAL: Sync document with WASM (needed for insertText and other WASM operations)
-        this.wasmModule.loadDocument(this.theDocument);
+        // Load document into WASM (WASM stores it internally)
+        this.wasmModule.loadDocument(document);
 
         await this.renderAndUpdate();
 
         // Update UI displays
-        if (this.ui && this.theDocument) {
-          if (this.theDocument.title) {
-            this.ui.updateDocumentTitle(this.theDocument.title);
+        if (this.ui) {
+          const doc = this.getDocument();
+          if (doc && doc.title) {
+            this.ui.updateDocumentTitle(doc.title);
           }
           this.ui.updateCurrentPitchSystemDisplay();
         }
@@ -213,10 +216,15 @@ class MusicNotationEditor {
 
   /**
      * Save document to JSON string
+     * Get document from WASM and serialize it
      */
   async saveDocument() {
     try {
-      return JSON.stringify(this.theDocument);
+      const document = this.getDocument();
+      if (!document) {
+        throw new Error('No document loaded');
+      }
+      return JSON.stringify(document);
     } catch (error) {
       console.error('Failed to save document:', error);
       this.showError('Failed to save document');
@@ -248,33 +256,22 @@ class MusicNotationEditor {
     let t1, t2, t3, t4, t5, t6;
 
     try {
-      // NEW WASM-FIRST APPROACH: Call insertText which uses internal DOCUMENT state
+      // WASM-FIRST APPROACH: Call insertText which uses internal DOCUMENT state
       const result = this.wasmModule.insertText(text);
       t1 = performance.now();
       console.log(`⏱️ WASM insertText: ${(t1 - startTime).toFixed(2)}ms`);
 
       logger.debug(LOG_CATEGORIES.EDITOR, 'insertText result from WASM', result);
 
-      // Apply dirty lines to JavaScript document (for rendering only)
-      for (const dirtyLine of result.dirty_lines) {
-        if (dirtyLine.row < this.theDocument.lines.length) {
-          this.theDocument.lines[dirtyLine.row].cells = dirtyLine.cells;
-        }
-      }
-
-      // Update cursor position in JavaScript document (for display only)
-      if (this.theDocument && this.theDocument.state) {
-        this.theDocument.state.cursor.line = result.new_cursor_row;
-        this.theDocument.state.cursor.col = result.new_cursor_col;
-      }
+      // NOTE: We don't update JavaScript document - WASM owns the state
+      // Renderer will call getDocument() to fetch current state
 
       t2 = performance.now();
-      console.log(`⏱️ Apply dirty lines: ${(t2 - t1).toFixed(2)}ms`);
 
       // Extract dirty line indices for incremental rendering
       const dirtyLineIndices = result.dirty_lines.map(dl => dl.row);
 
-      // Render and update UI (incremental)
+      // Render and update UI (incremental) - renderer gets document from WASM
       await this.renderAndUpdate(dirtyLineIndices);
       t3 = performance.now();
       console.log(`⏱️ renderAndUpdate: ${(t3 - t2).toFixed(2)}ms`);
@@ -312,180 +309,6 @@ class MusicNotationEditor {
 
 
   /**
-     * Parse musical notation text with real-time processing using recursive descent
-     */
-  async parseText(text) {
-    if (!this.isInitialized || !this.wasmModule) {
-      return;
-    }
-
-    const startTime = performance.now();
-
-    try {
-      // Validate input before parsing
-      if (!this.validateNotationInput(text)) {
-        console.warn('Invalid notation input:', text);
-        this.showError('Invalid musical notation');
-        return;
-      }
-
-      const pitchSystem = this.getCurrentPitchSystem();
-
-      // Parse text using WASM recursive descent parser
-      if (this.theDocument && this.theDocument.lines && this.theDocument.lines.length > 0) {
-        const cells = this.wasmModule.parseText(text, pitchSystem);
-        const line =this.getCurrentLine();
-        line.cells = cells; // Replace main line with parsed cells
-      }
-
-      // Extract beats for visualization
-      await this.extractAndRenderBeats(text);
-
-      // Render updated document
-      await this.renderAndUpdate();
-
-      // Log successful parsing
-      this.addToConsoleLog(`Parsed notation: "${text}"`);
-    } catch (error) {
-      console.error('Failed to parse text:', error);
-      this.showError('Failed to parse musical notation');
-    }
-  }
-
-  /**
-     * Validate notation input before processing
-     */
-  validateNotationInput(text) {
-    if (!text || text.trim().length === 0) {
-      return true; // Empty input is valid
-    }
-
-    // Basic validation - allow number system, western system, and common notation elements
-    const validPatterns = [
-      /^[1234567#b\s|]+$/, // Number system
-      /^[cdefgabCDEFGAB#b\s|]+$/, // Western system
-      /^[|\-\s,']+$/ // Barlines, dashes, breath marks
-    ];
-
-    // Remove whitespace for validation
-    const cleanText = text.replace(/\s+/g, '');
-
-    return validPatterns.some(pattern => pattern.test(cleanText)) || cleanText.length === 0;
-  }
-
-  /**
-     * Extract and render beats from notation
-     */
-  async extractAndRenderBeats(text) {
-    try {
-      // Simple beat extraction - identify temporal segments
-      const beats = this.extractTemporalSegments(text);
-
-      // Update beat visualization
-      this.updateBeatVisualization(beats);
-
-      this.addToConsoleLog(`Extracted ${beats.length} beat(s) from notation`);
-    } catch (error) {
-      console.error('Failed to extract beats:', error);
-    }
-  }
-
-  /**
-     * Extract temporal segments from notation text
-     */
-  extractTemporalSegments(text) {
-    const segments = [];
-    let currentSegment = '';
-    let inBeat = false;
-
-    for (let i = 0; i < text.length; i++) {
-      const char = text[i];
-
-      // Check if character starts or ends a beat
-      if (this.isTemporalChar(char) || this.isAccidental(char)) {
-        if (!inBeat) {
-          // Start new beat
-          if (currentSegment.trim()) {
-            segments.push(currentSegment.trim());
-          }
-          currentSegment = char;
-          inBeat = true;
-        } else {
-          currentSegment += char;
-        }
-      } else if (this.isBeatSeparator(char)) {
-        // End current beat
-        if (currentSegment.trim()) {
-          segments.push(currentSegment.trim());
-        }
-        currentSegment = '';
-        inBeat = false;
-      } else {
-        // Non-temporal character, end beat
-        if (currentSegment.trim()) {
-          segments.push(currentSegment.trim());
-        }
-        currentSegment = char;
-        inBeat = false;
-      }
-    }
-
-    // Add final segment if exists
-    if (currentSegment.trim()) {
-      segments.push(currentSegment.trim());
-    }
-
-    return segments.filter(segment => segment.length > 0);
-  }
-
-  /**
-     * Check if character is temporal (musical note)
-     */
-  isTemporalChar(char) {
-    return /[1234567cdefgabCDEFGAB]/.test(char);
-  }
-
-  /**
-     * Check if character is an accidental
-     */
-  isAccidental(char) {
-    return /[#b]/.test(char);
-  }
-
-  /**
-     * Check if character separates beats
-     */
-  isBeatSeparator(char) {
-    return /[|\s]/.test(char);
-  }
-
-  /**
-     * Update beat visualization in the DOM
-     */
-  updateBeatVisualization(beats) {
-    const beatContainer = document.getElementById('beat-visualization');
-    if (!beatContainer) return;
-
-    beatContainer.innerHTML = '';
-
-    beats.forEach((beat, index) => {
-      const beatElement = document.createElement('div');
-      beatElement.className = 'beat-indicator';
-      beatElement.textContent = `Beat ${index + 1}: ${beat}`;
-      beatElement.style.cssText = `
-                font-size: 10px;
-                color: #666;
-                margin: 2px;
-                padding: 2px 4px;
-                background: #f0f0f0;
-                border-radius: 2px;
-            `;
-
-      beatContainer.appendChild(beatElement);
-    });
-  }
-
-  /**
      * Delete text at specified range
      */
   async deleteRange(start, end) {
@@ -494,14 +317,14 @@ class MusicNotationEditor {
     }
 
     try {
-      // Get current line index
-      const currentLineIndex = this.theDocument?.state?.cursor?.line ?? 0;
+      // Get current line index from WASM
+      const currentLineIndex = this.getCurrentStave();
       const line = this.getCurrentLine();
       if (!line) return;
 
       // Use WASM editReplaceRange for deletion (delete = replace with empty string)
       // Note: Ornament deletion protection is now handled in WASM
-      this.wasmModule.loadDocument(this.theDocument);
+      // WASM already has the document internally - no need to load
       console.log('[deleteRange] Calling editReplaceRange with:', {
         start_row: start.line,
         start_col: start.col,
@@ -517,15 +340,8 @@ class MusicNotationEditor {
       );
       console.log('[deleteRange] WASM result:', result);
 
-      // Update document from WASM result
-      if (result && result.dirty_lines) {
-        // Update the affected lines from WASM
-        for (const dirtyLine of result.dirty_lines) {
-          if (dirtyLine.row < this.theDocument.lines.length) {
-            this.theDocument.lines[dirtyLine.row].cells = dirtyLine.cells;
-          }
-        }
-      }
+      // NOTE: No longer mutating this.theDocument - WASM owns the state
+      // Renderer will fetch latest state from WASM via getDocumentSnapshot()
 
       // Set cursor position from WASM result
       if (result && typeof result.new_cursor_col !== 'undefined') {
@@ -555,11 +371,16 @@ class MusicNotationEditor {
      * Get current cursor position (character offset)
      */
   /**
-   * Get the current stave/line index from cursor state
+   * Get the current stave/line index from cursor state (WASM is source of truth)
    */
   getCurrentStave() {
-    if (this.theDocument && this.theDocument.state && this.theDocument.state.cursor) {
-      return this.theDocument.state.cursor.line;
+    if (this.wasmModule && this.wasmModule.getCaretInfo) {
+      try {
+        const caretInfo = this.wasmModule.getCaretInfo();
+        return caretInfo?.caret?.line ?? 0;
+      } catch (e) {
+        return 0;
+      }
     }
     return 0;
   }
@@ -568,190 +389,56 @@ class MusicNotationEditor {
    * Get the current line from document based on cursor stave
    */
   getCurrentLine() {
-    if (!this.theDocument || !this.theDocument.lines) {
+    const doc = this.getDocument();
+    if (!doc || !doc.lines) {
       return null;
     }
     const stave = this.getCurrentStave();
-    return this.theDocument.lines[stave] || null;
-  }
-
-  /**
-   * Get navigable stops from the current line
-   * Returns an ordered array of navigation stops (cells and optionally ornaments)
-   * Each stop has: { stopIndex, kind, cellIndex, x, y, w, h, ... }
-   *
-   * When ornament edit mode is OFF: only non-ornament cells
-   * When ornament edit mode is ON: all cells (including ornaments)
-   */
-  getNavigableStops() {
-    const line = this.getCurrentLine();
-    if (!line || !line.cells) {
-      console.log('[getNavigableStops] No line or cells, returning empty');
-      return [];
-    }
-
-    const editMode = this.wasmModule.getOrnamentEditMode(this.theDocument);
-    const displayList = this.displayList;
-
-    // Get navigable indices from WASM (WASM-first architecture)
-    const navigableIndicesArray = this.wasmModule.getNavigableIndices(line, editMode);
-    const navigableIndices = new Set(Array.from(navigableIndicesArray));
-
-    if (!displayList || !displayList.lines) {
-      // Fallback: return basic stops from navigable cells
-      const stops = [];
-      let stopIdx = 0;
-      for (let cellIndex = 0; cellIndex < line.cells.length; cellIndex++) {
-        if (navigableIndices.has(cellIndex)) {
-          const cell = line.cells[cellIndex];
-          stops.push({
-            stopIndex: stopIdx++,
-            kind: 'cell',
-            cellIndex,
-            id: `c${cellIndex}`,
-            x: 0,
-            y: 0,
-            w: 0,
-            h: 0,
-          });
-        }
-      }
-      return stops;
-    }
-
-    // Get rendered cells from DisplayList
-    const lineIndex = this.getCurrentStave();
-    const renderLine = displayList.lines[lineIndex];
-
-    if (!renderLine || !renderLine.cells) {
-      return [];
-    }
-
-    // Build stops from rendered cells (filter using WASM navigable indices)
-    const stops = [];
-    let stopIndex = 0;
-
-    for (let i = 0; i < renderLine.cells.length; i++) {
-      const renderCell = renderLine.cells[i];
-      // dataset is a Map, not a plain object, so use .get() to access values
-      const cellIndex = parseInt(renderCell.dataset.get('cellIndex'), 10);
-      const cell = line.cells[cellIndex];
-
-      // Check if this cell is navigable (using WASM logic)
-      if (!navigableIndices.has(cellIndex)) {
-        continue; // Skip non-navigable cells (e.g., ornaments in normal mode)
-      }
-
-      const isOrnament = cell && cell.ornament_indicator && cell.ornament_indicator.name !== 'none';
-
-      stops.push({
-        stopIndex: stopIndex++,
-        kind: isOrnament ? 'ornament' : 'cell',
-        cellIndex,
-        id: `c${cellIndex}`,
-        x: renderCell.x,
-        y: renderCell.y,
-        w: renderCell.w,
-        h: renderCell.h,
-        cell: cell,
-      });
-    }
-
-    // Sort by x position (left to right)
-    stops.sort((a, b) => {
-      if (Math.abs(a.x - b.x) < 0.1) {
-        return a.y - b.y; // Tiebreak by y
-      }
-      return a.x - b.x;
-    });
-
-    // Re-index after sorting
-    stops.forEach((stop, idx) => {
-      stop.stopIndex = idx;
-    });
-
-    return stops;
-  }
-
-  /**
-   * Find stop from cellIndex
-   */
-  findStopFromCellIndex(stops, cellIndex) {
-    return stops.find(stop => stop.cellIndex === cellIndex);
-  }
-
-  /**
-   * Get current stop based on cursor position
-   * If cursor is on a non-navigable cell (ornament when edit OFF),
-   * finds the nearest navigable stop
-   */
-  getCurrentStop() {
-    const stops = this.getNavigableStops();
-    if (stops.length === 0) return null;
-
-    const charPos = this.getCursorPosition();
-    const { cell_index: cellIndex } = this.charPosToCellIndex(charPos);
-
-    // Try to find exact match
-    const exactMatch = this.findStopFromCellIndex(stops, cellIndex);
-    if (exactMatch) return exactMatch;
-
-    // Cursor is on a non-navigable cell (e.g., ornament when edit mode OFF)
-    // Find nearest navigable stop
-    let nearestStop = stops[0];
-    let minDistance = Math.abs(cellIndex - nearestStop.cellIndex);
-
-    for (const stop of stops) {
-      const distance = Math.abs(cellIndex - stop.cellIndex);
-      if (distance < minDistance) {
-        minDistance = distance;
-        nearestStop = stop;
-      }
-    }
-
-    return nearestStop;
+    return doc.lines[stave] || null;
   }
 
   getCursorPosition() {
-    if (this.theDocument && this.theDocument.state) {
-      // Return cell column directly (one cell = one glyph model)
-      return this.theDocument.state.cursor.col;
+    if (this.wasmModule && this.wasmModule.getCaretInfo) {
+      try {
+        const caretInfo = this.wasmModule.getCaretInfo();
+        return caretInfo?.caret?.col ?? 0;
+      } catch (e) {
+        return 0;
+      }
     }
     return 0;
   }
 
   /**
-   * Get the full cursor position as a Pos object { line, col }
+   * Get the full cursor position as a Pos object { line, col } (WASM is source of truth)
    * @returns {{line: number, col: number}} Full cursor position
    */
   getCursorPos() {
-    if (this.theDocument && this.theDocument.state) {
-      return {
-        line: this.theDocument.state.cursor.line,
-        col: this.theDocument.state.cursor.col
-      };
+    if (this.wasmModule && this.wasmModule.getCaretInfo) {
+      try {
+        const caretInfo = this.wasmModule.getCaretInfo();
+        return {
+          line: caretInfo?.caret?.line ?? 0,
+          col: caretInfo?.caret?.col ?? 0
+        };
+      } catch (e) {
+        return { line: 0, col: 0 };
+      }
     }
     return { line: 0, col: 0 };
   }
 
   /**
-     * Set cursor position - supports both single position (column) or row/col arguments
-     * @param {number} positionOrRow - Either a character position (column) or row number
-     * @param {number} col - Optional column number (if first param is row)
+     * Update cursor visual display after WASM has set the cursor position
+     * NOTE: This does NOT set the cursor - WASM owns cursor position
+     * This only updates the visual display based on WASM's cursor state
+     *
+     * @deprecated Use this only for updating display after WASM operations
+     * To actually move the cursor, use WASM functions: moveLeft, moveRight, mouseDown, etc.
      */
   setCursorPosition(positionOrRow, col) {
-    if (!this.theDocument || !this.theDocument.state) return;
-
-    if (col !== undefined) {
-      // Two-argument form: setCursorPosition(row, col) from WASM results
-      this.theDocument.state.cursor.line = positionOrRow;
-      this.theDocument.state.cursor.col = col;
-    } else {
-      // Single-argument form: setCursorPosition(position) for navigation
-      const validatedPosition = this.validateCursorPosition(positionOrRow);
-      this.theDocument.state.cursor.col = validatedPosition;
-    }
-
+    // WASM owns cursor position - this method just updates display
+    // The cursor has already been set by WASM operations
     this.updateCursorPositionDisplay();
     this.updateCursorVisualPosition();
     this.showCursor();
@@ -761,7 +448,8 @@ class MusicNotationEditor {
      * Validate and clamp cursor position to valid range (character-based)
      */
   validateCursorPosition(position) {
-    if (!this.theDocument || !this.theDocument.lines || this.theDocument.lines.length === 0) {
+    const doc = this.getDocument();
+    if (!doc || !doc.lines || doc.lines.length === 0) {
       return 0;
     }
 
@@ -782,29 +470,13 @@ class MusicNotationEditor {
   }
 
   /**
-     * Update cursor and selection from WASM EditorDiff result
+     * Update visual display after WASM EditorDiff result
      * @param {EditorDiff} diff - The diff returned from WASM commands
+     * @deprecated This function is obsolete - WASM owns cursor state, just call render()
      */
   async updateCursorFromWASM(diff) {
-    if (!this.theDocument || !this.theDocument.state) {
-      return;
-    }
-
-    // Update cursor position (WASM uses 'line' and 'col', JS uses 'stave' and 'column')
-    if (diff.caret && diff.caret.caret) {
-      this.theDocument.state.cursor.line = diff.caret.caret.line;
-      this.theDocument.state.cursor.col = diff.caret.caret.col;
-
-      // Store desired_col for debug HUD
-      if (!this.theDocument.state.desired_col) {
-        this.theDocument.state.desired_col = 0;
-      }
-      this.theDocument.state.desired_col = diff.caret.desired_col;
-    }
-
-    // Selection is now managed entirely by WASM
-    // No need to sync to JS state - use getSelection() to query WASM when needed
-
+    // WASM owns cursor state - no need to sync to JavaScript
+    // Just update visual display based on WASM's state
     // Render to update current line border and other visual states
     await this.render();
 
@@ -836,13 +508,14 @@ class MusicNotationEditor {
 
 
   /**
-     * Get current pitch system
+     * Get current pitch system (WASM is source of truth)
      * Line-level pitch_system overrides document-level
      */
   getCurrentPitchSystem() {
-    if (this.theDocument) {
+    const doc = this.getDocument();
+    if (doc) {
       // Check if we have lines and if the first line has pitch_system set
-      if (this.theDocument.lines && this.theDocument.lines.length > 0) {
+      if (doc.lines && doc.lines.length > 0) {
         const line = this.getCurrentLine();
         // If line has pitch_system set (non-zero), use it
         if (line && line.pitch_system && line.pitch_system !== 0) {
@@ -850,7 +523,7 @@ class MusicNotationEditor {
         }
       }
       // Fall back to document-level pitch system
-      return this.theDocument.pitch_system || 1; // Default to Number system
+      return doc.pitch_system || 1; // Default to Number system
     }
     return 1;
   }
@@ -860,8 +533,8 @@ class MusicNotationEditor {
   /**
      * Handle keyboard input
      */
-  handleKeyboardEvent(event) {
-    this.keyboardHandler.handleKeyboardEvent(event);
+  async handleKeyboardEvent(event) {
+    await this.keyboardHandler.handleKeyboardEvent(event);
   }
 
 
@@ -888,7 +561,7 @@ class MusicNotationEditor {
      * Get the maximum cell index in the main lane
      */
   getMaxCellIndex() {
-    if (!this.theDocument || !this.theDocument.lines || this.theDocument.lines.length === 0) {
+    if (!this.getDocument() || !this.getDocument()?.lines || this.getDocument()?.lines?.length === 0) {
       return 0;
     }
 
@@ -904,11 +577,11 @@ class MusicNotationEditor {
      */
   getMaxCharPosition() {
     // WASM-first: Position conversion now handled by WASM
-    if (!this.theDocument) {
+    if (!this.getDocument()) {
       return 0;
     }
     try {
-      return this.wasmModule.getMaxCharPosition(this.theDocument);
+      return this.wasmModule.getMaxCharPosition(this.getDocument());
     } catch (error) {
       console.error('Error getting max char position from WASM:', error);
       return 0;
@@ -922,11 +595,11 @@ class MusicNotationEditor {
      */
   charPosToCellIndex(charPos) {
     // WASM-first: Position conversion now handled by WASM
-    if (!this.theDocument) {
+    if (!this.getDocument()) {
       return { cellIndex: 0, charOffsetInCell: 0 };
     }
     try {
-      return this.wasmModule.charPosToCellIndex(this.theDocument, charPos);
+      return this.wasmModule.charPosToCellIndex(this.getDocument(), charPos);
     } catch (error) {
       console.error('Error converting char pos to cell index from WASM:', error);
       return { cellIndex: 0, charOffsetInCell: 0 };
@@ -940,11 +613,11 @@ class MusicNotationEditor {
      */
   cellIndexToCharPos(cellIndex) {
     // WASM-first: Position conversion now handled by WASM
-    if (!this.theDocument) {
+    if (!this.getDocument()) {
       return 0;
     }
     try {
-      return this.wasmModule.cellIndexToCharPos(this.theDocument, cellIndex);
+      return this.wasmModule.cellIndexToCharPos(this.getDocument(), cellIndex);
     } catch (error) {
       console.error('Error converting cell index to char pos from WASM:', error);
       return 0;
@@ -958,11 +631,11 @@ class MusicNotationEditor {
      */
   charPosToPixel(charPos) {
     // WASM-first: Position conversion now handled by WASM
-    if (!this.theDocument || !this.renderer || !this.renderer.displayList) {
+    if (!this.getDocument() || !this.renderer || !this.renderer.displayList) {
       return LEFT_MARGIN_PX;
     }
     try {
-      return this.wasmModule.charPosToPixel(this.theDocument, this.renderer.displayList, charPos);
+      return this.wasmModule.charPosToPixel(this.getDocument(), this.renderer.displayList, charPos);
     } catch (error) {
       console.error('Error converting char pos to pixel from WASM:', error);
       return LEFT_MARGIN_PX;
@@ -976,11 +649,11 @@ class MusicNotationEditor {
    */
   cellColToPixel(cellCol) {
     // Direct cell column → pixel mapping (no intermediate character position)
-    if (!this.theDocument || !this.renderer || !this.renderer.displayList) {
+    if (!this.getDocument() || !this.renderer || !this.renderer.displayList) {
       return LEFT_MARGIN_PX;
     }
     try {
-      return this.wasmModule.cellColToPixel(this.theDocument, this.renderer.displayList, cellCol);
+      return this.wasmModule.cellColToPixel(this.getDocument(), this.renderer.displayList, cellCol);
     } catch (error) {
       console.error('Error converting cell col to pixel from WASM:', error);
       return LEFT_MARGIN_PX;
@@ -1061,7 +734,7 @@ class MusicNotationEditor {
       return '';
     }
 
-    if (!this.theDocument || !this.theDocument.lines || this.theDocument.lines.length === 0) {
+    if (!this.getDocument() || !this.getDocument()?.lines || this.getDocument()?.lines?.length === 0) {
       return '';
     }
 
@@ -1243,15 +916,14 @@ class MusicNotationEditor {
       // to get the updated line count. Applying dirty lines alone won't catch deletions.
       const wasmDoc = this.wasmModule.getDocumentSnapshot();
 
-      // Full re-sync of document from WASM (single source of truth)
-      this.theDocument.lines = wasmDoc.lines;
-      this.theDocument.state.cursor.line = result.new_cursor_row;
-      this.theDocument.state.cursor.col = result.new_cursor_col;
+      // WASM owns document state - no need to sync
+      // Cursor position is managed by WASM internally
+      // Just update visual display
 
       logger.debug(LOG_CATEGORIES.EDITOR, 'Document resynced after backspace', {
-        lineCount: this.theDocument.lines.length,
-        cursorRow: result.new_cursor_row,
-        cursorCol: result.new_cursor_col
+        lineCount: this.getDocument()?.lines?.length,
+        cursorRow: result.caret?.caret?.line,
+        cursorCol: result.caret?.caret?.col
       });
 
       // Recalculate beats after deletion
@@ -1266,8 +938,8 @@ class MusicNotationEditor {
       this.updateSelectionDisplay();
 
       logger.info(LOG_CATEGORIES.EDITOR, 'Backspace completed successfully', {
-        newCursorRow: result.new_cursor_row,
-        newCursorCol: result.new_cursor_col
+        newCursorRow: result.caret?.caret?.line,
+        newCursorCol: result.caret?.caret?.col
       });
     } catch (error) {
       // Handle "at start of document" case gracefully
@@ -1288,80 +960,69 @@ class MusicNotationEditor {
 
   /**
      * Handle delete key with selection awareness and beat recalculation
+     * Uses WASM-first approach for consistency with handleBackspace
      */
   async handleDelete() {
+    logger.time('handleDelete', LOG_CATEGORIES.EDITOR);
+
+    logger.info(LOG_CATEGORIES.EDITOR, 'Delete key pressed', {
+      hasSelection: this.hasSelection()
+    });
+
     if (this.hasSelection()) {
       // Delete selected content
+      logger.debug(LOG_CATEGORIES.EDITOR, 'Deleting selection via delete key');
       await this.deleteSelection();
       await this.recalculateBeats();
-    } else {
-      const charPos = this.getCursorPosition();
-      const maxCharPos = this.getMaxCharPosition();
+      logger.timeEnd('handleDelete', LOG_CATEGORIES.EDITOR);
+      return;
+    }
 
-      if (charPos < maxCharPos) {
-        // Convert character position to cell index
-        const { cell_index: cellIndex } = this.charPosToCellIndex(charPos);
+    // WASM-first approach: Use deleteForward which operates on internal DOCUMENT
+    try {
+      const result = this.wasmModule.deleteForward();
 
-        // Use WASM API to delete character (cell-based operation)
-        if (this.theDocument && this.theDocument.lines && this.theDocument.lines.length > 0) {
-          const line = this.getCurrentLine();
-        if (!line) return;
-          const cells = line.cells;
+      logger.debug(LOG_CATEGORIES.EDITOR, 'deleteForward result from WASM', result);
 
-          if (cellIndex >= 0 && cellIndex < cells.length) {
-            const cellToDelete = cells[cellIndex];
-            console.log('[DELETE] Attempting to delete cell at index', cellIndex, 'char:', cellToDelete?.char, 'ornament_indicator:', cellToDelete?.ornament_indicator);
+      // Get updated document from WASM (WASM owns document state)
+      const wasmDoc = this.wasmModule.getDocumentSnapshot();
 
-            // Note: Ornament deletion protection is now handled in WASM
+      logger.debug(LOG_CATEGORIES.EDITOR, 'Document resynced after delete', {
+        lineCount: this.getDocument()?.lines?.length,
+        cursorRow: result.caret?.caret?.line,
+        cursorCol: result.caret?.caret?.col
+      });
 
-            // TODO: Move slur deletion protection to WASM as well
-            // Check if cell has a slur indicator - if so, prevent deletion
-            if (cellToDelete && cellToDelete.slur_indicator && cellToDelete.slur_indicator.name !== 'none') {
-              console.log('[DELETE] Protected: slur cell cannot be deleted, moving cursor right');
-              logger.info(LOG_CATEGORIES.EDITOR, 'Delete on slur cell - moving cursor right instead', {
-                cellIndexToDelete: cellIndex,
-                currentCharPos: charPos,
-                slurIndicator: cellToDelete.slur_indicator
-              });
-              // Move cursor right instead of deleting
-              const newCharPos = Math.min(maxCharPos, charPos + 1);
-              this.setCursorPosition(newCharPos);
-              this.showCursor();
-              this.updateSelectionDisplay();
-              return; // Early return - don't delete
-            }
+      // Recalculate beats after deletion
+      await this.recalculateBeats();
 
-            console.log('[DELETE] No slur protection - proceeding with deletion');
-            try {
-              const updatedCells = this.wasmModule.deleteCharacter(cells, cellIndex);
-              line.cells = updatedCells;
+      await this.renderAndUpdate();
 
-              // Recalculate beats after deletion
-              await this.recalculateBeats();
+      // Show cursor
+      this.showCursor();
 
-              await this.renderAndUpdate();
+      // Restore visual selection after delete
+      this.updateSelectionDisplay();
 
-              // Restore visual selection after delete
-              this.updateSelectionDisplay();
-            } catch (error) {
-              console.error('[DELETE] WASM deleteCharacter failed:', error);
-              // Show the WASM error message (e.g., ornament protection)
-              const errorMsg = error?.message || error?.toString() || 'Failed to delete character';
-              if (errorMsg.includes('ornament')) {
-                this.showWarning(errorMsg);
-                // Move cursor right instead of deleting (same behavior as before)
-                const newCharPos = Math.min(maxCharPos, charPos + 1);
-                this.setCursorPosition(newCharPos);
-                this.showCursor();
-                this.updateSelectionDisplay();
-              } else {
-                this.showError(errorMsg);
-              }
-            }
-          }
-        }
+      logger.info(LOG_CATEGORIES.EDITOR, 'Delete completed successfully', {
+        newCursorRow: result.caret?.caret?.line,
+        newCursorCol: result.caret?.caret?.col
+      });
+    } catch (error) {
+      // Handle "at end of document" case gracefully
+      if (error && error.toString().includes('Cannot delete at end')) {
+        logger.debug(LOG_CATEGORIES.EDITOR, 'Delete at end of document, no action');
+      } else {
+        logger.error(LOG_CATEGORIES.EDITOR, 'Delete failed', {
+          error: error.message || error,
+          stack: error.stack
+        });
+        console.error('Delete failed:', error);
+        this.showError('Delete failed: ' + (error.message || error));
       }
     }
+
+    logger.timeEnd('handleDelete', LOG_CATEGORIES.EDITOR);
   }
 
   /**
@@ -1378,7 +1039,7 @@ class MusicNotationEditor {
     }
 
     try {
-      if (!this.theDocument || !this.theDocument.lines || this.theDocument.lines.length === 0) {
+      if (!this.getDocument() || !this.getDocument()?.lines || this.getDocument()?.lines?.length === 0) {
         console.error('🔄 No document');
         logger.error(LOG_CATEGORIES.EDITOR, 'No document or lines available');
         return;
@@ -1391,48 +1052,25 @@ class MusicNotationEditor {
 
       console.log('🔄 WASM insertNewline returned:', result);
 
-      // Apply dirty lines to JavaScript document (for rendering only)
-      for (const dirtyLine of result.dirty_lines) {
-        if (dirtyLine.row < this.theDocument.lines.length) {
-          this.theDocument.lines[dirtyLine.row].cells = dirtyLine.cells;
-        } else {
-          // New line was created, add it to JavaScript document
-          const newLine = {
-            cells: dirtyLine.cells,
-            label: '',
-            tala: '',
-            lyrics: '',
-            tonic: '',
-            pitch_system: null,
-            key_signature: '',
-            tempo: '',
-            time_signature: '',
-            beats: [],
-            slurs: []
-          };
-          this.theDocument.lines.push(newLine);
-        }
-      }
-
-      // Update cursor position in JavaScript document (for display only)
-      if (this.theDocument && this.theDocument.state) {
-        this.theDocument.state.cursor.line = result.new_cursor_row;
-        this.theDocument.state.cursor.col = result.new_cursor_col;
-      }
+      // NOTE: No longer mutating this.theDocument - WASM owns the state
+      // Renderer will fetch latest state from WASM via getDocumentSnapshot()
 
       logger.debug(LOG_CATEGORIES.CURSOR, 'Cursor moved to new line', {
-        newLine: result.new_cursor_row,
-        newColumn: result.new_cursor_col
+        newLine: result.caret?.caret?.line,
+        newColumn: result.caret?.caret?.col
       });
 
       // Extract dirty line indices for incremental rendering
       const dirtyLineIndices = result.dirty_lines.map(dl => dl.row);
 
       await this.renderAndUpdate(dirtyLineIndices);
+
+      // Update cursor position display from WASM state
+      this.updateCursorPositionDisplay();
       this.showCursor();
 
       logger.info(LOG_CATEGORIES.EDITOR, 'Line split successfully', {
-        totalLines: this.theDocument.lines.length
+        totalLines: this.getDocument()?.lines?.length || 0
       });
     } catch (error) {
       logger.error(LOG_CATEGORIES.EDITOR, 'Failed to split line', {
@@ -1451,7 +1089,7 @@ class MusicNotationEditor {
      */
   async recalculateBeats() {
     try {
-      if (this.theDocument && this.theDocument.lines && this.theDocument.lines.length > 0) {
+      if (this.getDocument() && this.getDocument()?.lines && this.getDocument()?.lines?.length > 0) {
         const line = this.getCurrentLine();
         if (!line) return;
 
@@ -1466,7 +1104,7 @@ class MusicNotationEditor {
      * Get current text content from the document
      */
   getCurrentTextContent() {
-    if (!this.theDocument || !this.theDocument.lines || this.theDocument.lines.length === 0) {
+    if (!this.getDocument() || !this.getDocument()?.lines || this.getDocument()?.lines?.length === 0) {
       return '';
     }
 
@@ -1607,254 +1245,15 @@ class MusicNotationEditor {
     return true;
   }
 
-  /**
-     * Toggle slur on current selection
-     */
-  async toggleSlur() {
-    return this.applySlur();
-  }
+  // ============================================================================
+  // NOTE: Old slur methods removed - use layered API instead
+  // Use applySlurLayered(line, start_col, end_col) / removeSlurLayered() from WASM
+  // ============================================================================
 
-  /**
-     * Apply slur to current selection with toggle behavior
-     */
-  async applySlur() {
-    console.log('🎵 applySlur called (Phase 1 WASM-first)');
-
-    if (!this.isInitialized || !this.wasmModule) {
-      console.log('❌ Not initialized or no WASM module');
-      return;
-    }
-
-    console.log('📊 Selection state:', {
-      hasSelection: this.hasSelection(),
-      selection: this.getSelection(),
-      selectedText: this.getSelectedText()
-    });
-
-    // Validate selection (requires explicit selection)
-    if (!this.hasSelection()) {
-      console.log('Slur requires an explicit selection');
-      return;
-    }
-
-    try {
-      const selection = this.getSelection();
-      const selectedText = this.getSelectedText();
-
-      // NEW WASM-FIRST APPROACH: Call applySlur() which uses internal DOCUMENT
-      const result = this.wasmModule.applySlur();
-
-      console.log('✅ WASM applySlur result:', result);
-
-      // Apply dirty lines to JS document (rendering only)
-      for (const dirtyLine of result.dirty_lines) {
-        if (dirtyLine.row < this.theDocument.lines.length) {
-          this.theDocument.lines[dirtyLine.row].cells = dirtyLine.cells;
-        }
-      }
-
-      this.addToConsoleLog(`Toggled slur on "${selectedText}"`);
-
-      // Render only the affected lines
-      const dirtyLineIndices = result.dirty_lines.map(dl => dl.row);
-      await this.renderAndUpdate(dirtyLineIndices);
-
-      // Restore visual selection after applying slur
-      this.updateSelectionDisplay();
-    } catch (error) {
-      console.error('❌ Failed to apply slur:', error);
-      // If it's an error from WASM, it might be a string - show it to user
-      if (typeof error === 'string') {
-        console.error('WASM error message:', error);
-      }
-    }
-  }
-
-  /**
-     * Check if there's already a slur on the given selection using WASM API
-     */
-  hasSlurOnSelection(selection) {
-    if (!this.theDocument || !this.theDocument.lines || this.theDocument.lines.length === 0) {
-      return false;
-    }
-
-    const line = this.getCurrentLine();
-    if (!line) return false;
-    const cells = line.cells;
-
-    // Call WASM API to check for slur indicators
-    const wasmModule = this.wasmModule;
-    return wasmModule.hasSlurInSelection(
-      cells,
-      selection.start,
-      selection.end
-    );
-  }
-
-  /**
-     * Remove slur from the given selection using WASM API
-     */
-  async removeSlurFromSelection(selection) {
-    if (!this.theDocument || !this.theDocument.lines || this.theDocument.lines.length === 0) {
-      return;
-    }
-
-    const line = this.getCurrentLine();
-        if (!line) return;
-    const cells = line.cells;
-
-    // Call WASM API to remove slur
-    const wasmModule = this.wasmModule;
-    const updatedCells = wasmModule.removeSlur(
-      cells,
-      selection.start,
-      selection.end
-    );
-
-    // Update the line with the updated cells from WASM
-    line.cells = updatedCells;
-
-    this.addToConsoleLog(`Removed slur via WASM: cells ${selection.start}..${selection.end}`);
-  }
-
-  /**
-     * Toggle octave on current selection
-     * If all pitched elements have the target octave, removes it (sets to 0)
-     * Otherwise, applies the target octave
-     */
-  async toggleOctave(octave) {
-    console.log(`🎵 toggleOctave called with octave=${octave}`);
-
-    if (!this.isInitialized || !this.wasmModule) {
-      logger.warn(LOG_CATEGORIES.COMMAND, 'toggleOctave called before initialization');
-      return;
-    }
-
-    logger.time('toggleOctave', LOG_CATEGORIES.COMMAND);
-
-    // Validate selection
-    if (!this.validateSelectionForCommands()) {
-      logger.warn(LOG_CATEGORIES.COMMAND, 'toggleOctave called without valid selection');
-      return;
-    }
-
-    try {
-      // Save cursor position to restore after command
-      const savedCursorPos = this.getCursorPosition();
-
-      const selection = this.getEffectiveSelection();
-      const line = this.getCurrentLine();
-
-      if (!line) {
-        logger.error(LOG_CATEGORIES.COMMAND, 'No line found for toggleOctave');
-        return;
-      }
-
-      const cells = line.cells;
-      // Use half-open range [start, end) to match WASM convention
-      const selectedCells = cells.filter((cell, index) =>
-        index >= selection.start && index < selection.end
-      );
-      const selectedText = selectedCells.map(cell => cell.char || '').join('');
-
-      logger.info(LOG_CATEGORIES.COMMAND, 'Toggling octave', {
-        octave,
-        selection: `${selection.start}..${selection.end}`,
-        selectedText
-      });
-
-      // Validate octave value
-      if (![-2, -1, 0, 1, 2].includes(octave)) {
-        logger.error(LOG_CATEGORIES.COMMAND, 'Invalid octave value', { octave });
-        console.error(`Invalid octave value: ${octave}`);
-        return;
-      }
-
-      const octaveNames = {
-        '-2': 'lowest (-2)',
-        '-1': 'lower (-1)',
-        0: 'middle (0)',
-        1: 'upper (1)',
-        2: 'highest (2)'
-      };
-
-      // Map octave number to command name
-      let command;
-      if (octave === -2) {
-        command = 'lowest_octave';
-      } else if (octave === -1) {
-        command = 'lower_octave';
-      } else if (octave === 0) {
-        command = 'middle_octave';
-      } else if (octave === 1) {
-        command = 'upper_octave';
-      } else if (octave === 2) {
-        command = 'highest_octave';
-      }
-
-      // Call unified WASM apply_command function
-      if (this.theDocument && this.theDocument.lines && this.theDocument.lines.length > 0) {
-        const cells = line.cells;
-
-        logger.debug(LOG_CATEGORIES.COMMAND, 'Calling WASM applyCommand', {
-          cellCount: cells.length,
-          range: `${selection.start}..${selection.end}`,
-          command
-        });
-
-        const updatedCells = this.wasmModule.applyCommand(
-          cells,
-          selection.start,
-          selection.end,  // Already exclusive (half-open range)
-          command
-        );
-
-        logger.debug(LOG_CATEGORIES.COMMAND, 'Cell states after WASM applyCommand:', {
-          command,
-          cellsInRange: updatedCells.slice(selection.start, selection.end + 1).map((c, i) => ({
-            index: selection.start + i,
-            glyph: c.char,
-            octave: c.octave
-          }))
-        });
-
-        line.cells = updatedCells;
-        logger.info(LOG_CATEGORIES.COMMAND, 'WASM applyCommand successful', {
-          command,
-          cellsModified: updatedCells.length
-        });
-
-        this.addToConsoleLog(`Applied ${command} to "${selectedText}"`);
-
-        // CRITICAL: Sync JavaScript document back to WASM
-        // This ensures MusicXML export uses the updated octave values
-        this.wasmModule.loadDocument(this.theDocument);
-      }
-
-      await this.renderAndUpdate();
-
-      // Restore cursor position to where it was before the command
-      this.setCursorPosition(savedCursorPos);
-
-      // Restore visual selection after applying octave
-      this.updateSelectionDisplay();
-
-      logger.timeEnd('toggleOctave', LOG_CATEGORIES.COMMAND);
-    } catch (error) {
-      logger.error(LOG_CATEGORIES.COMMAND, 'Failed to toggle octave', {
-        error: error.message,
-        stack: error.stack
-      });
-      console.error('Failed to toggle octave:', error);
-    }
-  }
-
-  /**
-     * Apply octave to current selection (non-toggle version for backward compatibility)
-     */
-  async applyOctave(octave) {
-    return this.toggleOctave(octave);
-  }
+  // ============================================================================
+  // NOTE: Old octave methods removed - use layered API instead
+  // Use shiftOctave(line, start_col, end_col, delta) from WASM
+  // ============================================================================
 
   /**
      * Show tala input dialog
@@ -1871,33 +1270,14 @@ class MusicNotationEditor {
      */
   async setTala(talaString) {
     try {
-      if (this.wasmModule && this.theDocument && this.theDocument.lines.length > 0) {
-        // Preserve the state field before WASM call (it's skipped during serialization)
-        const preservedState = this.theDocument.state;
-
-        // Call WASM setLineTala function with current stave
+      if (this.wasmModule) {
         const currentStave = this.getCurrentStave();
-        const updatedDocument = await this.wasmModule.setLineTala(this.theDocument, currentStave, talaString);
 
-        // Restore the state field after WASM call
-        updatedDocument.state = preservedState;
+        // Call WASM setLineTala function (Phase 1 API - works with internal document)
+        // NOTE: If Phase 1 API doesn't exist, WASM needs to be updated
+        await this.wasmModule.setLineTala(currentStave, talaString);
 
-        // Ensure all Line metadata fields exist (WASM may not include empty strings)
-        if (updatedDocument.lines && updatedDocument.lines.length > 0) {
-          updatedDocument.lines.forEach(line => {
-            line.label = line.label ?? '';
-            line.tala = line.tala ?? '';
-            line.lyrics = line.lyrics ?? '';
-            line.tonic = line.tonic ?? '';
-            line.pitch_system = line.pitch_system ?? 0;
-            line.key_signature = line.key_signature ?? '';
-            line.tempo = line.tempo ?? '';
-            line.time_signature = line.time_signature ?? '';
-          });
-        }
-
-        this.theDocument = updatedDocument;
-        console.log(`📝 After WASM setLineTala, line[${currentStave}].tala =`, updatedDocument.lines[currentStave]?.tala);
+        console.log(`📝 After WASM setLineTala, line[${currentStave}].tala set to: ${talaString}`);
         this.addToConsoleLog(`Tala set to: ${talaString}`);
         await this.renderAndUpdate();
       }
@@ -1956,8 +1336,24 @@ class MusicNotationEditor {
 
     try {
       console.log('📝 render() called', { dirtyLineIndices });
-      const state = await this.saveDocument();
-      const doc = JSON.parse(state);
+
+      // Merge annotation layer (slurs, etc.) into cells before rendering
+      // This updates the WASM internal document with slur indicators on cells
+      if (this.wasmModule && this.wasmModule.applyAnnotationSlursToCells) {
+        this.wasmModule.applyAnnotationSlursToCells();
+      }
+
+      // Get the updated document from WASM (with slur indicators merged)
+      // WASM is the only source of truth - we just read for rendering
+      let doc;
+      if (this.wasmModule && this.wasmModule.getDocumentSnapshot) {
+        doc = this.wasmModule.getDocumentSnapshot();
+        // DO NOT store to this.theDocument - WASM owns the state
+      } else {
+        // Fallback: get from WASM via getDocument() helper
+        doc = this.getDocument();
+      }
+
       console.log('📝 calling renderer.renderDocument()');
       this.renderer.renderDocument(doc, dirtyLineIndices);
       console.log('📝 renderer.renderDocument() completed');
@@ -2075,7 +1471,7 @@ class MusicNotationEditor {
       const y = event.clientY - rect.top;
       const lineIndex = this.mouseHandler.calculateLineFromY(y);
 
-      if (lineIndex !== null && this.theDocument && this.theDocument.state) {
+      if (lineIndex !== null) {
         // Plain click (no modifiers) while selection is active: clear selection
         // This matches standard text editor behavior (Leafpad, Notepad, etc.)
         const hasSelection = this.hasSelection();
@@ -2088,10 +1484,9 @@ class MusicNotationEditor {
           const cursorColumn = this.mouseHandler.calculateCellPosition(x, y);
           this.clearSelection();
 
-          // Now set the cursor position after selection is cleared
-          this.theDocument.state.cursor.line = lineIndex;
-          if (cursorColumn !== null) {
-            this.theDocument.state.cursor.col = cursorColumn;
+          // Use WASM to set cursor position (WASM owns cursor state)
+          if (cursorColumn !== null && this.wasmModule && this.wasmModule.mouseDown) {
+            this.wasmModule.mouseDown(x, y);
             this.updateCursorVisualPosition();
           }
         }
@@ -2110,8 +1505,9 @@ class MusicNotationEditor {
         this.element.focus({ preventScroll: true });
 
         // Focus the first line by default when clicking the container
-        if (this.theDocument && this.theDocument.state) {
-          this.theDocument.state.cursor.line = 0;
+        // WASM owns cursor state - use WASM API to move cursor
+        if (this.wasmModule && this.wasmModule.moveHome) {
+          this.wasmModule.moveHome();
         }
       });
     }
@@ -2437,9 +1833,7 @@ class MusicNotationEditor {
     const cursorPos = document.getElementById('cursor-position');
     if (cursorPos) {
       // Get line, lane (row), and column for debugging
-      const line = this.theDocument && this.theDocument.state && this.theDocument.state.cursor
-        ? this.theDocument.state.cursor.line
-        : 0;
+      const line = this.getCurrentStave();
       const col = this.getCursorPosition();
 
       // Display in "Line: X, Col: Y" format for debugging
@@ -2447,7 +1841,7 @@ class MusicNotationEditor {
     }
 
     const charCount = document.getElementById('char-count');
-    if (charCount && this.theDocument && this.theDocument.lines && this.getCurrentLine()) {
+    if (charCount && this.getCurrentLine()) {
       // Count all cells (lanes removed)
       const cells = this.getCurrentLine().cells || [];
       charCount.textContent = cells.length;
@@ -2555,6 +1949,8 @@ class MusicNotationEditor {
   }
 
   updateDocumentDisplay() {
+    console.log(`[Editor] updateDocumentDisplay() called, activeTab: '${this.ui?.activeTab}'`);
+
     // PERFORMANCE FIX: Only update inspector tabs if they're actually visible
     // All of these operations process the entire document and should not run on every keystroke
 
@@ -2569,10 +1965,10 @@ class MusicNotationEditor {
     // Update persistent model (saveable content only, no state)
     if (this.ui && this.ui.activeTab === 'persistent') {
       const persistentJson = document.getElementById('persistent-json');
-      if (persistentJson && this.theDocument) {
+      if (persistentJson) {
         // Rust handles field exclusion via #[serde(skip)] on ephemeral fields (state, x, y, w, h, etc.)
         // Just exclude the runtime state field - WASM serialization handles the rest
-        const { state, ...persistentDoc } = this.theDocument;
+        const persistentDoc = this.getDocument();
 
         // DEBUG: Log what fields are actually present (disabled)
         // console.log('Document keys:', Object.keys(persistentDoc));
@@ -2599,7 +1995,7 @@ class MusicNotationEditor {
       });
     }
 
-    if (this.ui && this.ui.activeTab === 'lilypond') {
+    if (this.ui && this.ui.activeTab === 'lilypond-src') {
       this.updateLilyPondDisplay().catch(err => {
         console.error('Failed to update LilyPond display:', err);
       });
@@ -2613,6 +2009,41 @@ class MusicNotationEditor {
     // Update hitboxes display only if visible
     if (this.ui && this.ui.activeTab === 'hitboxes') {
       this.updateHitboxesDisplay();
+    }
+  }
+
+  /**
+   * Force update all export tabs immediately (used when key signature changes)
+   * This bypasses the performance optimization in updateDocumentDisplay()
+   * which only updates visible tabs.
+   */
+  async forceUpdateAllExports() {
+    // Update all export formats regardless of which tab is visible
+    try {
+      // CRITICAL: Clear OSMD cache to force re-render with new key signature
+      if (this.osmdRenderer) {
+        console.log('[forceUpdateAllExports] Clearing OSMD cache for key signature change');
+        this.osmdRenderer.lastMusicXmlHash = null; // Force cache miss
+        await this.osmdRenderer.clearAllCache(); // Clear IndexedDB cache
+      }
+
+      await Promise.all([
+        this.updateIRDisplay().catch(err => {
+          console.error('Failed to update IR display:', err);
+        }),
+        this.updateMusicXMLDisplay().catch(err => {
+          console.error('Failed to update MusicXML display:', err);
+        }),
+        this.updateLilyPondDisplay().catch(err => {
+          console.error('Failed to update LilyPond display:', err);
+        }),
+        // Also update staff notation (OSMD/VexFlow rendering)
+        this.renderStaffNotation().catch(err => {
+          console.error('Failed to update staff notation:', err);
+        })
+      ]);
+    } catch (error) {
+      console.error('Failed to force update exports:', error);
     }
   }
 
@@ -2728,18 +2159,18 @@ class MusicNotationEditor {
   updateHitboxesDisplay() {
     const hitboxesContainer = document.getElementById('hitboxes-container');
 
-    if (!hitboxesContainer || !this.theDocument) {
+    if (!hitboxesContainer) {
       return;
     }
 
-    if (!this.theDocument.lines || this.theDocument.lines.length === 0) {
+    if (!this.getDocument().lines || this.getDocument()?.lines?.length === 0) {
       hitboxesContainer.innerHTML = '<div class="text-gray-500 text-sm">No hitboxes available. Add some content to see hitbox information.</div>';
       return;
     }
 
     let hitboxHTML = '<div class="space-y-4">';
 
-    this.theDocument.lines.forEach((stave, staveIndex) => {
+    this.getDocument()?.lines?.forEach((stave, staveIndex) => {
       hitboxHTML += `<div class="mb-4">`;
       hitboxHTML += `<h4 class="font-semibold text-sm mb-2">Stave ${staveIndex} Hitboxes</h4>`;
 
@@ -2795,11 +2226,11 @@ class MusicNotationEditor {
      * This is needed because WASM operations may return cells without hitbox fields
      */
   ensureHitboxesAreSet() {
-    if (!this.theDocument || !this.theDocument.lines) {
+    if (!this.getDocument() || !this.getDocument()?.lines) {
       return;
     }
 
-    this.theDocument.lines.forEach((stave, staveIndex) => {
+    this.getDocument()?.lines?.forEach((stave, staveIndex) => {
       const cells = stave.cells || [];
       if (cells.length === 0) {
         return;
@@ -3089,10 +2520,47 @@ class MusicNotationEditor {
   }
 
   /**
+   * Handle Ctrl+A (Select All) - select all content in document
+   */
+  handleSelectAll() {
+    if (!this.getDocument() || !this.wasmModule) {
+      console.warn('Cannot select all: document or WASM not ready');
+      return;
+    }
+
+    const doc = this.getDocument();
+
+    // Find first and last positions
+    if (!doc.lines || doc.lines.length === 0) {
+      console.warn('No content to select');
+      return;
+    }
+
+    // Start: first cell of first line
+    const anchor = { line: 0, col: 0 };
+
+    // End: position AFTER last cell (selection is [anchor, head))
+    const lastLine = doc.lines[doc.lines.length - 1];
+    const lastCol = lastLine.cells ? lastLine.cells.length : 0;
+    const head = { line: doc.lines.length - 1, col: lastCol };
+
+    // Set selection in WASM
+    try {
+      this.wasmModule.setSelection(anchor, head);
+      console.log('[SelectAll] Selected from', anchor, 'to', head);
+
+      // Re-render to show selection
+      this.render();
+    } catch (error) {
+      console.error('Failed to select all:', error);
+    }
+  }
+
+  /**
    * Handle Ctrl+C (Copy) - copy selected cells in rich format
    */
   handleCopy() {
-    if (!this.theDocument || !this.wasmModule) {
+    if (!this.getDocument() || !this.wasmModule) {
       console.warn('Cannot copy: document or WASM not ready');
       return;
     }
@@ -3106,7 +2574,7 @@ class MusicNotationEditor {
     try {
       // CRITICAL: Ensure WASM document is in sync before copying
       try {
-        this.wasmModule.loadDocument(this.theDocument);
+        // WASM already has document internally - no need to load
       } catch (e) {
         console.warn('Failed to sync document with WASM before copy:', e);
       }
@@ -3157,7 +2625,7 @@ class MusicNotationEditor {
    * Called automatically when selection changes to support select-to-copy
    */
   updatePrimarySelection() {
-    if (!this.theDocument || !this.wasmModule) {
+    if (!this.getDocument() || !this.wasmModule) {
       return;
     }
 
@@ -3169,7 +2637,7 @@ class MusicNotationEditor {
     try {
       // Ensure WASM document is in sync
       try {
-        this.wasmModule.loadDocument(this.theDocument);
+        // WASM already has document internally - no need to load
       } catch (e) {
         console.warn('Failed to sync document with WASM before primary selection update:', e);
       }
@@ -3212,7 +2680,7 @@ class MusicNotationEditor {
    * Pastes from the primary selection register at the clicked position
    */
   async handleMiddleClick(event) {
-    if (!this.theDocument || !this.wasmModule) {
+    if (!this.getDocument() || !this.wasmModule) {
       console.warn('Cannot middle-click paste: document or WASM not ready');
       return;
     }
@@ -3221,7 +2689,7 @@ class MusicNotationEditor {
 
     try {
       // Ensure WASM has the latest document state
-      this.wasmModule.loadDocument(this.theDocument);
+      // WASM already has document internally - no need to load
 
       // Try to get primary selection (X11 style - from previous selection)
       const primarySelection = this.wasmModule.getPrimarySelection();
@@ -3270,8 +2738,8 @@ class MusicNotationEditor {
       // Update document from WASM result
       if (result && result.dirty_lines) {
         for (const dirtyLine of result.dirty_lines) {
-          if (dirtyLine.row < this.theDocument.lines.length) {
-            this.theDocument.lines[dirtyLine.row].cells = dirtyLine.cells;
+          if (dirtyLine.row < this.getDocument()?.lines?.length) {
+            // WASM owns document - no need to apply dirty lines;
           }
         }
       }
@@ -3299,7 +2767,7 @@ class MusicNotationEditor {
    * Handle Ctrl+X (Cut) - copy and delete selection
    */
   handleCut() {
-    if (!this.theDocument) {
+    if (!this.getDocument()) {
       console.warn('Cannot cut: document not ready');
       return;
     }
@@ -3320,7 +2788,7 @@ class MusicNotationEditor {
    * Handle Ctrl+V (Paste) - paste from clipboard with rich format
    */
   handlePaste() {
-    if (!this.theDocument || !this.wasmModule) {
+    if (!this.getDocument() || !this.wasmModule) {
       console.warn('Cannot paste: document or WASM not ready');
       return;
     }
@@ -3328,12 +2796,12 @@ class MusicNotationEditor {
     try {
       // CRITICAL: Ensure WASM document is in sync before pasting
       try {
-        this.wasmModule.loadDocument(this.theDocument);
+        // WASM already has document internally - no need to load
       } catch (e) {
         console.warn('Failed to sync document with WASM before paste:', e);
       }
 
-      const cursor = this.theDocument.state?.cursor || { line: 0, col: 0 };
+      const cursor = this.getCursorPos();
       const startStave = cursor.line;
       const startColumn = cursor.col;
 
@@ -3364,8 +2832,8 @@ class MusicNotationEditor {
       // Update document from WASM result
       if (result && result.dirty_lines) {
         for (const dirtyLine of result.dirty_lines) {
-          if (dirtyLine.row < this.theDocument.lines.length) {
-            this.theDocument.lines[dirtyLine.row].cells = dirtyLine.cells;
+          if (dirtyLine.row < this.getDocument()?.lines?.length) {
+            // WASM owns document - no need to apply dirty lines;
           }
         }
       }
@@ -3451,17 +2919,63 @@ class MusicNotationEditor {
    * Update document lines from dirty lines returned by WASM
    */
   updateDocumentFromDirtyLines(dirtyLines) {
-    if (!this.theDocument) return;
+    if (!this.getDocument()) return;
 
     dirtyLines.forEach(dirtyLine => {
-      if (dirtyLine.row < this.theDocument.lines.length) {
-        this.theDocument.lines[dirtyLine.row].cells = dirtyLine.cells || [];
+      if (dirtyLine.row < this.getDocument()?.lines?.length) {
+        // WASM owns document - no need to apply dirty lines || [];
       }
     });
   }
 
   // NOTE: deleteSelection() method is defined earlier in this class (line ~1161)
   // The WASM-first version queries selection from WASM, not from JS document state
+
+  // ==================== COORDINATOR DELEGATE METHODS ====================
+  // These methods delegate to the coordinators for cleaner architecture
+  // They maintain backward compatibility while using the new coordinator pattern
+
+  // Cursor delegates
+  getCursorPosition() { return this.cursorCoordinator.getCursorPosition(); }
+  getCursorPos() { return this.cursorCoordinator.getCursorPos(); }
+  setCursorPosition(positionOrRow, col) { return this.cursorCoordinator.setCursorPosition(positionOrRow, col); }
+  validateCursorPosition(position) { return this.cursorCoordinator.validateCursorPosition(position); }
+  updateCursorFromWASM(diff) { return this.cursorCoordinator.updateCursorFromWASM(diff); }
+  showCursor() { return this.cursorCoordinator.showCursor(); }
+  hideCursor() { return this.cursorCoordinator.hideCursor(); }
+  updateCursorVisualPosition() { return this.cursorCoordinator.updateCursorVisualPosition(); }
+  updateCursorPositionDisplay() { return this.cursorCoordinator.updateCursorPositionDisplay(); }
+
+  // Selection delegates
+  clearSelection() { return this.selectionCoordinator.clearSelection(); }
+  hasSelection() { return this.selectionCoordinator.hasSelection(); }
+  getSelection() { return this.selectionCoordinator.getSelection(); }
+  getSelectedText() { return this.selectionCoordinator.getSelectedText(); }
+  updateSelectionDisplay() { return this.selectionCoordinator.updateSelectionDisplay(); }
+  updatePrimarySelection() { return this.selectionCoordinator.updatePrimarySelection(); }
+
+  // Clipboard delegates
+  handleCopy() { return this.clipboardCoordinator.handleCopy(); }
+  handleCut() { return this.clipboardCoordinator.handleCut(); }
+  handlePaste() { return this.clipboardCoordinator.handlePaste(); }
+  handleMiddleClick(event) { return this.clipboardCoordinator.handleMiddleClick(event); }
+
+  // Render delegates
+  render(dirtyLineIndices = null) { return this.renderCoordinator.render(dirtyLineIndices); }
+  renderAndUpdate(dirtyLineIndices = null) { return this.renderCoordinator.renderAndUpdate(dirtyLineIndices); }
+  charPosToCellIndex(charPos) { return this.renderCoordinator.charPosToCellIndex(charPos); }
+  cellIndexToCharPos(cellIndex) { return this.renderCoordinator.cellIndexToCharPos(cellIndex); }
+  charPosToPixel(charPos) { return this.renderCoordinator.charPosToPixel(charPos); }
+  cellColToPixel(cellCol) { return this.renderCoordinator.cellColToPixel(cellCol); }
+
+  // Inspector delegates
+  updateDocumentDisplay() { return this.inspectorCoordinator.updateDocumentDisplay(); }
+  forceUpdateAllExports() { return this.inspectorCoordinator.forceUpdateAllExports(); }
+
+  // Console delegates
+  showError(message, options = {}) { return this.consoleCoordinator.showError(message, options); }
+  showWarning(message, options = {}) { return this.consoleCoordinator.showWarning(message, options); }
+  addToConsoleLog(message) { return this.consoleCoordinator.addToConsoleLog(message); }
 }
 
 export default MusicNotationEditor;

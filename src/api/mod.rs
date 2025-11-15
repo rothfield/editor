@@ -26,14 +26,17 @@
 pub mod helpers;
 pub mod types;
 pub mod export;
-pub mod annotations;
 pub mod cells;
 pub mod position;
 pub mod core;
+pub mod layered;  // Layered architecture (text-first design)
 
 // Re-export all public functions from modules to maintain the current public API
 pub use core::*;
-pub use cells::{insert_character, parse_text, delete_character, apply_command};
+pub use cells::{insert_character, parse_text, delete_character};
 pub use position::{get_max_char_position, char_pos_to_cell_index, cell_index_to_char_pos, char_pos_to_pixel};
 pub use export::{export_musicxml, generate_ir_json, export_midi, convert_musicxml_to_lilypond};
-pub use annotations::{apply_slur, remove_slur, apply_slur_legacy, remove_slur_legacy, has_slur_in_selection};
+pub use layered::{
+    select_whole_beat, shift_octave,
+    apply_slur_layered, remove_slur_layered, get_slurs_for_line, apply_annotation_slurs_to_cells
+};  // Layered architecture API

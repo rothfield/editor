@@ -30,6 +30,54 @@ class CellRenderer {
   }
 
   /**
+   * Get the composite glyph character for rendering (same logic as measurement-service.js)
+   * @param {string} baseChar - Base character (e.g., '5' from "5#")
+   * @param {string} pitchCode - Serialized PitchCode string (e.g., "N5s", "N2b")
+   * @returns {string} - Single character to render (composite glyph Unicode)
+   */
+  getCompositeGlyphChar(baseChar, pitchCode) {
+    if (!pitchCode || typeof pitchCode !== 'string') {
+      return baseChar;
+    }
+
+    // Detect accidental type from serialized PitchCode string
+    // "N1s" → Sharp, "N2b" → Flat, "N1ss" → DoubleSharp, "N1bb" → DoubleFlat
+    let accTypeNum = 0;
+    if (pitchCode.endsWith('ss')) {
+      accTypeNum = 3; // DoubleSharp
+    } else if (pitchCode.endsWith('bb')) {
+      accTypeNum = 4; // DoubleFlat
+    } else if (pitchCode.endsWith('s')) {
+      accTypeNum = 1; // Sharp
+    } else if (pitchCode.endsWith('b')) {
+      accTypeNum = 2; // Flat
+    }
+
+    if (accTypeNum === 0) {
+      return baseChar; // Natural, no composite glyph
+    }
+
+    // Character order from atoms.yaml (ALL_CHARS constant)
+    const charOrder = '1234567CDEFGABcdefgabSrRgGmMPdDnNdrmfsltDRMFSLT';
+    const charIndex = charOrder.indexOf(baseChar);
+
+    if (charIndex === -1) {
+      return baseChar; // Unknown character
+    }
+
+    // Calculate codepoint (same formula as Rust)
+    const baseCodepoints = {
+      1: 0xE1F0,  // Sharp
+      2: 0xE220,  // Flat
+      3: 0xE250,  // Double sharp
+      4: 0xE280   // Double flat
+    };
+
+    const codepoint = baseCodepoints[accTypeNum] + charIndex;
+    return String.fromCodePoint(codepoint);
+  }
+
+  /**
    * Render document header from DisplayList
    *
    * @param {Object} header - Header data from DisplayList
@@ -234,8 +282,20 @@ class CellRenderer {
       !cls.includes('slur-') && !cls.includes('beat-loop-')
     );
     cellChar.className = cellCharClasses.join(' ');
-    // nbsp is already in document (stored directly), no conversion needed
-    cellChar.textContent = cellData.char;
+
+    // For pitched elements with accidentals, render the composite glyph
+    // instead of the typed text (e.g., render U+E1F4 instead of "5#")
+    let charToRender = cellData.char;
+    if (cell && cell.kind && cell.kind.name === 'pitched_element' && cell.pitch_code) {
+      const baseChar = cellData.char.charAt(0);
+      const compositeGlyph = this.getCompositeGlyphChar(baseChar, cell.pitch_code);
+      if (compositeGlyph !== baseChar) {
+        // Cell has accidental, render composite glyph
+        charToRender = compositeGlyph;
+      }
+    }
+
+    cellChar.textContent = charToRender;
 
     // Apply barline glyph class from Rust
     if (cellData.barline_type) {
@@ -258,8 +318,8 @@ class CellRenderer {
       // Pitch and dash cells always use NotationFont (from Noto Music)
       cellChar.style.fontFamily = "'NotationFont'";
     } else if (cell && cell.kind && cell.kind.name === 'whitespace') {
-      // Whitespace cells use monospace font for consistent spacing
-      cellChar.style.fontFamily = "'Courier New', 'Monaco', monospace";
+      // Whitespace cells use NotationFont for consistent spacing with other glyphs
+      cellChar.style.fontFamily = "'NotationFont'";
     }
 
     // Set data attributes on cell-char
@@ -350,7 +410,6 @@ class CellRenderer {
       !cls.includes('slur-') && !cls.includes('beat-loop-')
     );
     ornamentChar.className = ornamentClasses.join(' ');
-    // nbsp is already in document (stored directly), no conversion needed
     ornamentChar.textContent = cellData.char;
 
     // Set data attributes for testing

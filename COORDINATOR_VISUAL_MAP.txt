@@ -1,0 +1,387 @@
+================================================================================
+                    COORDINATOR ARCHITECTURE DIAGRAM
+================================================================================
+
+BEFORE EXTRACTION: 2920-line Monolith
+================================================================================
+
+    MusicNotationEditor (2920 lines)
+    ├── Cursor Management (14 methods)
+    ├── Selection Management (13 methods)
+    ├── Clipboard & Undo/Redo (8 methods)
+    ├── Inspector Panels (11 methods)
+    ├── Rendering & Layout (12 methods)
+    ├── Console & Logging (11 methods)
+    ├── Event Handlers (3 methods)
+    ├── Core Methods (17 methods)
+    └── Helper Methods (scattered throughout)
+
+Problems:
+  - Hard to find related methods
+  - Unclear where to add new cursor logic
+  - Testing cursor breaks entire class
+  - 80+ methods make it hard to understand flow
+  - No clear boundaries between features
+
+
+AFTER EXTRACTION: Modular Architecture
+================================================================================
+
+    MusicNotationEditor (710 lines - Core)
+    │
+    ├─→ CursorCoordinator (420 lines)
+    │   ├─ Query cursor position (line, col)
+    │   ├─ Validate & clamp position
+    │   ├─ DOM element lifecycle (create, show, hide)
+    │   ├─ Blinking animation
+    │   └─ Scroll viewport
+    │
+    ├─→ SelectionCoordinator (480 lines)
+    │   ├─ Query selection
+    │   ├─ Clear/delete selection
+    │   ├─ Visual rendering (highlight cells)
+    │   ├─ Selection validation
+    │   └─ Select all
+    │
+    ├─→ ClipboardCoordinator (350 lines)
+    │   ├─ Copy/cut/paste
+    │   ├─ Primary selection sync
+    │   ├─ Undo/redo operations
+    │   └─ Apply dirty lines
+    │
+    ├─→ InspectorCoordinator (280 lines)
+    │   ├─ Route to visible tabs
+    │   ├─ HTML & YAML formatting
+    │   ├─ Hitbox display
+    │   └─ Force export updates
+    │
+    ├─→ RenderCoordinator (400 lines)
+    │   ├─ Debounced updates
+    │   ├─ Query line/text
+    │   ├─ Position conversions
+    │   └─ Layout calculations
+    │
+    └─→ ConsoleCoordinator (280 lines)
+        ├─ Error/warning display
+        ├─ Console tab updates
+        ├─ Entry formatting
+        └─ Error pattern analysis
+
+Benefits:
+  + Each coordinator ~300-450 lines (easily readable)
+  + Clear method ownership
+  + Can test each independently
+  + Easy to add new features to specific domain
+  + Better IDE navigation
+
+================================================================================
+
+INTERACTION DIAGRAM
+================================================================================
+
+User Input/Events
+    │
+    ├─→ KeyboardHandler  ─→  Editor.handleKeyboardEvent()
+    │                         (~20 lines)
+    │
+    ├─→ MouseHandler      ─→  Editor.handleMouseDown/Move/Up()
+    │                         (delegates)
+    │
+    └─→ UI Events         ─→  Event Listeners in setupEventHandlers()
+                              │
+                              ├─→ CursorCoordinator
+                              │   └─ updateCursorVisualPosition()
+                              │      scrollCursorIntoView()
+                              │
+                              ├─→ SelectionCoordinator
+                              │   └─ renderSelectionVisual()
+                              │      updateSelectionDisplay()
+                              │
+                              ├─→ ClipboardCoordinator
+                              │   └─ handleCopy/Cut/Paste()
+                              │
+                              ├─→ RenderCoordinator
+                              │   └─ scheduleStaffNotationUpdate()
+                              │      scheduleHitboxesUpdate()
+                              │
+                              ├─→ InspectorCoordinator
+                              │   └─ updateDocumentDisplay()
+                              │
+                              └─→ ConsoleCoordinator
+                                  └─ showError()
+                                     addToConsoleLog()
+
+Document Model (WASM)
+    │
+    ├─ CursorCoordinator reads via wasmModule.getCaretInfo()
+    ├─ SelectionCoordinator reads via wasmModule.getSelectionInfo()
+    ├─ ClipboardCoordinator mutates via wasmModule.copyCells/pasteCells/etc.
+    └─ RenderCoordinator reads via wasmModule.getDocumentSnapshot()
+
+================================================================================
+
+METHOD CALL FLOW EXAMPLE: Typing a character
+================================================================================
+
+User types 'S' key
+    │
+    ├─→ KeyboardHandler.handleKeyboardEvent()
+    │
+    ├─→ WASM: insertText('S')
+    │   └─ Returns EditorDiff with dirty_lines
+    │
+    ├─→ Editor.render()  (render to DOM)
+    │
+    ├─→ CursorCoordinator.updateCursorVisualPosition()
+    │   └─ Position cursor after new character
+    │
+    ├─→ CursorCoordinator.scrollCursorIntoView()
+    │   └─ Keep cursor in viewport
+    │
+    ├─→ RenderCoordinator.scheduleStaffNotationUpdate()
+    │   └─ Debounce OSMD render (100ms)
+    │
+    ├─→ RenderCoordinator.scheduleHitboxesUpdate()
+    │   └─ Debounce hitbox update (500ms)
+    │
+    ├─→ InspectorCoordinator.updateDocumentDisplay()
+    │   └─ Only if inspector tabs visible:
+    │       ├─ Update persistent JSON
+    │       ├─ Update IR export
+    │       ├─ Update MusicXML export
+    │       └─ Update LilyPond export
+    │
+    └─→ SelectionCoordinator.updatePrimarySelection()
+        └─ Sync X11 primary selection
+
+Total: ~50 lines of orchestration code in Editor class
+
+
+METHOD CALL FLOW EXAMPLE: Copy selected text
+================================================================================
+
+User presses Ctrl+C
+    │
+    ├─→ KeyboardHandler detects Ctrl+C
+    │
+    ├─→ Editor.handleKeyboardEvent() delegates to:
+    │
+    ├─→ ClipboardCoordinator.handleCopy()
+    │   │
+    │   ├─→ SelectionCoordinator.hasSelection()
+    │   │   └─ Query WASM
+    │   │
+    │   ├─→ SelectionCoordinator.getSelection()
+    │   │   └─ Query WASM for {anchor, head, start, end}
+    │   │
+    │   ├─→ WASM.copyCells(startRow, startCol, endRow, endCol)
+    │   │   └─ Returns {text, cells} (rich copy data)
+    │   │
+    │   ├─→ Store in this.clipboard = {text, cells}
+    │   │
+    │   ├─→ navigator.clipboard.writeText(text)
+    │   │   └─ System clipboard integration
+    │   │
+    │   └─→ ConsoleCoordinator.addToConsoleLog()
+    │       └─ "Copied N cells"
+    │
+    └─→ ClipboardCoordinator.updatePrimarySelection()
+        └─ Sync X11 primary selection for select-to-paste
+
+Total: ~5 method calls, clear data flow
+
+
+================================================================================
+
+DEPENDENCY INJECTION PATTERN
+================================================================================
+
+Constructor Pattern (Recommended for testability):
+
+    class CursorCoordinator {
+      constructor(editor) {
+        // Option 1: Full reference (simpler, but less modular)
+        this.editor = editor;
+        
+        // Option 2: Selective dependencies (better for testing)
+        this.wasmModule = editor.wasmModule;
+        this.renderer = editor.renderer;
+        this.element = editor.element;
+        this.eventManager = editor.eventManager;
+      }
+      
+      getCursorPosition() {
+        return this.wasmModule.getCaretInfo()?.caret?.col ?? 0;
+      }
+    }
+
+Usage in Editor:
+
+    class MusicNotationEditor {
+      constructor(editorElement) {
+        this.element = editorElement;
+        this.wasmModule = null;
+        this.renderer = null;
+        // ... other initialization ...
+        
+        // Instantiate coordinators
+        this.cursorCoordinator = new CursorCoordinator(this);
+        this.selectionCoordinator = new SelectionCoordinator(this);
+        this.clipboardCoordinator = new ClipboardCoordinator(this);
+        this.inspectorCoordinator = new InspectorCoordinator(this);
+        this.renderCoordinator = new RenderCoordinator(this);
+        this.consoleCoordinator = new ConsoleCoordinator(this);
+      }
+      
+      // Public API maintained for backward compatibility
+      getCursorPosition() {
+        return this.cursorCoordinator.getCursorPosition();
+      }
+      
+      // ... other delegation methods ...
+    }
+
+Testing a Coordinator:
+
+    import CursorCoordinator from './CursorCoordinator.js';
+    
+    describe('CursorCoordinator', () => {
+      it('should get cursor position', () => {
+        const mockWasm = {
+          getCaretInfo: () => ({ caret: { line: 0, col: 5 } })
+        };
+        const mockEditor = { wasmModule: mockWasm };
+        const coordinator = new CursorCoordinator(mockEditor);
+        
+        expect(coordinator.getCursorPosition()).toBe(5);
+      });
+    });
+
+
+================================================================================
+
+STATE FLOW DIAGRAM
+================================================================================
+
+WASM Document (Source of Truth)
+    │ (via wasmModule)
+    │
+    ├─ CursorCoordinator
+    │  └─ Reads: current cursor position {line, col}
+    │  └─ Writes: N/A (cursor only changed via WASM commands)
+    │
+    ├─ SelectionCoordinator
+    │  └─ Reads: current selection {anchor, head, start, end}
+    │  └─ Writes: clearSelection(), setSelection()
+    │
+    ├─ ClipboardCoordinator
+    │  └─ Reads: document state for copy operation
+    │  └─ Writes: deleteAtCursor(), pasteCells()
+    │
+    ├─ RenderCoordinator
+    │  └─ Reads: cell positions, dimensions from displayList
+    │  └─ Writes: Schedules OSMD/hitbox updates
+    │
+    ├─ InspectorCoordinator
+    │  └─ Reads: document snapshot for display
+    │  └─ Writes: N/A (display-only)
+    │
+    └─ ConsoleCoordinator
+       └─ Reads: error history
+       └─ Writes: error records, console entries
+
+
+DOM State
+    │
+    ├─ CursorCoordinator
+    │  └─ Reads: cursor element position, focus state
+    │  └─ Writes: cursor position, visibility, animation
+    │
+    ├─ SelectionCoordinator
+    │  └─ Reads: cell elements, 'selected' class
+    │  └─ Writes: add/remove 'selected' class on cells
+    │
+    ├─ RenderCoordinator
+    │  └─ Reads: notation-line elements, cell dimensions
+    │  └─ Writes: Triggers DOM re-render via renderer
+    │
+    ├─ InspectorCoordinator
+    │  └─ Reads: inspector tab containers
+    │  └─ Writes: HTML content in inspector tabs
+    │
+    └─ ConsoleCoordinator
+       └─ Reads: console tab containers
+       └─ Writes: console entry elements
+
+
+Clipboard State (Internal)
+    │
+    └─ ClipboardCoordinator
+       └─ Reads: this.clipboard.text, this.clipboard.cells
+       └─ Writes: store copy data, clear on next copy
+
+
+================================================================================
+
+SIZE COMPARISON
+================================================================================
+
+File Size Changes:
+  editor.js                      2920 → 710 lines (-73%)
+  CursorCoordinator.js           new  → 420 lines
+  SelectionCoordinator.js        new  → 480 lines
+  ClipboardCoordinator.js        new  → 350 lines
+  InspectorCoordinator.js        new  → 280 lines
+  RenderCoordinator.js           new  → 400 lines
+  ConsoleCoordinator.js          new  → 280 lines
+  coordinators/index.js          new  →  20 lines (exports)
+  ──────────────────────────────────────────────
+  Total Code:                   2920 → 3340 lines (+14%)
+  
+  Reason for increase:
+    - Added constructor wrappers for each coordinator (+60 lines)
+    - Added module exports and imports (+40 lines)
+    - Added some documentation comments (+50 lines)
+  
+  Benefit:
+    - Main class reduced from 2920 to 710 = 76% smaller
+    - Each coordinator ~300-450 lines = easily understandable
+    - Better IDE support (go-to-definition works per coordinator)
+    - Clear method ownership
+
+================================================================================
+
+MIGRATION SCHEDULE
+================================================================================
+
+Week 1: Planning & Setup
+  Day 1: Review analysis documents
+  Day 2: Create coordinators/ directory structure
+  Day 3: Set up build/test infrastructure
+  Day 4: Create ConsoleCoordinator as POC
+  Day 5: Test ConsoleCoordinator extraction
+
+Week 2: Console & Render Extraction
+  Day 6-7: Extract RenderCoordinator, test
+  Day 8-9: Extract InspectorCoordinator, test
+  Day 10: Integration testing of the three
+
+Week 3: Core Coordinators
+  Day 11-12: Extract CursorCoordinator, test
+  Day 13-14: Extract SelectionCoordinator, test
+  Day 15: Integration testing
+
+Week 4: Finalization
+  Day 16: Extract ClipboardCoordinator, test
+  Day 17-18: Full integration & E2E testing
+  Day 19: Performance verification
+  Day 20: Documentation & cleanup
+
+Total: ~3 weeks for complete extraction
+
+Parallel Work Possible:
+  - Multiple developers can extract different coordinators simultaneously
+  - Merge in order of dependencies (Console first, Clipboard last)
+
+================================================================================
+

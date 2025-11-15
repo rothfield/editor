@@ -63,17 +63,15 @@ export class WASMBridge {
     // List of all WASM functions to map with automatic error handling
     const functionNames = [
       // New recursive descent API
-      'insertCharacter', 'parseText', 'deleteCharacter', 'applyOctave', 'applyCommand',
+      'insertCharacter', 'parseText', 'deleteCharacter',
 
-      // Slur API
-      'applySlur', 'removeSlur', 'hasSlurInSelection',
+      // Layered Architecture API
+      'selectWholeBeat', 'shiftOctave',
+      'toggleSlur', 'applySlurLayered', 'removeSlurLayered', 'getSlursForLine', 'applyAnnotationSlursToCells',
 
       // Ornament Copy/Paste API
       'copyOrnamentFromCell', 'pasteOrnamentToCell', 'pasteOrnamentCells',
       'setOrnamentPlacementOnCell', 'clearOrnamentFromCell',
-
-      // Ornament API
-      'getNavigableIndices',
 
       // Document lifecycle API
       'createNewDocument', 'loadDocument', 'getDocumentSnapshot',
@@ -82,7 +80,7 @@ export class WASMBridge {
       'editReplaceRange',
 
       // WASM-First Text Editing Operations
-      'insertText', 'deleteAtCursor', 'insertNewline',
+      'insertText', 'deleteAtCursor', 'deleteForward', 'insertNewline',
 
       // Copy/Paste API
       'copyCells', 'pasteCells',

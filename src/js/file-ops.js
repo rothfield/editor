@@ -273,7 +273,7 @@ class FileOperations {
     // Load document (this will render with correct pitch system)
     await this.editor.loadDocument(document);
 
-    console.log('🔍 After loadDocument, pitch_system is:', this.editor.theDocument?.pitch_system);
+    console.log('🔍 After loadDocument, pitch_system is:', this.editor.getDocument()?.pitch_system);
   }
 
   /**
@@ -323,7 +323,7 @@ class FileOperations {
       }
     } else if (data.content) {
       // Simple content format
-      await this.editor.parseText(data.content);
+      await this.editor.insertText(data.content);
 
       // Apply basic metadata
       if (data.title || data.tonic || data.pitchSystem) {
@@ -346,8 +346,8 @@ class FileOperations {
       throw new Error('Editor not available');
     }
 
-    // Parse text as notation
-    await this.editor.parseText(text);
+    // Insert text as notation
+    await this.editor.insertText(text);
     await this.editor.render();
   }
 

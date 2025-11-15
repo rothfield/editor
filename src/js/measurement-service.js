@@ -119,7 +119,6 @@ class MeasurementService {
 
           // For pitched elements with accidentals, measure the composite glyph
           // instead of the typed text (e.g., measure U+E1F0 instead of "1#")
-          // nbsp is already in document (stored directly), no conversion needed
           let charToMeasure = cell.char;
           if (cell.kind && cell.kind.name === 'pitched_element' && cell.pitch_code) {
             const baseChar = cell.char.charAt(0);
@@ -129,6 +128,7 @@ class MeasurementService {
               charToMeasure = compositeGlyph;
             }
           }
+
           span.textContent = charToMeasure;
 
           // Apply fonts based on cell kind
@@ -140,8 +140,8 @@ class MeasurementService {
             // Pitch and dash cells always use NotationFont (from Noto Music)
             span.style.fontFamily = "'NotationFont'";
           } else if (cell.kind && cell.kind.name === 'whitespace') {
-            // Whitespace cells use monospace font for consistent spacing
-            span.style.fontFamily = "'Courier New', 'Monaco', monospace";
+            // Whitespace cells use NotationFont for consistent spacing with other glyphs
+            span.style.fontFamily = "'NotationFont'";
           }
 
           temp.appendChild(span);

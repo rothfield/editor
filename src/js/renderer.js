@@ -157,7 +157,21 @@ class DOMRenderer {
       beat_loop_height: BEAT_LOOP_HEIGHT,
     };
 
+    // Debug: Log selection state in document before computeLayout
+    console.log(`[RENDERER @ ${Date.now()}] computeLayout input - has_selection:`,
+      !!doc.state?.selection_manager?.current_selection,
+      'anchor:', doc.state?.selection_manager?.current_selection?.anchor,
+      'head:', doc.state?.selection_manager?.current_selection?.head);
+
     const displayList = this.editor.wasmModule.computeLayout(doc, config);
+
+    // Debug: Check if first cell has "selected" class in DisplayList
+    if (displayList.lines?.[0]?.cells?.[0]) {
+      const firstCell = displayList.lines[0].cells[0];
+      console.log('[RENDERER] DisplayList first cell classes:', firstCell.classes);
+      console.log('[RENDERER] Has "selected"?', firstCell.classes.includes('selected'));
+    }
+
     const layoutTime = performance.now() - layoutStart;
     logger.debug(LOG_CATEGORIES.PERFORMANCE, 'Layout time', {
       duration: `${layoutTime.toFixed(2)}ms`
@@ -314,7 +328,7 @@ class DOMRenderer {
     this.cellRenderer.setDocument(this.theDocument);
 
     // Get current line index for highlighting
-    const currentLineIndex = this.editor?.theDocument?.state?.cursor?.line ?? -1;
+    const currentLineIndex = this.editor?.getDocument()?.state?.cursor?.line ?? -1;
 
     // Delegate to CellRenderer
     return this.cellRenderer.renderLine(renderLine, currentLineIndex, this.gutterCollapsed);

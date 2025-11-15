@@ -85,6 +85,9 @@ impl LayoutEngine {
         let mut char_width_offset = 0;
         let mut cumulative_y = 0.0;
 
+        // Get selection range from document state
+        let selection = document.state.selection_manager.get_selection();
+
         let line_computer = LayoutLineComputer::new(&self.beat_deriver);
 
         // Process each line
@@ -129,6 +132,7 @@ impl LayoutEngine {
                 syllable_widths,
                 char_widths,
                 document.ornament_edit_mode,
+                selection,
             );
 
             // Accumulate Y offset for next line

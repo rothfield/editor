@@ -80,7 +80,7 @@ class AutoSave {
     }
 
     try {
-      const document = this.editor.theDocument;
+      const document = this.editor.getDocument();
       if (!document) {
         console.warn('AutoSave: No document to save');
         return;

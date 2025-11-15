@@ -13,12 +13,14 @@ export async function getEditorState(page) {
 
     const app = window.MusicNotationApp.app();
     const editor = app.editor;
-    const doc = editor?.theDocument || editor?.document;
+    // Use getDocument() to fetch from WASM (single source of truth)
+    const doc = editor?.getDocument?.() || editor?.document;
 
     return {
       lineCount: doc?.lines?.length || 0,
       lines: doc?.lines?.map((line) => ({
-        content: line.map((cell) => cell.char || '').join(''),
+        // Line is an object with a cells array property
+        content: (line?.cells || []).map((cell) => cell.char || '').join(''),
       })) || [],
       cursorPosition: editor?.getCursorPosition?.(),
       hasFocus: document.activeElement?.id === 'notation-editor',
@@ -114,6 +116,7 @@ export async function setCursorPosition(page, line, lane, position) {
 
 /**
  * Get the rendered content as text
+ * Note: Returns the actual Unicode characters rendered (including PUA glyphs from NotationFont)
  */
 export async function getRenderedContent(page) {
   return await page.evaluate(() => {
@@ -127,7 +130,11 @@ export async function getRenderedContent(page) {
         .map((line) => {
           const cells = line.querySelectorAll('.char-cell');
           return Array.from(cells)
-            .map((cell) => cell.textContent || '')
+            .map((cell) => {
+              // Extract from data-char attribute (source of truth for typed characters)
+              // This contains what the user typed, not the rendered glyph
+              return cell.dataset.char || cell.textContent || '';
+            })
             .join('');
         })
         .join('\n');
@@ -141,7 +148,7 @@ export async function getRenderedContent(page) {
           .map((line) => {
             const cells = line.querySelectorAll('[data-cell-index]');
             return Array.from(cells)
-              .map((cell) => cell.textContent || '')
+              .map((cell) => cell.dataset.char || cell.textContent || '')
               .join('');
           })
           .join('\n');
@@ -274,7 +281,8 @@ export async function waitForCharacter(page, char, options = {}) {
 export async function getLineCount(page) {
   return await page.evaluate(() => {
     const app = window.MusicNotationApp?.app();
-    return app?.editor?.document?.lines?.length || 0;
+    const doc = app?.editor?.getDocument?.();
+    return doc?.lines?.length || 0;
   });
 }
 
@@ -286,7 +294,8 @@ export async function waitForLineCount(page, count, options = {}) {
   await page.waitForFunction(
     (targetCount) => {
       const app = window.MusicNotationApp?.app();
-      return (app?.editor?.document?.lines?.length || 0) === targetCount;
+      const doc = app?.editor?.getDocument?.();
+      return (doc?.lines?.length || 0) === targetCount;
     },
     count,
     { timeout }

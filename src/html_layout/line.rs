@@ -96,6 +96,7 @@ impl<'a> LayoutLineComputer<'a> {
         syllable_widths: &[f32],
         char_widths: &[f32],
         ornament_edit_mode: bool,
+        selection: Option<&crate::models::notation::Selection>,
     ) -> RenderLine {
         // Derive beats using WASM BeatDeriver
         let beats = self.beat_deriver.extract_implicit_beats(&line.cells);
@@ -204,6 +205,7 @@ impl<'a> LayoutLineComputer<'a> {
                 &beat_roles,
                 &slur_roles,
                 &ornament_roles,
+                selection,
             );
 
             // Advance cumulative position

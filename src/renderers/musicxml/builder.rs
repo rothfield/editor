@@ -734,6 +734,7 @@ fn parse_key_to_fifths(key_str: &str) -> Option<i8> {
     let base_note = key_lower.split_whitespace().next().unwrap_or(&key_lower);
 
     // Map note names to fifths position for major keys
+    // Supports multiple formats: "f#", "f-sharp", "f♯", "fs", etc.
     let major_fifths = match base_note {
         "c" | "c♮" => 0,
         "g" | "g♮" => 1,
@@ -741,15 +742,15 @@ fn parse_key_to_fifths(key_str: &str) -> Option<i8> {
         "a" | "a♮" => 3,
         "e" | "e♮" => 4,
         "b" | "b♮" => 5,
-        "f#" | "f♯" | "fs" | "f#♮" | "f♯♮" => 6,
-        "c#" | "c♯" | "cs" | "c#♮" | "c♯♮" => 7,
+        "f#" | "f♯" | "fs" | "f-sharp" | "f#♮" | "f♯♮" => 6,
+        "c#" | "c♯" | "cs" | "c-sharp" | "c#♮" | "c♯♮" => 7,
         "f" | "f♮" => -1,
-        "bb" | "b♭" | "bf" | "bb♮" | "b♭♮" => -2,
-        "eb" | "e♭" | "ef" | "eb♮" | "e♭♮" => -3,
-        "ab" | "a♭" | "af" | "ab♮" | "a♭♮" => -4,
-        "db" | "d♭" | "df" | "db♮" | "d♭♮" => -5,
-        "gb" | "g♭" | "gf" | "gb♮" | "g♭♮" => -6,
-        "cb" | "c♭" | "cf" | "cb♮" | "c♭♮" => -7,
+        "bb" | "b♭" | "bf" | "b-flat" | "bb♮" | "b♭♮" => -2,
+        "eb" | "e♭" | "ef" | "e-flat" | "eb♮" | "e♭♮" => -3,
+        "ab" | "a♭" | "af" | "a-flat" | "ab♮" | "a♭♮" => -4,
+        "db" | "d♭" | "df" | "d-flat" | "db♮" | "d♭♮" => -5,
+        "gb" | "g♭" | "gf" | "g-flat" | "gb♮" | "g♭♮" => -6,
+        "cb" | "c♭" | "cf" | "c-flat" | "cb♮" | "c♭♮" => -7,
         _ => return None,
     };
 

@@ -281,7 +281,7 @@ class ExportUI {
    * @private
    */
   async generateLilyPondSource() {
-    if (!this.editor.theDocument) {
+    if (!this.editor.getDocument()) {
       throw new Error('No document to export');
     }
 
@@ -291,7 +291,7 @@ class ExportUI {
 
     try {
       // Step 1: Export to MusicXML
-      const musicxml = this.editor.wasmModule.exportMusicXML(this.editor.theDocument);
+      const musicxml = this.editor.wasmModule.exportMusicXML(this.editor.getDocument());
 
       // Step 2: Convert MusicXML to LilyPond using existing template system
       // This uses the proper Rust templates with comprehensive paper directives

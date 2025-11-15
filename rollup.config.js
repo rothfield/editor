@@ -7,7 +7,9 @@ const production = !process.env.ROLLUP_WATCH;
 export default {
   input: 'src/js/main.js',
   output: {
-    file: 'dist/main.js',
+    dir: 'dist',
+    entryFileNames: 'main.js',
+    chunkFileNames: '[name].js',
     format: 'es',
     sourcemap: !production,
     paths: {

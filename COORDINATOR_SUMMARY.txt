@@ -1,0 +1,259 @@
+================================================================================
+                    EDITOR.JS COORDINATOR EXTRACTION
+                         EXECUTIVE SUMMARY
+================================================================================
+
+PROJECT: Extract 69 methods from 2920-line MusicNotationEditor class
+         into 6 focused coordinator classes
+
+CURRENT STATE:
+  File: /home/john/editor/src/js/editor.js
+  Size: 2920 lines
+  Methods: 86 total (69 extractable, 17 core/cross-cutting)
+  Cohesion: LOW (methods handling unrelated concerns mixed together)
+
+PROPOSED OUTCOME:
+  Coordinators: 6 new classes (280-480 lines each)
+  Main class: Reduced to 710 lines (core functionality + delegation)
+  Result: 76% code reduction, 100% behavioral equivalence
+
+================================================================================
+
+COORDINATOR ORGANIZATION:
+
+┌─ CURSOR MANAGEMENT
+│  ├─ Query cursor position (line, column, full position)
+│  ├─ Validate and clamp cursor to valid range
+│  ├─ DOM cursor element lifecycle (create, show, hide)
+│  ├─ Cursor blinking animation with focus awareness
+│  └─ Scroll viewport to ensure cursor visibility
+│  Methods: 14 | Lines: ~420
+│
+├─ SELECTION MANAGEMENT
+│  ├─ Query selection (exists, range, selected text)
+│  ├─ Clear selection and delete selected content
+│  ├─ Visual selection rendering (highlight cells in DOM)
+│  ├─ Validation before selection-dependent commands
+│  └─ Select all content in document
+│  Methods: 13 | Lines: ~480
+│
+├─ CLIPBOARD & UNDO/REDO
+│  ├─ Copy selected cells to system + internal clipboard
+│  ├─ Cut selected content (copy + delete)
+│  ├─ Paste clipboard cells at cursor position
+│  ├─ Update X11 primary selection register
+│  ├─ Handle undo/redo operations via WASM
+│  └─ Apply dirty lines after paste/cut
+│  Methods: 8 | Lines: ~350
+│
+├─ INSPECTOR PANELS
+│  ├─ Route updates to visible inspector tabs (performance optimization)
+│  ├─ Update HTML source and YAML format displays
+│  ├─ Format objects for display (YAML conversion, pitch system strings)
+│  ├─ Display hitbox debugging information
+│  └─ Force update all exports (key signature changes)
+│  Methods: 11 | Lines: ~280
+│
+├─ RENDERING & LAYOUT
+│  ├─ Schedule debounced staff notation and hitbox updates
+│  ├─ Query current line and text content
+│  ├─ Position conversions (char ↔ cell ↔ pixel)
+│  ├─ Calculate max positions and cell indices
+│  └─ All layout measurements and calculations
+│  Methods: 12 | Lines: ~400
+│
+└─ CONSOLE & LOGGING
+   ├─ Display error, warning, and info messages
+   ├─ Add entries to console tab containers
+   ├─ Format console entries with timestamp and details
+   ├─ Manage console history (remove placeholders, limit size)
+   ├─ Record and analyze error patterns
+   └─ Error pattern detection for troubleshooting
+   Methods: 11 | Lines: ~280
+
+================================================================================
+
+BENEFITS OF EXTRACTION:
+
+✓ MAINTAINABILITY
+  - Each coordinator has single clear responsibility
+  - ~350 lines per coordinator = easy to understand
+  - Related methods grouped together naturally
+
+✓ TESTABILITY
+  - Unit test each coordinator independently
+  - Mock dependencies easily (wasmModule, renderer, etc.)
+  - No need to instantiate entire Editor for testing one feature
+
+✓ REUSABILITY
+  - Coordinators can be used in different Editor contexts
+  - Export coordinator logic for use in other projects
+
+✓ PERFORMANCE
+  - No behavior changes, but structure enables optimizations
+  - Clearer code = easier to spot inefficiencies
+  - Lazy initialization possible for coordinators
+
+✓ TEAM COLLABORATION
+  - Different team members can work on different coordinators
+  - Clear ownership and boundaries
+  - Reduced merge conflicts
+
+================================================================================
+
+INTERDEPENDENCIES:
+
+Direct Dependencies:
+  CursorCoordinator
+    ← requires: wasmModule, renderer, eventManager, element
+    
+  SelectionCoordinator
+    ← requires: wasmModule, renderer, CursorCoordinator methods
+    
+  ClipboardCoordinator
+    ← requires: wasmModule, SelectionCoordinator, clipboard state
+    
+  InspectorCoordinator
+    ← requires: ExportManager, ui.activeTab, RenderCoordinator
+    
+  RenderCoordinator
+    ← requires: renderer, wasmModule, displayList
+    
+  ConsoleCoordinator
+    ← requires: DOM elements, errorHistory
+
+Dependency Count: ~12 shared resources across all coordinators
+Cycle Risk: LOW (all deps point to core Editor or other coordinators)
+
+================================================================================
+
+EXTRACTION PHASES:
+
+Phase 1: SETUP (1-2 days)
+  ✓ Create coordinators/ directory
+  ✓ Create coordinator class files
+  ✓ Copy method bodies (no changes to implementation)
+  ✓ Update method signatures to use this.editor reference
+
+Phase 2: INTEGRATION (1-2 days)
+  ✓ Instantiate coordinators in Editor constructor
+  ✓ Add delegation methods to Editor class
+  ✓ Verify all tests still pass
+  ✓ Update any direct method references in event handlers
+
+Phase 3: OPTIMIZATION (optional)
+  ✓ Reduce scope of dependencies (coordinator doesn't need full editor)
+  ✓ Add coordinator-level caching if applicable
+  ✓ Implement lazy initialization if beneficial
+
+Phase 4: TESTING (1-2 days)
+  ✓ Add unit tests for each coordinator
+  ✓ Update E2E tests if necessary
+  ✓ Test coordinator interactions
+  ✓ Performance testing to ensure no regressions
+
+Total Estimated Time: 4-6 days
+
+================================================================================
+
+RISK ASSESSMENT:
+
+LOW RISK (Refactoring, no feature changes):
+  ✓ No new functionality being added
+  ✓ Method signatures remain identical
+  ✓ All existing tests should pass
+  ✓ Behavioral equivalence guaranteed by design
+
+Mitigation Strategies:
+  • Test incrementally (one coordinator at a time)
+  • Keep editor.js delegation methods until confident
+  • Run full E2E test suite after each phase
+  • Use git branches for safe rollback capability
+
+================================================================================
+
+DOCUMENTATION PROVIDED:
+
+1. COORDINATOR_EXTRACTION_ANALYSIS.md
+   - Complete analysis with line numbers
+   - Method-by-method breakdown
+   - Dependency graph
+   - Implementation strategy
+
+2. COORDINATOR_METHOD_BREAKDOWN.md
+   - Detailed notes for each method
+   - Extraction prerequisites
+   - Cross-coordinator interactions
+   - Constructor injection patterns
+
+3. COORDINATOR_SUMMARY.txt (this file)
+   - Executive overview
+   - Phase breakdown
+   - Risk assessment
+   - Getting started guide
+
+================================================================================
+
+GETTING STARTED:
+
+Step 1: Review Documentation
+  $ ls -la /home/john/editor/COORDINATOR_*.md
+  $ cat COORDINATOR_EXTRACTION_ANALYSIS.md
+
+Step 2: Create Directory Structure
+  $ mkdir -p src/js/coordinators
+
+Step 3: Create First Coordinator
+  Start with ConsoleCoordinator (fewest dependencies)
+  $ touch src/js/coordinators/ConsoleCoordinator.js
+
+Step 4: Extract Methods
+  Copy method bodies from editor.js to ConsoleCoordinator
+  Update references to use coordinator pattern
+
+Step 5: Test
+  Run existing E2E tests:
+  $ npm run test:e2e
+  
+  All tests should pass with 100% behavioral equivalence
+
+Step 6: Repeat for Other Coordinators
+  Order: Console → Render → Inspector → Cursor → Selection → Clipboard
+
+================================================================================
+
+QUESTIONS & ANSWERS:
+
+Q: Will this break existing code?
+A: No. All method names remain identical, just moved to coordinator classes.
+   Editor class delegates to coordinators.
+
+Q: Do I need to update all callers?
+A: No. Existing code can call editor.getCursorPosition() transparently.
+   Internally, this delegates to cursorCoordinator.getCursorPosition().
+
+Q: Can I extract one coordinator at a time?
+A: Yes. Recommended approach: extract one coordinator, test thoroughly,
+   then move to next. No need to extract all at once.
+
+Q: Will performance improve?
+A: Unlikely to improve without additional optimization work. Refactoring
+   maintains current performance while enabling future optimizations.
+
+Q: How long will this take?
+A: Estimated 4-6 days total, or ~1 day per coordinator if done incrementally.
+
+================================================================================
+
+NEXT STEPS:
+
+1. Review the three analysis documents thoroughly
+2. Decide on extraction order (recommend: Console → Render → Inspector → ...)
+3. Create coordinators/ directory and first coordinator class
+4. Extract 5-6 methods as proof-of-concept
+5. Run tests to verify behavioral equivalence
+6. Continue with remaining methods
+
+Contact: Claude Code (claude-code@anthropic.com)
+
+================================================================================
