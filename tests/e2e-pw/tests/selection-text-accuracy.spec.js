@@ -14,7 +14,7 @@ test.describe('Selection Text Accuracy', () => {
     await page.waitForTimeout(300);
 
     // Check selection info in header
-    const selectionInfo = page.locator('#selection-info');
+    const selectionInfo = page.locator('#editor-selection-status');
     await expect(selectionInfo).toBeVisible();
 
     const selectionText = await selectionInfo.textContent();
@@ -49,7 +49,7 @@ test.describe('Selection Text Accuracy', () => {
     await page.keyboard.press('Shift+End');
     await page.waitForTimeout(300);
 
-    const selectionInfo = page.locator('#selection-info');
+    const selectionInfo = page.locator('#editor-selection-status');
     const selectionText = await selectionInfo.textContent();
     console.log('Selection info text:', selectionText);
 
@@ -78,7 +78,7 @@ test.describe('Selection Text Accuracy', () => {
     await cells[1].dragTo(cells[3]);
     await page.waitForTimeout(300);
 
-    const selectionInfo = page.locator('#selection-info');
+    const selectionInfo = page.locator('#editor-selection-status');
     const selectionText = await selectionInfo.textContent();
     console.log('Partial selection info:', selectionText);
 
@@ -106,7 +106,7 @@ test.describe('Selection Text Accuracy', () => {
     await page.keyboard.press('Shift+End');
     await page.waitForTimeout(300);
 
-    const selectionInfo = page.locator('#selection-info');
+    const selectionInfo = page.locator('#editor-selection-status');
     const selectionText = await selectionInfo.textContent();
     console.log('Selection with spaces:', selectionText);
 
@@ -136,7 +136,7 @@ test.describe('Selection Text Accuracy', () => {
     await page.keyboard.press('Shift+ArrowRight');
     await page.waitForTimeout(300);
 
-    const selectionInfo = page.locator('#selection-info');
+    const selectionInfo = page.locator('#editor-selection-status');
     const selectionText = await selectionInfo.textContent();
     console.log('Single cell selection:', selectionText);
 

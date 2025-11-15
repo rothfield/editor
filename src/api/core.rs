@@ -703,8 +703,6 @@ pub fn edit_replace_range(
             if start_col <= line.cells.len() && end_col <= line.cells.len() {
                 line.cells.drain(start_col..end_col);
                 wasm_info!("  Deleted {} cells from row {}", end_col - start_col, start_row);
-
-                // Re-mark continuations after deletion to fix continuation flags
             }
         }
     } else {
@@ -728,8 +726,6 @@ pub fn edit_replace_range(
             // Remove the lines between start_row and end_row
             doc.lines.drain((start_row + 1)..=end_row);
             wasm_info!("  Deleted {} rows", end_row - start_row);
-
-            // Re-mark continuations after multi-line deletion
         }
     }
 
@@ -747,8 +743,6 @@ pub fn edit_replace_range(
                 line.cells.insert(start_col + idx, cell.clone());
             }
             wasm_info!("  Inserted {} cells at ({},{})", new_cells.len(), start_row, start_col);
-
-            // Re-mark continuations after insertion
         }
     }
 
@@ -2084,6 +2078,19 @@ pub fn start_selection() -> Result<(), JsValue> {
     Ok(())
 }
 
+/// Start a new selection at a specific position
+#[wasm_bindgen(js_name = startSelectionAt)]
+pub fn start_selection_at(line: usize, col: usize) -> Result<(), JsValue> {
+    let mut doc_guard = lock_document()?;
+    let doc = doc_guard.as_mut()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    let pos = Pos::new(line, col);
+    doc.state.selection_manager.start_selection(pos);
+
+    Ok(())
+}
+
 /// Extend selection to the current cursor position (updates head, keeps anchor)
 #[wasm_bindgen(js_name = extendSelection)]
 pub fn extend_selection() -> Result<(), JsValue> {
@@ -2093,6 +2100,19 @@ pub fn extend_selection() -> Result<(), JsValue> {
 
     let cursor_pos = doc.state.cursor;
     doc.state.selection_manager.extend_selection(&cursor_pos);
+
+    Ok(())
+}
+
+/// Extend selection to a specific position (updates head, keeps anchor)
+#[wasm_bindgen(js_name = extendSelectionTo)]
+pub fn extend_selection_to(line: usize, col: usize) -> Result<(), JsValue> {
+    let mut doc_guard = lock_document()?;
+    let doc = doc_guard.as_mut()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    let pos = Pos::new(line, col);
+    doc.state.selection_manager.extend_selection(&pos);
 
     Ok(())
 }

@@ -7,7 +7,7 @@ test('Backspace text tokens should be fast', async ({ page }) => {
   const editor = page.getByTestId('editor-root');
   await expect(editor).toBeVisible();
 
-  // Type multiple text tokens to create continuations
+  // Type multiple text tokens
   await editor.click();
   await page.keyboard.type('hello world foo bar baz');
   await page.waitForTimeout(300);
@@ -19,7 +19,7 @@ test('Backspace text tokens should be fast', async ({ page }) => {
   });
 
   console.log(`Created ${cellCount} cells`);
-  expect(cellCount).toBeGreaterThan(15); // Multiple text tokens with continuations
+  expect(cellCount).toBeGreaterThan(15); // Multiple text tokens
 
   // Now measure backspace performance on text tokens
   const durations = [];

@@ -460,6 +460,12 @@ export class MouseHandler {
         // Get the actual cellIndex from the data attribute (not the filtered index)
         cellIndex = parseInt(navigableCellElements[i].getAttribute('data-cell-index'), 10);
 
+        // Guard against NaN
+        if (isNaN(cellIndex)) {
+          console.warn('[MouseHandler] Invalid cell index at position', i, '- defaulting to 0');
+          cellIndex = 0;
+        }
+
         // Determine if click is in left or right half of the cell
         const cellMidpoint = (leftBoundary + rightBoundary) / 2;
 
@@ -480,7 +486,20 @@ export class MouseHandler {
         navigableCellElements[navigableCellElements.length - 1].getAttribute('data-cell-index'),
         10
       );
-      cursorCol = lastCellIndex + 1;
+
+      // Guard against NaN
+      if (isNaN(lastCellIndex)) {
+        console.warn('[MouseHandler] Invalid last cell index - defaulting to 0');
+        cursorCol = 0;
+      } else {
+        cursorCol = lastCellIndex + 1;
+      }
+    }
+
+    // Final safety check
+    if (isNaN(cursorCol)) {
+      console.warn('[MouseHandler] cursorCol is NaN - defaulting to 0');
+      cursorCol = 0;
     }
 
     return cursorCol;

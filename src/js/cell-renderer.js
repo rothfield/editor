@@ -283,6 +283,12 @@ class CellRenderer {
     );
     cellChar.className = cellCharClasses.join(' ');
 
+    // CRITICAL: Add data-cell-index for mouse position calculations
+    // MouseHandler.calculateCellPosition() requires this attribute
+    if (cellData.col !== undefined && cellData.col !== null) {
+      cellChar.setAttribute('data-cell-index', cellData.col);
+    }
+
     // For pitched elements with accidentals, render the composite glyph
     // instead of the typed text (e.g., render U+E1F4 instead of "5#")
     let charToRender = cellData.char;

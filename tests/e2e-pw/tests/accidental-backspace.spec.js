@@ -63,9 +63,9 @@ test.describe('Visual verification of accidental overlay rendering', () => {
     // This test documents the expected behavior with CSS overlay rendering
     // The before/after screenshots were taken above
     console.log('Check test-results/accidental-1-sharp-before.png - shows "1#" composite glyph');
-    console.log('  Before: 2 cells (root "1" + continuation "#") rendered as composite glyph "1#"');
+    console.log('  Before: "1#" rendered as composite glyph from NotationFont');
     console.log('Check test-results/accidental-1-natural-after.png - STILL shows "1#" composite glyph');
-    console.log('  After: 1 cell (root "1" with Sharp accidental) rendered via CSS overlay showing "1#"');
+    console.log('  After: "1" cell with Sharp accidental rendered via CSS overlay showing "1#"');
     console.log('Expected: Accidental type preserved, composite glyph maintained after deletion');
   });
 });

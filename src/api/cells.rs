@@ -114,12 +114,9 @@ pub fn insert_character(
         cells[i].col += 1;
     }
 
-    // Mark continuations (replaces old token combination)
-    wasm_log!("  Marking continuations");
-
     let cells_after = cells.len();
     let cells_delta = cells_after as i32 - cells_before as i32;
-    wasm_info!("  After marking continuations: {} cells (delta: {:+})", cells_after, cells_delta);
+    wasm_info!("  After insertion: {} cells (delta: {:+})", cells_after, cells_delta);
 
     // Calculate new cursor position (CHARACTER position, not cell index)
     // Cursor should be positioned after the cell where insertion happened
@@ -208,11 +205,7 @@ pub fn parse_text(text: &str, pitch_system: u8) -> Result<js_sys::Array, JsValue
         column += 1;
     }
 
-    wasm_log!("  Parsed {} cells, marking continuations...", cells.len());
-
-    // Mark continuations (replaces old token combination)
-
-    wasm_info!("  Marking continuations complete: {} cells", cells.len());
+    wasm_log!("  Parsed {} cells", cells.len());
 
     // Convert to JavaScript array
     let result = js_sys::Array::new();

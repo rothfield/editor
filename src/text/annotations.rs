@@ -8,13 +8,33 @@ use super::cursor::{TextPos, TextRange};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-/// Simple ornament marker for proof-of-concept
-///
-/// In the full implementation, this would reference the actual Ornament struct.
-/// For now, we just track the ornament type as a string.
+/// Ornament placement relative to parent note
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct OrnamentMarker {
-    pub ornament_type: String,
+#[serde(rename_all = "lowercase")]
+pub enum OrnamentPlacement {
+    Before,
+    After,
+    OnTop,
+}
+
+impl Default for OrnamentPlacement {
+    fn default() -> Self {
+        OrnamentPlacement::After
+    }
+}
+
+/// Text-based ornament data stored in annotation layer
+///
+/// Follows the "text-first" architecture: ornament notation is stored as text,
+/// not as Cell objects. Cells are generated from this text during export/render.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OrnamentData {
+    /// Text notation for ornament (e.g., "2 3" or "2̇ 3̇" with octave dots)
+    pub notation: String,
+
+    /// Placement relative to parent note
+    #[serde(default)]
+    pub placement: OrnamentPlacement,
 }
 
 /// A slur connecting two positions
@@ -46,8 +66,8 @@ impl SlurSpan {
 /// position changes when text is edited.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AnnotationLayer {
-    /// Point annotations: ornaments at specific positions
-    pub ornaments: BTreeMap<TextPos, OrnamentMarker>,
+    /// Point annotations: ornaments at specific positions (text-based)
+    pub ornaments: BTreeMap<TextPos, OrnamentData>,
 
     /// Range annotations: slurs connecting positions
     pub slurs: Vec<SlurSpan>,
@@ -64,19 +84,28 @@ impl AnnotationLayer {
         }
     }
 
-    /// Add an ornament at a position
-    pub fn add_ornament(&mut self, pos: TextPos, ornament: OrnamentMarker) {
-        self.ornaments.insert(pos, ornament);
+    /// Add an ornament at a position with text notation and placement
+    pub fn add_ornament(&mut self, pos: TextPos, notation: String, placement: OrnamentPlacement) {
+        self.ornaments.insert(pos, OrnamentData { notation, placement });
     }
 
-    /// Remove an ornament at a position
-    pub fn remove_ornament(&mut self, pos: TextPos) -> Option<OrnamentMarker> {
-        self.ornaments.remove(&pos)
+    /// Remove an ornament at a position, returns true if an ornament was removed
+    pub fn remove_ornament(&mut self, pos: TextPos) -> bool {
+        self.ornaments.remove(&pos).is_some()
     }
 
     /// Get an ornament at a position
-    pub fn get_ornament(&self, pos: TextPos) -> Option<&OrnamentMarker> {
+    pub fn get_ornament(&self, pos: TextPos) -> Option<&OrnamentData> {
         self.ornaments.get(&pos)
+    }
+
+    /// Get all ornaments on a specific line
+    pub fn get_ornaments_for_line(&self, line: usize) -> Vec<(TextPos, &OrnamentData)> {
+        self.ornaments
+            .iter()
+            .filter(|(pos, _)| pos.line == line)
+            .map(|(pos, data)| (*pos, data))
+            .collect()
     }
 
     /// Add a slur
@@ -185,15 +214,13 @@ mod tests {
         // Add ornaments at positions 0 and 4
         annotations.add_ornament(
             TextPos::new(0, 0),
-            OrnamentMarker {
-                ornament_type: "trill".to_string(),
-            },
+            "2".to_string(),
+            OrnamentPlacement::Before,
         );
         annotations.add_ornament(
             TextPos::new(0, 4),
-            OrnamentMarker {
-                ornament_type: "mordent".to_string(),
-            },
+            "3".to_string(),
+            OrnamentPlacement::After,
         );
 
         // Insert character at position 2
@@ -211,15 +238,13 @@ mod tests {
 
         annotations.add_ornament(
             TextPos::new(0, 0),
-            OrnamentMarker {
-                ornament_type: "trill".to_string(),
-            },
+            "2".to_string(),
+            OrnamentPlacement::Before,
         );
         annotations.add_ornament(
             TextPos::new(0, 4),
-            OrnamentMarker {
-                ornament_type: "mordent".to_string(),
-            },
+            "3".to_string(),
+            OrnamentPlacement::After,
         );
 
         // Delete character at position 4 (removes ornament there)

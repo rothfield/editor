@@ -18,7 +18,7 @@ test.describe('Selection Header Display', () => {
     await page.waitForTimeout(300);
 
     // Check selection info in header
-    const selectionInfo = page.locator('#selection-info');
+    const selectionInfo = page.locator('#editor-selection-status');
     await expect(selectionInfo).toBeVisible();
 
     const selectionText = await selectionInfo.textContent();
@@ -44,7 +44,7 @@ test.describe('Selection Header Display', () => {
     await page.waitForTimeout(200);
 
     // Check selection info shows "No selection"
-    const selectionInfo = page.locator('#selection-info');
+    const selectionInfo = page.locator('#editor-selection-status');
     await expect(selectionInfo).toBeVisible();
 
     const selectionText = await selectionInfo.textContent();
@@ -64,7 +64,7 @@ test.describe('Selection Header Display', () => {
     await cells[0].dragTo(cells[1]);
     await page.waitForTimeout(300);
 
-    let selectionInfo = page.locator('#selection-info');
+    let selectionInfo = page.locator('#editor-selection-status');
     let text1 = await selectionInfo.textContent();
     console.log('First selection:', text1);
 
@@ -96,7 +96,7 @@ test.describe('Selection Header Display', () => {
     await page.keyboard.press('Shift+ArrowRight');
     await page.waitForTimeout(300);
 
-    const selectionInfo = page.locator('#selection-info');
+    const selectionInfo = page.locator('#editor-selection-status');
     const selectionText = await selectionInfo.textContent();
     console.log('Single cell selection:', selectionText);
 

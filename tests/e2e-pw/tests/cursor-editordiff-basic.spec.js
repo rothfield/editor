@@ -29,7 +29,7 @@ test.describe('EditorDiff Cursor Integration', () => {
     await expect(cells).toHaveCount(3);
 
     // Check cursor position in HUD
-    const cursorPosition = page.locator('#cursor-position');
+    const cursorPosition = page.locator('#editor-cursor-position');
     const cursorText = await cursorPosition.textContent();
 
     // Cursor should be at column 3 (after typing 3 characters)
@@ -52,7 +52,7 @@ test.describe('EditorDiff Cursor Integration', () => {
     await expect(cells).toHaveCount(2);
 
     // Check cursor position
-    const cursorPosition = page.locator('#cursor-position');
+    const cursorPosition = page.locator('#editor-cursor-position');
     const cursorText = await cursorPosition.textContent();
 
     // Cursor should be at column 2 (after deleting 1 character)
@@ -71,7 +71,7 @@ test.describe('EditorDiff Cursor Integration', () => {
     await page.waitForTimeout(100);
 
     // Check cursor moved to line 1 (second line), column 0
-    const cursorPosition = page.locator('#cursor-position');
+    const cursorPosition = page.locator('#editor-cursor-position');
     const cursorText = await cursorPosition.textContent();
 
     expect(cursorText).toContain('Line: 1');

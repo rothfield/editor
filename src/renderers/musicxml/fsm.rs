@@ -295,11 +295,6 @@ pub fn beat_transition(
     cell: &Cell,
     accum: &mut BeatAccumulator,
 ) -> BeatProcessingState {
-    // Skip continuation cells - they're part of previous element
-    if false /* REMOVED: continuation field */ {
-        return state;
-    }
-
     match (state, cell.kind) {
         // DASHES
         (BeatProcessingState::InBeat, ElementKind::UnpitchedElement) if cell.char == "-" => {
@@ -427,11 +422,6 @@ pub fn transition(
     beat_accum: &mut BeatAccumulator,
     measure_tracker: &mut MeasureTracker,
 ) -> MusicXMLState {
-    // Skip continuation cells - they're part of previous element
-    if false /* REMOVED: continuation field */ {
-        return state;
-    }
-
     // Handle barlines at any beat state
     if cell.kind.is_barline() {
         if let Some(_barline_type) = element_kind_to_barline_type(cell.kind) {

@@ -10,8 +10,7 @@
 //! - Transform semantics
 //! - Layer 1: Encode pitch → new text
 
-use crate::text::cursor::{TextPos, TextRange};
-use crate::models::pitch_code::PitchCode;
+use crate::text::cursor::TextRange;
 use crate::models::elements::PitchSystem;
 use crate::renderers::font_utils::{glyph_for_pitch, pitch_from_glyph};
 
@@ -135,6 +134,7 @@ pub fn shift_octaves_in_range(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::text::cursor::TextPos;
 
     #[test]
     fn test_shift_octaves_up() {

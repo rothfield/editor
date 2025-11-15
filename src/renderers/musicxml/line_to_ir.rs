@@ -256,11 +256,6 @@ pub fn beat_transition(
     cell: &Cell,
     accum: &mut BeatAccumulator,
 ) -> CellGroupingState {
-    // Skip continuation cells - they're part of previous element
-    if false /* REMOVED: continuation field */ {
-        return state;
-    }
-
     // Extract slur indicator from ANY cell, even unpitched elements
     // This allows slur markers on spaces or other elements to be transferred to the next pitched element
     if cell.slur_indicator != SlurIndicator::None {
@@ -694,12 +689,6 @@ pub fn calculate_beat_subdivisions(beat_cells_refs: &[&Cell]) -> usize {
     while i < beat_cells_refs.len() {
         let cell = beat_cells_refs[i];
 
-        // Skip continuation cells only (ornament cells are rhythm-transparent but the main cell with ornament should be counted)
-        if false /* REMOVED: continuation field */ {
-            i += 1;
-            continue;
-        }
-
         if cell.kind == ElementKind::PitchedElement {
             seen_pitched_element = true;
             // Count this note + following dash extensions
@@ -947,10 +936,6 @@ pub fn build_export_measures_from_line(line: &Line) -> Vec<ExportMeasure> {
 
     // Process cells through FSM to identify measure boundaries
     for cell in cells {
-        if false /* REMOVED: continuation field */ {
-            continue;
-        }
-
         let prev_measure = measure_tracker.measure_number;
         state = transition(state, cell, &mut beat_accum, &mut measure_tracker);
 
@@ -1646,10 +1631,6 @@ mod tests {
         let mut current_group: Vec<&Cell> = Vec::new();
 
         for cell in &cells {
-            if false /* REMOVED: continuation field */ {
-                continue;
-            }
-
             if cell.kind.is_barline() {
                 if !current_group.is_empty() {
                     measure_cell_groups.push(current_group);

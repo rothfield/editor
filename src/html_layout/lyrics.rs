@@ -169,16 +169,16 @@ pub fn distribute_lyrics(lyrics: &str, cells: &[Cell]) -> Vec<SyllableAssignment
         return assignments;
     }
 
-    // Count pitched elements (excluding continuation cells which are part of accidentals)
+    // Count pitched elements
     let pitched_count = cells.iter()
-        .filter(|c| !false /* REMOVED: continuation field */ && matches!(c.kind, ElementKind::PitchedElement))
+        .filter(|c| matches!(c.kind, ElementKind::PitchedElement))
         .count();
 
     // Special case: 0 or 1 pitched notes - assign entire lyrics as-is (no splitting)
     if pitched_count <= 1 {
-        // Find first pitched element index (excluding continuations), or use 0 if none exist
+        // Find first pitched element index, or use 0 if none exist
         let cell_index = cells.iter()
-            .position(|c| !false /* REMOVED: continuation field */ && matches!(c.kind, ElementKind::PitchedElement))
+            .position(|c| matches!(c.kind, ElementKind::PitchedElement))
             .unwrap_or(0);
 
         // Assign entire lyrics string unchanged
@@ -209,8 +209,8 @@ pub fn distribute_lyrics(lyrics: &str, cells: &[Cell]) -> Vec<SyllableAssignment
     let mut pitched_index = 0; // Track which pitched element we're on
 
     for (cell_index, cell) in cells.iter().enumerate() {
-        // Only process pitched elements (kind == 1 / PitchedElement) that are not continuations
-        if false /* REMOVED: continuation field */ || !matches!(cell.kind, ElementKind::PitchedElement) {
+        // Only process pitched elements
+        if !matches!(cell.kind, ElementKind::PitchedElement) {
             continue;
         }
 

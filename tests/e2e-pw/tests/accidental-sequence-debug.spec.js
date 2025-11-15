@@ -24,9 +24,8 @@ test.describe('Debug: Sequential typing of sharps', () => {
       const codepoint = textContent.charCodeAt(0);
 
       const classes = await cell.evaluate(el => el.className);
-      const continuation = await cell.evaluate(el => el.getAttribute('data-continuation'));
 
-      console.log(`[${i}] Classes: ${classes}, Continuation: ${continuation}`);
+      console.log(`[${i}] Classes: ${classes}`);
       console.log(`    Text: U+${codepoint.toString(16).toUpperCase().padStart(4, '0')}`);
     }
   });

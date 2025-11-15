@@ -42,7 +42,7 @@ test('Enter key timeline - track all cursor updates', async ({ page }) => {
   });
 
   // Check final cursor position
-  const cursorPosition = page.locator('#cursor-position');
+  const cursorPosition = page.locator('#editor-cursor-position');
   const cursorText = await cursorPosition.textContent();
   console.log('\n=== FINAL STATE ===');
   console.log('Cursor HUD:', cursorText);

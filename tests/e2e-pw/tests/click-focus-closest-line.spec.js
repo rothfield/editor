@@ -4,7 +4,7 @@ import { test, expect } from '@playwright/test';
  * Helper: Get the current focused line from cursor position display
  */
 async function getCurrentFocusedLine(page) {
-  const cursorText = await page.locator('#cursor-position').innerText();
+  const cursorText = await page.locator('#editor-cursor-position').innerText();
   const match = cursorText.match(/Line:\s*(\d+)/);
   return match ? parseInt(match[1]) : null;
 }

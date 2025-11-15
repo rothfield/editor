@@ -109,45 +109,39 @@ class MeasurementService {
 
     for (const line of doc.lines) {
       for (const cell of line.cells) {
-        if (cell.continuation && cell.kind.name !== 'text') {
-          // Continuation cells: use computed width, no need to measure
-          cellWidths.push(BASE_FONT_SIZE * 0.1);
-          spans.push(null); // Placeholder
-        } else {
-          const span = document.createElement('span');
-          span.className = 'char-cell';
+        const span = document.createElement('span');
+        span.className = 'char-cell';
 
-          // For pitched elements with accidentals, measure the composite glyph
-          // instead of the typed text (e.g., measure U+E1F0 instead of "1#")
-          let charToMeasure = cell.char;
-          if (cell.kind && cell.kind.name === 'pitched_element' && cell.pitch_code) {
-            const baseChar = cell.char.charAt(0);
-            const compositeGlyph = this.getCompositeGlyphChar(baseChar, cell.pitch_code);
-            if (compositeGlyph !== baseChar) {
-              // Cell has accidental, measure composite glyph
-              charToMeasure = compositeGlyph;
-            }
+        // For pitched elements with accidentals, measure the composite glyph
+        // instead of the typed text (e.g., measure U+E1F0 instead of "1#")
+        let charToMeasure = cell.char;
+        if (cell.kind && cell.kind.name === 'pitched_element' && cell.pitch_code) {
+          const baseChar = cell.char.charAt(0);
+          const compositeGlyph = this.getCompositeGlyphChar(baseChar, cell.pitch_code);
+          if (compositeGlyph !== baseChar) {
+            // Cell has accidental, measure composite glyph
+            charToMeasure = compositeGlyph;
           }
-
-          span.textContent = charToMeasure;
-
-          // Apply fonts based on cell kind
-          if (cell.kind && cell.kind.name === 'text') {
-            // Text cells use system fonts at reduced size
-            span.style.fontSize = `${BASE_FONT_SIZE * 0.6}px`; // 19.2px
-            span.style.fontFamily = "'Segoe UI', 'Helvetica Neue', system-ui, sans-serif";
-          } else if (cell.kind && (cell.kind.name === 'pitched_element' || cell.kind.name === 'unpitched_element')) {
-            // Pitch and dash cells always use NotationFont (from Noto Music)
-            span.style.fontFamily = "'NotationFont'";
-          } else if (cell.kind && cell.kind.name === 'whitespace') {
-            // Whitespace cells use NotationFont for consistent spacing with other glyphs
-            span.style.fontFamily = "'NotationFont'";
-          }
-
-          temp.appendChild(span);
-          spans.push(span);
-          cellWidths.push(0); // Placeholder, will measure next
         }
+
+        span.textContent = charToMeasure;
+
+        // Apply fonts based on cell kind
+        if (cell.kind && cell.kind.name === 'text') {
+          // Text cells use system fonts at reduced size
+          span.style.fontSize = `${BASE_FONT_SIZE * 0.6}px`; // 19.2px
+          span.style.fontFamily = "'Segoe UI', 'Helvetica Neue', system-ui, sans-serif";
+        } else if (cell.kind && (cell.kind.name === 'pitched_element' || cell.kind.name === 'unpitched_element')) {
+          // Pitch and dash cells always use NotationFont (from Noto Music)
+          span.style.fontFamily = "'NotationFont'";
+        } else if (cell.kind && cell.kind.name === 'whitespace') {
+          // Whitespace cells use NotationFont for consistent spacing with other glyphs
+          span.style.fontFamily = "'NotationFont'";
+        }
+
+        temp.appendChild(span);
+        spans.push(span);
+        cellWidths.push(0); // Placeholder, will measure next
       }
     }
 
@@ -227,36 +221,27 @@ class MeasurementService {
         const spans = [];
 
         // Measure each character in the cell's glyph
-        if (cell.continuation && cell.kind.name !== 'text') {
-          // Continuation cells with minimal width (for accidentals like #, b)
-          for (const char of cell.char) {
-            charWidths.push(BASE_FONT_SIZE * 0.1);
-            spans.push(null);
+        // Cache the kind check once per cell (not per character!)
+        const isTextCell = cell.kind && cell.kind.name === 'text';
+        const fontSize = isTextCell ? `${BASE_FONT_SIZE * 0.6}px` : null;
+        const fontFamily = isTextCell ? "'Segoe UI', 'Helvetica Neue', system-ui, sans-serif" : null;
+
+        for (const char of cell.char) {
+          const span = document.createElement('span');
+          span.className = 'char-cell';
+          span.textContent = char === ' ' ? '\u00A0' : char;
+
+          // Apply proportional font and reduced size if this is a text cell
+          if (fontSize) {
+            span.style.fontSize = fontSize;
           }
-        } else {
-          // Normal cells: create spans for measurement
-          // Cache the kind check once per cell (not per character!)
-          const isTextCell = cell.kind && cell.kind.name === 'text';
-          const fontSize = isTextCell ? `${BASE_FONT_SIZE * 0.6}px` : null;
-          const fontFamily = isTextCell ? "'Segoe UI', 'Helvetica Neue', system-ui, sans-serif" : null;
-
-          for (const char of cell.char) {
-            const span = document.createElement('span');
-            span.className = 'char-cell';
-            span.textContent = char === ' ' ? '\u00A0' : char;
-
-            // Apply proportional font and reduced size if this is a text cell
-            if (fontSize) {
-              span.style.fontSize = fontSize;
-            }
-            if (fontFamily) {
-              span.style.fontFamily = fontFamily;
-            }
-
-            temp.appendChild(span);
-            spans.push(span);
-            charWidths.push(0); // Placeholder
+          if (fontFamily) {
+            span.style.fontFamily = fontFamily;
           }
+
+          temp.appendChild(span);
+          spans.push(span);
+          charWidths.push(0); // Placeholder
         }
 
         cellMetadata.push({

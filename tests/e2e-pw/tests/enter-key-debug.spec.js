@@ -48,7 +48,7 @@ test('Debug Enter key - check WASM response', async ({ page }) => {
   cursorLogs.forEach(log => console.log(log));
 
   // Check cursor position
-  const cursorPosition = page.locator('#cursor-position');
+  const cursorPosition = page.locator('#editor-cursor-position');
   const cursorText = await cursorPosition.textContent();
   console.log('Cursor position after Enter:', cursorText);
 

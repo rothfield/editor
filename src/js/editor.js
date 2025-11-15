@@ -9,6 +9,7 @@ import DOMRenderer from './renderer.js';
 import logger, { LOG_CATEGORIES } from './logger.js';
 import { OSMDRenderer } from './osmd-renderer.js';
 import { LEFT_MARGIN_PX, ENABLE_AUTOSAVE, BASE_FONT_SIZE } from './constants.js';
+import { DOM_SELECTORS } from './constants/editorConstants.js';
 import AutoSave from './autosave.js';
 import StorageManager from './storage-manager.js';
 import { DebugHUD } from './debug-hud.js';
@@ -1337,13 +1338,18 @@ class MusicNotationEditor {
     try {
       console.log('📝 render() called', { dirtyLineIndices });
 
-      // Merge annotation layer (slurs, etc.) into cells before rendering
+      // Merge annotation layer (slurs, ornaments, etc.) into cells before rendering
       // This updates the WASM internal document with slur indicators on cells
       if (this.wasmModule && this.wasmModule.applyAnnotationSlursToCells) {
         this.wasmModule.applyAnnotationSlursToCells();
       }
 
-      // Get the updated document from WASM (with slur indicators merged)
+      // Merge annotation layer ornaments into cells before rendering
+      if (this.wasmModule && this.wasmModule.applyAnnotationOrnamentsToCells) {
+        this.wasmModule.applyAnnotationOrnamentsToCells();
+      }
+
+      // Get the updated document from WASM (with slur/ornament indicators merged)
       // WASM is the only source of truth - we just read for rendering
       let doc;
       if (this.wasmModule && this.wasmModule.getDocumentSnapshot) {
@@ -1826,53 +1832,8 @@ class MusicNotationEditor {
   }
 
 
-  /**
-     * Update cursor position display in UI
-     */
-  updateCursorPositionDisplay() {
-    const cursorPos = document.getElementById('cursor-position');
-    if (cursorPos) {
-      // Get line, lane (row), and column for debugging
-      const line = this.getCurrentStave();
-      const col = this.getCursorPosition();
-
-      // Display in "Line: X, Col: Y" format for debugging
-      cursorPos.textContent = `Line: ${line}, Col: ${col}`;
-    }
-
-    const charCount = document.getElementById('char-count');
-    if (charCount && this.getCurrentLine()) {
-      // Count all cells (lanes removed)
-      const cells = this.getCurrentLine().cells || [];
-      charCount.textContent = cells.length;
-    }
-
-    const selectionInfo = document.getElementById('selection-info');
-    if (selectionInfo) {
-      if (this.hasSelection()) {
-        const selection = this.getSelection();
-        const selectionText = this.getSelectedText();
-
-        // Calculate cell count from selection range (selection has {line, col} objects)
-        // Note: Selection range is half-open [start, end), exclusive of end, matching WASM/Rust convention
-        let cellCount = 0;
-        if (selection.start.line === selection.end.line) {
-          // Single-line selection: count cells from start.col to end.col (exclusive)
-          cellCount = Math.abs(selection.end.col - selection.start.col);
-        } else {
-          // Multi-line selection: would need to count across lines
-          // For now, show line count as a placeholder
-          cellCount = Math.abs(selection.end.line - selection.start.line);
-        }
-
-        selectionInfo.textContent = `Selected: ${cellCount} cells (${selectionText})`;
-        selectionInfo.className = 'text-xs text-success';
-      } else {
-        selectionInfo.textContent = 'No selection';
-        selectionInfo.className = 'text-xs text-ui-disabled-text';
-      }
-    }
-  }
+  // NOTE: updateCursorPositionDisplay() moved to CursorCoordinator
+  // See line 2953 for delegate method
 
   /**
      * Update document display in debug panel

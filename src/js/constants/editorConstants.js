@@ -60,10 +60,11 @@ export const DOM_SELECTORS = {
   CONSOLE_WARNINGS_LIST: 'console-warnings-list',
   CONSOLE_LOG_LIST: 'console-log-list',
 
-  // Status displays
-  CURSOR_POSITION: 'cursor-position',
-  CHAR_COUNT: 'char-count',
-  SELECTION_INFO: 'selection-info',
+  // Status displays (editor status bar)
+  CURSOR_POSITION: 'editor-cursor-position',
+  CHAR_COUNT: 'editor-char-count',
+  SELECTION_INFO: 'editor-selection-status',
+  PITCH_SYSTEM: 'editor-pitch-system',
   ORNAMENT_EDIT_MODE_DISPLAY: 'ornament-edit-mode-display',
 
   // Editor

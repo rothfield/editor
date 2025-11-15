@@ -434,8 +434,8 @@ class EventManager {
    */
   applyOrnament() {
     console.log('Alt+O: Apply ornament shortcut triggered');
-    if (this.editor && this.editor.applyOrnament) {
-      this.editor.applyOrnament('after');
+    if (this.editor && this.editor.ui && this.editor.ui.pasteOrnament) {
+      this.editor.ui.pasteOrnament();
     } else {
       console.warn('Apply ornament not available');
     }

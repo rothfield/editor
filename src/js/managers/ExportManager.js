@@ -43,6 +43,18 @@ export class ExportManager {
         console.warn(`[ExportManager] applyAnnotationSlursToCells function not available`);
       }
 
+      // Apply annotation layer ornaments to cells before export
+      if (typeof this.editor.wasmModule.applyAnnotationOrnamentsToCells === 'function') {
+        console.log(`[ExportManager] Calling applyAnnotationOrnamentsToCells()...`);
+        const ornamentResult = this.editor.wasmModule.applyAnnotationOrnamentsToCells();
+        console.log(`[ExportManager] applyAnnotationOrnamentsToCells() returned:`, ornamentResult);
+        if (ornamentResult?.success) {
+          console.log(`[JS] Applied ${ornamentResult.ornaments_applied} ornaments from annotation layer to cells`);
+        }
+      } else {
+        console.warn(`[ExportManager] applyAnnotationOrnamentsToCells function not available`);
+      }
+
       const musicxml = this.editor.wasmModule.exportMusicXML();
       const exportTime = performance.now() - startTime;
 

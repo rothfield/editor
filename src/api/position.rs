@@ -296,7 +296,6 @@ mod tests {
             char: char.to_string(),
             kind: ElementKind::PitchedElement,
             col: 0,
-            continuation: false,
             ..Default::default()
         }
     }

@@ -11,7 +11,7 @@ calculateCellPosition(x, y) → stop index [JS/DOM]
     ↓
 selectBeatOrCharGroup(cellIndex) [JS]
     ├─ IF beat-loop class exists → scan DOM for beat boundaries
-    └─ ELSE → scan model for continuation flag
+    └─ ELSE → select character/cell
     ↓
 initializeSelection(start, end) [JS]
     ├─ Store in document.state.selection
@@ -51,11 +51,11 @@ updateSelectionDisplay() [JS]
 - Fragile
 
 ### Branch 2: Character Selection (Model-based)
-**Trigger**: Cell has `continuation` flag
+**Trigger**: Cell starts a multi-character glyph
 
 ```javascript
-// Scan backward for continuation=false
-// Scan forward while continuation=true
+// Scan backward for start of glyph
+// Scan forward while part of same glyph
 // Select all cells in group
 ```
 

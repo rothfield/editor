@@ -3,7 +3,7 @@
  *
  * Handles CSS injection for:
  * - Web fonts (NotationFont)
- * - Cell styling (pitched elements, symbols, continuations)
+ * - Cell styling (pitched elements, symbols)
  * - Accidental rendering (composite glyphs via CSS overlay)
  * - Barline styles (dynamic from font mapping)
  * - Octave dots (embedded in font glyphs)
@@ -67,11 +67,6 @@ class StyleManager {
       .char-cell.kind-symbol {
         color: #22c55e; /* green-500 */
         font-weight: 500;
-      }
-
-      /* Pitch continuation cells contain non-breaking space (invisible but takes space) */
-      .char-cell.pitch-continuation {
-        /* No special styling needed - contains U+00A0 (non-breaking space) */
       }
 
       /* ===== ACCIDENTAL RENDERING (WASM-FIRST ARCHITECTURE) ===== */

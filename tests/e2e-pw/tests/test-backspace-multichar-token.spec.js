@@ -47,7 +47,6 @@ test('Backspace on selected multi-char token (:|) should delete entire token', a
     return doc.lines[0].cells.map(c => ({
       char: c.char,
       col: c.col,
-      continuation: c.continuation
     }));
   });
   console.log('Cells before backspace:', JSON.stringify(cellsBeforeBackspace));
@@ -114,7 +113,6 @@ test('Backspace on selected multi-char token (:|) should delete entire token', a
     return doc.lines[0].cells.map(c => ({
       char: c.char,
       col: c.col,
-      continuation: c.continuation
     }));
   });
   console.log('Cells after backspace:', JSON.stringify(cellsAfterBackspace));

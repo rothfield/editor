@@ -514,15 +514,15 @@
                     </ul>
                 </nav>
 
-                <!-- Center: Document Status Information -->
-                <div class="flex items-center space-x-4 text-gray-600">
-                    <span>Position: <span id="cursor-position">Line: 0, Col: 0 (Lane: 1)</span></span>
-                    <span class="text-gray-400">|</span>
-                    <span>Pitch System: <span id="current-pitch-system" style="font-weight: bold;">Number</span></span>
-                    <span class="text-gray-400">|</span>
-                    <span>Characters: <span id="char-count">0</span></span>
-                    <span class="text-gray-400">|</span>
-                    <span id="selection-info">No selection</span>
+                <!-- Center: Editor Status Bar -->
+                <div class="flex items-center space-x-4 text-gray-600" role="status" aria-live="polite" aria-label="Editor status">
+                    <span>Position: <span id="editor-cursor-position" data-testid="cursor-position">Line: 0, Col: 0 (Lane: 1)</span></span>
+                    <span class="text-gray-400" role="separator">|</span>
+                    <span>Pitch System: <span id="editor-pitch-system" data-testid="pitch-system" style="font-weight: bold;">Number</span></span>
+                    <span class="text-gray-400" role="separator">|</span>
+                    <span>Characters: <span id="editor-char-count" data-testid="char-count">0</span></span>
+                    <span class="text-gray-400" role="separator">|</span>
+                    <span id="editor-selection-status" data-testid="selection-status">No selection</span>
                 </div>
 
                 <!-- Right: Document Title and Panel Toggle -->

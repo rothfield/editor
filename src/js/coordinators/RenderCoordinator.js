@@ -36,13 +36,18 @@ export default class RenderCoordinator {
     try {
       console.log('📝 render() called', { dirtyLineIndices });
 
-      // Merge annotation layer (slurs, etc.) into cells before rendering
+      // Merge annotation layer (slurs, ornaments, etc.) into cells before rendering
       // This updates the WASM internal document with slur indicators on cells
       if (this.editor.wasmModule && this.editor.wasmModule.applyAnnotationSlursToCells) {
         this.editor.wasmModule.applyAnnotationSlursToCells();
       }
 
-      // Get the updated document from WASM (with slur indicators merged)
+      // Merge annotation layer ornaments into cells before rendering
+      if (this.editor.wasmModule && this.editor.wasmModule.applyAnnotationOrnamentsToCells) {
+        this.editor.wasmModule.applyAnnotationOrnamentsToCells();
+      }
+
+      // Get the updated document from WASM (with slur/ornament indicators merged)
       // WASM is the only source of truth - we just read for rendering
       let doc;
       if (this.editor.wasmModule && this.editor.wasmModule.getDocumentSnapshot) {

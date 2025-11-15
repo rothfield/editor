@@ -48,12 +48,6 @@ fn normalize_beat(beat_cells: &[Cell]) -> (Vec<usize>, usize) {
     while i < beat_cells.len() {
         let cell = &beat_cells[i];
 
-        // IMPORTANT: Skip continuation cells - they're part of the previous cell
-        if false /* REMOVED: continuation field */ {
-            i += 1;
-            continue;
-        }
-
         if cell.kind == ElementKind::PitchedElement {
             seen_pitched_element = true; // FSM: Transition to AFTER_PITCHED state
             // Count this note + following extensions
@@ -244,12 +238,6 @@ pub fn process_beat(
     // Process remaining elements in the beat
     while i < beat_cells.len() {
         let cell = &beat_cells[i];
-
-        // IMPORTANT: Skip continuation cells - they're part of the previous cell
-        if false /* REMOVED: continuation field */ {
-            i += 1;
-            continue;
-        }
 
         match cell.kind {
             ElementKind::PitchedElement => {

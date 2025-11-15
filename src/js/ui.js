@@ -5,6 +5,8 @@
  * tab management, and user interface elements for the Music Notation Editor.
  */
 
+import { DOM_SELECTORS } from './constants/editorConstants.js';
+
 class UI {
   constructor(editor, fileOperations = null, preferencesUI = null) {
     this.editor = editor;
@@ -331,7 +333,7 @@ class UI {
       { id: 'menu-ornament-after', label: afterLabel, action: 'ornament-position-after', checkable: true, checked: currentOrnament?.placement === 'after', hasOrnationNotation: currentOrnament?.placement === 'after' && currentOrnament },
       { id: 'menu-separator-0', label: null, separator: true },
       { id: 'menu-ornament-copy', label: 'Copy', action: 'ornament-copy', testid: 'menu-ornament-copy' },
-      { id: 'menu-ornament-paste', label: 'Ornament from Clipboard', action: 'ornament-paste', testid: 'menu-ornament-paste' },
+      { id: 'menu-ornament-paste', label: 'Ornament from Clipboard', action: 'ornament-paste', testid: 'menu-ornament-paste', shortcut: 'Alt+O' },
       { id: 'menu-ornament-clear', label: 'Clear', action: 'ornament-clear', testid: 'menu-ornament-clear' }
     ];
 
@@ -369,8 +371,37 @@ class UI {
             label.style.fontFamily = "'NotationFont', monospace";
           }
           menuItem.appendChild(label);
+
+          // Add shortcut if present
+          if (item.shortcut) {
+            const shortcut = document.createElement('span');
+            shortcut.className = 'menu-shortcut';
+            shortcut.textContent = item.shortcut;
+            shortcut.style.marginLeft = 'auto';
+            shortcut.style.opacity = '0.6';
+            shortcut.style.fontSize = '0.9em';
+            menuItem.appendChild(shortcut);
+            menuItem.style.display = 'flex';
+            menuItem.style.justifyContent = 'space-between';
+          }
         } else {
-          menuItem.textContent = item.label;
+          // Create label span for non-checkable items
+          const label = document.createElement('span');
+          label.textContent = item.label;
+          menuItem.appendChild(label);
+
+          // Add shortcut if present
+          if (item.shortcut) {
+            const shortcut = document.createElement('span');
+            shortcut.className = 'menu-shortcut';
+            shortcut.textContent = item.shortcut;
+            shortcut.style.marginLeft = 'auto';
+            shortcut.style.opacity = '0.6';
+            shortcut.style.fontSize = '0.9em';
+            menuItem.appendChild(shortcut);
+            menuItem.style.display = 'flex';
+            menuItem.style.justifyContent = 'space-between';
+          }
         }
 
         menuItem.addEventListener('click', this.handleMenuItemClick);
@@ -1394,7 +1425,7 @@ class UI {
     const system = this.getCurrentPitchSystem();
     const systemName = this.getPitchSystemName(system);
 
-    const displayElement = document.getElementById('current-pitch-system');
+    const displayElement = document.getElementById(DOM_SELECTORS.PITCH_SYSTEM);
     if (displayElement) {
       displayElement.textContent = systemName;
     }
@@ -1784,9 +1815,21 @@ class UI {
         return;
       }
 
-      // Store cell in object clipboard
-      this.editor.clipboard.cells = [line.cells[cellIndex]];
-      this.editor.addToConsoleLog(`Ornament copied to clipboard`);
+      const cell = line.cells[cellIndex];
+
+      // Get ornament data from annotation layer (text-first architecture)
+      const ornamentResult = this.editor.wasmModule.getOrnamentAt(cursor.line, cellIndex);
+
+      if (!ornamentResult || !ornamentResult.notation) {
+        alert('No ornament found at this position');
+        return;
+      }
+
+      const notation = ornamentResult.notation;
+
+      // Store TEXT in clipboard, not Cell object
+      this.editor.clipboard.ornamentNotation = notation;
+      this.editor.addToConsoleLog(`Ornament copied: ${notation}`);
     } catch (error) {
       console.error('[UI] Copy ornament error:', error);
       alert(`Failed to copy ornament: ${error.message || error}`);
@@ -1794,14 +1837,12 @@ class UI {
   }
 
   /**
-   * Paste ornament from object clipboard to selected cell
+   * Paste ornament from clipboard to selected cell (TEXT-BASED, LAYERED API)
    *
-   * KISS logic: Replace the target cell's ornament with the cells from the clipboard.
-   * - JS reads from object clipboard (this.clipboard.cells, not system clipboard)
-   * - JS calculates cell_index from cursor position
-   * - JS calls WASM pasteOrnamentCells() to handle the logic
-   * - WASM creates ornament object and attaches to target cell
-   * - JS updates line.cells and renders
+   * Uses the new layered architecture:
+   * - Reads TEXT notation from clipboard
+   * - Calls applyOrnamentLayered() which stores in annotation layer
+   * - Renders (which calls applyAnnotationOrnamentsToCells() to sync)
    */
   async pasteOrnament() {
     console.log('[UI] pasteOrnament');
@@ -1812,45 +1853,85 @@ class UI {
     }
 
     try {
-      // Read from object clipboard (same as cell paste)
-      if (!this.editor.clipboard.cells || this.editor.clipboard.cells.length === 0) {
-        alert('No cell in clipboard');
-        return;
+      const doc = this.editor.getDocument();
+      const cursor = doc.state.cursor;
+      const selection = doc.state.selection_manager?.current_selection;
+
+      let notation;
+      let targetCol;
+
+      // Check if there's a selection
+      if (selection && selection.anchor && selection.head) {
+        console.log('[UI] Selection detected, using selected text as ornament');
+
+        // Get the selected text
+        const line = doc.lines[cursor.line];
+        const start = Math.min(selection.anchor.col, selection.head.col);
+        const end = Math.max(selection.anchor.col, selection.head.col);
+
+        // Extract selected text from cells
+        const selectedText = line.cells
+          .slice(start, end)
+          .map(cell => cell.char)
+          .join('');
+
+        console.log(`[UI] Selected text: "${selectedText}" (cols ${start}-${end})`);
+
+        if (!selectedText || selectedText.trim().length === 0) {
+          alert('No text selected');
+          return;
+        }
+
+        notation = selectedText;
+
+        // Target is the note BEFORE the selection
+        // If selection starts at col 0, can't apply ornament
+        if (start === 0) {
+          alert('Cannot apply ornament: selection starts at beginning of line');
+          return;
+        }
+
+        targetCol = start - 1; // The cell before the selection
+
+        console.log(`[UI] Applying ornament "${notation}" to col ${targetCol}`);
+      } else {
+        // No selection - use clipboard
+        notation = this.editor.clipboard.ornamentNotation;
+        if (!notation) {
+          alert('No ornament in clipboard and no text selected');
+          return;
+        }
+
+        // Effective selection logic: cursor.col - 1
+        if (cursor.col === 0) {
+          alert('No cell selected (cursor at start of line)');
+          return;
+        }
+
+        targetCol = cursor.col - 1;
       }
 
-      const placement = this.pendingOrnamentPosition || 'before';
+      const placement = this.pendingOrnamentPosition || 'after';
+      const col = targetCol;
 
-      // Get cursor position and calculate target cell index
-      const cursor = this.editor.getDocument().state.cursor;
-      const line = this.editor.getDocument().lines[cursor.line];
-
-      // Effective selection logic: cursor.col - 1
-      if (cursor.col === 0) {
-        alert('No cell selected (cursor at start of line)');
-        return;
-      }
-
-      const cellIndex = cursor.col - 1;
-
-      if (cellIndex >= line.cells.length) {
-        alert('Invalid cell index');
-        return;
-      }
-
-      // Call WASM to handle ornament pasting logic
-      const updatedCells = this.editor.wasmModule.pasteOrnamentCells(
-        line.cells,
-        cellIndex,
-        this.editor.clipboard.cells,
+      // Call layered API with TEXT notation
+      const result = await this.editor.wasmModule.applyOrnamentLayered(
+        cursor.line,
+        col,
+        notation,
         placement
       );
 
-      // Update line.cells with modified array
-      line.cells = updatedCells;
+      console.log('[UI] applyOrnamentLayered result:', result);
 
-      // Render
+      if (!result.success) {
+        alert(`Failed to apply ornament: ${result.error || 'Unknown error'}`);
+        return;
+      }
+
+      // Render (will call applyAnnotationOrnamentsToCells() to sync)
       await this.editor.renderAndUpdate();
-      this.editor.addToConsoleLog(`Ornament pasted: ${this.editor.clipboard.cells.length} cells (${placement})`);
+      this.editor.addToConsoleLog(`Ornament pasted: ${notation} (${placement})`);
     } catch (error) {
       console.error('[UI] Paste ornament error:', error);
       alert(`Failed to paste ornament: ${error.message || error}`);
@@ -1858,13 +1939,11 @@ class UI {
   }
 
   /**
-   * Clear ornament from selected cell
+   * Clear ornament from selected cell (LAYERED API)
    *
-   * Cells-array pattern (like octave operations):
-   * - JS calculates cell_index from cursor position
-   * - JS passes cells array to WASM
-   * - WASM returns updated cells array with ornament cleared
-   * - JS updates line.cells and renders
+   * Uses the new layered architecture:
+   * - Calls removeOrnamentLayered() which removes from annotation layer
+   * - Renders (which calls applyAnnotationOrnamentsToCells() to sync)
    */
   async clearOrnament() {
     console.log('[UI] clearOrnament');
@@ -1875,9 +1954,8 @@ class UI {
     }
 
     try {
-      // Get cursor position and calculate target cell index
+      // Get cursor position
       const cursor = this.editor.getDocument().state.cursor;
-      const line = this.editor.getDocument().lines[cursor.line];
 
       // Effective selection logic: cursor.col - 1
       if (cursor.col === 0) {
@@ -1885,20 +1963,19 @@ class UI {
         return;
       }
 
-      const cellIndex = cursor.col - 1;
+      const col = cursor.col - 1;
 
-      if (cellIndex >= line.cells.length) {
-        alert('Invalid cell index');
-        return;
+      // Call layered API to remove ornament
+      const result = await this.editor.wasmModule.removeOrnamentLayered(cursor.line, col);
+
+      console.log('[UI] removeOrnamentLayered result:', result);
+
+      if (!result.success) {
+        // Not necessarily an error - just means no ornament was there
+        console.log('No ornament to remove');
       }
 
-      // Call WASM with cells array + cell_index (cells-array pattern)
-      const updatedCells = this.editor.wasmModule.clearOrnamentFromCell(line.cells, cellIndex);
-
-      // Update line.cells with modified array (same as octave operations)
-      line.cells = updatedCells;
-
-      // Render
+      // Render (will call applyAnnotationOrnamentsToCells() to sync)
       await this.editor.renderAndUpdate();
       this.editor.addToConsoleLog('Ornament cleared');
     } catch (error) {

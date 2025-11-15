@@ -68,6 +68,7 @@ export class WASMBridge {
       // Layered Architecture API
       'selectWholeBeat', 'shiftOctave',
       'toggleSlur', 'applySlurLayered', 'removeSlurLayered', 'getSlursForLine', 'applyAnnotationSlursToCells',
+      'applyOrnamentLayered', 'removeOrnamentLayered', 'getOrnamentAt', 'getOrnamentsForLine', 'applyAnnotationOrnamentsToCells',
 
       // Ornament Copy/Paste API
       'copyOrnamentFromCell', 'pasteOrnamentToCell', 'pasteOrnamentCells',
@@ -110,7 +111,7 @@ export class WASMBridge {
 
       // Cursor/Selection API
       'getCaretInfo', 'getSelectionInfo', 'setSelection', 'clearSelection',
-      'startSelection', 'extendSelection',
+      'startSelection', 'startSelectionAt', 'extendSelection', 'extendSelectionTo',
 
       // Cursor Movement API
       'moveLeft', 'moveRight', 'moveUp', 'moveDown', 'moveHome', 'moveEnd',

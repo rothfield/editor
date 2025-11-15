@@ -768,8 +768,8 @@ impl<'a> LayoutLineComputer<'a> {
             cell_bottom + LYRICS_GAP
         };
 
-        // Check if line has any pitched elements (excluding continuation cells)
-        let has_pitched_elements = original_cells.iter().any(|c| !false /* REMOVED: continuation field */ && matches!(c.kind, ElementKind::PitchedElement));
+        // Check if line has any pitched elements
+        let has_pitched_elements = original_cells.iter().any(|c| matches!(c.kind, ElementKind::PitchedElement));
 
         // Special case: 0 pitched elements - just render entire lyrics as-is
         if !has_pitched_elements {
