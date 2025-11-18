@@ -3,7 +3,9 @@
 
 .PHONY: help setup build build-dev build-prod build-wasm build-js build-css clean serve serve-prod kill test test-e2e test-headless test-coverage lint format type-check pre-commit install-tools lilypond-start lilypond-stop lilypond-logs lilypond-health lilypond-test lilypond-build lilypond-clean lilypond-restart lilypond-install-docker-arch build-fast build-wasm-fast build-profile-analyze fonts-spec fonts fonts-validate fonts-debug fonts-test fonts-install
 
-# Default target
+# Default target - Generate NotationFont
+.DEFAULT_GOAL := fonts
+
 help:
 	@echo "Music Notation Editor POC - Build System"
 	@echo ""
