@@ -225,12 +225,25 @@ source_fonts:
 # - variant 2: 1 dot below
 # - variant 3: 2 dots below
 glyph_variants:
-  count_per_character: 4
+  count_per_character: 30  # 6 accidentals × 5 octave variants
+  accidental_types: 6      # natural, flat, half-flat, double-flat, sharp, double-sharp
+  octave_variants: 5       # 0, -2, -1, +1, +2 (base + dots above/below)
   variant_indices:
-    0: "1 dot above"
-    1: "2 dots above"
-    2: "1 dot below"
-    3: "2 dots below"
+    # Natural with octave dots (variants 0-3)
+    0: "natural +1 octave (1 dot above)"
+    1: "natural +2 octave (2 dots above)"
+    2: "natural -1 octave (1 dot below)"
+    3: "natural -2 octave (2 dots below)"
+    # Sharp with octave dots (variants 4-7)
+    4: "sharp +1 octave (1 dot above)"
+    5: "sharp +2 octave (2 dots above)"
+    6: "sharp -1 octave (1 dot below)"
+    7: "sharp -2 octave (2 dots below)"
+    # Flat with octave dots (variants 8-11)
+    8: "flat +1 octave (1 dot above)"
+    9: "flat +2 octave (2 dots above)"
+    10: "flat -1 octave (1 dot below)"
+    11: "flat -2 octave (2 dots below)"
 
 # PUA (Private Use Area) Mapping
 # Where codepoints are assigned in Unicode Private Use Area
@@ -274,23 +287,33 @@ accidental_composites:
         "7b": 0xE226  # 7 flat at index 6
         "Cb": 0xE227  # C flat at index 7
 
+    half_flat:
+      range: "0xE24F - 0xE27D"
+      count: 47
+      smufl_symbol: 0x266D  # ♭ Unicode Flat Sign (U+266D) with diagonal slash
+      draw_slash: true      # Draw diagonal slash through flat symbol
+      examples:
+        "1b/": 0xE24F  # 1 half-flat at index 0
+        "7b/": 0xE255  # 7 half-flat at index 6
+        "Cb/": 0xE256  # C half-flat at index 7
+
     double_sharp:
-      range: "0xE250 - 0xE27E"
+      range: "0xE27E - 0xE2AC"
       count: 47
       smufl_symbol: 0x1D12A  # 𝄪 Musical Symbol Double Sharp
       examples:
-        "1##": 0xE250  # 1 double-sharp at index 0
-        "7##": 0xE256  # 7 double-sharp at index 6
-        "C##": 0xE257  # C double-sharp at index 7
+        "1##": 0xE27E  # 1 double-sharp at index 0
+        "7##": 0xE284  # 7 double-sharp at index 6
+        "C##": 0xE285  # C double-sharp at index 7
 
     double_flat:
-      range: "0xE280 - 0xE2AE"
+      range: "0xE2AD - 0xE2DB"
       count: 47
       smufl_symbol: 0x1D12B  # 𝄫 Musical Symbol Double Flat (Unicode standard position)
       examples:
-        "1bb": 0xE280  # 1 double-flat at index 0
-        "7bb": 0xE286  # 7 double-flat at index 6
-        "Cbb": 0xE287  # C double-flat at index 7
+        "1bb": 0xE2AD  # 1 double-flat at index 0
+        "7bb": 0xE2B3  # 7 double-flat at index 6
+        "Cbb": 0xE2B4  # C double-flat at index 7
 
 accidental_octave_composites:
   description: "Triple composites combining base character + accidental + octave dots"

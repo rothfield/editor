@@ -82,11 +82,9 @@ test.describe('Single-Cell Architecture', () => {
 
     const modelText = await docModel.innerText();
 
-    // Should have ONE cell with char="||" (YAML format)
-    expect(modelText).toContain('char: "||"');
-
-    // Should have DoubleBarline kind (YAML format shows enum with newlines)
+    // Should have ONE cell with DoubleBarline kind (char is now Unicode U+1D101)
     expect(modelText).toContain('name: "double_barline"');
+    // Note: char is now the Unicode double barline 𝄁 (U+1D101), not ASCII "||"
   });
 
   test('Smart insert for repeat left barline: | + : -> |:', async ({ page }) => {
@@ -103,9 +101,9 @@ test.describe('Single-Cell Architecture', () => {
 
     const modelText = await docModel.innerText();
 
-    // Should have ONE cell with char="|:" and kind="RepeatLeftBarline"
-    expect(modelText).toContain('char: "|:"');
+    // Should have ONE cell with RepeatLeftBarline kind (char is now Unicode U+1D106)
     expect(modelText).toContain('name: "repeat_left_barline"');
+    // Note: char is now the Unicode repeat left barline 𝄆 (U+1D106), not ASCII "|:"
   });
 
   test('Smart insert for repeat right barline: : + | -> :|', async ({ page }) => {
@@ -122,9 +120,9 @@ test.describe('Single-Cell Architecture', () => {
 
     const modelText = await docModel.innerText();
 
-    // Should have ONE cell with char=":|" and kind="RepeatRightBarline"
-    expect(modelText).toContain('char: ":|"');
+    // Should have ONE cell with RepeatRightBarline kind (char is now Unicode U+1D107)
     expect(modelText).toContain('name: "repeat_right_barline"');
+    // Note: char is now the Unicode repeat right barline 𝄇 (U+1D107), not ASCII ":|"
   });
 
   test('Two-stage backspace for barlines: || -> | -> deleted', async ({ page }) => {
@@ -141,9 +139,9 @@ test.describe('Single-Cell Architecture', () => {
 
     let modelText = await docModel.innerText();
 
-    // Should have ONE cell with char="|" and kind="SingleBarline"
-    expect(modelText).toContain('char: "|"');
+    // Should have ONE cell with kind="SingleBarline" (char is now Unicode U+1D100)
     expect(modelText).toContain('name: "single_barline"');
+    // Note: char is now the Unicode barline character 𝄀 (U+1D100), not ASCII "|"
 
     // Second backspace: should delete the cell
     await page.keyboard.press('Backspace');

@@ -3,8 +3,15 @@
 Verify that the font has the correct reference transformations.
 """
 import fontforge
+import sys
+import os
 
-font = fontforge.open("/home/john/editor/static/fonts/NotationMonoDotted.ttf")
+# Default to Number system font in dist/fonts
+default_path = os.path.join(os.path.dirname(__file__), "dist/fonts/NotationFont-Number.ttf")
+font_path = sys.argv[1] if len(sys.argv) > 1 else default_path
+
+print(f"Opening font: {font_path}\n")
+font = fontforge.open(font_path)
 
 # Check the first few glyphs and their reference transformations
 test_chars = [0xE000, 0xE001, 0xE002, 0xE003]

@@ -143,13 +143,10 @@ export class KeySignatureSelector {
 
     if (this.targetLevel === 'document') {
       // Apply to document level
-      if (this.ui.editor && this.ui.editor.getDocument()) {
-        this.ui.editor.getDocument().key_signature = this.selectedKey;
+      if (this.ui.editor) {
+        // Use WASM API to set key signature (WASM is source of truth)
+        this.ui.editor.wasmModule.setDocumentKeySignature(this.selectedKey);
         this.ui.editor.addToConsoleLog(`Document key signature set to: ${this.selectedKey}`);
-
-        // CRITICAL: Sync JavaScript document changes back to WASM
-        // This ensures exports read the updated key signature from WASM DOCUMENT mutex
-        this.ui.editor.wasmModule.loadDocument(this.ui.editor.getDocument());
 
         await this.ui.editor.renderAndUpdate();
 
@@ -162,26 +159,22 @@ export class KeySignatureSelector {
       }
     } else if (this.targetLevel === 'line') {
       // Apply to line level
-      if (this.ui.editor && this.ui.editor.getDocument()) {
-        const lineIndex = this.ui.editor.getDocument().state.cursor.line || 0;
-        const line = this.ui.editor.getDocument().lines[lineIndex];
+      if (this.ui.editor) {
+        const doc = this.ui.editor.getDocument();
+        const lineIndex = doc?.state.cursor.line || 0;
 
-        if (line) {
-          line.key_signature = this.selectedKey;
-          this.ui.editor.addToConsoleLog(`Line ${lineIndex} key signature set to: ${this.selectedKey}`);
+        // Use WASM API to set line key signature (WASM is source of truth)
+        this.ui.editor.wasmModule.setLineKeySignature(lineIndex, this.selectedKey);
+        this.ui.editor.addToConsoleLog(`Line ${lineIndex} key signature set to: ${this.selectedKey}`);
 
-          // CRITICAL: Sync JavaScript document changes back to WASM
-          this.ui.editor.wasmModule.loadDocument(this.ui.editor.getDocument());
+        await this.ui.editor.renderAndUpdate();
 
-          await this.ui.editor.renderAndUpdate();
+        // IMMEDIATELY update all export tabs (MusicXML, LilyPond, IR)
+        // regardless of which tab is currently visible
+        await this.ui.editor.forceUpdateAllExports();
 
-          // IMMEDIATELY update all export tabs (MusicXML, LilyPond, IR)
-          // regardless of which tab is currently visible
-          await this.ui.editor.forceUpdateAllExports();
-
-          // Update the display via UI method (includes click handler)
-          this.ui.updateKeySignatureCornerDisplay();
-        }
+        // Update the display via UI method (includes click handler)
+        this.ui.updateKeySignatureCornerDisplay();
       }
     }
   }
@@ -244,16 +237,20 @@ function getKeySVGFilename(keySignature) {
  * @param {Function} onClickCallback - Optional callback when display is clicked
  */
 export function updateKeySignatureDisplay(keySignature, onClickCallback = null) {
+  console.log(`[updateKeySignatureDisplay] Called with keySignature: "${keySignature}"`);
+
   const displayElement = document.getElementById('key-signature-display');
   const svgElement = document.getElementById('key-sig-display-svg');
 
   if (!displayElement || !svgElement) {
+    console.warn('[updateKeySignatureDisplay] Display elements not found');
     return;
   }
 
   if (keySignature && keySignature.trim() !== '') {
     // Get the SVG filename for this key signature
     const svgFilename = getKeySVGFilename(keySignature);
+    console.log(`[updateKeySignatureDisplay] SVG filename: "${svgFilename}"`);
 
     if (svgFilename) {
       // Show the display and set the SVG source
@@ -261,6 +258,7 @@ export function updateKeySignatureDisplay(keySignature, onClickCallback = null) 
       svgElement.alt = keySignature;
       displayElement.title = `${keySignature} (click to change)`;
       displayElement.classList.remove('hidden');
+      console.log(`[updateKeySignatureDisplay] Display shown for "${keySignature}"`);
 
       // Setup click handler if provided
       if (onClickCallback && !displayElement.dataset.hasClickHandler) {
@@ -269,11 +267,12 @@ export function updateKeySignatureDisplay(keySignature, onClickCallback = null) 
       }
     } else {
       // Unknown key signature, hide the display
-      console.warn(`No SVG found for key signature: ${keySignature}`);
+      console.warn(`[updateKeySignatureDisplay] No SVG found for key signature: ${keySignature}`);
       displayElement.classList.add('hidden');
     }
   } else {
     // Hide the display if no key signature
+    console.log(`[updateKeySignatureDisplay] No key signature provided, hiding display`);
     displayElement.classList.add('hidden');
   }
 }

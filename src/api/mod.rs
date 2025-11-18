@@ -30,6 +30,7 @@ pub mod cells;
 pub mod position;
 pub mod core;
 pub mod layered;  // Layered architecture (text-first design)
+pub mod layered_tala;  // Modern tala API
 
 // Re-export all public functions from modules to maintain the current public API
 pub use core::*;
@@ -40,3 +41,4 @@ pub use layered::{
     select_whole_beat, shift_octave,
     apply_slur_layered, remove_slur_layered, get_slurs_for_line, apply_annotation_slurs_to_cells
 };  // Layered architecture API
+pub use layered_tala::set_line_tala_modern;  // Modern tala API

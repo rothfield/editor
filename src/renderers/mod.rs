@@ -21,4 +21,5 @@ pub use layout_engine::{
     detect_collisions,
     layout_with_collision_detection,
 };
-pub use font_utils::{get_glyph_codepoint, get_sharp_glyph_codepoint, get_accidental_glyph_codepoint, get_combined_accidental_octave_glyph};
+// Lookup table API (lookup-based, handles accidentals and octaves in one call)
+pub use font_utils::{glyph_for_pitch, pitch_from_glyph};

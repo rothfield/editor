@@ -28,8 +28,11 @@ export class WASMBridge {
   /**
    * Wrap a WASM function with comprehensive error handling
    * @private
+   * @param {Function} fn - The WASM function to wrap
+   * @param {string} name - The function name for logging
+   * @param {boolean} shouldTriggerRedraw - Whether this function mutates the document and needs redraw
    */
-  _wrapFunction(fn, name) {
+  _wrapFunction(fn, name, shouldTriggerRedraw = false) {
     if (!fn) {
       logger.warn(LOG_CATEGORIES.WASM, `WASM function '${name}' is undefined`);
       return (...args) => {
@@ -40,6 +43,26 @@ export class WASMBridge {
     return (...args) => {
       try {
         const result = fn(...args);
+
+        // Trigger redraw if this is a document-mutating function
+        if (shouldTriggerRedraw) {
+          console.log(`[WASMBridge] Function '${name}' mutated document, triggering automatic redraw`);
+          // Emit event to notify editor that document has changed
+          if (typeof window !== 'undefined' && window.editor) {
+            // Schedule update on next tick to avoid blocking WASM call
+            setTimeout(async () => {
+              try {
+                await window.editor.renderAndUpdate();
+                window.editor.updateDocumentDisplay();
+              } catch (error) {
+                console.error(`[WASMBridge] Error during automatic redraw for '${name}':`, error);
+              }
+            }, 0);
+          } else {
+            console.warn(`[WASMBridge] Cannot trigger redraw - window.editor not available`);
+          }
+        }
+
         return result;
       } catch (error) {
         logger.error(LOG_CATEGORIES.WASM, `WASM call failed: ${name}`, {
@@ -60,15 +83,23 @@ export class WASMBridge {
   _initializeFunctionMappings() {
     const wasm = this.rawModule;
 
+    // Functions that mutate the document and should trigger redraw
+    const documentMutatingFunctions = [
+      'setTitle', 'setComposer', 'setDocumentPitchSystem', 'setDocumentTonic', 'setDocumentKeySignature',
+      'setLineLabel', 'setLineLyrics', 'setLineTala', 'setLinePitchSystem', 'setLineTonic', 'setLineKeySignature',
+      'setLineNewSystem', 'setLineStaffRole', 'setActiveConstraint'
+    ];
+
     // List of all WASM functions to map with automatic error handling
     const functionNames = [
       // New recursive descent API
       'insertCharacter', 'parseText', 'deleteCharacter',
 
       // Layered Architecture API
-      'selectWholeBeat', 'shiftOctave',
+      'selectWholeBeat', 'shiftOctave', 'setOctave',
       'toggleSlur', 'applySlurLayered', 'removeSlurLayered', 'getSlursForLine', 'applyAnnotationSlursToCells',
       'applyOrnamentLayered', 'removeOrnamentLayered', 'getOrnamentAt', 'getOrnamentsForLine', 'applyAnnotationOrnamentsToCells',
+      'setLineTalaModern',
 
       // Ornament Copy/Paste API
       'copyOrnamentFromCell', 'pasteOrnamentToCell', 'pasteOrnamentCells',
@@ -93,8 +124,8 @@ export class WASMBridge {
       'undo', 'redo', 'canUndo', 'canRedo',
 
       // Document API (metadata)
-      'setTitle', 'setComposer', 'setDocumentPitchSystem',
-      'setLineLabel', 'setLineLyrics', 'setLineTala', 'setLinePitchSystem',
+      'setTitle', 'setComposer', 'setDocumentPitchSystem', 'setDocumentTonic', 'setDocumentKeySignature',
+      'setLineLabel', 'setLineLyrics', 'setLineTala', 'setLinePitchSystem', 'setLineTonic', 'setLineKeySignature',
       'setLineNewSystem', 'setLineStaffRole',
 
       // Line manipulation API
@@ -107,7 +138,11 @@ export class WASMBridge {
       'exportMusicXML', 'convertMusicXMLToLilyPond', 'exportMIDI', 'generateIRJson',
 
       // Font Configuration API
-      'getFontConfig',
+      'getFontConfig', 'setGlyphWidthCache',
+
+      // Constraint System API
+      'getPredefinedConstraints', 'isPitchAllowed', 'setActiveConstraint',
+      'getActiveConstraint', 'checkPitchAgainstActiveConstraint', 'getConstraintNotes',
 
       // Cursor/Selection API
       'getCaretInfo', 'getSelectionInfo', 'setSelection', 'clearSelection',
@@ -127,7 +162,8 @@ export class WASMBridge {
 
     // Automatically wrap all functions with error handling
     functionNames.forEach(name => {
-      this[name] = this._wrapFunction(wasm[name], name);
+      const shouldTriggerRedraw = documentMutatingFunctions.includes(name);
+      this[name] = this._wrapFunction(wasm[name], name, shouldTriggerRedraw);
     });
 
     logger.debug(LOG_CATEGORIES.INITIALIZATION, `Wrapped ${functionNames.length} WASM functions`);

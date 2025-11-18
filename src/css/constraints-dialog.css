@@ -1,0 +1,425 @@
+/* Constraints Modal */
+.constraints-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.constraints-modal.hidden {
+    display: none;
+}
+
+.constraints-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+}
+
+.constraints-container {
+    position: relative;
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    width: 80vw;
+    max-width: 1200px;
+    height: 80vh;
+    max-height: 800px;
+    overflow: hidden;
+    z-index: 1;
+    animation: constraints-fade-in 0.3s ease-out;
+    display: flex;
+    flex-direction: column;
+}
+
+@keyframes constraints-fade-in {
+    from {
+        opacity: 0;
+        transform: scale(0.95) translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.constraints-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.5rem 2rem;
+    border-bottom: 1px solid #e5e7eb;
+    background: linear-gradient(to bottom, #f9fafb, #ffffff);
+}
+
+.constraints-header h2 {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #1f2937;
+}
+
+.constraints-close-btn {
+    background: none;
+    border: none;
+    font-size: 2rem;
+    line-height: 1;
+    color: #6b7280;
+    cursor: pointer;
+    padding: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.constraints-close-btn:hover {
+    background: #f3f4f6;
+    color: #1f2937;
+}
+
+.constraints-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* Tab Navigation */
+.constraints-tabs {
+    display: flex;
+    border-bottom: 2px solid #e5e7eb;
+    background: #f9fafb;
+    padding: 0 2rem;
+}
+
+.constraints-tab {
+    padding: 1rem 1.5rem;
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: #6b7280;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    transition: all 0.2s;
+    user-select: none;
+}
+
+.constraints-tab:hover {
+    color: #1f2937;
+    background: rgba(59, 130, 246, 0.05);
+}
+
+.constraints-tab.active {
+    color: #2563eb;
+    border-bottom-color: #2563eb;
+    background: white;
+}
+
+/* Search Box */
+.constraints-search-container {
+    padding: 1rem 2rem;
+    background: white;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.constraints-search-box {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    padding-left: 2.5rem;
+    border: 2px solid #e5e7eb;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    transition: all 0.2s;
+    background: white url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="%236b7280" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>') no-repeat 0.75rem center;
+}
+
+.constraints-search-box:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.constraints-search-box::placeholder {
+    color: #9ca3af;
+}
+
+/* Content Area */
+.constraints-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1.5rem 2rem;
+}
+
+.constraints-tab-panel {
+    display: none;
+}
+
+.constraints-tab-panel.active {
+    display: block;
+}
+
+/* Grid Layout for Cards */
+.constraints-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 1rem;
+}
+
+/* Card Design */
+.constraints-card {
+    border: 2px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 1.25rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: white;
+    position: relative;
+}
+
+.constraints-card:hover {
+    border-color: #3b82f6;
+    background: #f0f9ff;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
+}
+
+.constraints-card.selected {
+    border-color: #2563eb;
+    background: #eff6ff;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.constraints-card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 0.5rem;
+}
+
+.constraints-card-name {
+    font-weight: 600;
+    color: #1f2937;
+    font-size: 1.05rem;
+    flex: 1;
+}
+
+.constraints-card-check {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: 2px solid #d1d5db;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    flex-shrink: 0;
+    margin-left: 0.5rem;
+    font-family: Arial, Helvetica, sans-serif !important; /* Never use NotationFont for checkmark */
+}
+
+.constraints-card.selected .constraints-card-check {
+    background: #2563eb;
+    border-color: #2563eb;
+}
+
+.constraints-card.selected .constraints-card-check::after {
+    content: '';
+    display: block;
+    width: 5px;
+    height: 10px;
+    border: solid white;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg) translate(-2px, -2px);
+}
+
+.constraints-card-badges {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.constraints-card-badge {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-weight: 500;
+}
+
+.badge-pentatonic {
+    background: #dbeafe;
+    color: #1e40af;
+}
+
+.badge-hexatonic {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.badge-quarter-tone {
+    background: #fce7f3;
+    color: #9f1239;
+}
+
+.badge-variable {
+    background: #e0e7ff;
+    color: #3730a3;
+}
+
+.constraints-card-notes {
+    font-family: 'NotationFont', 'Noto Sans', Arial, sans-serif;
+    font-size: 1.25rem;
+    color: #1f2937;
+    padding: 0.5rem 0;
+    margin: 0.5rem 0;
+    border-top: 1px solid #e5e7eb;
+    border-bottom: 1px solid #e5e7eb;
+    letter-spacing: 0.5em;
+    text-align: center;
+    font-weight: normal;
+}
+
+.constraints-card-description {
+    font-size: 0.875rem;
+    color: #6b7280;
+    line-height: 1.5;
+}
+
+/* Empty State */
+.constraints-empty {
+    text-align: center;
+    padding: 3rem;
+    color: #9ca3af;
+}
+
+.constraints-empty-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    opacity: 0.5;
+}
+
+.constraints-empty-text {
+    font-size: 1rem;
+    font-weight: 500;
+}
+
+.constraints-footer {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    padding: 1.5rem 2rem;
+    border-top: 1px solid #e5e7eb;
+    background: #f9fafb;
+}
+
+.constraints-footer-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.constraints-selected {
+    font-size: 0.95rem;
+    color: #6b7280;
+}
+
+.constraints-selected strong {
+    color: #1f2937;
+    font-weight: 600;
+}
+
+.constraints-pitch-system {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.constraints-pitch-label {
+    font-size: 0.875rem;
+    color: #6b7280;
+    font-weight: 500;
+}
+
+.constraints-pitch-select {
+    padding: 0.375rem 0.75rem;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    background: white;
+    color: #1f2937;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.constraints-pitch-select:hover {
+    border-color: #9ca3af;
+}
+
+.constraints-pitch-select:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.constraints-actions {
+    display: flex;
+    gap: 0.75rem;
+    justify-content: center;
+}
+
+.constraints-btn {
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 1px solid #d1d5db;
+    background: white;
+    color: #374151;
+}
+
+.constraints-btn:hover {
+    background: #f3f4f6;
+    border-color: #9ca3af;
+}
+
+.constraints-btn-secondary {
+    background: #2563eb;
+    color: white;
+    border-color: #2563eb;
+}
+
+.constraints-btn-secondary:hover {
+    background: #1d4ed8;
+    border-color: #1d4ed8;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .constraints-container {
+        width: 95vw;
+    }
+
+    .constraints-header h2 {
+        font-size: 1.25rem;
+    }
+
+    .constraints-list {
+        padding: 0 1rem;
+    }
+}

@@ -92,15 +92,26 @@ pub fn parse_single(c: char, pitch_system: PitchSystem, column: usize) -> Cell {
 
 /// Parse note (includes accidentals: "1", "1#", "2bb", "c#", etc.)
 fn parse_note(s: &str, pitch_system: PitchSystem, column: usize) -> Option<Cell> {
+    use crate::renderers::font_utils::glyph_for_pitch;
+
     let dispatcher = get_dispatcher();
     if dispatcher.lookup(s, pitch_system) {
         // Try to parse pitch code from string
         let pitch_code = PitchCode::from_string(s, pitch_system);
 
-        // Create cell with char (will be recomputed later, but set it now for display)
-        let mut cell = Cell::new(s.to_string(), ElementKind::PitchedElement, column);
+            // Initialize cell.char with the correct PUA glyph (octave 0 initially)
+        let initial_char = if let Some(pc) = pitch_code {
+            glyph_for_pitch(pc, 0, pitch_system)
+                .map(|g| g.to_string())
+                .unwrap_or_else(|| s.to_string())
+        } else {
+            s.to_string()
+        };
+
+        let mut cell = Cell::new(initial_char, ElementKind::PitchedElement, column);
         cell.pitch_system = Some(pitch_system);
         cell.pitch_code = pitch_code;
+        cell.octave = 0; // Initialize at base octave
         Some(cell)
     } else {
         None
@@ -109,17 +120,22 @@ fn parse_note(s: &str, pitch_system: PitchSystem, column: usize) -> Option<Cell>
 
 /// Parse barline (includes "|", "|:", ":|", "||", etc.)
 /// Note: ":" alone is NOT a barline - it's text
-/// Determines barline type and creates appropriate ElementKind variant
+/// Converts ASCII input to actual Unicode barline characters for direct rendering
 fn parse_barline(s: &str, column: usize) -> Option<Cell> {
-    let barline_kind = match s {
-        "|" => ElementKind::SingleBarline,
-        "|:" => ElementKind::RepeatLeftBarline,
-        ":|" => ElementKind::RepeatRightBarline,
-        "||" => ElementKind::DoubleBarline,
+    use crate::renderers::font_utils::{
+        BARLINE_SINGLE, BARLINE_DOUBLE, BARLINE_REPEAT_LEFT, BARLINE_REPEAT_RIGHT
+    };
+
+    let (barline_kind, barline_char) = match s {
+        "|" => (ElementKind::SingleBarline, BARLINE_SINGLE),
+        "|:" => (ElementKind::RepeatLeftBarline, BARLINE_REPEAT_LEFT),
+        ":|" => (ElementKind::RepeatRightBarline, BARLINE_REPEAT_RIGHT),
+        "||" => (ElementKind::DoubleBarline, BARLINE_DOUBLE),
         _ => return None,
     };
 
-    let cell = Cell::new(s.to_string(), barline_kind, column);
+    // Store the actual Unicode barline character, not the ASCII placeholder
+    let cell = Cell::new(barline_char.to_string(), barline_kind, column);
     Some(cell)
 }
 
@@ -224,9 +240,10 @@ mod tests {
 
     #[test]
     fn test_barline_single() {
-        // Test single "|" should be SingleBarline
+        // Test single "|" should be SingleBarline with Unicode character
+        use crate::renderers::font_utils::BARLINE_SINGLE;
         let cell = parse_single('|', PitchSystem::Number, 0);
-        assert_eq!(cell.char, "|");
+        assert_eq!(cell.char, BARLINE_SINGLE.to_string());
         assert_eq!(cell.kind, ElementKind::SingleBarline);
     }
 

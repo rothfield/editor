@@ -10,17 +10,22 @@
     <link rel="stylesheet" href="dist/main.css">
     <link rel="stylesheet" href="src/css/gutter.css">
     <link rel="stylesheet" href="src/css/key-signature-selector.css">
+    <link rel="stylesheet" href="src/css/constraints-dialog.css">
 
     <!-- Custom UI styles -->
     <style>
-        /* Music Notation Font - Single source: Noto Music (via NotationFont.ttf) */
+        /* Music Notation Font - Full font loaded directly */
         @font-face {
             font-family: 'NotationFont';
-            src: url('/static/fonts/NotationFont.ttf') format('truetype');
+            src: url('static/fonts/NotationFont.woff2') format('woff2'),
+                 url('static/fonts/NotationFont.ttf') format('truetype');
             font-weight: normal;
             font-style: normal;
-            font-display: swap;
         }
+
+        /* NOTE: System-specific fonts (NotationFont-{Number,Western,Sargam,Doremi}.woff2)
+           are currently NOT USED. The full font contains all glyphs.
+           See editor.js loadNotationFont() for the disabled dynamic loading code. */
 
         /* Viewport constraints - prevent scrollbars */
         html, body {
@@ -318,38 +323,6 @@
             background: #6b7280;
         }
 
-        /* Element kind styling */
-        /* Default text font */
-        .char-cell {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            white-space: pre; /* Preserve spaces as normal font glyphs */
-        }
-
-        /* Music font for barlines and musical symbols (NotationFont derived from Noto Music) */
-        .char-cell.kind-barline {
-            font-family: 'NotationFont', serif;
-            font-size: 20px;
-            line-height: 1;
-        }
-
-        /* Text cells - proportional font, normal styling */
-        .char-cell.kind-text {
-            /* Styling applied via inline styles in renderer.js for proper font sizing */
-            /* font-size: 60% of base (19.2px), non-italic, normal weight, same baseline */
-            /* Explicitly override any ornament styling that might bleed through */
-            vertical-align: baseline !important;
-            top: 0 !important;
-        }
-
-        /* Pitched elements - bold */
-        .char-cell.kind-pitched {
-            font-weight: bold;
-        }
-
-        /* Unpitched elements - bold */
-        .char-cell.kind-unpitched {
-            font-weight: bold;
-        }
 
         /* Selected cells */
         .char-cell.selected {
@@ -367,47 +340,7 @@
             z-index: 10; /* Render on top of other cells */
         }
 
-        /* Visual indicator for ornament boundaries */
-        .char-cell.ornament-first {
-            border-left: 2px solid rgba(147, 51, 234, 0.3); /* Purple border on left */
-            padding-left: 2px;
-        }
 
-        .char-cell.ornament-last {
-            border-right: 2px solid rgba(147, 51, 234, 0.3); /* Purple border on right */
-            padding-right: 2px;
-        }
-
-        /* Ornament dialog CSS removed - replaced by copy/paste workflow */
-
-        /* Ornament Container (NotationFont derived from Noto Music) */
-        .ornament-container {
-            position: absolute;
-            font-family: 'NotationFont', serif;
-            z-index: 5;
-            pointer-events: auto;
-            cursor: pointer;
-        }
-
-        .ornament-container:hover {
-            opacity: 0.8;
-        }
-
-        .ornament-symbol {
-            display: inline-block;
-            margin-right: 1px;
-        }
-
-        .ornament-accidental {
-            font-size: 1.4em;
-            position: relative;
-            top: -0.1em;
-        }
-
-        /* Ornament Preview */
-        .ornament-preview-container {
-            position: relative;
-        }
 
         /* Font Sandbox - NotationFont textarea */
         textarea.font-sandbox {
@@ -431,6 +364,57 @@
         #editor-container.notation-font-test * {
             font-family: 'NotationFont', monospace !important;
             font-size: 16px !important;
+        }
+
+        /* Mode Toggle Button */
+        .mode-toggle-btn {
+            padding: 0.25rem 0.75rem;
+            border-radius: 4px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid transparent;
+            background: transparent;
+            color: #6b7280;
+        }
+
+        .mode-toggle-btn:hover {
+            background: #f3f4f6;
+            border-color: #d1d5db;
+        }
+
+        /* Active state (constraint enabled) - filled background */
+        .mode-toggle-btn.active {
+            background: #eff6ff;
+            border-color: #3b82f6;
+            color: #2563eb;
+            font-weight: 600;
+        }
+
+        .mode-toggle-btn.active:hover {
+            background: #dbeafe;
+            border-color: #2563eb;
+        }
+
+        /* Inactive state (constraint selected but disabled) - filled with strikethrough on text */
+        .mode-toggle-btn.inactive {
+            background: #fef3c7;
+            border-color: #fbbf24;
+            color: #92400e;
+            font-weight: 500;
+        }
+
+        .mode-toggle-btn.inactive:hover {
+            background: #fde68a;
+            border-color: #f59e0b;
+        }
+
+        /* Strikethrough goes through the text (stem), not the button (head) */
+        .mode-toggle-btn.inactive #mode-toggle-text {
+            text-decoration: line-through;
+            text-decoration-thickness: 2px;
+            text-decoration-color: #92400e;
         }
     </style>
 
@@ -523,6 +507,10 @@
                     <span>Characters: <span id="editor-char-count" data-testid="char-count">0</span></span>
                     <span class="text-gray-400" role="separator">|</span>
                     <span id="editor-selection-status" data-testid="selection-status">No selection</span>
+                    <span class="text-gray-400" role="separator">|</span>
+                    <button id="mode-toggle-btn" class="mode-toggle-btn" title="No constraint active (double-click to select)">
+                        <span id="mode-toggle-text">Mode: None</span>
+                    </button>
                 </div>
 
                 <!-- Right: Document Title and Panel Toggle -->
@@ -841,6 +829,90 @@
                     </label>
                     <div class="key-sig-selected">
                         Selected: <strong id="key-sig-display">None</strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Constraints Modal -->
+    <div id="constraints-modal" class="constraints-modal hidden">
+        <div class="constraints-overlay"></div>
+        <div class="constraints-container">
+            <div class="constraints-header">
+                <h2>Select Scale Constraint</h2>
+                <button id="constraints-close" class="constraints-close-btn" aria-label="Close">&times;</button>
+            </div>
+            <div class="constraints-body">
+                <!-- Tab Navigation -->
+                <div class="constraints-tabs">
+                    <div class="constraints-tab active" data-tab="western">Western</div>
+                    <div class="constraints-tab" data-tab="raga">Raga</div>
+                    <div class="constraints-tab" data-tab="maqam">Maqam</div>
+                    <div class="constraints-tab" data-tab="all">All</div>
+                </div>
+
+                <!-- Search Box -->
+                <div class="constraints-search-container">
+                    <input type="text" id="constraints-search" class="constraints-search-box" placeholder="Search scales...">
+                </div>
+
+                <!-- Content Area -->
+                <div class="constraints-content">
+                    <!-- Western Tab Panel -->
+                    <div class="constraints-tab-panel active" data-panel="western">
+                        <div class="constraints-grid" id="constraints-grid-western">
+                            <!-- Dynamically populated -->
+                        </div>
+                    </div>
+
+                    <!-- Raga Tab Panel -->
+                    <div class="constraints-tab-panel" data-panel="raga">
+                        <div class="constraints-grid" id="constraints-grid-raga">
+                            <!-- Dynamically populated -->
+                        </div>
+                    </div>
+
+                    <!-- Maqam Tab Panel -->
+                    <div class="constraints-tab-panel" data-panel="maqam">
+                        <div class="constraints-grid" id="constraints-grid-maqam">
+                            <!-- Dynamically populated -->
+                        </div>
+                    </div>
+
+                    <!-- All Tab Panel -->
+                    <div class="constraints-tab-panel" data-panel="all">
+                        <div class="constraints-grid" id="constraints-grid-all">
+                            <!-- Dynamically populated -->
+                        </div>
+                    </div>
+
+                    <!-- Empty State (hidden by default) -->
+                    <div class="constraints-empty hidden" id="constraints-empty">
+                        <div class="constraints-empty-icon">🔍</div>
+                        <div class="constraints-empty-text">No scales found matching your search</div>
+                    </div>
+                </div>
+
+                <!-- Footer -->
+                <div class="constraints-footer">
+                    <div class="constraints-footer-row">
+                        <div class="constraints-selected">
+                            Active: <strong id="constraints-display">None</strong>
+                        </div>
+                        <div class="constraints-pitch-system">
+                            <label for="constraints-pitch-system-select" class="constraints-pitch-label">Show notes in:</label>
+                            <select id="constraints-pitch-system-select" class="constraints-pitch-select">
+                                <option value="Number" selected>Number (1-7)</option>
+                                <option value="Western">Western (C-B)</option>
+                                <option value="Sargam">Sargam (Sa-Ni)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="constraints-actions">
+                        <button id="constraints-clear" class="constraints-btn">Clear Constraint</button>
+                        <button id="constraints-custom" class="constraints-btn constraints-btn-secondary">Create Custom...</button>
+                        <button id="constraints-close-footer" class="constraints-btn">Close</button>
                     </div>
                 </div>
             </div>

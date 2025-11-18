@@ -119,13 +119,15 @@ pub struct PartGroup {
 // ============================================================================
 
 /// Musical pitch representation
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Pitch {
     /// Scale degree (0=C, 1=D, 2=E, 3=F, 4=G, 5=A, 6=B)
     pub step: u8,
 
-    /// Accidental (-2=double flat, -1=flat, 0=natural, +1=sharp, +2=double sharp)
-    pub alteration: i8,
+    /// Accidental (supports microtonal alterations)
+    /// -2.0=double flat, -1.5=three-quarter-flat, -1.0=flat, -0.5=half-flat (quarter-flat),
+    /// 0.0=natural, +0.5=half-sharp (quarter-sharp), +1.0=sharp, +1.5=three-quarter-sharp, +2.0=double sharp
+    pub alteration: f32,
 
     /// Octave number (4 = middle C octave)
     pub octave: i8,
@@ -133,13 +135,13 @@ pub struct Pitch {
 
 impl Pitch {
     /// Create a new pitch with validation
-    pub fn new(step: u8, alteration: i8, octave: i8) -> Result<Self, String> {
+    pub fn new(step: u8, alteration: f32, octave: i8) -> Result<Self, String> {
         if step > 6 {
             return Err(format!("Invalid step: {} (must be 0-6)", step));
         }
-        if alteration < -2 || alteration > 2 {
+        if alteration < -2.0 || alteration > 2.0 {
             return Err(format!(
-                "Invalid alteration: {} (must be -2 to +2)",
+                "Invalid alteration: {} (must be -2.0 to +2.0)",
                 alteration
             ));
         }
@@ -171,49 +173,85 @@ impl Pitch {
 
     fn note_name_nederlands(&self) -> String {
         let base = ["c", "d", "e", "f", "g", "a", "b"][self.step as usize];
-        match self.alteration {
-            -2 => format!("{}eses", base),
-            -1 => format!("{}es", base),
-            0 => base.to_string(),
-            1 => format!("{}is", base),
-            2 => format!("{}isis", base),
-            _ => base.to_string(),
+
+        // Convert alteration to half-steps for clean matching
+        // -0.5 (half-flat) becomes -1, -1.0 (flat) becomes -2, etc.
+        let half_steps = (self.alteration * 2.0).round() as i8;
+
+        match half_steps {
+            -4 => format!("{}eses", base),   // -2.0 double flat
+            -3 => format!("{}eseh", base),   // -1.5 three-quarter-flat
+            -2 => format!("{}es", base),     // -1.0 flat
+            -1 => format!("{}eh", base),     // -0.5 half-flat (quarter-flat)
+             0 => base.to_string(),          //  0.0 natural
+             1 => format!("{}ih", base),     //  0.5 half-sharp (quarter-sharp)
+             2 => format!("{}is", base),     //  1.0 sharp
+             3 => format!("{}isih", base),   //  1.5 three-quarter-sharp
+             4 => format!("{}isis", base),   //  2.0 double sharp
+             _ => base.to_string(),          // fallback for unusual values
         }
     }
 
     fn note_name_english(&self) -> String {
         let base = ["c", "d", "e", "f", "g", "a", "b"][self.step as usize];
-        match self.alteration {
-            -2 => format!("{}ff", base),
-            -1 => format!("{}f", base),
-            0 => base.to_string(),
-            1 => format!("{}s", base),
-            2 => format!("{}ss", base),
-            _ => base.to_string(),
+
+        // Convert alteration to half-steps for clean matching
+        // -0.5 (half-flat) becomes -1, -1.0 (flat) becomes -2, etc.
+        let half_steps = (self.alteration * 2.0).round() as i8;
+
+        match half_steps {
+            -4 => format!("{}ff", base),     // -2.0 double flat
+            -3 => format!("{}tqf", base),    // -1.5 three-quarter-flat (sesqui-flat)
+            -2 => format!("{}f", base),      // -1.0 flat
+            -1 => format!("{}qf", base),     // -0.5 half-flat (quarter-flat)
+             0 => base.to_string(),          //  0.0 natural
+             1 => format!("{}qs", base),     //  0.5 half-sharp (quarter-sharp)
+             2 => format!("{}s", base),      //  1.0 sharp
+             3 => format!("{}tqs", base),    //  1.5 three-quarter-sharp (sesqui-sharp)
+             4 => format!("{}ss", base),     //  2.0 double sharp
+             _ => base.to_string(),          // fallback for unusual values
         }
     }
 
     fn note_name_deutsch(&self) -> String {
         let base = ["c", "d", "e", "f", "g", "a", "h"][self.step as usize];
-        match self.alteration {
-            -2 => format!("{}eses", base),
-            -1 => format!("{}es", base),
-            0 => base.to_string(),
-            1 => format!("{}is", base),
-            2 => format!("{}isis", base),
-            _ => base.to_string(),
+
+        // Convert alteration to half-steps for clean matching
+        // -0.5 (half-flat) becomes -1, -1.0 (flat) becomes -2, etc.
+        let half_steps = (self.alteration * 2.0).round() as i8;
+
+        match half_steps {
+            -4 => format!("{}eses", base),   // -2.0 double flat
+            -3 => format!("{}eseh", base),   // -1.5 three-quarter-flat
+            -2 => format!("{}es", base),     // -1.0 flat
+            -1 => format!("{}eh", base),     // -0.5 half-flat (quarter-flat)
+             0 => base.to_string(),          //  0.0 natural
+             1 => format!("{}ih", base),     //  0.5 half-sharp (quarter-sharp)
+             2 => format!("{}is", base),     //  1.0 sharp
+             3 => format!("{}isih", base),   //  1.5 three-quarter-sharp
+             4 => format!("{}isis", base),   //  2.0 double sharp
+             _ => base.to_string(),          // fallback for unusual values
         }
     }
 
     fn note_name_italiano(&self) -> String {
         let base = ["do", "re", "mi", "fa", "sol", "la", "si"][self.step as usize];
-        match self.alteration {
-            -2 => format!("{}bb", base),
-            -1 => format!("{}b", base),
-            0 => base.to_string(),
-            1 => format!("{}d", base),
-            2 => format!("{}dd", base),
-            _ => base.to_string(),
+
+        // Convert alteration to half-steps for clean matching
+        // -0.5 (half-flat) becomes -1, -1.0 (flat) becomes -2, etc.
+        let half_steps = (self.alteration * 2.0).round() as i8;
+
+        match half_steps {
+            -4 => format!("{}bb", base),     // -2.0 double flat (doppio bemolle)
+            -3 => format!("{}bsb", base),    // -1.5 three-quarter-flat
+            -2 => format!("{}b", base),      // -1.0 flat (bemolle)
+            -1 => format!("{}sb", base),     // -0.5 half-flat (semi-bemolle)
+             0 => base.to_string(),          //  0.0 natural
+             1 => format!("{}sd", base),     //  0.5 half-sharp (semi-diesis)
+             2 => format!("{}d", base),      //  1.0 sharp (diesis)
+             3 => format!("{}dsd", base),    //  1.5 three-quarter-sharp
+             4 => format!("{}dd", base),     //  2.0 double sharp (doppio diesis)
+             _ => base.to_string(),          // fallback for unusual values
         }
     }
 

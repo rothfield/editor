@@ -82,6 +82,11 @@ export default class InspectorCoordinator {
     if (this.editor.ui && this.editor.ui.activeTab === 'hitboxes') {
       this.updateHitboxesDisplay();
     }
+
+    // Update mode toggle button display (always update when document changes)
+    if (this.editor.ui && typeof this.editor.ui.updateModeToggleDisplay === 'function') {
+      this.editor.ui.updateModeToggleDisplay();
+    }
   }
 
   /**
@@ -170,13 +175,14 @@ export default class InspectorCoordinator {
    * Update HTML display in inspector panel
    */
   updateHTMLDisplay() {
-    const htmlDisplay = document.getElementById('html-display');
+    const htmlDisplay = document.getElementById('html-content');  // FIXED: was 'html-display', should be 'html-content'
     if (!htmlDisplay || !this.editor.renderer || !this.editor.renderer.element) {
       return;
     }
 
     const html = this.editor.renderer.element.innerHTML;
-    htmlDisplay.textContent = formatHTML(html);
+    const formatted = formatHTML(html);
+    htmlDisplay.textContent = formatted;
   }
 
   /**

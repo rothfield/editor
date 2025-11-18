@@ -6,6 +6,7 @@
  */
 
 import { DOM_SELECTORS } from './constants/editorConstants.js';
+import { updateKeySignatureDisplay as updateKeySigDisplay } from './key-signature-selector.js';
 
 class UI {
   constructor(editor, fileOperations = null, preferencesUI = null) {
@@ -17,6 +18,10 @@ class UI {
     this.isInitialized = false; // Track initialization state to prevent timer scheduling during init
     this.menuListeners = new Map();
     this.keySignatureSelector = null; // Will be initialized after DOM is ready
+    this.constraintsDialog = null; // Will be initialized after DOM is ready
+
+    // Constraint state
+    this.constraintEnabled = true; // Whether the constraint is currently active (can be toggled off)
 
     // localStorage settings
     this.tabSaveDebounceMs = 2000;
@@ -27,6 +32,8 @@ class UI {
     this.handleMenuItemClick = this.handleMenuItemClick.bind(this);
     this.handleTabClick = this.handleTabClick.bind(this);
     this.handleOutsideClick = this.handleOutsideClick.bind(this);
+    this.handleModeToggleClick = this.handleModeToggleClick.bind(this);
+    this.handleModeToggleDblClick = this.handleModeToggleDblClick.bind(this);
   }
 
   /**
@@ -39,10 +46,13 @@ class UI {
     this.updateCurrentPitchSystemDisplay();
     this.restoreTabPreference();
     this.initializeKeySignatureSelector();
+    this.initializeConstraintsDialog();
+    this.setupModeToggleButton();
 
     // Update key signature display after a short delay (wait for document to load)
     setTimeout(() => {
       this.updateKeySignatureCornerDisplay();
+      this.updateModeToggleDisplay();
     }, 500);
 
     // Mark UI as initialized - this prevents staff notation timer scheduling during init
@@ -62,6 +72,19 @@ class UI {
       console.log('Key Signature Selector initialized');
     }).catch(error => {
       console.error('Failed to load key signature selector:', error);
+    });
+  }
+
+  /**
+   * Initialize the Constraints Dialog modal
+   */
+  initializeConstraintsDialog() {
+    // Import and initialize the constraints dialog
+    import('./ConstraintsDialog.js').then(module => {
+      this.constraintsDialog = new module.ConstraintsDialog(this.editor);
+      console.log('Constraints Dialog initialized');
+    }).catch(error => {
+      console.error('Failed to load constraints dialog:', error);
     });
   }
 
@@ -116,6 +139,7 @@ class UI {
       { id: 'menu-set-tonic', label: 'Set Tonic...', action: 'set-tonic' },
       { id: 'menu-set-pitch-system', label: 'Set Pitch System...', action: 'set-pitch-system' },
       { id: 'menu-set-key-signature', label: 'Set Key Signature...', action: 'set-key-signature' },
+      { id: 'menu-set-constraints', label: 'Set Constraints...', action: 'set-constraints' },
       { id: 'menu-separator-3', label: null, separator: true },
       { id: 'menu-preferences', label: 'Preferences...', action: 'preferences' }
     ];
@@ -332,6 +356,8 @@ class UI {
       { id: 'menu-ornament-ontop', label: ontopLabel, action: 'ornament-position-ontop', checkable: true, checked: currentOrnament?.placement === 'on-top', hasOrnationNotation: currentOrnament?.placement === 'on-top' && currentOrnament },
       { id: 'menu-ornament-after', label: afterLabel, action: 'ornament-position-after', checkable: true, checked: currentOrnament?.placement === 'after', hasOrnationNotation: currentOrnament?.placement === 'after' && currentOrnament },
       { id: 'menu-separator-0', label: null, separator: true },
+      { id: 'menu-ornament-selection-to-ornament', label: 'Selection to Ornament', action: 'ornament-selection-to-ornament', testid: 'menu-ornament-selection-to-ornament' },
+      { id: 'menu-separator-1', label: null, separator: true },
       { id: 'menu-ornament-copy', label: 'Copy', action: 'ornament-copy', testid: 'menu-ornament-copy' },
       { id: 'menu-ornament-paste', label: 'Ornament from Clipboard', action: 'ornament-paste', testid: 'menu-ornament-paste', shortcut: 'Alt+O' },
       { id: 'menu-ornament-clear', label: 'Clear', action: 'ornament-clear', testid: 'menu-ornament-clear' }
@@ -691,6 +717,9 @@ class UI {
       case 'set-key-signature':
         this.setKeySignature();
         break;
+      case 'set-constraints':
+        this.setConstraints();
+        break;
       case 'undo':
         this.editor.handleUndo();
         break;
@@ -714,6 +743,9 @@ class UI {
         break;
       case 'ornament-position-after':
         this.setOrnamentPosition('after');
+        break;
+      case 'ornament-selection-to-ornament':
+        await this.selectionToOrnament();
         break;
       case 'ornament-copy':
         this.copyOrnament();
@@ -949,8 +981,8 @@ class UI {
     if (newTonic !== null && newTonic.trim() !== '') {
       this.updateTonicDisplay(newTonic);
 
-      if (this.editor && this.editor.getDocument()) {
-        this.editor.getDocument().tonic = newTonic;
+      if (this.editor && this.editor.wasmModule) {
+        this.editor.wasmModule.setDocumentTonic(newTonic);
         this.editor.addToConsoleLog(`Document tonic set to: ${newTonic}`);
         await this.editor.renderAndUpdate();
       }
@@ -1055,11 +1087,148 @@ class UI {
   }
 
   /**
+   * Open the constraints dialog
+   */
+  async setConstraints() {
+    if (this.constraintsDialog) {
+      await this.constraintsDialog.open();
+    } else {
+      console.error('[UI] ConstraintsDialog not initialized');
+    }
+  }
+
+  /**
+   * Setup mode toggle button event listeners
+   */
+  setupModeToggleButton() {
+    const modeBtn = document.getElementById('mode-toggle-btn');
+    if (!modeBtn) {
+      console.warn('[UI] Mode toggle button not found');
+      return;
+    }
+
+    // Single click = toggle constraint on/off
+    modeBtn.addEventListener('click', this.handleModeToggleClick);
+
+    // Double click = open constraints dialog
+    modeBtn.addEventListener('dblclick', this.handleModeToggleDblClick);
+
+    console.log('Mode toggle button initialized');
+  }
+
+  /**
+   * Handle single click on mode toggle button (toggle constraint on/off)
+   */
+  async handleModeToggleClick(event) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    // Check if there's an active constraint
+    const wasmModule = this.editor.wasmModule;
+    if (!wasmModule || typeof wasmModule.getActiveConstraint !== 'function') {
+      console.warn('[UI] WASM module not ready');
+      return;
+    }
+
+    const activeConstraintId = wasmModule.getActiveConstraint();
+    if (!activeConstraintId) {
+      // No constraint selected - open dialog
+      await this.setConstraints();
+      return;
+    }
+
+    // Toggle enabled state
+    this.constraintEnabled = !this.constraintEnabled;
+    console.log(`[UI] Constraint ${this.constraintEnabled ? 'enabled' : 'disabled'}`);
+
+    // Update display
+    this.updateModeToggleDisplay();
+  }
+
+  /**
+   * Handle double click on mode toggle button (open dialog)
+   */
+  async handleModeToggleDblClick(event) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    // Open constraints dialog
+    await this.setConstraints();
+  }
+
+  /**
+   * Update mode toggle button display
+   * Call this when document changes or constraint is selected/changed
+   */
+  updateModeToggleDisplay() {
+    const modeBtn = document.getElementById('mode-toggle-btn');
+    const modeText = document.getElementById('mode-toggle-text');
+
+    if (!modeBtn || !modeText) {
+      return;
+    }
+
+    // Get active constraint from WASM
+    const wasmModule = this.editor.wasmModule;
+    if (!wasmModule || typeof wasmModule.getActiveConstraint !== 'function') {
+      return;
+    }
+
+    const activeConstraintId = wasmModule.getActiveConstraint();
+
+    if (!activeConstraintId) {
+      // No constraint active
+      modeBtn.className = 'mode-toggle-btn';
+      modeBtn.title = 'No constraint active (double-click to select)';
+      modeText.textContent = 'Mode: None';
+      this.constraintEnabled = true; // Reset state
+      return;
+    }
+
+    // Get constraint details
+    let constraintName = 'Unknown';
+    try {
+      const constraints = wasmModule.getPredefinedConstraints();
+      const constraint = constraints.find(c => c.id === activeConstraintId);
+      if (constraint) {
+        constraintName = constraint.name;
+      }
+    } catch (error) {
+      console.error('[UI] Error getting constraint details:', error);
+    }
+
+    // Update display based on enabled state
+    if (this.constraintEnabled) {
+      // Active state
+      modeBtn.className = 'mode-toggle-btn active';
+      modeBtn.title = `Constrain to ${constraintName} (click to disable, double-click to change)`;
+      modeText.textContent = constraintName;
+    } else {
+      // Inactive state (selected but disabled)
+      modeBtn.className = 'mode-toggle-btn inactive';
+      modeBtn.title = `${constraintName} (disabled - click to enable, double-click to change)`;
+      modeText.textContent = constraintName;
+    }
+  }
+
+  /**
+   * Check if constraint filtering is currently active
+   * Used by KeyboardHandler to determine if pitch should be filtered
+   */
+  isConstraintActive() {
+    return this.constraintEnabled && this.editor.wasmModule?.getActiveConstraint();
+  }
+
+  /**
    * Update the key signature display in the upper left corner
    */
   updateKeySignatureCornerDisplay() {
     // Get the current key signature (document or line level)
-    const keySignature = this.getKeySignature() || this.getLineKeySignature();
+    const docSig = this.getKeySignature();
+    const lineSig = this.getLineKeySignature();
+    const keySignature = docSig || lineSig;
+
+    console.log(`[updateKeySignatureCornerDisplay] docSig="${docSig}", lineSig="${lineSig}", final="${keySignature}"`);
 
     // Create click handler that opens the key signature selector
     const clickHandler = () => {
@@ -1069,12 +1238,8 @@ class UI {
       }
     };
 
-    // Import and call the display update function
-    import('./key-signature-selector.js').then(module => {
-      module.updateKeySignatureDisplay(keySignature, clickHandler);
-    }).catch(error => {
-      console.error('Failed to update key signature display:', error);
-    });
+    // Call the display update function directly (already imported at top of file)
+    updateKeySigDisplay(keySignature, clickHandler);
   }
 
   /**
@@ -1151,9 +1316,9 @@ class UI {
     if (newTonic !== null && newTonic.trim() !== '') {
       this.updateLineTonicDisplay(newTonic);
 
-      if (this.editor && this.editor.getDocument() && this.editor.getDocument().lines.length > 0) {
+      if (this.editor && this.editor.wasmModule && this.editor.getDocument() && this.editor.getDocument().lines.length > 0) {
         const lineIdx = this.getCurrentLineIndex();
-        this.editor.getDocument().lines[lineIdx].tonic = newTonic;
+        this.editor.wasmModule.setLineTonic(lineIdx, newTonic);
         this.editor.addToConsoleLog(`Line tonic set to: ${newTonic}`);
         await this.editor.renderAndUpdate();
       }
@@ -1535,8 +1700,17 @@ class UI {
   }
 
   updateKeySignatureDisplay(signature) {
-    // This would update UI to show current key signature
+    // Update the key signature display in the upper left corner
     console.log(`Key signature updated: ${signature}`);
+
+    // Call the actual display update function
+    const openKeySigSelector = () => {
+      if (this.keySignatureSelector) {
+        this.keySignatureSelector.open();
+      }
+    };
+
+    updateKeySigDisplay(signature, openKeySigSelector);
   }
 
   updateLineLabelDisplay(label) {
@@ -1981,6 +2155,89 @@ class UI {
     } catch (error) {
       console.error('[UI] Clear ornament error:', error);
       alert(`Failed to clear ornament: ${error.message || error}`);
+    }
+  }
+
+  /**
+   * Convert selected text to ornament on the preceding pitch
+   * Takes the current selection, applies it as an ornament to the cell before the selection,
+   * then deletes the selected text. Overwrites any existing ornament.
+   */
+  async selectionToOrnament() {
+    console.log('[UI] selectionToOrnament');
+
+    if (!this.editor) {
+      alert('No editor available');
+      return;
+    }
+
+    try {
+      const doc = this.editor.getDocument();
+      const cursor = doc.state.cursor;
+      const selection = doc.state.selection_manager?.current_selection;
+
+      // Must have a selection
+      if (!selection || !selection.anchor || !selection.head) {
+        alert('No text selected');
+        return;
+      }
+
+      console.log('[UI] Selection detected');
+
+      // Get the selected text
+      const line = doc.lines[cursor.line];
+      const start = Math.min(selection.anchor.col, selection.head.col);
+      const end = Math.max(selection.anchor.col, selection.head.col);
+
+      // Extract selected text from cells
+      const selectedText = line.cells
+        .slice(start, end)
+        .map(cell => cell.char)
+        .join('');
+
+      console.log(`[UI] Selected text: "${selectedText}" (cols ${start}-${end})`);
+
+      if (!selectedText || selectedText.trim().length === 0) {
+        alert('No text selected');
+        return;
+      }
+
+      // Target is the note BEFORE the selection
+      // If selection starts at col 0, can't apply ornament
+      if (start === 0) {
+        alert('Cannot apply ornament: selection starts at beginning of line');
+        return;
+      }
+
+      const targetCol = start - 1; // The cell before the selection
+      const placement = this.pendingOrnamentPosition || 'after';
+
+      console.log(`[UI] Applying ornament "${selectedText}" to col ${targetCol} (${placement})`);
+
+      // Apply the ornament (overwrites existing ornament)
+      const result = await this.editor.wasmModule.applyOrnamentLayered(
+        cursor.line,
+        targetCol,
+        selectedText,
+        placement
+      );
+
+      console.log('[UI] applyOrnamentLayered result:', result);
+
+      if (!result.success) {
+        alert(`Failed to apply ornament: ${result.error || 'Unknown error'}`);
+        return;
+      }
+
+      // Delete the selected text
+      await this.editor.deleteSelection();
+
+      // Render (will call applyAnnotationOrnamentsToCells() to sync)
+      await this.editor.renderAndUpdate();
+      this.editor.addToConsoleLog(`Selection converted to ornament: ${selectedText}`);
+    } catch (error) {
+      console.error('[UI] Selection to ornament error:', error);
+      alert(`Failed to convert selection to ornament: ${error.message || error}`);
     }
   }
 }

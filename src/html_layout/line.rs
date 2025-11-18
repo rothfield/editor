@@ -92,12 +92,30 @@ impl<'a> LayoutLineComputer<'a> {
         line_idx: usize,
         config: &LayoutConfig,
         line_y_offset: f32,
-        cell_widths: &[f32],
         syllable_widths: &[f32],
-        char_widths: &[f32],
         ornament_edit_mode: bool,
         selection: Option<&crate::models::notation::Selection>,
     ) -> RenderLine {
+        // Build cell_widths from cache by computing display_char() for each cell
+        let cell_widths: Vec<f32> = line.cells
+            .iter()
+            .map(|cell| {
+                let glyph = cell.display_char();
+                crate::html_layout::document::get_glyph_width(&glyph)
+            })
+            .collect();
+
+        // Build char_widths for cursor positioning (one width per character in glyph)
+        let char_widths: Vec<f32> = line.cells
+            .iter()
+            .flat_map(|cell| {
+                let glyph = cell.display_char();
+                let glyph_width = crate::html_layout::document::get_glyph_width(&glyph);
+                let char_count = glyph.chars().count();
+                // Distribute glyph width evenly across characters
+                vec![glyph_width / char_count.max(1) as f32; char_count]
+            })
+            .collect();
         // Derive beats using WASM BeatDeriver
         let beats = self.beat_deriver.extract_implicit_beats(&line.cells);
 
@@ -116,7 +134,7 @@ impl<'a> LayoutLineComputer<'a> {
 
         // Calculate effective widths (max of cell width and syllable width + padding)
         let effective_widths = self.calculate_effective_widths(
-            cell_widths,
+            &cell_widths,
             &syllable_assignments,
             syllable_widths,
             config,
@@ -162,13 +180,16 @@ impl<'a> LayoutLineComputer<'a> {
 
             let cell_x = if let Some(beat_id) = cell_to_beat[working_idx] {
                 // Cell is in a beat - use beat-aware positioning
-                if beat_id != beat_idx {
-                    // Starting a new beat
+                let beat = &beats[beat_id];
+
+                // Update beat_start_x when processing the FIRST cell of a beat
+                // This handles both the first beat (where beat_id == beat_idx initially)
+                // and subsequent beats (where beat_id != beat_idx)
+                if working_idx == beat.start {
                     beat_start_x = cumulative_x;
                     beat_idx = beat_id;
                 }
 
-                let beat = &beats[beat_id];
                 let total_beat_width = beat_widths[beat_id];
                 let cell_positions = self.distribute_space_within_beat(
                     beat,
@@ -200,7 +221,7 @@ impl<'a> LayoutLineComputer<'a> {
                 config,
                 line_y_offset,
                 &effective_widths,
-                char_widths,
+                &char_widths,
                 &mut char_width_offset,
                 &beat_roles,
                 &slur_roles,
@@ -941,16 +962,7 @@ impl<'a> LayoutLineComputer<'a> {
                     let ornament_width = 12.0 * 0.6;
 
                     // Apply glyph substitution for octave shifts (same as regular cells)
-                    let ornament_char = if ornament_cell.kind == ElementKind::PitchedElement
-                        && ornament_cell.octave != 0
-                        && !ornament_cell.char.is_empty()
-                    {
-                        let base_char = ornament_cell.char.chars().next().unwrap_or(' ');
-                        use crate::renderers::get_glyph_codepoint;
-                        get_glyph_codepoint(base_char, ornament_cell.octave).to_string()
-                    } else {
-                        ornament_cell.char.clone()
-                    };
+                    let ornament_char = ornament_cell.char.clone();
 
                     ornaments.push(RenderOrnament {
                         text: ornament_char,

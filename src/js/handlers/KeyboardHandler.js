@@ -142,11 +142,11 @@ export class KeyboardHandler {
   }
 
   /**
-   * Apply octave shift using layered API
-   * @param {number} octave - Target octave (-2, -1, 0, 1, 2)
+   * Set octave to absolute value using layered API
+   * @param {number} target_octave - Target octave (-2, -1, 0, 1, 2)
    * @private
    */
-  async _applyOctaveLayered(octave) {
+  async _applyOctaveLayered(target_octave) {
     if (!this.editor.isInitialized || !this.editor.wasmModule) {
       return;
     }
@@ -160,16 +160,16 @@ export class KeyboardHandler {
       const line = selection.start.line;
       const start_col = selection.start.col;
       const end_col = selection.end.col;
-      const delta = octave;
 
-      this.editor.wasmModule.shiftOctave(line, start_col, end_col, delta);
+      // Set octave to absolute value (not shift by delta)
+      this.editor.wasmModule.setOctave(line, start_col, end_col, target_octave);
       await this.editor.renderAndUpdate();
 
       // Restore selection after operation
       this.editor.wasmModule.setSelection(selection.anchor, selection.head);
       await this.editor.render(); // Re-render to show selection
     } catch (error) {
-      console.error('Failed to apply octave:', error);
+      console.error('Failed to set octave:', error);
     }
   }
 
@@ -334,8 +334,67 @@ export class KeyboardHandler {
       default:
         // Insert text character - do NOT replace selection
         if (key.length === 1 && !key.match(/[Ff][0-9]/)) { // Exclude F-keys
-          this.editor.insertText(key);
+          // Check constraint before inserting
+          if (this.isAllowedByConstraint(key)) {
+            this.editor.insertText(key);
+          } else {
+            // Constraint blocked this pitch
+            console.log(`[KeyboardHandler] Pitch '${key}' blocked by active constraint`);
+            this.editor.showWarning(`Pitch '${key}' not allowed in current scale constraint`, {
+              timeout: 2000,
+              color: '#ef4444'
+            });
+          }
         }
+    }
+  }
+
+  /**
+   * Check if a character is allowed by the active constraint
+   * @param {string} char - Single character to check
+   * @returns {boolean} - True if allowed, false if blocked
+   */
+  isAllowedByConstraint(char) {
+    // If no WASM module or function not available, allow all
+    if (!this.editor.wasmModule ||
+        typeof this.editor.wasmModule.checkPitchAgainstActiveConstraint !== 'function') {
+      return true;
+    }
+
+    // Check if constraint is active (selected AND enabled)
+    // User can toggle constraint off with mode button
+    if (!this.editor.ui || !this.editor.ui.isConstraintActive()) {
+      return true; // Constraint disabled or not selected
+    }
+
+    // Check if this is a pitch character (1-7, accidentals, etc.)
+    // For simplicity, we'll pass it to WASM and let it decide
+    // WASM will return true for non-pitch characters (spaces, dashes, etc.)
+    try {
+      // Build a pitch code from the character
+      // For now, just pass the character directly
+      // WASM's checkPitchAgainstActiveConstraint expects a PitchCode string
+
+      // If no active constraint, allow all
+      const activeConstraint = this.editor.wasmModule.getActiveConstraint();
+      if (!activeConstraint) {
+        return true; // No constraint active, allow everything
+      }
+
+      // For pitch characters (1-7), build the pitch code
+      // This is a simplified approach - assumes Number system
+      if (char.match(/[1-7]/)) {
+        // Basic pitch without accidental (natural)
+        const pitchCode = `N${char}`;
+        return this.editor.wasmModule.checkPitchAgainstActiveConstraint(pitchCode);
+      }
+
+      // For accidentals and other characters, allow them (they'll combine with pitch)
+      // TODO: Handle accidental input (b, s, etc.) in combination with pitch
+      return true;
+    } catch (error) {
+      console.error('[KeyboardHandler] Error checking constraint:', error);
+      return true; // On error, allow to avoid blocking all input
     }
   }
 

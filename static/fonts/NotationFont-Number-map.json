@@ -1,0 +1,844 @@
+{
+  "version": "1.0",
+  "generated_from": "atoms.yaml",
+  "pua_allocation": {
+    "notes_start": "0xe000",
+    "notes_end": "0xe0ae",
+    "symbols_start": "0xe003",
+    "symbols_end": "0x1d108"
+  },
+  "notes": [
+    {
+      "system": "number",
+      "character": "1",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe000",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe007",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe00e",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe015",
+          "octave_shift": -2
+        },
+        "variant_4": {
+          "codepoint": "0xe01c",
+          "octave_shift": 0
+        },
+        "variant_5": {
+          "codepoint": "0xe023",
+          "octave_shift": 0
+        },
+        "variant_6": {
+          "codepoint": "0xe02a",
+          "octave_shift": 0
+        },
+        "variant_7": {
+          "codepoint": "0xe031",
+          "octave_shift": 0
+        },
+        "variant_8": {
+          "codepoint": "0xe038",
+          "octave_shift": 0
+        },
+        "variant_9": {
+          "codepoint": "0xe03f",
+          "octave_shift": 0
+        },
+        "variant_10": {
+          "codepoint": "0xe046",
+          "octave_shift": 0
+        },
+        "variant_11": {
+          "codepoint": "0xe04d",
+          "octave_shift": 0
+        },
+        "variant_12": {
+          "codepoint": "0xe054",
+          "octave_shift": 0
+        },
+        "variant_13": {
+          "codepoint": "0xe05b",
+          "octave_shift": 0
+        },
+        "variant_14": {
+          "codepoint": "0xe062",
+          "octave_shift": 0
+        },
+        "variant_15": {
+          "codepoint": "0xe069",
+          "octave_shift": 0
+        },
+        "variant_16": {
+          "codepoint": "0xe070",
+          "octave_shift": 0
+        },
+        "variant_17": {
+          "codepoint": "0xe077",
+          "octave_shift": 0
+        },
+        "variant_18": {
+          "codepoint": "0xe07e",
+          "octave_shift": 0
+        },
+        "variant_19": {
+          "codepoint": "0xe085",
+          "octave_shift": 0
+        },
+        "base_octave": {
+          "codepoint": "0xe08c",
+          "octave_shift": 0
+        },
+        "variant_21": {
+          "codepoint": "0xe093",
+          "octave_shift": 0
+        },
+        "variant_22": {
+          "codepoint": "0xe09a",
+          "octave_shift": 0
+        },
+        "variant_23": {
+          "codepoint": "0xe0a1",
+          "octave_shift": 0
+        },
+        "variant_24": {
+          "codepoint": "0xe0a8",
+          "octave_shift": 0
+        }
+      }
+    },
+    {
+      "system": "number",
+      "character": "2",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe001",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe008",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe00f",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe016",
+          "octave_shift": -2
+        },
+        "variant_4": {
+          "codepoint": "0xe01d",
+          "octave_shift": 0
+        },
+        "variant_5": {
+          "codepoint": "0xe024",
+          "octave_shift": 0
+        },
+        "variant_6": {
+          "codepoint": "0xe02b",
+          "octave_shift": 0
+        },
+        "variant_7": {
+          "codepoint": "0xe032",
+          "octave_shift": 0
+        },
+        "variant_8": {
+          "codepoint": "0xe039",
+          "octave_shift": 0
+        },
+        "variant_9": {
+          "codepoint": "0xe040",
+          "octave_shift": 0
+        },
+        "variant_10": {
+          "codepoint": "0xe047",
+          "octave_shift": 0
+        },
+        "variant_11": {
+          "codepoint": "0xe04e",
+          "octave_shift": 0
+        },
+        "variant_12": {
+          "codepoint": "0xe055",
+          "octave_shift": 0
+        },
+        "variant_13": {
+          "codepoint": "0xe05c",
+          "octave_shift": 0
+        },
+        "variant_14": {
+          "codepoint": "0xe063",
+          "octave_shift": 0
+        },
+        "variant_15": {
+          "codepoint": "0xe06a",
+          "octave_shift": 0
+        },
+        "variant_16": {
+          "codepoint": "0xe071",
+          "octave_shift": 0
+        },
+        "variant_17": {
+          "codepoint": "0xe078",
+          "octave_shift": 0
+        },
+        "variant_18": {
+          "codepoint": "0xe07f",
+          "octave_shift": 0
+        },
+        "variant_19": {
+          "codepoint": "0xe086",
+          "octave_shift": 0
+        },
+        "base_octave": {
+          "codepoint": "0xe08d",
+          "octave_shift": 0
+        },
+        "variant_21": {
+          "codepoint": "0xe094",
+          "octave_shift": 0
+        },
+        "variant_22": {
+          "codepoint": "0xe09b",
+          "octave_shift": 0
+        },
+        "variant_23": {
+          "codepoint": "0xe0a2",
+          "octave_shift": 0
+        },
+        "variant_24": {
+          "codepoint": "0xe0a9",
+          "octave_shift": 0
+        }
+      }
+    },
+    {
+      "system": "number",
+      "character": "3",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe002",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe009",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe010",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe017",
+          "octave_shift": -2
+        },
+        "variant_4": {
+          "codepoint": "0xe01e",
+          "octave_shift": 0
+        },
+        "variant_5": {
+          "codepoint": "0xe025",
+          "octave_shift": 0
+        },
+        "variant_6": {
+          "codepoint": "0xe02c",
+          "octave_shift": 0
+        },
+        "variant_7": {
+          "codepoint": "0xe033",
+          "octave_shift": 0
+        },
+        "variant_8": {
+          "codepoint": "0xe03a",
+          "octave_shift": 0
+        },
+        "variant_9": {
+          "codepoint": "0xe041",
+          "octave_shift": 0
+        },
+        "variant_10": {
+          "codepoint": "0xe048",
+          "octave_shift": 0
+        },
+        "variant_11": {
+          "codepoint": "0xe04f",
+          "octave_shift": 0
+        },
+        "variant_12": {
+          "codepoint": "0xe056",
+          "octave_shift": 0
+        },
+        "variant_13": {
+          "codepoint": "0xe05d",
+          "octave_shift": 0
+        },
+        "variant_14": {
+          "codepoint": "0xe064",
+          "octave_shift": 0
+        },
+        "variant_15": {
+          "codepoint": "0xe06b",
+          "octave_shift": 0
+        },
+        "variant_16": {
+          "codepoint": "0xe072",
+          "octave_shift": 0
+        },
+        "variant_17": {
+          "codepoint": "0xe079",
+          "octave_shift": 0
+        },
+        "variant_18": {
+          "codepoint": "0xe080",
+          "octave_shift": 0
+        },
+        "variant_19": {
+          "codepoint": "0xe087",
+          "octave_shift": 0
+        },
+        "base_octave": {
+          "codepoint": "0xe08e",
+          "octave_shift": 0
+        },
+        "variant_21": {
+          "codepoint": "0xe095",
+          "octave_shift": 0
+        },
+        "variant_22": {
+          "codepoint": "0xe09c",
+          "octave_shift": 0
+        },
+        "variant_23": {
+          "codepoint": "0xe0a3",
+          "octave_shift": 0
+        },
+        "variant_24": {
+          "codepoint": "0xe0aa",
+          "octave_shift": 0
+        }
+      }
+    },
+    {
+      "system": "number",
+      "character": "4",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe003",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe00a",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe011",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe018",
+          "octave_shift": -2
+        },
+        "variant_4": {
+          "codepoint": "0xe01f",
+          "octave_shift": 0
+        },
+        "variant_5": {
+          "codepoint": "0xe026",
+          "octave_shift": 0
+        },
+        "variant_6": {
+          "codepoint": "0xe02d",
+          "octave_shift": 0
+        },
+        "variant_7": {
+          "codepoint": "0xe034",
+          "octave_shift": 0
+        },
+        "variant_8": {
+          "codepoint": "0xe03b",
+          "octave_shift": 0
+        },
+        "variant_9": {
+          "codepoint": "0xe042",
+          "octave_shift": 0
+        },
+        "variant_10": {
+          "codepoint": "0xe049",
+          "octave_shift": 0
+        },
+        "variant_11": {
+          "codepoint": "0xe050",
+          "octave_shift": 0
+        },
+        "variant_12": {
+          "codepoint": "0xe057",
+          "octave_shift": 0
+        },
+        "variant_13": {
+          "codepoint": "0xe05e",
+          "octave_shift": 0
+        },
+        "variant_14": {
+          "codepoint": "0xe065",
+          "octave_shift": 0
+        },
+        "variant_15": {
+          "codepoint": "0xe06c",
+          "octave_shift": 0
+        },
+        "variant_16": {
+          "codepoint": "0xe073",
+          "octave_shift": 0
+        },
+        "variant_17": {
+          "codepoint": "0xe07a",
+          "octave_shift": 0
+        },
+        "variant_18": {
+          "codepoint": "0xe081",
+          "octave_shift": 0
+        },
+        "variant_19": {
+          "codepoint": "0xe088",
+          "octave_shift": 0
+        },
+        "base_octave": {
+          "codepoint": "0xe08f",
+          "octave_shift": 0
+        },
+        "variant_21": {
+          "codepoint": "0xe096",
+          "octave_shift": 0
+        },
+        "variant_22": {
+          "codepoint": "0xe09d",
+          "octave_shift": 0
+        },
+        "variant_23": {
+          "codepoint": "0xe0a4",
+          "octave_shift": 0
+        },
+        "variant_24": {
+          "codepoint": "0xe0ab",
+          "octave_shift": 0
+        }
+      }
+    },
+    {
+      "system": "number",
+      "character": "5",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe004",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe00b",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe012",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe019",
+          "octave_shift": -2
+        },
+        "variant_4": {
+          "codepoint": "0xe020",
+          "octave_shift": 0
+        },
+        "variant_5": {
+          "codepoint": "0xe027",
+          "octave_shift": 0
+        },
+        "variant_6": {
+          "codepoint": "0xe02e",
+          "octave_shift": 0
+        },
+        "variant_7": {
+          "codepoint": "0xe035",
+          "octave_shift": 0
+        },
+        "variant_8": {
+          "codepoint": "0xe03c",
+          "octave_shift": 0
+        },
+        "variant_9": {
+          "codepoint": "0xe043",
+          "octave_shift": 0
+        },
+        "variant_10": {
+          "codepoint": "0xe04a",
+          "octave_shift": 0
+        },
+        "variant_11": {
+          "codepoint": "0xe051",
+          "octave_shift": 0
+        },
+        "variant_12": {
+          "codepoint": "0xe058",
+          "octave_shift": 0
+        },
+        "variant_13": {
+          "codepoint": "0xe05f",
+          "octave_shift": 0
+        },
+        "variant_14": {
+          "codepoint": "0xe066",
+          "octave_shift": 0
+        },
+        "variant_15": {
+          "codepoint": "0xe06d",
+          "octave_shift": 0
+        },
+        "variant_16": {
+          "codepoint": "0xe074",
+          "octave_shift": 0
+        },
+        "variant_17": {
+          "codepoint": "0xe07b",
+          "octave_shift": 0
+        },
+        "variant_18": {
+          "codepoint": "0xe082",
+          "octave_shift": 0
+        },
+        "variant_19": {
+          "codepoint": "0xe089",
+          "octave_shift": 0
+        },
+        "base_octave": {
+          "codepoint": "0xe090",
+          "octave_shift": 0
+        },
+        "variant_21": {
+          "codepoint": "0xe097",
+          "octave_shift": 0
+        },
+        "variant_22": {
+          "codepoint": "0xe09e",
+          "octave_shift": 0
+        },
+        "variant_23": {
+          "codepoint": "0xe0a5",
+          "octave_shift": 0
+        },
+        "variant_24": {
+          "codepoint": "0xe0ac",
+          "octave_shift": 0
+        }
+      }
+    },
+    {
+      "system": "number",
+      "character": "6",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe005",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe00c",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe013",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe01a",
+          "octave_shift": -2
+        },
+        "variant_4": {
+          "codepoint": "0xe021",
+          "octave_shift": 0
+        },
+        "variant_5": {
+          "codepoint": "0xe028",
+          "octave_shift": 0
+        },
+        "variant_6": {
+          "codepoint": "0xe02f",
+          "octave_shift": 0
+        },
+        "variant_7": {
+          "codepoint": "0xe036",
+          "octave_shift": 0
+        },
+        "variant_8": {
+          "codepoint": "0xe03d",
+          "octave_shift": 0
+        },
+        "variant_9": {
+          "codepoint": "0xe044",
+          "octave_shift": 0
+        },
+        "variant_10": {
+          "codepoint": "0xe04b",
+          "octave_shift": 0
+        },
+        "variant_11": {
+          "codepoint": "0xe052",
+          "octave_shift": 0
+        },
+        "variant_12": {
+          "codepoint": "0xe059",
+          "octave_shift": 0
+        },
+        "variant_13": {
+          "codepoint": "0xe060",
+          "octave_shift": 0
+        },
+        "variant_14": {
+          "codepoint": "0xe067",
+          "octave_shift": 0
+        },
+        "variant_15": {
+          "codepoint": "0xe06e",
+          "octave_shift": 0
+        },
+        "variant_16": {
+          "codepoint": "0xe075",
+          "octave_shift": 0
+        },
+        "variant_17": {
+          "codepoint": "0xe07c",
+          "octave_shift": 0
+        },
+        "variant_18": {
+          "codepoint": "0xe083",
+          "octave_shift": 0
+        },
+        "variant_19": {
+          "codepoint": "0xe08a",
+          "octave_shift": 0
+        },
+        "base_octave": {
+          "codepoint": "0xe091",
+          "octave_shift": 0
+        },
+        "variant_21": {
+          "codepoint": "0xe098",
+          "octave_shift": 0
+        },
+        "variant_22": {
+          "codepoint": "0xe09f",
+          "octave_shift": 0
+        },
+        "variant_23": {
+          "codepoint": "0xe0a6",
+          "octave_shift": 0
+        },
+        "variant_24": {
+          "codepoint": "0xe0ad",
+          "octave_shift": 0
+        }
+      }
+    },
+    {
+      "system": "number",
+      "character": "7",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe006",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe00d",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe014",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe01b",
+          "octave_shift": -2
+        },
+        "variant_4": {
+          "codepoint": "0xe022",
+          "octave_shift": 0
+        },
+        "variant_5": {
+          "codepoint": "0xe029",
+          "octave_shift": 0
+        },
+        "variant_6": {
+          "codepoint": "0xe030",
+          "octave_shift": 0
+        },
+        "variant_7": {
+          "codepoint": "0xe037",
+          "octave_shift": 0
+        },
+        "variant_8": {
+          "codepoint": "0xe03e",
+          "octave_shift": 0
+        },
+        "variant_9": {
+          "codepoint": "0xe045",
+          "octave_shift": 0
+        },
+        "variant_10": {
+          "codepoint": "0xe04c",
+          "octave_shift": 0
+        },
+        "variant_11": {
+          "codepoint": "0xe053",
+          "octave_shift": 0
+        },
+        "variant_12": {
+          "codepoint": "0xe05a",
+          "octave_shift": 0
+        },
+        "variant_13": {
+          "codepoint": "0xe061",
+          "octave_shift": 0
+        },
+        "variant_14": {
+          "codepoint": "0xe068",
+          "octave_shift": 0
+        },
+        "variant_15": {
+          "codepoint": "0xe06f",
+          "octave_shift": 0
+        },
+        "variant_16": {
+          "codepoint": "0xe076",
+          "octave_shift": 0
+        },
+        "variant_17": {
+          "codepoint": "0xe07d",
+          "octave_shift": 0
+        },
+        "variant_18": {
+          "codepoint": "0xe084",
+          "octave_shift": 0
+        },
+        "variant_19": {
+          "codepoint": "0xe08b",
+          "octave_shift": 0
+        },
+        "base_octave": {
+          "codepoint": "0xe092",
+          "octave_shift": 0
+        },
+        "variant_21": {
+          "codepoint": "0xe099",
+          "octave_shift": 0
+        },
+        "variant_22": {
+          "codepoint": "0xe0a0",
+          "octave_shift": 0
+        },
+        "variant_23": {
+          "codepoint": "0xe0a7",
+          "octave_shift": 0
+        },
+        "variant_24": {
+          "codepoint": "0xe0ae",
+          "octave_shift": 0
+        }
+      }
+    }
+  ],
+  "symbols": [
+    {
+      "name": "barlineSingle",
+      "kind": "barline",
+      "label": "Barline (single)",
+      "codepoint": "0x1d100"
+    },
+    {
+      "name": "barlineDouble",
+      "kind": "barline",
+      "label": "Barline (double)",
+      "codepoint": "0x1d101"
+    },
+    {
+      "name": "barlineRepeatLeft",
+      "kind": "barline",
+      "label": "Barline (repeat left)",
+      "codepoint": "0x1d106"
+    },
+    {
+      "name": "barlineRepeatRight",
+      "kind": "barline",
+      "label": "Barline (repeat right)",
+      "codepoint": "0x1d107"
+    },
+    {
+      "name": "barlineRepeatBoth",
+      "kind": "barline",
+      "label": "Barline (repeat both)",
+      "codepoint": "0x1d108"
+    },
+    {
+      "name": "ornamentMordent",
+      "kind": "ornament",
+      "label": "Mordent",
+      "codepoint": "0xe56d"
+    },
+    {
+      "name": "ornamentInvertedMordent",
+      "kind": "ornament",
+      "label": "Inverted mordent",
+      "codepoint": "0xe56e"
+    },
+    {
+      "name": "ornamentTurn",
+      "kind": "ornament",
+      "label": "Turn",
+      "codepoint": "0xe567"
+    },
+    {
+      "name": "ornamentTrill",
+      "kind": "ornament",
+      "label": "Trill",
+      "codepoint": "0xe566"
+    },
+    {
+      "name": "bracketTop",
+      "kind": "bracket",
+      "label": "Bracket top cap",
+      "codepoint": "0xe003"
+    },
+    {
+      "name": "bracketBottom",
+      "kind": "bracket",
+      "label": "Bracket bottom cap",
+      "codepoint": "0xe004"
+    },
+    {
+      "name": "reversedBracketTop",
+      "kind": "bracket",
+      "label": "Reversed bracket top cap",
+      "codepoint": "0xe005"
+    },
+    {
+      "name": "reversedBracketBottom",
+      "kind": "bracket",
+      "label": "Reversed bracket bottom cap",
+      "codepoint": "0xe006"
+    }
+  ],
+  "summary": {
+    "total_notes": 7,
+    "total_symbols": 13,
+    "systems": {
+      "number": {
+        "count": 7,
+        "chars": "1234567"
+      }
+    }
+  }
+}

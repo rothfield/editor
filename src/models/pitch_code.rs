@@ -3,11 +3,12 @@
 use serde::{Deserialize, Serialize};
 
 /// Represents the type of accidental applied to a pitch
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AccidentalType {
     None,
     Sharp,
     Flat,
+    HalfFlat,
     DoubleSharp,
     DoubleFlat,
 }
@@ -58,19 +59,28 @@ pub enum PitchCode {
     N5bb,
     N6bb,
     N7bb,
+
+    // Half-flats (7)
+    N1hf,
+    N2hf,
+    N3hf,
+    N4hf,
+    N5hf,
+    N6hf,
+    N7hf,
 }
 
 impl PitchCode {
     /// Get the degree (1-7) of this pitch
     pub fn degree(&self) -> u8 {
         match self {
-            PitchCode::N1 | PitchCode::N1s | PitchCode::N1b | PitchCode::N1ss | PitchCode::N1bb => 1,
-            PitchCode::N2 | PitchCode::N2s | PitchCode::N2b | PitchCode::N2ss | PitchCode::N2bb => 2,
-            PitchCode::N3 | PitchCode::N3s | PitchCode::N3b | PitchCode::N3ss | PitchCode::N3bb => 3,
-            PitchCode::N4 | PitchCode::N4s | PitchCode::N4b | PitchCode::N4ss | PitchCode::N4bb => 4,
-            PitchCode::N5 | PitchCode::N5s | PitchCode::N5b | PitchCode::N5ss | PitchCode::N5bb => 5,
-            PitchCode::N6 | PitchCode::N6s | PitchCode::N6b | PitchCode::N6ss | PitchCode::N6bb => 6,
-            PitchCode::N7 | PitchCode::N7s | PitchCode::N7b | PitchCode::N7ss | PitchCode::N7bb => 7,
+            PitchCode::N1 | PitchCode::N1s | PitchCode::N1b | PitchCode::N1ss | PitchCode::N1bb | PitchCode::N1hf => 1,
+            PitchCode::N2 | PitchCode::N2s | PitchCode::N2b | PitchCode::N2ss | PitchCode::N2bb | PitchCode::N2hf => 2,
+            PitchCode::N3 | PitchCode::N3s | PitchCode::N3b | PitchCode::N3ss | PitchCode::N3bb | PitchCode::N3hf => 3,
+            PitchCode::N4 | PitchCode::N4s | PitchCode::N4b | PitchCode::N4ss | PitchCode::N4bb | PitchCode::N4hf => 4,
+            PitchCode::N5 | PitchCode::N5s | PitchCode::N5b | PitchCode::N5ss | PitchCode::N5bb | PitchCode::N5hf => 5,
+            PitchCode::N6 | PitchCode::N6s | PitchCode::N6b | PitchCode::N6ss | PitchCode::N6bb | PitchCode::N6hf => 6,
+            PitchCode::N7 | PitchCode::N7s | PitchCode::N7b | PitchCode::N7ss | PitchCode::N7bb | PitchCode::N7hf => 7,
         }
     }
 
@@ -99,6 +109,10 @@ impl PitchCode {
             PitchCode::N1b | PitchCode::N2b | PitchCode::N3b | PitchCode::N4b |
             PitchCode::N5b | PitchCode::N6b | PitchCode::N7b => AccidentalType::Flat,
 
+            // Half-flats
+            PitchCode::N1hf | PitchCode::N2hf | PitchCode::N3hf | PitchCode::N4hf |
+            PitchCode::N5hf | PitchCode::N6hf | PitchCode::N7hf => AccidentalType::HalfFlat,
+
             // Double sharps
             PitchCode::N1ss | PitchCode::N2ss | PitchCode::N3ss | PitchCode::N4ss |
             PitchCode::N5ss | PitchCode::N6ss | PitchCode::N7ss => AccidentalType::DoubleSharp,
@@ -109,6 +123,66 @@ impl PitchCode {
 
             // Naturals
             _ => AccidentalType::None,
+        }
+    }
+
+    /// Add a sharp to this pitch
+    /// - Natural → Sharp (N1 → N1s)
+    /// - Sharp → Double sharp (N1s → N1ss)
+    /// - Double sharp → None (can't add more)
+    /// - Flat/Double flat → None (can't mix accidentals)
+    pub fn add_sharp(&self) -> Option<PitchCode> {
+        match self {
+            // Naturals → Sharps
+            PitchCode::N1 => Some(PitchCode::N1s),
+            PitchCode::N2 => Some(PitchCode::N2s),
+            PitchCode::N3 => Some(PitchCode::N3s),
+            PitchCode::N4 => Some(PitchCode::N4s),
+            PitchCode::N5 => Some(PitchCode::N5s),
+            PitchCode::N6 => Some(PitchCode::N6s),
+            PitchCode::N7 => Some(PitchCode::N7s),
+
+            // Sharps → Double sharps
+            PitchCode::N1s => Some(PitchCode::N1ss),
+            PitchCode::N2s => Some(PitchCode::N2ss),
+            PitchCode::N3s => Some(PitchCode::N3ss),
+            PitchCode::N4s => Some(PitchCode::N4ss),
+            PitchCode::N5s => Some(PitchCode::N5ss),
+            PitchCode::N6s => Some(PitchCode::N6ss),
+            PitchCode::N7s => Some(PitchCode::N7ss),
+
+            // Can't add sharp to flats or double sharps/flats
+            _ => None,
+        }
+    }
+
+    /// Add a flat to this pitch
+    /// - Natural → Flat (N1 → N1b)
+    /// - Flat → Double flat (N1b → N1bb)
+    /// - Double flat → None (can't add more)
+    /// - Sharp/Double sharp → None (can't mix accidentals)
+    pub fn add_flat(&self) -> Option<PitchCode> {
+        match self {
+            // Naturals → Flats
+            PitchCode::N1 => Some(PitchCode::N1b),
+            PitchCode::N2 => Some(PitchCode::N2b),
+            PitchCode::N3 => Some(PitchCode::N3b),
+            PitchCode::N4 => Some(PitchCode::N4b),
+            PitchCode::N5 => Some(PitchCode::N5b),
+            PitchCode::N6 => Some(PitchCode::N6b),
+            PitchCode::N7 => Some(PitchCode::N7b),
+
+            // Flats → Double flats
+            PitchCode::N1b => Some(PitchCode::N1bb),
+            PitchCode::N2b => Some(PitchCode::N2bb),
+            PitchCode::N3b => Some(PitchCode::N3bb),
+            PitchCode::N4b => Some(PitchCode::N4bb),
+            PitchCode::N5b => Some(PitchCode::N5bb),
+            PitchCode::N6b => Some(PitchCode::N6bb),
+            PitchCode::N7b => Some(PitchCode::N7bb),
+
+            // Can't add flat to sharps or double sharps/flats
+            _ => None,
         }
     }
 
@@ -170,6 +244,14 @@ impl PitchCode {
             PitchCode::N5bb => "5bb",
             PitchCode::N6bb => "6bb",
             PitchCode::N7bb => "7bb",
+            // Half-flats
+            PitchCode::N1hf => "1b/",
+            PitchCode::N2hf => "2b/",
+            PitchCode::N3hf => "3b/",
+            PitchCode::N4hf => "4b/",
+            PitchCode::N5hf => "5b/",
+            PitchCode::N6hf => "6b/",
+            PitchCode::N7hf => "7b/",
         }.to_string()
     }
 
@@ -200,6 +282,14 @@ impl PitchCode {
             PitchCode::N5b => "p",   // Could also be "Pb" but "p" is simpler
             PitchCode::N6b => "d",   // komal Dha
             PitchCode::N7b => "n",   // komal Ni
+            // Half-flats
+            PitchCode::N1hf => "Sb/",
+            PitchCode::N2hf => "Rb/",
+            PitchCode::N3hf => "Gb/",
+            PitchCode::N4hf => "mb/",
+            PitchCode::N5hf => "Pb/",
+            PitchCode::N6hf => "Db/",
+            PitchCode::N7hf => "Nb/",
             // Double sharps
             PitchCode::N1ss => "S##",
             PitchCode::N2ss => "R##",
@@ -246,6 +336,14 @@ impl PitchCode {
             PitchCode::N5b => "gb",
             PitchCode::N6b => "ab",
             PitchCode::N7b => "bb",
+            // Half-flats
+            PitchCode::N1hf => "cb/",
+            PitchCode::N2hf => "db/",
+            PitchCode::N3hf => "eb/",
+            PitchCode::N4hf => "fb/",
+            PitchCode::N5hf => "gb/",
+            PitchCode::N6hf => "ab/",
+            PitchCode::N7hf => "bb/",
             // Double sharps
             PitchCode::N1ss => "c##",
             PitchCode::N2ss => "d##",
@@ -350,6 +448,13 @@ impl PitchCode {
             "5##" => Some(PitchCode::N5ss), "5bb" => Some(PitchCode::N5bb),
             "6##" => Some(PitchCode::N6ss), "6bb" => Some(PitchCode::N6bb),
             "7##" => Some(PitchCode::N7ss), "7bb" => Some(PitchCode::N7bb),
+            "1b/" => Some(PitchCode::N1hf),
+            "2b/" => Some(PitchCode::N2hf),
+            "3b/" => Some(PitchCode::N3hf),
+            "4b/" => Some(PitchCode::N4hf),
+            "5b/" => Some(PitchCode::N5hf),
+            "6b/" => Some(PitchCode::N6hf),
+            "7b/" => Some(PitchCode::N7hf),
             _ => None,
         }
     }

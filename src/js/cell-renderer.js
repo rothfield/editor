@@ -289,19 +289,10 @@ class CellRenderer {
       cellChar.setAttribute('data-cell-index', cellData.col);
     }
 
-    // For pitched elements with accidentals, render the composite glyph
-    // instead of the typed text (e.g., render U+E1F4 instead of "5#")
-    let charToRender = cellData.char;
-    if (cell && cell.kind && cell.kind.name === 'pitched_element' && cell.pitch_code) {
-      const baseChar = cellData.char.charAt(0);
-      const compositeGlyph = this.getCompositeGlyphChar(baseChar, cell.pitch_code);
-      if (compositeGlyph !== baseChar) {
-        // Cell has accidental, render composite glyph
-        charToRender = compositeGlyph;
-      }
-    }
-
-    cellChar.textContent = charToRender;
+    // FIXED: Rust's display_char() already computes the correct PUA glyph
+    // cellData.char contains the final character to render (e.g., U+E100 for '1', U+E1F0 for '1#')
+    // No need to recalculate - just use it directly
+    cellChar.textContent = cellData.char;
 
     // Apply barline glyph class from Rust
     if (cellData.barline_type) {
@@ -313,20 +304,15 @@ class CellRenderer {
       position: relative;
     `;
 
-    // Apply fonts based on cell kind
-    if (cell && cell.kind && cell.kind.name === 'text') {
-      // Text cells use system fonts at reduced size
-      cellChar.style.fontSize = `${BASE_FONT_SIZE * 0.6}px`;
-      cellChar.style.fontFamily = "'Segoe UI', 'Helvetica Neue', system-ui, sans-serif";
+    // Apply styling based on cell kind (fonts handled by CSS classes)
+    // DISABLED: Text cells now use same font as pitches (NotationFont at 32px)
+    /* if (cell && cell.kind && cell.kind.name === 'text') {
+      // Text cells use system fonts at reduced size (via kind-text class)
       cellChar.style.transform = 'translateY(40%)';
       cellChar.classList.add('text-cell');
-    } else if (cell && cell.kind && (cell.kind.name === 'pitched_element' || cell.kind.name === 'unpitched_element')) {
-      // Pitch and dash cells always use NotationFont (from Noto Music)
-      cellChar.style.fontFamily = "'NotationFont'";
-    } else if (cell && cell.kind && cell.kind.name === 'whitespace') {
-      // Whitespace cells use NotationFont for consistent spacing with other glyphs
-      cellChar.style.fontFamily = "'NotationFont'";
-    }
+      cellChar.classList.add('kind-text');  // CSS applies system font + smaller size
+    } */
+    // All cells inherit NotationFont from #editor-root
 
     // Set data attributes on cell-char
     if (cellData.dataset) {
@@ -393,7 +379,6 @@ class CellRenderer {
       left: ${lyric.x}px;
       top: ${lyricRelativeY}px;
       font-size: ${lyricFontSize}px;
-      font-family: 'Segoe UI', 'Helvetica Neue', system-ui, sans-serif;
       font-style: italic;
       color: #6b7280;
       pointer-events: none;
@@ -465,7 +450,6 @@ class CellRenderer {
       left: ${ornament.x}px;
       top: ${ornamentRelativeY}px;
       font-size: ${BASE_FONT_SIZE * 0.6}px;
-      font-family: 'NotationFont', monospace;
       color: #1e40af;
       pointer-events: none;
       white-space: nowrap;

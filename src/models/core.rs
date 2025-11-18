@@ -20,7 +20,9 @@ pub use super::pitch_code::PitchCode;
 #[repr(C)]
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Cell {
-    /// The visible character (can be multi-character like "1#" or "||")
+    /// The visible character from NotationFont (e.g., U+E100 for "1")
+    /// This is the actual glyph that gets rendered
+    /// Stored alongside semantics for fast rendering
     pub char: String,
 
     /// Type of musical element this cell represents
@@ -210,6 +212,12 @@ impl Cell {
         self.slur_indicator.is_end()
     }
 
+    /// Get the display character for this cell
+    /// Simply returns the stored character (already computed during cell creation)
+    pub fn display_char(&self) -> String {
+        self.char.clone()
+    }
+
 }
 
 /// Staff role for grouping and bracketing in multi-staff systems
@@ -312,7 +320,7 @@ impl Line {
             lyrics: String::new(),
             tonic: String::new(),
             pitch_system: None,
-            key_signature: String::new(),
+            key_signature: String::new(), // Empty means inherit from document-level key signature
             tempo: String::new(),
             time_signature: String::new(),
             new_system: false,
@@ -406,6 +414,10 @@ pub struct Document {
     #[serde(default)]
     pub annotation_layer: crate::text::annotations::AnnotationLayer,
 
+    /// Active scale constraint (mode/maqam/raga filter)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active_constraint: Option<crate::models::constraints::ScaleConstraint>,
+
     /// Application state (cursor position, selection, etc.)
     pub state: DocumentState,
 }
@@ -425,6 +437,7 @@ impl Document {
             lines: Vec::new(),
             ornament_edit_mode: false,
             annotation_layer: crate::text::annotations::AnnotationLayer::new(),
+            active_constraint: None,
             state: DocumentState::new(),
         }
     }
@@ -519,7 +532,27 @@ impl Document {
             for cell in &mut line.cells {
                 if let Some(pitch_code) = cell.pitch_code {
                     // Compute char from pitch code using effective pitch system
-                    cell.char = pitch_code.to_string(effective_system);
+                    // Use glyph_for_pitch to get single PUA codepoint instead of ASCII string
+                    if let Some(glyph) = crate::renderers::font_utils::glyph_for_pitch(
+                        pitch_code,
+                        cell.octave,
+                        effective_system
+                    ) {
+                        let char_str = glyph.to_string();
+                        #[cfg(target_arch = "wasm32")]
+                        {
+                            web_sys::console::log_1(&format!("[compute_glyphs] Setting char to U+{:04X} (len={})",
+                                glyph as u32, char_str.len()).into());
+                        }
+                        cell.char = char_str;
+                    } else {
+                        // Fallback to old behavior if glyph not found (shouldn't happen)
+                        #[cfg(target_arch = "wasm32")]
+                        {
+                            web_sys::console::log_1(&format!("[compute_glyphs] WARNING: glyph_for_pitch returned None for {:?}", pitch_code).into());
+                        }
+                        cell.char = pitch_code.to_string(effective_system);
+                    }
                 }
             }
         }

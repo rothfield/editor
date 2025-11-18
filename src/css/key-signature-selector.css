@@ -27,9 +27,9 @@
 
 .key-sig-display-svg {
     display: block;
-    width: 64px;
+    width: 83px;  /* 30% larger than 64px */
     height: auto;
-    max-height: 76px;
+    max-height: 99px;  /* 30% larger than 76px */
 }
 
 /* Key Signature Selector Modal */

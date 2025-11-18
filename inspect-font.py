@@ -107,5 +107,10 @@ def inspect_font(font_path):
     print(f"Sharp accidentals: {sharp_count}/47 (expected)")
 
 if __name__ == "__main__":
-    font_path = "/home/john/editor/static/fonts/NotationMono.ttf"
+    import os
+
+    # Default to Number system font in dist/fonts
+    default_path = os.path.join(os.path.dirname(__file__), "dist/fonts/NotationFont-Number.ttf")
+    font_path = sys.argv[1] if len(sys.argv) > 1 else default_path
+
     inspect_font(font_path)

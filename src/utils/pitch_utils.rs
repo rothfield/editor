@@ -37,6 +37,7 @@ pub fn accidental_symbol(accidental: &Accidental) -> &'static str {
         Accidental::Sharp => "#",
         Accidental::DoubleSharp => "##",
         Accidental::Flat => "b",
+        Accidental::HalfFlat => "b/",
         Accidental::DoubleFlat => "bb",
     }
 }
@@ -114,6 +115,7 @@ pub fn pitch_to_semitones(pitch_name: &str, system: PitchSystem, accidental: &Ac
         Accidental::Sharp => 1,
         Accidental::DoubleSharp => 2,
         Accidental::Flat => -1,
+        Accidental::HalfFlat => -1, // TODO: Theoretically -0.5, but using -1 for now
         Accidental::DoubleFlat => -2,
     };
 

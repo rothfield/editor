@@ -121,30 +121,21 @@ class DOMRenderer {
       }
     }
 
-    // STEP 1: Measure all widths (JS-only, native DOM) - delegate to MeasurementService
+    // STEP 1: Measure syllable widths (JS-only, native DOM)
+    // NOTE: Cell/char widths now come from global glyph cache initialized at startup
     const measureStart = performance.now();
     const measurements = this.measurementService.measureAllWidths(doc);
 
-    // Also measure character widths for cursor positioning
-    this.characterWidthData = this.measurementService.measureCharacterWidths(doc);
-
     const measureTime = performance.now() - measureStart;
-    logger.debug(LOG_CATEGORIES.PERFORMANCE, 'Measurement time', {
-      duration: `${measureTime.toFixed(2)}ms`
+    logger.debug(LOG_CATEGORIES.PERFORMANCE, 'Syllable measurement time', {
+      duration: `${measureTime.toFixed(2)}ms`,
+      syllableCount: measurements.syllableWidths.length
     });
 
-    // Flatten character widths for Rust
-    const flattenedCharWidths = [];
-    for (const charData of this.characterWidthData) {
-      flattenedCharWidths.push(...charData.charWidths);
-    }
-
-    // STEP 2: Call Rust ONCE to compute layout
+    // STEP 2: Call Rust ONCE to compute layout (cell/char widths from cache)
     const layoutStart = performance.now();
     const config = {
-      cell_widths: measurements.cellWidths,
       syllable_widths: measurements.syllableWidths,
-      char_widths: flattenedCharWidths,
       font_size: BASE_FONT_SIZE,
       line_height: BASE_LINE_HEIGHT,
       left_margin: LEFT_MARGIN_PX,
@@ -165,18 +156,10 @@ class DOMRenderer {
 
     const displayList = this.editor.wasmModule.computeLayout(doc, config);
 
-    // Debug: Check if first cell has "selected" class in DisplayList
-    if (displayList.lines?.[0]?.cells?.[0]) {
-      const firstCell = displayList.lines[0].cells[0];
-      console.log('[RENDERER] DisplayList first cell classes:', firstCell.classes);
-      console.log('[RENDERER] Has "selected"?', firstCell.classes.includes('selected'));
-    }
-
     const layoutTime = performance.now() - layoutStart;
     logger.debug(LOG_CATEGORIES.PERFORMANCE, 'Layout time', {
       duration: `${layoutTime.toFixed(2)}ms`
     });
-
 
     // Cache DisplayList for cursor positioning
     this.displayList = displayList;

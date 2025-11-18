@@ -24,7 +24,6 @@ class StyleManager {
     };
 
     this.baseStyleElement = null;
-    this.barlineStyleElement = null;
   }
 
   /**
@@ -32,7 +31,7 @@ class StyleManager {
    */
   initialize() {
     this.injectBaseStyles();
-    this.injectBarlineStyles();
+    // Note: Barline CSS injection removed - barlines now render as Unicode characters directly
   }
 
   /**
@@ -47,12 +46,24 @@ class StyleManager {
     const style = document.createElement('style');
     style.textContent = `
       /* ===== WEB FONTS ===== */
-      /* Load NotationFont (derived from Noto Music) for all pitch + music symbols */
+      /* NOTE: System-specific font loading is currently NOT USED.
+         Full NotationFont is loaded via @font-face in index.html instead.
+         The following @font-face declaration is commented out: */
+      /*
       @font-face {
         font-family: 'NotationFont';
-        src: url('/static/fonts/NotationFont.ttf?v=${Date.now()}') format('truetype');
+        src: url('/dist/fonts/NotationFont-Number.woff2') format('woff2');
         font-weight: normal;
         font-style: normal;
+        font-display: swap;
+      }
+      */
+
+      /* ===== GLOBAL FONT SETTINGS ===== */
+      /* Apply NotationFont to entire editor - all cells inherit this */
+      #notation-editor {
+        font-family: 'NotationFont', monospace;
+        font-size: ${BASE_FONT_SIZE}px;
       }
 
       /* Base cell styles */
@@ -60,7 +71,12 @@ class StyleManager {
         padding: 0;
         margin: 0;
         box-sizing: content-box;
-        font-size: ${BASE_FONT_SIZE}px;
+        /* Font inherited from #editor-root - no need to specify here */
+      }
+
+      /* Pitched elements use normal weight */
+      .char-cell.kind-pitched {
+        font-weight: normal;
       }
 
       /* Symbol elements styled in green */
@@ -74,39 +90,15 @@ class StyleManager {
          See CLAUDE.md "Multi-Character Glyph Rendering: Textual Mental Model with Visual Overlays"
       */
 
-      /* Pitched elements: rendered with pre-composed accidental glyphs from NotationFont */
-      .char-cell.kind-pitched {
-        font-family: 'NotationFont', monospace;
-      }
+      /* DISABLED: Text cells now use same font as pitches (NotationFont at 32px) */
+      /* Text cells override with proportional font */
+      /* .char-cell.kind-text,
+      .lyric {
+        font-family: 'Segoe UI', 'Helvetica Neue', system-ui, sans-serif;
+        font-size: ${BASE_FONT_SIZE * 0.6}px;
+      } */
 
-      /* All barline overlays using SMuFL music font */
-      /* Hide underlying ASCII text and show fancy glyph overlay */
-      .char-cell.repeat-left-start,
-      .char-cell.repeat-right-start,
-      .char-cell.double-bar-start,
-      .char-cell.single-bar {
-        color: transparent;
-      }
-
-      /* Base styles for all SMuFL barline glyphs */
-      /* Using NotationFont (derived from Noto Music) which includes barline glyphs */
-      .char-cell.repeat-left-start::after,
-      .char-cell.repeat-right-start::after,
-      .char-cell.double-bar-start::after,
-      .char-cell.single-bar::after {
-        font-family: 'NotationFont';
-        position: absolute;
-        left: 0;
-        top: ${BASE_FONT_SIZE * 0.75}px;
-        transform: translateY(-50%);
-        color: #000;
-        font-size: ${SMUFL_FONT_SIZE * 1.2}px;
-        line-height: 1;
-        pointer-events: none;
-        z-index: 4;
-      }
-
-      /* Barline styles generated from font mapping */
+      /* REMOVED: All barline CSS overlays - barlines now render as Unicode characters directly */
 
       /* Current line border */
       .notation-line.current-line {
@@ -124,74 +116,6 @@ class StyleManager {
     logger.debug(LOG_CATEGORIES.RENDERER, 'Base styles injected');
   }
 
-  /**
-   * Inject barline CSS generated from font mapping (single source of truth)
-   */
-  injectBarlineStyles() {
-    if (this.barlineStyleElement) {
-      // Remove old styles before re-injecting
-      this.barlineStyleElement.remove();
-      this.barlineStyleElement = null;
-    }
-
-    const mapping = this.options.fontMapping;
-    if (!mapping || !mapping.symbols) {
-      logger.warn(LOG_CATEGORIES.RENDERER, 'Font mapping not available, using fallback barline styles');
-      return;
-    }
-
-    // Find barline symbols in mapping
-    const barlineSymbols = {
-      'barlineSingle': { selector: '.char-cell.single-bar', width: '100%', align: 'center' },
-      'barlineDouble': { selector: '.char-cell.double-bar-start', width: '200%', align: 'left' },
-      'barlineRepeatLeft': { selector: '.char-cell.repeat-left-start', width: '200%', align: 'left' },
-      'barlineRepeatRight': { selector: '.char-cell.repeat-right-start', width: '200%', align: 'left' },
-      'barlineRepeatBoth': { selector: '.char-cell.repeat-both', width: '200%', align: 'left' }
-    };
-
-    let barlineCss = '';
-    for (const [symbolName, config] of Object.entries(barlineSymbols)) {
-      const symbol = mapping.symbols.find(s => s.name === symbolName);
-      if (symbol) {
-        // Get codepoint and convert to CSS Unicode escape sequence
-        const codepoint = parseInt(symbol.codepoint, 16);
-        // CSS Unicode escapes: pad to 6 chars for > 0xFFFF, 4 for < 0xFFFF
-        const minPad = codepoint > 0xFFFF ? 6 : 4;
-        const codePointHex = codepoint.toString(16).toUpperCase().padStart(minPad, '0');
-
-        barlineCss += `
-      /* ${symbolName}: U+${codePointHex} from NotationFont-map.json */
-      ${config.selector}::after {
-        content: '\\${codePointHex}';
-        width: ${config.width};
-        text-align: ${config.align};
-      }
-      `;
-
-        logger.debug(LOG_CATEGORIES.RENDERER, `Barline style: ${symbolName} -> U+${codePointHex}`);
-      } else {
-        logger.warn(LOG_CATEGORIES.RENDERER, `Symbol ${symbolName} not found in font mapping`);
-      }
-    }
-
-    if (barlineCss) {
-      const style = document.createElement('style');
-      style.textContent = barlineCss;
-      document.head.appendChild(style);
-      this.barlineStyleElement = style;
-
-      logger.debug(LOG_CATEGORIES.RENDERER, 'Barline styles injected from font mapping');
-    }
-  }
-
-  /**
-   * Update font mapping and re-inject barline styles
-   * @param {Object} fontMapping - New font mapping from WASM
-   */
-  updateFontMapping(fontMapping) {
-    this.options.fontMapping = fontMapping;
-    this.injectBarlineStyles();
-  }
 
   /**
    * Cleanup - remove injected styles
@@ -200,10 +124,6 @@ class StyleManager {
     if (this.baseStyleElement) {
       this.baseStyleElement.remove();
       this.baseStyleElement = null;
-    }
-    if (this.barlineStyleElement) {
-      this.barlineStyleElement.remove();
-      this.barlineStyleElement = null;
     }
 
     logger.debug(LOG_CATEGORIES.RENDERER, 'Styles cleaned up');

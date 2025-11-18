@@ -6,9 +6,8 @@
  * regardless of changes to atoms.yaml or font generation.
  */
 
-// Font configuration loaded from WASM and NotationFont-map.json
+// Font configuration loaded from WASM only (single source of truth)
 let fontConfig = null;
-let fontMapData = null;
 
 // Notation system definitions (from atoms.yaml)
 const PITCH_SYSTEMS = {
@@ -42,45 +41,28 @@ const OCTAVE_VARIANTS = [
   { shift: -2, label: "2 dots below (octave -2)" }
 ];
 
-// Initialize font config from WASM and load NotationFont-map.json
+// Initialize font config from WASM (single source of truth)
 async function initFontConfig() {
   try {
-    // Load NotationFont-map.json first (single source of truth)
-    try {
-      const mapResponse = await fetch('static/fonts/NotationFont-map.json');
-      if (mapResponse.ok) {
-        fontMapData = await mapResponse.json();
-        console.log('✓ Font map loaded from NotationFont-map.json');
-      }
-    } catch (mapError) {
-      console.warn('⚠ Could not load NotationFont-map.json:', mapError);
+    // Wait for editor to be fully initialized (max 10 seconds)
+    let attempts = 0;
+    while (!window.editor?.wasmModule?.getFontConfig && attempts < 100) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      attempts++;
     }
 
-    // Try to get font config from editor instance first (preferred)
-    let config = window.editor?.wasmModule?.getFontConfig?.();
+    // Get font config from WASM (includes systems + symbols)
+    const config = window.editor?.wasmModule?.getFontConfig?.();
 
-    // Fallback to global window.wasmModule if available
     if (!config) {
-      config = window.wasmModule?.getFontConfig?.();
+      throw new Error('FATAL: getFontConfig not available after waiting for editor initialization. WASM module failed to load properly.');
     }
 
-    if (config) {
-      fontConfig = config;
-      console.log('✓ Font config loaded from WASM:', fontConfig);
-      return true;
-    } else {
-      console.warn('⚠ getFontConfig not available, using fallback constants');
-      // Fallback to hardcoded if WASM not ready
-      fontConfig = {
-        all_chars: "1234567CDEFGABcdefgabSrRgGmMPdDnNdrmfsltDRMFSLT",
-        pua_start: 0xE600,
-        chars_per_variant: 4,
-        accidental_pua_start: 0xE1F0,
-        symbols_pua_start: 0xE220,
-        total_characters: 47
-      };
-      return false;
-    }
+    fontConfig = config;
+    console.log('✓ Font config loaded from WASM:', fontConfig);
+    console.log('  - Systems:', fontConfig.systems?.length || 0);
+    console.log('  - Symbols:', fontConfig.symbols?.length || 0);
+    return true;
   } catch (e) {
     console.error('Error loading font config:', e);
     return false;
@@ -118,45 +100,40 @@ export class FontTestUI {
   showComprehensiveView() {
     this.grid.innerHTML = '';
 
-    // 1. Display symbols first (from NotationFont-map.json - single source of truth)
-    if (fontMapData?.symbols && fontMapData.symbols.length > 0) {
-      this.addSymbolsFromMap();
+    // 1. Display symbols first (from WASM - single source of truth)
+    if (fontConfig?.symbols && fontConfig.symbols.length > 0) {
+      this.addSymbolsFromWasm();
     } else {
-      console.warn('No symbols found in font map data');
+      console.warn('No symbols found in WASM font config');
     }
 
-    // 2. Display each pitch system with all variants
+    // 2. Display each pitch system with all variants (including accidentals)
     for (const [systemKey, systemInfo] of Object.entries(PITCH_SYSTEMS)) {
       this.addPitchSystemSection(systemKey, systemInfo);
     }
   }
 
-  addSymbolsFromMap() {
-    // Group symbols by kind
-    const symbolsByKind = {};
-    for (const symbol of fontMapData.symbols) {
-      if (!symbolsByKind[symbol.kind]) {
-        symbolsByKind[symbol.kind] = [];
+  addSymbolsFromWasm() {
+    // Group symbols by type (barline vs ornament) based on name prefix
+    const barlines = [];
+    const ornaments = [];
+
+    for (const symbol of fontConfig.symbols) {
+      if (symbol.name.startsWith('barline')) {
+        barlines.push({ cp: symbol.codepoint, label: symbol.label });
+      } else if (symbol.name.startsWith('ornament')) {
+        ornaments.push({ cp: symbol.codepoint, label: symbol.label });
       }
-      symbolsByKind[symbol.kind].push(symbol);
     }
 
-    // Display symbols grouped by kind (excluding brackets)
-    const kindOrder = ['accidental', 'barline', 'ornament'];
-    const kindLabels = {
-      'accidental': 'Accidentals',
-      'barline': 'Barlines & Repeat Markers',
-      'ornament': 'Ornaments'
-    };
+    // Display barlines
+    if (barlines.length > 0) {
+      this.addSymbolSection('Barlines & Repeat Markers', barlines);
+    }
 
-    for (const kind of kindOrder) {
-      if (symbolsByKind[kind]) {
-        const symbols = symbolsByKind[kind].map(s => ({
-          cp: parseInt(s.codepoint, 16),
-          label: s.label
-        }));
-        this.addSymbolSection(kindLabels[kind] || kind, symbols);
-      }
+    // Display ornaments
+    if (ornaments.length > 0) {
+      this.addSymbolSection('Ornaments', ornaments);
     }
   }
 
@@ -176,13 +153,21 @@ export class FontTestUI {
     // Get characters for this system
     const characters = systemInfo.characters;
 
+    // Get per-system PUA config from fontConfig.systems
+    const systemConfig = fontConfig.systems?.find(s => s.system_name === systemKey);
+    if (!systemConfig) {
+      console.warn(`No PUA config found for system: ${systemKey}`);
+      return;
+    }
+
     // Create grid for this pitch system
     const pitchGrid = document.createElement('div');
     pitchGrid.className = 'space-y-4';
     section.appendChild(pitchGrid);
 
     // For each character, show all octave variants
-    for (const char of characters) {
+    for (let charIndexInSystem = 0; charIndexInSystem < characters.length; charIndexInSystem++) {
+      const char = characters[charIndexInSystem];
       const charContainer = document.createElement('div');
       charContainer.className = 'border border-gray-300 rounded-lg p-4 bg-gray-50';
 
@@ -197,55 +182,55 @@ export class FontTestUI {
       variantGrid.className = 'grid grid-cols-4 gap-2 mb-3';
 
       // Natural version (no octave shift)
-      const charIndex = fontConfig.all_chars.indexOf(char);
-      if (charIndex !== -1) {
-        const naturalItem = this.createGlyphItem(char, `${char} (natural)`, null);
-        variantGrid.appendChild(naturalItem);
+      const naturalItem = this.createGlyphItem(char, `${char} (natural)`, null);
+      variantGrid.appendChild(naturalItem);
 
-        // All octave variants
-        for (let i = 0; i < OCTAVE_VARIANTS.length; i++) {
-          const variant = OCTAVE_VARIANTS[i];
-          const cp = fontConfig.pua_start + (charIndex * fontConfig.chars_per_variant) + i;
-          const label = `${char} ${variant.label}`;
-          const item = this.createGlyphItem(cp, label, `U+${cp.toString(16).toUpperCase().padStart(4, '0')}`);
-          variantGrid.appendChild(item);
-        }
+      // All octave variants (variants 0-3)
+      for (let variantIdx = 0; variantIdx < OCTAVE_VARIANTS.length; variantIdx++) {
+        const variant = OCTAVE_VARIANTS[variantIdx];
+        const cp = systemConfig.pua_base + (charIndexInSystem * systemConfig.variants_per_character) + variantIdx;
+        const label = `${char} ${variant.label}`;
+        const item = this.createGlyphItem(cp, label, `U+${cp.toString(16).toUpperCase().padStart(4, '0')}`);
+        variantGrid.appendChild(item);
       }
 
       charContainer.appendChild(variantGrid);
 
       // All accidentals for this character (sharp, flat, double-sharp, double-flat)
-      if (charIndex !== -1 && charIndex < fontConfig.all_chars.length) {
-        const accidentalsLabel = document.createElement('h4');
-        accidentalsLabel.className = 'text-xs font-semibold text-gray-600 mt-3 mb-2';
-        accidentalsLabel.textContent = 'With Accidentals';
-        charContainer.appendChild(accidentalsLabel);
+      // Each system gets 25 variants: 5 accidental types × 5 octave variants
+      // Variant structure: 0-4 (natural), 5-9 (sharp), 10-14 (flat), 15-19 (double-sharp), 20-24 (double-flat)
+      const accidentalsLabel = document.createElement('h4');
+      accidentalsLabel.className = 'text-xs font-semibold text-gray-600 mt-3 mb-2';
+      accidentalsLabel.textContent = 'With Accidentals (Per-System Variants - 5 types × 5 octaves)';
+      charContainer.appendChild(accidentalsLabel);
 
-        const accidentalsGrid = document.createElement('div');
-        accidentalsGrid.className = 'grid grid-cols-4 gap-2';
+      const accidentalsGrid = document.createElement('div');
+      accidentalsGrid.className = 'grid grid-cols-4 gap-2';
 
-        // Sharp (♯): 0xE1F0 + charIndex
-        const sharpCp = 0xE1F0 + charIndex;
-        const sharpItem = this.createGlyphItem(sharpCp, `${char}♯`, `U+${sharpCp.toString(16).toUpperCase().padStart(4, '0')}`);
-        accidentalsGrid.appendChild(sharpItem);
+      // CRITICAL: Must match build.rs calculate_system_codepoint() lines 441-449
+      // For base octave (octave 0, octave_idx = 0):
+      // Natural: offset 0, Flat: offset 5N, Half-flat: offset 10N,
+      // Double-flat: offset 15N, Double-sharp: offset 20N, Sharp: offset 25N
+      const numChars = characters.length;
+      const accidentalTypes = [
+        { name: '♭', blockOffset: 5, label: 'Flat' },
+        { name: 'hf♭', blockOffset: 10, label: 'Half-flat' },
+        { name: '𝄫', blockOffset: 15, label: 'Double-flat' },
+        { name: '𝄪', blockOffset: 20, label: 'Double-sharp' },  // FIXED: was blockOffset 25
+        { name: '♯', blockOffset: 25, label: 'Sharp' }  // FIXED: was blockOffset 20
+      ];
 
-        // Flat (♭): 0xE220 + charIndex
-        const flatCp = 0xE220 + charIndex;
-        const flatItem = this.createGlyphItem(flatCp, `${char}♭`, `U+${flatCp.toString(16).toUpperCase().padStart(4, '0')}`);
-        accidentalsGrid.appendChild(flatItem);
-
-        // Double-sharp (𝄪): 0xE250 + charIndex
-        const doubleSharpCp = 0xE250 + charIndex;
-        const doubleSharpItem = this.createGlyphItem(doubleSharpCp, `${char}𝄪`, `U+${doubleSharpCp.toString(16).toUpperCase().padStart(4, '0')}`);
-        accidentalsGrid.appendChild(doubleSharpItem);
-
-        // Double-flat (𝄫): 0xE280 + charIndex
-        const doubleFlatCp = 0xE280 + charIndex;
-        const doubleFlatItem = this.createGlyphItem(doubleFlatCp, `${char}𝄫`, `U+${doubleFlatCp.toString(16).toUpperCase().padStart(4, '0')}`);
-        accidentalsGrid.appendChild(doubleFlatItem);
-
-        charContainer.appendChild(accidentalsGrid);
+      for (const accidental of accidentalTypes) {
+        // Show base octave (octave 0, octave_idx = 0) for each accidental type
+        // Formula: pua_base + (blockOffset × N) + (octave_idx × N) + char_idx
+        const octave_idx = 0; // Base octave
+        const cp = systemConfig.pua_base + (accidental.blockOffset * numChars) + (octave_idx * numChars) + charIndexInSystem;
+        const accLabel = `${char}${accidental.name}`;
+        const item = this.createGlyphItem(cp, accLabel, `U+${cp.toString(16).toUpperCase().padStart(4, '0')}`);
+        accidentalsGrid.appendChild(item);
       }
+
+      charContainer.appendChild(accidentalsGrid);
 
       pitchGrid.appendChild(charContainer);
     }
@@ -409,14 +394,13 @@ export class FontTestUI {
       }
     }
 
-    // Add symbols (from font map data - single source of truth, excluding brackets)
-    if (fontMapData?.symbols && fontMapData.symbols.length > 0) {
-      for (const symbol of fontMapData.symbols) {
-        // Skip brackets
-        if (symbol.kind === 'bracket') continue;
-
-        const cp = parseInt(symbol.codepoint, 16);
-        const kind = symbol.kind.charAt(0).toUpperCase() + symbol.kind.slice(1);
+    // Add symbols (from WASM config - single source of truth)
+    if (fontConfig?.symbols && fontConfig.symbols.length > 0) {
+      for (const symbol of fontConfig.symbols) {
+        const cp = symbol.codepoint;
+        // Derive kind from name (barlineSingle → Barline, ornamentTrill → Ornament)
+        const kind = symbol.name.startsWith('barline') ? 'Barline' :
+                     symbol.name.startsWith('ornament') ? 'Ornament' : 'Symbol';
         tbody.appendChild(this.createTableRow(cp, String.fromCodePoint(cp), symbol.label, 'Symbol', kind));
       }
     }
@@ -477,13 +461,11 @@ function initFontSandbox() {
     sandbox.style.fontSize = `${newSize}pt`;
   });
 
-  // Start with brackets (staff grouping)
-  let content = '--- BRACKETS (from Bravura) ---\n';
-  if (fontMapData?.symbols) {
-    const brackets = fontMapData.symbols.filter(s => s.kind === 'bracket');
-    for (const bracket of brackets) {
-      const cp = parseInt(bracket.codepoint, 16);
-      content += String.fromCodePoint(cp) + ' ';
+  // Start with symbols from WASM
+  let content = '--- SYMBOLS (from WASM) ---\n';
+  if (fontConfig?.symbols) {
+    for (const symbol of fontConfig.symbols) {
+      content += String.fromCodePoint(symbol.codepoint) + ' ';
     }
   }
   content += '\n\n';
@@ -493,41 +475,79 @@ function initFontSandbox() {
   content += '𝄆 𝄙𝆏 𝅗𝅘𝅥𝅘𝅥𝅯𝅘𝅥𝅱 𝄞𝄟𝄢 𝄾𝄿𝄎 𝄴 𝄶𝅁 𝄭𝄰 𝇛𝇜 𝄊 𝄇 𝀸𝀹𝀺𝀻𝀼𝀽 𝈀𝈁𝈂𝈃𝈄𝈅𝄃 𝄞♯ 𝅘𝅥𝄾 𝄀 ♭𝅗𝅥♫ 𝆑𝆏 𝄂\n\n';
 
   // Add all pitch systems with octave variants
-  content += '--- CUSTOM NOTATION FONT GLYPHS ---\n\n';
+  content += '--- CUSTOM NOTATION FONT GLYPHS (Per-System PUA) ---\n\n';
 
   // For each pitch system
   for (const [systemKey, systemInfo] of Object.entries(PITCH_SYSTEMS)) {
+    // Find the system config from fontConfig.systems
+    const systemConfig = fontConfig.systems?.find(s => s.system_name === systemKey);
+    if (!systemConfig) {
+      console.warn(`System ${systemKey} not found in fontConfig`);
+      continue;
+    }
+
     content += `${systemInfo.display_name}:\n`;
     const characters = systemInfo.characters;
 
     // For each character in the system
-    for (const char of characters) {
-      const charIndex = fontConfig.all_chars.indexOf(char);
-      if (charIndex === -1) continue;
+    // New layout: group-by-accidental-then-octave
+    // For N characters: octaves 0, -2, -1, +1, +2 appear first (naturals)
+    // Then flats (5N to 10N-1), then double-flats, sharps, double-sharps
 
-      // Natural
-      content += char;
+    const numChars = characters.length;
+    const octaveOrder = [
+      { octave: 0, label: '0' },
+      { octave: -2, label: '-2' },
+      { octave: -1, label: '-1' },
+      { octave: 1, label: '+1' },
+      { octave: 2, label: '+2' }
+    ];
 
-      // All octave variants
-      for (let variantIdx = 0; variantIdx < 4; variantIdx++) {
-        const cp = fontConfig.pua_start + (charIndex * fontConfig.chars_per_variant) + variantIdx;
-        content += String.fromCodePoint(cp);
+    // CRITICAL: Must match build.rs calculate_system_codepoint() lines 441-449
+    // Layout: Natural(0), Flat(5N), Half-flat(10N), Double-flat(15N), Double-sharp(20N), Sharp(25N)
+    const accidentalTypes = [
+      { name: 'natural', symbol: '', blockOffset: 0 },
+      { name: 'flat', symbol: 'b', blockOffset: 5 },
+      { name: 'half-flat', symbol: 'hf', blockOffset: 10 },
+      { name: 'double-flat', symbol: 'bb', blockOffset: 15 },
+      { name: 'double-sharp', symbol: '##', blockOffset: 20 },  // FIXED: was blockOffset 25
+      { name: 'sharp', symbol: '#', blockOffset: 25 }  // FIXED: was blockOffset 20
+    ];
+
+    for (let charIndexInSystem = 0; charIndexInSystem < characters.length; charIndexInSystem++) {
+      const char = characters[charIndexInSystem];
+
+      // Label: character and all its variants
+      content += char + ':';
+
+      // Display each accidental type with all octave variants
+      for (const acc of accidentalTypes) {
+        // Add accidental type label
+        if (acc.symbol) {
+          content += ` [${acc.symbol}]`;
+        } else {
+          content += ' [nat]';
+        }
+
+        // Add octave variants for this accidental
+        for (const octInfo of octaveOrder) {
+          // Formula: base + (accidental_block × N) + (octave_group × N) + char_index
+          const octaveGroupIdx = octaveOrder.indexOf(octInfo);
+          const codepoint = systemConfig.pua_base
+            + (acc.blockOffset * numChars)
+            + (octaveGroupIdx * numChars)
+            + charIndexInSystem;
+
+          try {
+            content += String.fromCodePoint(codepoint);
+          } catch (e) {
+            content += '?';
+          }
+        }
+        content += ' ';
       }
 
-      // All accidentals (sharp, flat, double-sharp, double-flat)
-      const sharpCp = 0xE1F0 + charIndex;
-      content += String.fromCodePoint(sharpCp);
-
-      const flatCp = 0xE220 + charIndex;
-      content += String.fromCodePoint(flatCp);
-
-      const doubleSharpCp = 0xE250 + charIndex;
-      content += String.fromCodePoint(doubleSharpCp);
-
-      const doubleFlatCp = 0xE280 + charIndex;
-      content += String.fromCodePoint(doubleFlatCp);
-
-      content += ' ';
+      content += '\n';
     }
 
     content += '\n\n';
@@ -543,7 +563,8 @@ async function initFontTestUI() {
   const wasmReady = await initFontConfig();
 
   if (!wasmReady) {
-    console.warn('Using fallback font configuration');
+    console.error('FATAL: Font config initialization failed. Font Test UI cannot function without WASM.');
+    return;
   }
 
   // Create UI instance

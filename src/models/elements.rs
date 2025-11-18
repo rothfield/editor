@@ -357,8 +357,11 @@ pub enum Accidental {
     /// Flat (b)
     Flat = 3,
 
+    /// Half flat (b/)
+    HalfFlat = 4,
+
     /// Double flat (bb)
-    DoubleFlat = 4,
+    DoubleFlat = 5,
 }
 
 impl Accidental {
@@ -369,18 +372,8 @@ impl Accidental {
             Accidental::Sharp => "#",
             Accidental::DoubleSharp => "##",
             Accidental::Flat => "b",
+            Accidental::HalfFlat => "b/",
             Accidental::DoubleFlat => "bb",
-        }
-    }
-
-    /// Get the semitone offset for this accidental
-    pub fn semitone_offset(&self) -> i8 {
-        match self {
-            Accidental::Natural => 0,
-            Accidental::Sharp => 1,
-            Accidental::DoubleSharp => 2,
-            Accidental::Flat => -1,
-            Accidental::DoubleFlat => -2,
         }
     }
 
@@ -390,6 +383,7 @@ impl Accidental {
             "##" => Some(Accidental::DoubleSharp),
             "#" => Some(Accidental::Sharp),
             "bb" => Some(Accidental::DoubleFlat),
+            "b/" => Some(Accidental::HalfFlat),
             "b" => Some(Accidental::Flat),
             "" | "♮" => Some(Accidental::Natural),
             _ => None,

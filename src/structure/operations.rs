@@ -82,6 +82,61 @@ pub fn shift_octaves(text: &str, delta: i8, system: PitchSystem) -> OctaveShiftR
     }
 }
 
+/// Set octave for a single Cell (mutates in place)
+///
+/// Works at the semantic level: updates `cell.octave` only.
+/// Display glyph is derived via `cell.display_char()` at render time.
+///
+/// ## Parameters
+/// - `cell`: The cell to modify (must be PitchedElement)
+/// - `target_octave`: Absolute octave value (-2, -1, 0, +1, +2)
+///
+/// ## Returns
+/// `true` if octave was set successfully, `false` if cell is not pitched or octave out of range
+pub fn set_cell_octave(cell: &mut crate::models::core::Cell, target_octave: i8) -> bool {
+    use crate::models::elements::ElementKind;
+    use crate::models::elements::PitchSystem;
+
+    // Only apply to pitched elements
+    if cell.kind != ElementKind::PitchedElement {
+        return false;
+    }
+
+    let pitch_code = match cell.pitch_code {
+        Some(pc) => pc,
+        None => return false,
+    };
+
+    let system = cell.pitch_system.unwrap_or(PitchSystem::Number);
+
+    // Validate that target octave is in range
+    if glyph_for_pitch(pitch_code, target_octave, system).is_some() {
+        // Just mutate the semantic field; glyph is derived at render time
+        cell.octave = target_octave;
+        true
+    } else {
+        false // Out of range
+    }
+}
+
+/// Set octaves for all pitched cells in a slice
+///
+/// ## Parameters
+/// - `cells`: Mutable slice of cells
+/// - `target_octave`: Absolute octave value (-2, -1, 0, +1, +2)
+///
+/// ## Returns
+/// Number of cells whose octave was successfully set
+pub fn set_cells_octave(cells: &mut [crate::models::core::Cell], target_octave: i8) -> usize {
+    let mut count = 0;
+    for cell in cells.iter_mut() {
+        if set_cell_octave(cell, target_octave) {
+            count += 1;
+        }
+    }
+    count
+}
+
 /// Shift octaves for a specific range in text
 ///
 /// Only shifts characters within the specified range, preserving everything else.

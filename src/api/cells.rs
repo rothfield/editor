@@ -5,7 +5,7 @@
 //! applying musical attributes like octave changes.
 
 use wasm_bindgen::prelude::*;
-use crate::models::{Cell, PitchSystem};
+use crate::models::{Cell, PitchSystem, PitchCode};
 use crate::parse::grammar::parse_single;
 
 // Re-export logging macros from helpers module
@@ -114,6 +114,99 @@ pub fn insert_character(
         cells[i].col += 1;
     }
 
+    // Check for accidental mutations
+    // 1. Natural + "b" -> Flat
+    // 2. Natural + "#" -> Sharp
+    // 3. Flat + "/" -> Half-flat
+
+    // Handle "b" mutation: Natural -> Flat
+    if c == 'b' && insert_pos > 0 {
+        if let Some(pitch_code) = cells[insert_pos - 1].pitch_code {
+            let is_natural = matches!(pitch_code,
+                PitchCode::N1 | PitchCode::N2 | PitchCode::N3 | PitchCode::N4 |
+                PitchCode::N5 | PitchCode::N6 | PitchCode::N7
+            );
+
+            if is_natural {
+                wasm_log!("  Mutating natural + 'b' to flat at position {}", insert_pos - 1);
+
+                // Mutate natural to flat
+                let new_pitch_code = match pitch_code {
+                    PitchCode::N1 => PitchCode::N1b,
+                    PitchCode::N2 => PitchCode::N2b,
+                    PitchCode::N3 => PitchCode::N3b,
+                    PitchCode::N4 => PitchCode::N4b,
+                    PitchCode::N5 => PitchCode::N5b,
+                    PitchCode::N6 => PitchCode::N6b,
+                    PitchCode::N7 => PitchCode::N7b,
+                    _ => pitch_code,
+                };
+
+                cells[insert_pos - 1].pitch_code = Some(new_pitch_code);
+
+                // Update glyph for new pitch code
+                use crate::renderers::font_utils::glyph_for_pitch;
+                if let Some(new_glyph) = glyph_for_pitch(new_pitch_code, cells[insert_pos - 1].octave, pitch_system) {
+                    cells[insert_pos - 1].char = new_glyph.to_string();
+                }
+
+                // Remove the "b" cell
+                cells.remove(insert_pos);
+
+                // Renumber columns
+                for i in insert_pos..cells.len() {
+                    cells[i].col = i;
+                }
+
+                wasm_log!("  Mutation complete: {:?} -> {:?}", pitch_code, new_pitch_code);
+            }
+        }
+    }
+
+    // Handle "/" mutation: Flat -> Half-flat
+    else if c == '/' && insert_pos > 0 {
+        if let Some(pitch_code) = cells[insert_pos - 1].pitch_code {
+            let is_flat = matches!(pitch_code,
+                PitchCode::N1b | PitchCode::N2b | PitchCode::N3b | PitchCode::N4b |
+                PitchCode::N5b | PitchCode::N6b | PitchCode::N7b
+            );
+
+            if is_flat {
+                wasm_log!("  Mutating flat + '/' to half-flat at position {}", insert_pos - 1);
+
+                // Mutate flat to half-flat
+                let new_pitch_code = match pitch_code {
+                    PitchCode::N1b => PitchCode::N1hf,
+                    PitchCode::N2b => PitchCode::N2hf,
+                    PitchCode::N3b => PitchCode::N3hf,
+                    PitchCode::N4b => PitchCode::N4hf,
+                    PitchCode::N5b => PitchCode::N5hf,
+                    PitchCode::N6b => PitchCode::N6hf,
+                    PitchCode::N7b => PitchCode::N7hf,
+                    _ => pitch_code,
+                };
+
+                cells[insert_pos - 1].pitch_code = Some(new_pitch_code);
+
+                // Update glyph for new pitch code
+                use crate::renderers::font_utils::glyph_for_pitch;
+                if let Some(new_glyph) = glyph_for_pitch(new_pitch_code, cells[insert_pos - 1].octave, pitch_system) {
+                    cells[insert_pos - 1].char = new_glyph.to_string();
+                }
+
+                // Remove the "/" cell we just inserted
+                cells.remove(insert_pos);
+
+                // Renumber columns after removal
+                for i in insert_pos..cells.len() {
+                    cells[i].col = i;
+                }
+
+                wasm_log!("  Mutation complete: {:?} -> {:?}", pitch_code, new_pitch_code);
+            }
+        }
+    }
+
     let cells_after = cells.len();
     let cells_delta = cells_after as i32 - cells_before as i32;
     wasm_info!("  After insertion: {} cells (delta: {:+})", cells_after, cells_delta);
@@ -206,6 +299,59 @@ pub fn parse_text(text: &str, pitch_system: u8) -> Result<js_sys::Array, JsValue
     }
 
     wasm_log!("  Parsed {} cells", cells.len());
+
+    // Post-process: Convert flat + "/" to half-flat
+    // When we see a flat pitch (N1b-N7b) followed by "/", mutate to half-flat (N1hf-N7hf)
+    use crate::renderers::font_utils::glyph_for_pitch;
+    let mut i = 0;
+    while i < cells.len().saturating_sub(1) {
+        if let Some(pitch_code) = cells[i].pitch_code {
+            // Check if this is a flat note
+            let is_flat = matches!(pitch_code,
+                PitchCode::N1b | PitchCode::N2b | PitchCode::N3b | PitchCode::N4b |
+                PitchCode::N5b | PitchCode::N6b | PitchCode::N7b
+            );
+
+            // Check if next cell is "/"
+            let next_is_slash = cells.get(i + 1).map(|c| c.char.as_str()) == Some("/");
+
+            if is_flat && next_is_slash {
+                wasm_log!("  Mutating flat + '/' to half-flat at position {}", i);
+
+                // Mutate flat to half-flat
+                let new_pitch_code = match pitch_code {
+                    PitchCode::N1b => PitchCode::N1hf,
+                    PitchCode::N2b => PitchCode::N2hf,
+                    PitchCode::N3b => PitchCode::N3hf,
+                    PitchCode::N4b => PitchCode::N4hf,
+                    PitchCode::N5b => PitchCode::N5hf,
+                    PitchCode::N6b => PitchCode::N6hf,
+                    PitchCode::N7b => PitchCode::N7hf,
+                    _ => pitch_code, // Should not happen
+                };
+
+                cells[i].pitch_code = Some(new_pitch_code);
+
+                // Update glyph for new pitch code
+                if let Some(new_glyph) = glyph_for_pitch(new_pitch_code, cells[i].octave, pitch_system) {
+                    cells[i].char = new_glyph.to_string();
+                }
+
+                // Remove the "/" cell
+                cells.remove(i + 1);
+
+                // Renumber columns for cells after removal
+                for j in (i + 1)..cells.len() {
+                    cells[j].col = j;
+                }
+
+                wasm_log!("  Mutation complete: {:?} -> {:?}", pitch_code, new_pitch_code);
+            }
+        }
+        i += 1;
+    }
+
+    wasm_log!("  After half-flat mutation: {} cells", cells.len());
 
     // Convert to JavaScript array
     let result = js_sys::Array::new();

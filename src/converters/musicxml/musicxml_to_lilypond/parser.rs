@@ -373,11 +373,10 @@ pub fn parse_pitch(pitch_node: Node) -> Result<Pitch, ParseError> {
         ParseError::InvalidXml(format!("Invalid octave: {}", octave_str))
     })?;
 
-    // Extract alteration (optional)
-    let alteration: i8 = get_child_text(pitch_node, "alter")
+    // Extract alteration (optional, supports microtonal values like -0.5 for quarter-flat)
+    let alteration: f32 = get_child_text(pitch_node, "alter")
         .and_then(|s| s.parse::<f32>().ok())
-        .map(|f| f as i8)
-        .unwrap_or(0);
+        .unwrap_or(0.0);
 
     // Create and validate pitch
     Pitch::new(step, alteration, octave)
@@ -539,7 +538,7 @@ mod tests {
         let pitch = parse_pitch(pitch_node).unwrap();
         assert_eq!(pitch.step, 0); // C
         assert_eq!(pitch.octave, 4);
-        assert_eq!(pitch.alteration, 0);
+        assert_eq!(pitch.alteration, 0.0);
     }
 
     #[test]
@@ -551,6 +550,73 @@ mod tests {
         let pitch = parse_pitch(pitch_node).unwrap();
         assert_eq!(pitch.step, 0); // C
         assert_eq!(pitch.octave, 4);
-        assert_eq!(pitch.alteration, 1); // Sharp
+        assert_eq!(pitch.alteration, 1.0); // Sharp
+    }
+
+    #[test]
+    fn test_parse_pitch_with_half_flat() {
+        let xml = r#"<pitch><step>C</step><alter>-0.5</alter><octave>4</octave></pitch>"#;
+        let doc = Document::parse(xml).unwrap();
+        let pitch_node = doc.root_element();
+
+        let pitch = parse_pitch(pitch_node).unwrap();
+        assert_eq!(pitch.step, 0); // C
+        assert_eq!(pitch.octave, 4);
+        assert!((pitch.alteration - -0.5).abs() < 0.01); // Half-flat (quarter-flat)
+    }
+
+    #[test]
+    fn test_parse_pitch_with_three_quarter_flat() {
+        let xml = r#"<pitch><step>D</step><alter>-1.5</alter><octave>4</octave></pitch>"#;
+        let doc = Document::parse(xml).unwrap();
+        let pitch_node = doc.root_element();
+
+        let pitch = parse_pitch(pitch_node).unwrap();
+        assert_eq!(pitch.step, 1); // D
+        assert_eq!(pitch.octave, 4);
+        assert!((pitch.alteration - -1.5).abs() < 0.01); // Three-quarter-flat
+    }
+
+    #[test]
+    fn test_pitch_to_lilypond_quarter_flat_english() {
+        let pitch = Pitch::new(0, -0.5, 4).unwrap();
+        let ly = pitch.to_lilypond_string(PitchLanguage::English);
+        assert_eq!(ly, "cqf'"); // C quarter-flat, octave 4
+    }
+
+    #[test]
+    fn test_pitch_to_lilypond_quarter_flat_nederlands() {
+        let pitch = Pitch::new(0, -0.5, 4).unwrap();
+        let ly = pitch.to_lilypond_string(PitchLanguage::Nederlands);
+        assert_eq!(ly, "ceh'"); // C quarter-flat, octave 4
+    }
+
+    #[test]
+    fn test_pitch_to_lilypond_quarter_sharp_english() {
+        let pitch = Pitch::new(1, 0.5, 4).unwrap();
+        let ly = pitch.to_lilypond_string(PitchLanguage::English);
+        assert_eq!(ly, "dqs'"); // D quarter-sharp, octave 4
+    }
+
+    #[test]
+    fn test_pitch_to_lilypond_all_microtonal_english() {
+        // Test all microtonal alterations in English
+        let test_cases = vec![
+            (-2.0, "cff'"),   // double flat
+            (-1.5, "ctqf'"),  // three-quarter-flat
+            (-1.0, "cf'"),    // flat
+            (-0.5, "cqf'"),   // quarter-flat
+            (0.0, "c'"),      // natural
+            (0.5, "cqs'"),    // quarter-sharp
+            (1.0, "cs'"),     // sharp
+            (1.5, "ctqs'"),   // three-quarter-sharp
+            (2.0, "css'"),    // double sharp
+        ];
+
+        for (alteration, expected) in test_cases {
+            let pitch = Pitch::new(0, alteration, 4).unwrap();
+            let ly = pitch.to_lilypond_string(PitchLanguage::English);
+            assert_eq!(ly, expected, "Failed for alteration {}", alteration);
+        }
     }
 }

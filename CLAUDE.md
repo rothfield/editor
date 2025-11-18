@@ -63,6 +63,21 @@ If you're about to implement:
 
 **ASK FIRST. THEN CODE IN RUST.**
 
+### **⚠️ CRITICAL: BEFORE WRITING FRONT-END JAVASCRIPT CODE**
+
+**ALWAYS CHECK IF THERE IS A WASM-BRIDGE FUNCTION FOR WHAT YOU NEED!!!!**
+
+**YOU MAY HAVE TO ADD ONE!**
+
+When writing JavaScript that needs to interact with the WASM layer:
+1. **FIRST**: Check if the WASM function already exists in `src/api/`
+2. **SECOND**: If it exists, verify it's exposed in `src/js/editor.js` `this.wasmModule` object
+3. **THIRD**: If it doesn't exist, ADD IT TO WASM FIRST, then expose it in the bridge
+
+**Common mistake:** Writing JavaScript logic that should be in WASM, or forgetting to add WASM functions to the bridge.
+
+See the "WASM Function Integration Pattern" section below for the complete checklist.
+
 ---
 
 ## Active Technologies
@@ -151,11 +166,13 @@ test('feature works correctly', async ({ page }) => {
 
 Text-based music notation (main notation line, ornaments) uses **NotationFont**, which is based on **Noto Sans** - a general purpose sans-serif font from Google - with music glyphs from [Noto Music](https://github.com/notofonts/music) added to the Private Use Area (PUA). This provides proper text rendering and spacing while supporting music-specific glyphs. Variants include different pitch systems (Number, Western, Sargam, Doremi) with all combinations of octave dots and accidentals. Source: `tools/`
 
+**IMPORTANT:** Noto Music is NOT an SMuFL font - it uses standard Unicode Musical Symbols (U+266D ♭ flat, U+266F ♯ sharp, U+1D12A 𝄪 double-sharp, U+1D12B 𝄫 double-flat), not SMuFL Private Use Area codepoints. SMuFL fonts like Bravura use U+E000+ for comprehensive notation.
+
 **Font Architecture:**
 - **Single source of truth:** `tools/fontgen/atoms.yaml` defines all characters, code points, and allocations
 - **Build-time generation:** `build.rs` generates Rust constants from atoms.yaml at compile time
 - **Runtime integration:** JavaScript loads code points from WASM via `getFontConfig()`
-- **Font location:** `static/fonts/NotationFont.ttf` (473 KB)
+- **Font location:** `dist/fonts/NotationFont.ttf` (473 KB)
 
 **Glyph Coverage:**
 - **47 base characters:** Numbers (1-7), Western (C-B, c-b), Sargam (Sa Re Ga Ma Pa Dha Ni), Doremi (do re mi fa sol la ti)

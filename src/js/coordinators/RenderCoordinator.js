@@ -65,14 +65,17 @@ export default class RenderCoordinator {
       // Y positions are now correctly set by Rust layout engine based on line index
       // No need to adjust in JavaScript anymore
 
-      // Update pitch system display in header
+      // Update pitch system and key signature displays in header
       if (this.editor.ui) {
         this.editor.ui.updateCurrentPitchSystemDisplay();
+        this.editor.ui.updateKeySignatureCornerDisplay();
       }
 
       // Schedule staff notation update (debounced)
       this.scheduleStaffNotationUpdate();
     } catch (error) {
+      console.error('[RenderCoordinator] Rendering failed:', error);
+      console.error('[RenderCoordinator] Stack:', error.stack);
       logger.error(LOG_CATEGORIES.RENDERER, 'Failed to render document', {
         error: error.message,
         stack: error.stack

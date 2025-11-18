@@ -1,7 +1,7 @@
 # Music Notation Editor POC - Build Orchestration
 # Supports development, production, and testing workflows
 
-.PHONY: help setup build build-dev build-prod build-wasm build-js build-css clean serve serve-prod kill test test-e2e test-headless test-coverage lint format type-check pre-commit install-tools lilypond-start lilypond-stop lilypond-logs lilypond-health lilypond-test lilypond-build lilypond-clean lilypond-restart lilypond-install-docker-arch build-fast build-wasm-fast build-profile-analyze fonts fonts-validate fonts-debug fonts-test fonts-install
+.PHONY: help setup build build-dev build-prod build-wasm build-js build-css clean serve serve-prod kill test test-e2e test-headless test-coverage lint format type-check pre-commit install-tools lilypond-start lilypond-stop lilypond-logs lilypond-health lilypond-test lilypond-build lilypond-clean lilypond-restart lilypond-install-docker-arch build-fast build-wasm-fast build-profile-analyze fonts-spec fonts fonts-validate fonts-debug fonts-test fonts-install
 
 # Default target
 help:
@@ -23,9 +23,10 @@ help:
 	@echo "  build-css      - Generate CSS only"
 	@echo "  build-profile-analyze - Show build profile information"
 	@echo ""
-	@echo "Font Generation (Noto Music-based):"
-	@echo "  fonts          - Generate NotationFont from Noto Music (strict mode, fail on errors)"
-	@echo "  fonts-validate - Validate atoms.yaml only (no FontForge needed)"
+	@echo "Font Generation (Rust → JSON → Python → TTF):"
+	@echo "  fonts-spec     - Generate fontspec.json from atoms.yaml (Rust build.rs)"
+	@echo "  fonts          - Generate NotationFont.ttf (Rust validation + Python rendering)"
+	@echo "  fonts-validate - Validate full pipeline (Rust → fontspec.json → Python dry-run)"
 	@echo "  fonts-debug    - Generate visual specimen (debug-specimen.html)"
 	@echo "  fonts-test     - Run font generator tests (pytest)"
 	@echo "  fonts-install  - Install NotationFont locally (Arch Linux/Wayland)"
@@ -115,22 +116,37 @@ build-css:
 	@echo "CSS generation complete!"
 
 # Font Generation (NotationFont derived from Noto Music)
+# Architecture: Rust → JSON → Python → TTF
+# Flow: atoms.yaml → Rust (build.rs) → fontspec.json → Python (generate.py) → NotationFont.ttf
 # Single source of truth: tools/fontgen/atoms.yaml
-# Generator: tools/fontgen/generate.py
-fonts:
-	@echo "Generating NotationFont.ttf from atoms.yaml + Noto Music..."
-	@python3 tools/fontgen/generate.py --strict
-	@echo "✓ Fonts generated: static/fonts/NotationMonoDotted.ttf"
+# Rust validator: src/fontgen/ (parse, validate, emit fontspec.json)
+# Python generator: tools/fontgen/generate.py (loads fontspec.json + renders font)
 
-fonts-validate:
-	@echo "Validating atoms.yaml configuration..."
-	@python3 tools/fontgen/generate.py --validate-only
-	@echo "✓ Validation complete! atoms.yaml is valid"
+# Generate fontspec.json from atoms.yaml (Rust source of truth)
+fonts-spec:
+	@echo "Generating fontspec.json from atoms.yaml (Rust build.rs)..."
+	@cargo build --lib
+	@echo "✓ fontspec.json generated: tools/fontgen/fontspec.json"
 
-fonts-debug:
-	@echo "Generating visual specimen HTML..."
-	@python3 tools/fontgen/generate.py --debug-html
-	@echo "✓ Debug specimen: static/fonts/debug-specimen.html"
+# Generate final TTF font (requires fontspec.json from Rust)
+fonts: fonts-spec
+	@echo "Generating NotationFont.ttf from fontspec.json + Noto Music..."
+	@mkdir -p dist/fonts
+	@python3 tools/fontgen/generate.py --strict --output-dir dist/fonts
+	@echo "✓ Font generated: dist/fonts/NotationFont.ttf"
+
+# Validate configuration (Rust + Python pipeline)
+fonts-validate: fonts-spec
+	@echo "Validating font pipeline (Rust validation → Python dry-run)..."
+	@mkdir -p dist/fonts
+	@python3 tools/fontgen/generate.py --validate-only --output-dir dist/fonts
+	@echo "✓ Validation complete! fontspec.json is valid and Python can process it"
+
+fonts-debug: fonts-spec
+	@echo "Generating visual specimen HTML (requires fontspec.json)..."
+	@mkdir -p dist/fonts
+	@python3 tools/fontgen/generate.py --debug-html --output-dir dist/fonts
+	@echo "✓ Debug specimen: dist/fonts/debug-specimen.html"
 
 fonts-test:
 	@echo "Running font generator tests..."
@@ -141,14 +157,14 @@ fonts-install:
 	@echo "Installing NotationFont (derived from Noto Music) locally..."
 	@mkdir -p ~/.local/share/fonts
 	@echo "  Installing NotationFont.ttf..."
-	@cp static/fonts/NotationFont.ttf ~/.local/share/fonts/
+	@cp dist/fonts/NotationFont*.ttf ~/.local/share/fonts/
 	@echo "  Rebuilding font cache..."
 	@fc-cache -fv ~/.local/share/fonts > /dev/null 2>&1 || true
 	@echo "✓ NotationFont installed to ~/.local/share/fonts"
 	@echo "  Run 'fc-list | grep -i notation' to verify installation"
 
 # Development
-dev: build-wasm build-css
+dev: fonts build-wasm build-css
 	@echo "Starting development server with auto-rebuild + hot reload..."
 	@echo "Edit files in src/js/ (rollup watches) or src/*.rs (cargo watch rebuilds WASM)"
 	@echo "Browser will auto-refresh on JS changes via hot reload"

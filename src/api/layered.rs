@@ -356,6 +356,113 @@ pub fn shift_octave(line: usize, start_col: usize, end_col: usize, delta: i8) ->
     serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL)
 }
 
+/// Set octave for all pitched elements in a selection to an absolute value
+///
+/// Unlike `shiftOctave` which adds a delta, this sets to a specific octave value.
+/// Works at the Cell level, mutating semantics directly.
+///
+/// ## Arguments
+/// - `line`: Line index
+/// - `start_col`: Start column (inclusive)
+/// - `end_col`: End column (exclusive)
+/// - `target_octave`: Absolute octave value (-2, -1, 0, +1, +2)
+///
+/// ## Returns
+/// JSON object with:
+/// ```json
+/// {
+///   "line": 0,
+///   "start_col": 0,
+///   "end_col": 5,
+///   "shifted_count": 3,
+///   "success": true
+/// }
+/// ```
+#[wasm_bindgen(js_name = setOctave)]
+pub fn set_octave(line: usize, start_col: usize, end_col: usize, target_octave: i8) -> JsValue {
+    use crate::structure::operations::set_cells_octave;
+
+    // Lock document
+    let mut doc_guard = match lock_document() {
+        Ok(guard) => guard,
+        Err(e) => {
+            let result = OctaveShiftResult {
+                line,
+                start_col,
+                end_col,
+                shifted_count: 0,
+                skipped_count: 0,
+                new_text: String::new(),
+                success: false,
+                error: Some(format!("Failed to lock document: {:?}", e)),
+            };
+            return serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL);
+        }
+    };
+
+    let doc = match doc_guard.as_mut() {
+        Some(d) => d,
+        None => {
+            let result = OctaveShiftResult {
+                line,
+                start_col,
+                end_col,
+                shifted_count: 0,
+                skipped_count: 0,
+                new_text: String::new(),
+                success: false,
+                error: Some("No document loaded".to_string()),
+            };
+            return serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL);
+        }
+    };
+
+    // Check if line exists
+    if line >= doc.lines.len() {
+        let result = OctaveShiftResult {
+            line,
+            start_col,
+            end_col,
+            shifted_count: 0,
+            skipped_count: 0,
+            new_text: String::new(),
+            success: false,
+            error: Some(format!("Line {} does not exist", line)),
+        };
+        return serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL);
+    }
+
+    // Set octaves for cells in range
+    let count = {
+        let cells = &mut doc.lines[line].cells;
+        let start = start_col.min(cells.len());
+        let end = end_col.min(cells.len());
+        set_cells_octave(&mut cells[start..end], target_octave)
+    };
+
+    let start = start_col.min(doc.lines[line].cells.len());
+    let end = end_col.min(doc.lines[line].cells.len());
+
+    // Regenerate glyphs for the modified cells (octave dots changed!)
+    doc.compute_glyphs();
+
+    // Reconstruct text for result (derived from cells)
+    let new_text: String = doc.lines[line].cells.iter().map(|c| c.display_char()).collect();
+
+    let result = OctaveShiftResult {
+        line,
+        start_col,
+        end_col,
+        shifted_count: count,
+        skipped_count: (end - start) - count,
+        new_text,
+        success: true,
+        error: None,
+    };
+
+    serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL)
+}
+
 /// Toggle slur on a selection range (WASM-first: decision logic in WASM)
 ///
 /// If slur exists at this exact range, removes it. Otherwise, adds it.

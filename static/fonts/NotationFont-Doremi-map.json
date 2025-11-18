@@ -1,0 +1,1586 @@
+{
+  "version": "1.0",
+  "generated_from": "atoms.yaml",
+  "pua_allocation": {
+    "notes_start": "0xe339",
+    "notes_end": "0xe496",
+    "symbols_start": "0xe003",
+    "symbols_end": "0x1d108"
+  },
+  "notes": [
+    {
+      "system": "doremi",
+      "character": "d",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe339",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe347",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe355",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe363",
+          "octave_shift": -2
+        },
+        "variant_4": {
+          "codepoint": "0xe371",
+          "octave_shift": 0
+        },
+        "variant_5": {
+          "codepoint": "0xe37f",
+          "octave_shift": 0
+        },
+        "variant_6": {
+          "codepoint": "0xe38d",
+          "octave_shift": 0
+        },
+        "variant_7": {
+          "codepoint": "0xe39b",
+          "octave_shift": 0
+        },
+        "variant_8": {
+          "codepoint": "0xe3a9",
+          "octave_shift": 0
+        },
+        "variant_9": {
+          "codepoint": "0xe3b7",
+          "octave_shift": 0
+        },
+        "variant_10": {
+          "codepoint": "0xe3c5",
+          "octave_shift": 0
+        },
+        "variant_11": {
+          "codepoint": "0xe3d3",
+          "octave_shift": 0
+        },
+        "variant_12": {
+          "codepoint": "0xe3e1",
+          "octave_shift": 0
+        },
+        "variant_13": {
+          "codepoint": "0xe3ef",
+          "octave_shift": 0
+        },
+        "variant_14": {
+          "codepoint": "0xe3fd",
+          "octave_shift": 0
+        },
+        "variant_15": {
+          "codepoint": "0xe40b",
+          "octave_shift": 0
+        },
+        "variant_16": {
+          "codepoint": "0xe419",
+          "octave_shift": 0
+        },
+        "variant_17": {
+          "codepoint": "0xe427",
+          "octave_shift": 0
+        },
+        "variant_18": {
+          "codepoint": "0xe435",
+          "octave_shift": 0
+        },
+        "variant_19": {
+          "codepoint": "0xe443",
+          "octave_shift": 0
+        },
+        "base_octave": {
+          "codepoint": "0xe451",
+          "octave_shift": 0
+        },
+        "variant_21": {
+          "codepoint": "0xe45f",
+          "octave_shift": 0
+        },
+        "variant_22": {
+          "codepoint": "0xe46d",
+          "octave_shift": 0
+        },
+        "variant_23": {
+          "codepoint": "0xe47b",
+          "octave_shift": 0
+        },
+        "variant_24": {
+          "codepoint": "0xe489",
+          "octave_shift": 0
+        }
+      }
+    },
+    {
+      "system": "doremi",
+      "character": "r",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe33a",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe348",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe356",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe364",
+          "octave_shift": -2
+        },
+        "variant_4": {
+          "codepoint": "0xe372",
+          "octave_shift": 0
+        },
+        "variant_5": {
+          "codepoint": "0xe380",
+          "octave_shift": 0
+        },
+        "variant_6": {
+          "codepoint": "0xe38e",
+          "octave_shift": 0
+        },
+        "variant_7": {
+          "codepoint": "0xe39c",
+          "octave_shift": 0
+        },
+        "variant_8": {
+          "codepoint": "0xe3aa",
+          "octave_shift": 0
+        },
+        "variant_9": {
+          "codepoint": "0xe3b8",
+          "octave_shift": 0
+        },
+        "variant_10": {
+          "codepoint": "0xe3c6",
+          "octave_shift": 0
+        },
+        "variant_11": {
+          "codepoint": "0xe3d4",
+          "octave_shift": 0
+        },
+        "variant_12": {
+          "codepoint": "0xe3e2",
+          "octave_shift": 0
+        },
+        "variant_13": {
+          "codepoint": "0xe3f0",
+          "octave_shift": 0
+        },
+        "variant_14": {
+          "codepoint": "0xe3fe",
+          "octave_shift": 0
+        },
+        "variant_15": {
+          "codepoint": "0xe40c",
+          "octave_shift": 0
+        },
+        "variant_16": {
+          "codepoint": "0xe41a",
+          "octave_shift": 0
+        },
+        "variant_17": {
+          "codepoint": "0xe428",
+          "octave_shift": 0
+        },
+        "variant_18": {
+          "codepoint": "0xe436",
+          "octave_shift": 0
+        },
+        "variant_19": {
+          "codepoint": "0xe444",
+          "octave_shift": 0
+        },
+        "base_octave": {
+          "codepoint": "0xe452",
+          "octave_shift": 0
+        },
+        "variant_21": {
+          "codepoint": "0xe460",
+          "octave_shift": 0
+        },
+        "variant_22": {
+          "codepoint": "0xe46e",
+          "octave_shift": 0
+        },
+        "variant_23": {
+          "codepoint": "0xe47c",
+          "octave_shift": 0
+        },
+        "variant_24": {
+          "codepoint": "0xe48a",
+          "octave_shift": 0
+        }
+      }
+    },
+    {
+      "system": "doremi",
+      "character": "m",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe33b",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe349",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe357",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe365",
+          "octave_shift": -2
+        },
+        "variant_4": {
+          "codepoint": "0xe373",
+          "octave_shift": 0
+        },
+        "variant_5": {
+          "codepoint": "0xe381",
+          "octave_shift": 0
+        },
+        "variant_6": {
+          "codepoint": "0xe38f",
+          "octave_shift": 0
+        },
+        "variant_7": {
+          "codepoint": "0xe39d",
+          "octave_shift": 0
+        },
+        "variant_8": {
+          "codepoint": "0xe3ab",
+          "octave_shift": 0
+        },
+        "variant_9": {
+          "codepoint": "0xe3b9",
+          "octave_shift": 0
+        },
+        "variant_10": {
+          "codepoint": "0xe3c7",
+          "octave_shift": 0
+        },
+        "variant_11": {
+          "codepoint": "0xe3d5",
+          "octave_shift": 0
+        },
+        "variant_12": {
+          "codepoint": "0xe3e3",
+          "octave_shift": 0
+        },
+        "variant_13": {
+          "codepoint": "0xe3f1",
+          "octave_shift": 0
+        },
+        "variant_14": {
+          "codepoint": "0xe3ff",
+          "octave_shift": 0
+        },
+        "variant_15": {
+          "codepoint": "0xe40d",
+          "octave_shift": 0
+        },
+        "variant_16": {
+          "codepoint": "0xe41b",
+          "octave_shift": 0
+        },
+        "variant_17": {
+          "codepoint": "0xe429",
+          "octave_shift": 0
+        },
+        "variant_18": {
+          "codepoint": "0xe437",
+          "octave_shift": 0
+        },
+        "variant_19": {
+          "codepoint": "0xe445",
+          "octave_shift": 0
+        },
+        "base_octave": {
+          "codepoint": "0xe453",
+          "octave_shift": 0
+        },
+        "variant_21": {
+          "codepoint": "0xe461",
+          "octave_shift": 0
+        },
+        "variant_22": {
+          "codepoint": "0xe46f",
+          "octave_shift": 0
+        },
+        "variant_23": {
+          "codepoint": "0xe47d",
+          "octave_shift": 0
+        },
+        "variant_24": {
+          "codepoint": "0xe48b",
+          "octave_shift": 0
+        }
+      }
+    },
+    {
+      "system": "doremi",
+      "character": "f",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe33c",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe34a",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe358",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe366",
+          "octave_shift": -2
+        },
+        "variant_4": {
+          "codepoint": "0xe374",
+          "octave_shift": 0
+        },
+        "variant_5": {
+          "codepoint": "0xe382",
+          "octave_shift": 0
+        },
+        "variant_6": {
+          "codepoint": "0xe390",
+          "octave_shift": 0
+        },
+        "variant_7": {
+          "codepoint": "0xe39e",
+          "octave_shift": 0
+        },
+        "variant_8": {
+          "codepoint": "0xe3ac",
+          "octave_shift": 0
+        },
+        "variant_9": {
+          "codepoint": "0xe3ba",
+          "octave_shift": 0
+        },
+        "variant_10": {
+          "codepoint": "0xe3c8",
+          "octave_shift": 0
+        },
+        "variant_11": {
+          "codepoint": "0xe3d6",
+          "octave_shift": 0
+        },
+        "variant_12": {
+          "codepoint": "0xe3e4",
+          "octave_shift": 0
+        },
+        "variant_13": {
+          "codepoint": "0xe3f2",
+          "octave_shift": 0
+        },
+        "variant_14": {
+          "codepoint": "0xe400",
+          "octave_shift": 0
+        },
+        "variant_15": {
+          "codepoint": "0xe40e",
+          "octave_shift": 0
+        },
+        "variant_16": {
+          "codepoint": "0xe41c",
+          "octave_shift": 0
+        },
+        "variant_17": {
+          "codepoint": "0xe42a",
+          "octave_shift": 0
+        },
+        "variant_18": {
+          "codepoint": "0xe438",
+          "octave_shift": 0
+        },
+        "variant_19": {
+          "codepoint": "0xe446",
+          "octave_shift": 0
+        },
+        "base_octave": {
+          "codepoint": "0xe454",
+          "octave_shift": 0
+        },
+        "variant_21": {
+          "codepoint": "0xe462",
+          "octave_shift": 0
+        },
+        "variant_22": {
+          "codepoint": "0xe470",
+          "octave_shift": 0
+        },
+        "variant_23": {
+          "codepoint": "0xe47e",
+          "octave_shift": 0
+        },
+        "variant_24": {
+          "codepoint": "0xe48c",
+          "octave_shift": 0
+        }
+      }
+    },
+    {
+      "system": "doremi",
+      "character": "s",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe33d",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe34b",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe359",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe367",
+          "octave_shift": -2
+        },
+        "variant_4": {
+          "codepoint": "0xe375",
+          "octave_shift": 0
+        },
+        "variant_5": {
+          "codepoint": "0xe383",
+          "octave_shift": 0
+        },
+        "variant_6": {
+          "codepoint": "0xe391",
+          "octave_shift": 0
+        },
+        "variant_7": {
+          "codepoint": "0xe39f",
+          "octave_shift": 0
+        },
+        "variant_8": {
+          "codepoint": "0xe3ad",
+          "octave_shift": 0
+        },
+        "variant_9": {
+          "codepoint": "0xe3bb",
+          "octave_shift": 0
+        },
+        "variant_10": {
+          "codepoint": "0xe3c9",
+          "octave_shift": 0
+        },
+        "variant_11": {
+          "codepoint": "0xe3d7",
+          "octave_shift": 0
+        },
+        "variant_12": {
+          "codepoint": "0xe3e5",
+          "octave_shift": 0
+        },
+        "variant_13": {
+          "codepoint": "0xe3f3",
+          "octave_shift": 0
+        },
+        "variant_14": {
+          "codepoint": "0xe401",
+          "octave_shift": 0
+        },
+        "variant_15": {
+          "codepoint": "0xe40f",
+          "octave_shift": 0
+        },
+        "variant_16": {
+          "codepoint": "0xe41d",
+          "octave_shift": 0
+        },
+        "variant_17": {
+          "codepoint": "0xe42b",
+          "octave_shift": 0
+        },
+        "variant_18": {
+          "codepoint": "0xe439",
+          "octave_shift": 0
+        },
+        "variant_19": {
+          "codepoint": "0xe447",
+          "octave_shift": 0
+        },
+        "base_octave": {
+          "codepoint": "0xe455",
+          "octave_shift": 0
+        },
+        "variant_21": {
+          "codepoint": "0xe463",
+          "octave_shift": 0
+        },
+        "variant_22": {
+          "codepoint": "0xe471",
+          "octave_shift": 0
+        },
+        "variant_23": {
+          "codepoint": "0xe47f",
+          "octave_shift": 0
+        },
+        "variant_24": {
+          "codepoint": "0xe48d",
+          "octave_shift": 0
+        }
+      }
+    },
+    {
+      "system": "doremi",
+      "character": "l",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe33e",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe34c",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe35a",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe368",
+          "octave_shift": -2
+        },
+        "variant_4": {
+          "codepoint": "0xe376",
+          "octave_shift": 0
+        },
+        "variant_5": {
+          "codepoint": "0xe384",
+          "octave_shift": 0
+        },
+        "variant_6": {
+          "codepoint": "0xe392",
+          "octave_shift": 0
+        },
+        "variant_7": {
+          "codepoint": "0xe3a0",
+          "octave_shift": 0
+        },
+        "variant_8": {
+          "codepoint": "0xe3ae",
+          "octave_shift": 0
+        },
+        "variant_9": {
+          "codepoint": "0xe3bc",
+          "octave_shift": 0
+        },
+        "variant_10": {
+          "codepoint": "0xe3ca",
+          "octave_shift": 0
+        },
+        "variant_11": {
+          "codepoint": "0xe3d8",
+          "octave_shift": 0
+        },
+        "variant_12": {
+          "codepoint": "0xe3e6",
+          "octave_shift": 0
+        },
+        "variant_13": {
+          "codepoint": "0xe3f4",
+          "octave_shift": 0
+        },
+        "variant_14": {
+          "codepoint": "0xe402",
+          "octave_shift": 0
+        },
+        "variant_15": {
+          "codepoint": "0xe410",
+          "octave_shift": 0
+        },
+        "variant_16": {
+          "codepoint": "0xe41e",
+          "octave_shift": 0
+        },
+        "variant_17": {
+          "codepoint": "0xe42c",
+          "octave_shift": 0
+        },
+        "variant_18": {
+          "codepoint": "0xe43a",
+          "octave_shift": 0
+        },
+        "variant_19": {
+          "codepoint": "0xe448",
+          "octave_shift": 0
+        },
+        "base_octave": {
+          "codepoint": "0xe456",
+          "octave_shift": 0
+        },
+        "variant_21": {
+          "codepoint": "0xe464",
+          "octave_shift": 0
+        },
+        "variant_22": {
+          "codepoint": "0xe472",
+          "octave_shift": 0
+        },
+        "variant_23": {
+          "codepoint": "0xe480",
+          "octave_shift": 0
+        },
+        "variant_24": {
+          "codepoint": "0xe48e",
+          "octave_shift": 0
+        }
+      }
+    },
+    {
+      "system": "doremi",
+      "character": "t",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe33f",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe34d",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe35b",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe369",
+          "octave_shift": -2
+        },
+        "variant_4": {
+          "codepoint": "0xe377",
+          "octave_shift": 0
+        },
+        "variant_5": {
+          "codepoint": "0xe385",
+          "octave_shift": 0
+        },
+        "variant_6": {
+          "codepoint": "0xe393",
+          "octave_shift": 0
+        },
+        "variant_7": {
+          "codepoint": "0xe3a1",
+          "octave_shift": 0
+        },
+        "variant_8": {
+          "codepoint": "0xe3af",
+          "octave_shift": 0
+        },
+        "variant_9": {
+          "codepoint": "0xe3bd",
+          "octave_shift": 0
+        },
+        "variant_10": {
+          "codepoint": "0xe3cb",
+          "octave_shift": 0
+        },
+        "variant_11": {
+          "codepoint": "0xe3d9",
+          "octave_shift": 0
+        },
+        "variant_12": {
+          "codepoint": "0xe3e7",
+          "octave_shift": 0
+        },
+        "variant_13": {
+          "codepoint": "0xe3f5",
+          "octave_shift": 0
+        },
+        "variant_14": {
+          "codepoint": "0xe403",
+          "octave_shift": 0
+        },
+        "variant_15": {
+          "codepoint": "0xe411",
+          "octave_shift": 0
+        },
+        "variant_16": {
+          "codepoint": "0xe41f",
+          "octave_shift": 0
+        },
+        "variant_17": {
+          "codepoint": "0xe42d",
+          "octave_shift": 0
+        },
+        "variant_18": {
+          "codepoint": "0xe43b",
+          "octave_shift": 0
+        },
+        "variant_19": {
+          "codepoint": "0xe449",
+          "octave_shift": 0
+        },
+        "base_octave": {
+          "codepoint": "0xe457",
+          "octave_shift": 0
+        },
+        "variant_21": {
+          "codepoint": "0xe465",
+          "octave_shift": 0
+        },
+        "variant_22": {
+          "codepoint": "0xe473",
+          "octave_shift": 0
+        },
+        "variant_23": {
+          "codepoint": "0xe481",
+          "octave_shift": 0
+        },
+        "variant_24": {
+          "codepoint": "0xe48f",
+          "octave_shift": 0
+        }
+      }
+    },
+    {
+      "system": "doremi",
+      "character": "D",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe340",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe34e",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe35c",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe36a",
+          "octave_shift": -2
+        },
+        "variant_4": {
+          "codepoint": "0xe378",
+          "octave_shift": 0
+        },
+        "variant_5": {
+          "codepoint": "0xe386",
+          "octave_shift": 0
+        },
+        "variant_6": {
+          "codepoint": "0xe394",
+          "octave_shift": 0
+        },
+        "variant_7": {
+          "codepoint": "0xe3a2",
+          "octave_shift": 0
+        },
+        "variant_8": {
+          "codepoint": "0xe3b0",
+          "octave_shift": 0
+        },
+        "variant_9": {
+          "codepoint": "0xe3be",
+          "octave_shift": 0
+        },
+        "variant_10": {
+          "codepoint": "0xe3cc",
+          "octave_shift": 0
+        },
+        "variant_11": {
+          "codepoint": "0xe3da",
+          "octave_shift": 0
+        },
+        "variant_12": {
+          "codepoint": "0xe3e8",
+          "octave_shift": 0
+        },
+        "variant_13": {
+          "codepoint": "0xe3f6",
+          "octave_shift": 0
+        },
+        "variant_14": {
+          "codepoint": "0xe404",
+          "octave_shift": 0
+        },
+        "variant_15": {
+          "codepoint": "0xe412",
+          "octave_shift": 0
+        },
+        "variant_16": {
+          "codepoint": "0xe420",
+          "octave_shift": 0
+        },
+        "variant_17": {
+          "codepoint": "0xe42e",
+          "octave_shift": 0
+        },
+        "variant_18": {
+          "codepoint": "0xe43c",
+          "octave_shift": 0
+        },
+        "variant_19": {
+          "codepoint": "0xe44a",
+          "octave_shift": 0
+        },
+        "base_octave": {
+          "codepoint": "0xe458",
+          "octave_shift": 0
+        },
+        "variant_21": {
+          "codepoint": "0xe466",
+          "octave_shift": 0
+        },
+        "variant_22": {
+          "codepoint": "0xe474",
+          "octave_shift": 0
+        },
+        "variant_23": {
+          "codepoint": "0xe482",
+          "octave_shift": 0
+        },
+        "variant_24": {
+          "codepoint": "0xe490",
+          "octave_shift": 0
+        }
+      }
+    },
+    {
+      "system": "doremi",
+      "character": "R",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe341",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe34f",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe35d",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe36b",
+          "octave_shift": -2
+        },
+        "variant_4": {
+          "codepoint": "0xe379",
+          "octave_shift": 0
+        },
+        "variant_5": {
+          "codepoint": "0xe387",
+          "octave_shift": 0
+        },
+        "variant_6": {
+          "codepoint": "0xe395",
+          "octave_shift": 0
+        },
+        "variant_7": {
+          "codepoint": "0xe3a3",
+          "octave_shift": 0
+        },
+        "variant_8": {
+          "codepoint": "0xe3b1",
+          "octave_shift": 0
+        },
+        "variant_9": {
+          "codepoint": "0xe3bf",
+          "octave_shift": 0
+        },
+        "variant_10": {
+          "codepoint": "0xe3cd",
+          "octave_shift": 0
+        },
+        "variant_11": {
+          "codepoint": "0xe3db",
+          "octave_shift": 0
+        },
+        "variant_12": {
+          "codepoint": "0xe3e9",
+          "octave_shift": 0
+        },
+        "variant_13": {
+          "codepoint": "0xe3f7",
+          "octave_shift": 0
+        },
+        "variant_14": {
+          "codepoint": "0xe405",
+          "octave_shift": 0
+        },
+        "variant_15": {
+          "codepoint": "0xe413",
+          "octave_shift": 0
+        },
+        "variant_16": {
+          "codepoint": "0xe421",
+          "octave_shift": 0
+        },
+        "variant_17": {
+          "codepoint": "0xe42f",
+          "octave_shift": 0
+        },
+        "variant_18": {
+          "codepoint": "0xe43d",
+          "octave_shift": 0
+        },
+        "variant_19": {
+          "codepoint": "0xe44b",
+          "octave_shift": 0
+        },
+        "base_octave": {
+          "codepoint": "0xe459",
+          "octave_shift": 0
+        },
+        "variant_21": {
+          "codepoint": "0xe467",
+          "octave_shift": 0
+        },
+        "variant_22": {
+          "codepoint": "0xe475",
+          "octave_shift": 0
+        },
+        "variant_23": {
+          "codepoint": "0xe483",
+          "octave_shift": 0
+        },
+        "variant_24": {
+          "codepoint": "0xe491",
+          "octave_shift": 0
+        }
+      }
+    },
+    {
+      "system": "doremi",
+      "character": "M",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe342",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe350",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe35e",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe36c",
+          "octave_shift": -2
+        },
+        "variant_4": {
+          "codepoint": "0xe37a",
+          "octave_shift": 0
+        },
+        "variant_5": {
+          "codepoint": "0xe388",
+          "octave_shift": 0
+        },
+        "variant_6": {
+          "codepoint": "0xe396",
+          "octave_shift": 0
+        },
+        "variant_7": {
+          "codepoint": "0xe3a4",
+          "octave_shift": 0
+        },
+        "variant_8": {
+          "codepoint": "0xe3b2",
+          "octave_shift": 0
+        },
+        "variant_9": {
+          "codepoint": "0xe3c0",
+          "octave_shift": 0
+        },
+        "variant_10": {
+          "codepoint": "0xe3ce",
+          "octave_shift": 0
+        },
+        "variant_11": {
+          "codepoint": "0xe3dc",
+          "octave_shift": 0
+        },
+        "variant_12": {
+          "codepoint": "0xe3ea",
+          "octave_shift": 0
+        },
+        "variant_13": {
+          "codepoint": "0xe3f8",
+          "octave_shift": 0
+        },
+        "variant_14": {
+          "codepoint": "0xe406",
+          "octave_shift": 0
+        },
+        "variant_15": {
+          "codepoint": "0xe414",
+          "octave_shift": 0
+        },
+        "variant_16": {
+          "codepoint": "0xe422",
+          "octave_shift": 0
+        },
+        "variant_17": {
+          "codepoint": "0xe430",
+          "octave_shift": 0
+        },
+        "variant_18": {
+          "codepoint": "0xe43e",
+          "octave_shift": 0
+        },
+        "variant_19": {
+          "codepoint": "0xe44c",
+          "octave_shift": 0
+        },
+        "base_octave": {
+          "codepoint": "0xe45a",
+          "octave_shift": 0
+        },
+        "variant_21": {
+          "codepoint": "0xe468",
+          "octave_shift": 0
+        },
+        "variant_22": {
+          "codepoint": "0xe476",
+          "octave_shift": 0
+        },
+        "variant_23": {
+          "codepoint": "0xe484",
+          "octave_shift": 0
+        },
+        "variant_24": {
+          "codepoint": "0xe492",
+          "octave_shift": 0
+        }
+      }
+    },
+    {
+      "system": "doremi",
+      "character": "F",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe343",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe351",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe35f",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe36d",
+          "octave_shift": -2
+        },
+        "variant_4": {
+          "codepoint": "0xe37b",
+          "octave_shift": 0
+        },
+        "variant_5": {
+          "codepoint": "0xe389",
+          "octave_shift": 0
+        },
+        "variant_6": {
+          "codepoint": "0xe397",
+          "octave_shift": 0
+        },
+        "variant_7": {
+          "codepoint": "0xe3a5",
+          "octave_shift": 0
+        },
+        "variant_8": {
+          "codepoint": "0xe3b3",
+          "octave_shift": 0
+        },
+        "variant_9": {
+          "codepoint": "0xe3c1",
+          "octave_shift": 0
+        },
+        "variant_10": {
+          "codepoint": "0xe3cf",
+          "octave_shift": 0
+        },
+        "variant_11": {
+          "codepoint": "0xe3dd",
+          "octave_shift": 0
+        },
+        "variant_12": {
+          "codepoint": "0xe3eb",
+          "octave_shift": 0
+        },
+        "variant_13": {
+          "codepoint": "0xe3f9",
+          "octave_shift": 0
+        },
+        "variant_14": {
+          "codepoint": "0xe407",
+          "octave_shift": 0
+        },
+        "variant_15": {
+          "codepoint": "0xe415",
+          "octave_shift": 0
+        },
+        "variant_16": {
+          "codepoint": "0xe423",
+          "octave_shift": 0
+        },
+        "variant_17": {
+          "codepoint": "0xe431",
+          "octave_shift": 0
+        },
+        "variant_18": {
+          "codepoint": "0xe43f",
+          "octave_shift": 0
+        },
+        "variant_19": {
+          "codepoint": "0xe44d",
+          "octave_shift": 0
+        },
+        "base_octave": {
+          "codepoint": "0xe45b",
+          "octave_shift": 0
+        },
+        "variant_21": {
+          "codepoint": "0xe469",
+          "octave_shift": 0
+        },
+        "variant_22": {
+          "codepoint": "0xe477",
+          "octave_shift": 0
+        },
+        "variant_23": {
+          "codepoint": "0xe485",
+          "octave_shift": 0
+        },
+        "variant_24": {
+          "codepoint": "0xe493",
+          "octave_shift": 0
+        }
+      }
+    },
+    {
+      "system": "doremi",
+      "character": "S",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe344",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe352",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe360",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe36e",
+          "octave_shift": -2
+        },
+        "variant_4": {
+          "codepoint": "0xe37c",
+          "octave_shift": 0
+        },
+        "variant_5": {
+          "codepoint": "0xe38a",
+          "octave_shift": 0
+        },
+        "variant_6": {
+          "codepoint": "0xe398",
+          "octave_shift": 0
+        },
+        "variant_7": {
+          "codepoint": "0xe3a6",
+          "octave_shift": 0
+        },
+        "variant_8": {
+          "codepoint": "0xe3b4",
+          "octave_shift": 0
+        },
+        "variant_9": {
+          "codepoint": "0xe3c2",
+          "octave_shift": 0
+        },
+        "variant_10": {
+          "codepoint": "0xe3d0",
+          "octave_shift": 0
+        },
+        "variant_11": {
+          "codepoint": "0xe3de",
+          "octave_shift": 0
+        },
+        "variant_12": {
+          "codepoint": "0xe3ec",
+          "octave_shift": 0
+        },
+        "variant_13": {
+          "codepoint": "0xe3fa",
+          "octave_shift": 0
+        },
+        "variant_14": {
+          "codepoint": "0xe408",
+          "octave_shift": 0
+        },
+        "variant_15": {
+          "codepoint": "0xe416",
+          "octave_shift": 0
+        },
+        "variant_16": {
+          "codepoint": "0xe424",
+          "octave_shift": 0
+        },
+        "variant_17": {
+          "codepoint": "0xe432",
+          "octave_shift": 0
+        },
+        "variant_18": {
+          "codepoint": "0xe440",
+          "octave_shift": 0
+        },
+        "variant_19": {
+          "codepoint": "0xe44e",
+          "octave_shift": 0
+        },
+        "base_octave": {
+          "codepoint": "0xe45c",
+          "octave_shift": 0
+        },
+        "variant_21": {
+          "codepoint": "0xe46a",
+          "octave_shift": 0
+        },
+        "variant_22": {
+          "codepoint": "0xe478",
+          "octave_shift": 0
+        },
+        "variant_23": {
+          "codepoint": "0xe486",
+          "octave_shift": 0
+        },
+        "variant_24": {
+          "codepoint": "0xe494",
+          "octave_shift": 0
+        }
+      }
+    },
+    {
+      "system": "doremi",
+      "character": "L",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe345",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe353",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe361",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe36f",
+          "octave_shift": -2
+        },
+        "variant_4": {
+          "codepoint": "0xe37d",
+          "octave_shift": 0
+        },
+        "variant_5": {
+          "codepoint": "0xe38b",
+          "octave_shift": 0
+        },
+        "variant_6": {
+          "codepoint": "0xe399",
+          "octave_shift": 0
+        },
+        "variant_7": {
+          "codepoint": "0xe3a7",
+          "octave_shift": 0
+        },
+        "variant_8": {
+          "codepoint": "0xe3b5",
+          "octave_shift": 0
+        },
+        "variant_9": {
+          "codepoint": "0xe3c3",
+          "octave_shift": 0
+        },
+        "variant_10": {
+          "codepoint": "0xe3d1",
+          "octave_shift": 0
+        },
+        "variant_11": {
+          "codepoint": "0xe3df",
+          "octave_shift": 0
+        },
+        "variant_12": {
+          "codepoint": "0xe3ed",
+          "octave_shift": 0
+        },
+        "variant_13": {
+          "codepoint": "0xe3fb",
+          "octave_shift": 0
+        },
+        "variant_14": {
+          "codepoint": "0xe409",
+          "octave_shift": 0
+        },
+        "variant_15": {
+          "codepoint": "0xe417",
+          "octave_shift": 0
+        },
+        "variant_16": {
+          "codepoint": "0xe425",
+          "octave_shift": 0
+        },
+        "variant_17": {
+          "codepoint": "0xe433",
+          "octave_shift": 0
+        },
+        "variant_18": {
+          "codepoint": "0xe441",
+          "octave_shift": 0
+        },
+        "variant_19": {
+          "codepoint": "0xe44f",
+          "octave_shift": 0
+        },
+        "base_octave": {
+          "codepoint": "0xe45d",
+          "octave_shift": 0
+        },
+        "variant_21": {
+          "codepoint": "0xe46b",
+          "octave_shift": 0
+        },
+        "variant_22": {
+          "codepoint": "0xe479",
+          "octave_shift": 0
+        },
+        "variant_23": {
+          "codepoint": "0xe487",
+          "octave_shift": 0
+        },
+        "variant_24": {
+          "codepoint": "0xe495",
+          "octave_shift": 0
+        }
+      }
+    },
+    {
+      "system": "doremi",
+      "character": "T",
+      "variants": {
+        "1_dot_above": {
+          "codepoint": "0xe346",
+          "octave_shift": 1
+        },
+        "2_dots_above": {
+          "codepoint": "0xe354",
+          "octave_shift": 2
+        },
+        "1_dot_below": {
+          "codepoint": "0xe362",
+          "octave_shift": -1
+        },
+        "2_dots_below": {
+          "codepoint": "0xe370",
+          "octave_shift": -2
+        },
+        "variant_4": {
+          "codepoint": "0xe37e",
+          "octave_shift": 0
+        },
+        "variant_5": {
+          "codepoint": "0xe38c",
+          "octave_shift": 0
+        },
+        "variant_6": {
+          "codepoint": "0xe39a",
+          "octave_shift": 0
+        },
+        "variant_7": {
+          "codepoint": "0xe3a8",
+          "octave_shift": 0
+        },
+        "variant_8": {
+          "codepoint": "0xe3b6",
+          "octave_shift": 0
+        },
+        "variant_9": {
+          "codepoint": "0xe3c4",
+          "octave_shift": 0
+        },
+        "variant_10": {
+          "codepoint": "0xe3d2",
+          "octave_shift": 0
+        },
+        "variant_11": {
+          "codepoint": "0xe3e0",
+          "octave_shift": 0
+        },
+        "variant_12": {
+          "codepoint": "0xe3ee",
+          "octave_shift": 0
+        },
+        "variant_13": {
+          "codepoint": "0xe3fc",
+          "octave_shift": 0
+        },
+        "variant_14": {
+          "codepoint": "0xe40a",
+          "octave_shift": 0
+        },
+        "variant_15": {
+          "codepoint": "0xe418",
+          "octave_shift": 0
+        },
+        "variant_16": {
+          "codepoint": "0xe426",
+          "octave_shift": 0
+        },
+        "variant_17": {
+          "codepoint": "0xe434",
+          "octave_shift": 0
+        },
+        "variant_18": {
+          "codepoint": "0xe442",
+          "octave_shift": 0
+        },
+        "variant_19": {
+          "codepoint": "0xe450",
+          "octave_shift": 0
+        },
+        "base_octave": {
+          "codepoint": "0xe45e",
+          "octave_shift": 0
+        },
+        "variant_21": {
+          "codepoint": "0xe46c",
+          "octave_shift": 0
+        },
+        "variant_22": {
+          "codepoint": "0xe47a",
+          "octave_shift": 0
+        },
+        "variant_23": {
+          "codepoint": "0xe488",
+          "octave_shift": 0
+        },
+        "variant_24": {
+          "codepoint": "0xe496",
+          "octave_shift": 0
+        }
+      }
+    }
+  ],
+  "symbols": [
+    {
+      "name": "barlineSingle",
+      "kind": "barline",
+      "label": "Barline (single)",
+      "codepoint": "0x1d100"
+    },
+    {
+      "name": "barlineDouble",
+      "kind": "barline",
+      "label": "Barline (double)",
+      "codepoint": "0x1d101"
+    },
+    {
+      "name": "barlineRepeatLeft",
+      "kind": "barline",
+      "label": "Barline (repeat left)",
+      "codepoint": "0x1d106"
+    },
+    {
+      "name": "barlineRepeatRight",
+      "kind": "barline",
+      "label": "Barline (repeat right)",
+      "codepoint": "0x1d107"
+    },
+    {
+      "name": "barlineRepeatBoth",
+      "kind": "barline",
+      "label": "Barline (repeat both)",
+      "codepoint": "0x1d108"
+    },
+    {
+      "name": "ornamentMordent",
+      "kind": "ornament",
+      "label": "Mordent",
+      "codepoint": "0xe56d"
+    },
+    {
+      "name": "ornamentInvertedMordent",
+      "kind": "ornament",
+      "label": "Inverted mordent",
+      "codepoint": "0xe56e"
+    },
+    {
+      "name": "ornamentTurn",
+      "kind": "ornament",
+      "label": "Turn",
+      "codepoint": "0xe567"
+    },
+    {
+      "name": "ornamentTrill",
+      "kind": "ornament",
+      "label": "Trill",
+      "codepoint": "0xe566"
+    },
+    {
+      "name": "bracketTop",
+      "kind": "bracket",
+      "label": "Bracket top cap",
+      "codepoint": "0xe003"
+    },
+    {
+      "name": "bracketBottom",
+      "kind": "bracket",
+      "label": "Bracket bottom cap",
+      "codepoint": "0xe004"
+    },
+    {
+      "name": "reversedBracketTop",
+      "kind": "bracket",
+      "label": "Reversed bracket top cap",
+      "codepoint": "0xe005"
+    },
+    {
+      "name": "reversedBracketBottom",
+      "kind": "bracket",
+      "label": "Reversed bracket bottom cap",
+      "codepoint": "0xe006"
+    }
+  ],
+  "summary": {
+    "total_notes": 14,
+    "total_symbols": 13,
+    "systems": {
+      "doremi": {
+        "count": 14,
+        "chars": "drmfsltDRMFSLT"
+      }
+    }
+  }
+}

@@ -9,19 +9,38 @@ use super::lyrics::*;
 use super::display_list::*;
 use super::line::LayoutLineComputer;
 use serde::{Serialize, Deserialize};
+use std::collections::HashMap;
+use std::sync::Mutex;
+use once_cell::sync::Lazy;
+
+/// Global glyph width cache
+/// Maps glyph character to width in CSS pixels
+/// Populated once at startup by JavaScript measureAllNotationFontGlyphs()
+static GLYPH_WIDTH_CACHE: Lazy<Mutex<HashMap<String, f32>>> = Lazy::new(|| {
+    Mutex::new(HashMap::new())
+});
+
+/// Set the glyph width cache (called from WASM setGlyphWidthCache())
+pub fn set_glyph_width_cache(cache: HashMap<String, f32>) {
+    *GLYPH_WIDTH_CACHE.lock().unwrap() = cache;
+}
+
+/// Get width for a glyph character
+/// Returns cached width or 12.0px fallback
+pub fn get_glyph_width(glyph: &str) -> f32 {
+    GLYPH_WIDTH_CACHE
+        .lock()
+        .unwrap()
+        .get(glyph)
+        .copied()
+        .unwrap_or(12.0) // Fallback width if glyph not in cache
+}
 
 /// Configuration for layout calculations
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct LayoutConfig {
-    /// Measured cell widths from JavaScript (parallel to cells array)
-    pub cell_widths: Vec<f32>,
-
     /// Measured syllable widths from JavaScript (parallel to syllable assignments)
     pub syllable_widths: Vec<f32>,
-
-    /// Measured character widths for each cell (flattened array)
-    /// Each cell contributes glyph.chars().count() widths
-    pub char_widths: Vec<f32>,
 
     /// Font size in pixels
     pub font_size: f32,
@@ -80,9 +99,7 @@ impl LayoutEngine {
     /// DisplayList with all positioning, classes, and rendering data
     pub fn compute_layout(&self, document: &Document, config: &LayoutConfig) -> DisplayList {
         let mut lines = Vec::new();
-        let mut cell_width_offset = 0;
         let mut syllable_width_offset = 0;
-        let mut char_width_offset = 0;
         let mut cumulative_y = 0.0;
 
         // Get selection range from document state
@@ -92,13 +109,6 @@ impl LayoutEngine {
 
         // Process each line
         for (line_idx, line) in document.lines.iter().enumerate() {
-            // Get cell widths for this line
-            let cell_widths = if cell_width_offset < config.cell_widths.len() {
-                &config.cell_widths[cell_width_offset..(cell_width_offset + line.cells.len()).min(config.cell_widths.len())]
-            } else {
-                &[]
-            };
-
             // Count syllables in this line to get correct offset
             let syllable_count = if !line.lyrics.is_empty() {
                 distribute_lyrics(&line.lyrics, &line.cells).len()
@@ -113,24 +123,12 @@ impl LayoutEngine {
                 &[]
             };
 
-            // Count total characters in this line
-            let char_count: usize = line.cells.iter().map(|cell| cell.char.chars().count()).sum();
-
-            // Get character widths for this line
-            let char_widths = if char_width_offset < config.char_widths.len() {
-                &config.char_widths[char_width_offset..(char_width_offset + char_count).min(config.char_widths.len())]
-            } else {
-                &[]
-            };
-
             let render_line = line_computer.compute_line_layout(
                 line,
                 line_idx,
                 config,
                 cumulative_y,
-                cell_widths,
                 syllable_widths,
-                char_widths,
                 document.ornament_edit_mode,
                 selection,
             );
@@ -138,9 +136,7 @@ impl LayoutEngine {
             // Accumulate Y offset for next line
             cumulative_y += render_line.height;
 
-            cell_width_offset += line.cells.len();
             syllable_width_offset += syllable_count;
-            char_width_offset += char_count;
 
             lines.push(render_line);
         }

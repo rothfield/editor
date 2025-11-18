@@ -102,11 +102,45 @@ class MusicNotationEditor {
   }
 
   /**
+   * Load NotationFont for a specific pitch system
+   * @param {string} system - Pitch system name: "number", "western", "sargam", or "doremi"
+   * @returns {Promise<void>}
+   *
+   * NOTE: Currently NOT USED - Full NotationFont is loaded via @font-face in index.html.
+   * This code remains for potential future use if we want to dynamically load
+   * system-specific font variants (NotationFont-{Number,Western,Sargam,Doremi}.woff2).
+   */
+  async loadNotationFont(system = 'number') {
+    // Capitalize first letter for filename: number -> Number
+    const systemName = system.charAt(0).toUpperCase() + system.slice(1);
+    const fontName = `NotationFont-${systemName}`;
+    const fontPath = `/dist/fonts/${fontName}.woff2`;
+
+    console.log(`Loading ${fontName} for ${system} pitch system...`);
+
+    try {
+      const font = new FontFace('NotationFont', `url(${fontPath})`);
+      const loadedFont = await font.load();
+      document.fonts.add(loadedFont);
+      console.log(`✓ ${fontName} loaded successfully (${fontPath})`);
+    } catch (error) {
+      console.error(`Failed to load ${fontName}:`, error);
+      throw error;
+    }
+  }
+
+  /**
      * Initialize the editor with WASM module
      */
   async initialize() {
     try {
       console.log('Initializing Music Notation Editor...');
+
+      // NOTE: System-specific NotationFont loading is currently disabled.
+      // Full NotationFont is loaded via @font-face in index.html instead.
+      // Uncomment below if switching back to dynamic system-specific fonts:
+      // const pitchSystem = localStorage.getItem('pitchSystem') || 'number';
+      // await this.loadNotationFont(pitchSystem);
 
       // Load WASM module
       const startTime = performance.now();
@@ -128,11 +162,35 @@ class MusicNotationEditor {
       const loadTime = performance.now() - startTime;
       console.log(`WASM module loaded in ${loadTime.toFixed(2)}ms`);
 
-      // Load font mapping (single source of truth for symbol codepoints)
-      this.fontMapping = await this.loadFontMapping();
+      // Initialize renderer (font symbols now come from WASM, not JSON)
+      this.renderer = new DOMRenderer(this.element, this, {});
 
-      // Initialize renderer with font mapping
-      this.renderer = new DOMRenderer(this.element, this, { fontMapping: this.fontMapping });
+      // Wait for all fonts to be ready
+      // ROOT CAUSE FIX: Measurements taken before fonts are ready are incorrect
+      try {
+        // CHROMIUM FIX: Explicitly load NotationFont before measuring
+        await document.fonts.load('32px NotationFont');
+        await document.fonts.ready;
+        console.log('All fonts ready');
+        // Clear any cached measurements that might have happened before fonts loaded
+        if (this.renderer && this.renderer.measurementService) {
+          this.renderer.measurementService.clearCache();
+          console.log('Measurement cache cleared after font load');
+        }
+      } catch (fontError) {
+        console.warn('Failed to wait for fonts, measurements may be incorrect:', fontError);
+      }
+
+      // Initialize global glyph width cache (measure once at startup)
+      try {
+        console.log('Initializing glyph width cache...');
+        const glyphCache = await this.renderer.measurementService.measureAllNotationFontGlyphs(this.wasmModule);
+        this.wasmModule.setGlyphWidthCache(glyphCache);
+        console.log('Glyph width cache initialized');
+      } catch (cacheError) {
+        console.error('Failed to initialize glyph width cache:', cacheError);
+        // Continue anyway - layout will use fallback widths
+      }
 
       // Setup event handlers
       this.setupEventHandlers();
@@ -1274,11 +1332,14 @@ class MusicNotationEditor {
       if (this.wasmModule) {
         const currentStave = this.getCurrentStave();
 
-        // Call WASM setLineTala function (Phase 1 API - works with internal document)
-        // NOTE: If Phase 1 API doesn't exist, WASM needs to be updated
-        await this.wasmModule.setLineTala(currentStave, talaString);
+        // Call modern WASM API (operates on internal DOCUMENT)
+        const result = this.wasmModule.setLineTalaModern(currentStave, talaString);
 
-        console.log(`📝 After WASM setLineTala, line[${currentStave}].tala set to: ${talaString}`);
+        if (!result.success) {
+          throw new Error(result.error || 'Unknown error');
+        }
+
+        console.log(`📝 Tala set to: ${talaString} on line ${currentStave}`);
         this.addToConsoleLog(`Tala set to: ${talaString}`);
         await this.renderAndUpdate();
       }
@@ -1367,9 +1428,10 @@ class MusicNotationEditor {
       // Y positions are now correctly set by Rust layout engine based on line index
       // No need to adjust in JavaScript anymore
 
-      // Update pitch system display in header
+      // Update pitch system and key signature displays in header
       if (this.ui) {
         this.ui.updateCurrentPitchSystemDisplay();
+        this.ui.updateKeySignatureCornerDisplay();
       }
 
       // Schedule staff notation update (debounced)
@@ -1513,7 +1575,7 @@ class MusicNotationEditor {
         // Focus the first line by default when clicking the container
         // WASM owns cursor state - use WASM API to move cursor
         if (this.wasmModule && this.wasmModule.moveHome) {
-          this.wasmModule.moveHome();
+          this.wasmModule.moveHome(false); // false = don't extend selection
         }
       });
     }
@@ -1852,6 +1914,8 @@ class MusicNotationEditor {
 
   /**
    * Update HTML display showing rendered notation line
+   * NOTE: This method is now UNUSED - replaced by InspectorCoordinator.updateHTMLDisplay()
+   * Kept for backwards compatibility. Will be removed in a future refactor.
    */
   updateHTMLDisplay() {
     const htmlContent = document.getElementById('html-content');
@@ -2236,30 +2300,6 @@ class MusicNotationEditor {
         }
       });
     });
-  }
-
-  /**
-   * Load font mapping from NotationFont-map.json (single source of truth)
-   * This mapping contains all barline, accidental, and symbol codepoints
-   */
-  async loadFontMapping() {
-    try {
-      const response = await fetch('/static/fonts/NotationFont-map.json');
-      if (!response.ok) {
-        throw new Error(`Failed to load font mapping: ${response.statusText}`);
-      }
-      const mapping = await response.json();
-      console.log('✅ Font mapping loaded:', {
-        notes: mapping.summary.total_notes,
-        symbols: mapping.summary.total_symbols,
-        systems: Object.keys(mapping.summary.systems)
-      });
-      return mapping;
-    } catch (error) {
-      console.error('Failed to load font mapping:', error);
-      // Return empty mapping as fallback
-      return { symbols: [], summary: { total_symbols: 0 } };
-    }
   }
 
   /**

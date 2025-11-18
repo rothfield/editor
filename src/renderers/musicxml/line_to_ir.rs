@@ -770,7 +770,7 @@ pub fn find_barlines(cells: &[Cell]) -> Vec<usize> {
     let mut barlines = vec![0]; // Implicit start
 
     for (i, cell) in cells.iter().enumerate() {
-        if cell.char == "|" && cell.kind == ElementKind::UnpitchedElement {
+        if cell.kind.is_barline() {
             barlines.push(i + 1);
         }
     }

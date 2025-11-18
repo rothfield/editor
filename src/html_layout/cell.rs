@@ -4,10 +4,9 @@
 //! and effective width calculations for individual cells.
 
 use crate::models::*;
-use crate::models::pitch_code::AccidentalType;
 use super::display_list::*;
 use super::document::LayoutConfig;
-use crate::renderers::{get_glyph_codepoint, get_accidental_glyph_codepoint, get_combined_accidental_octave_glyph};
+// Font utils no longer needed here - Cell::display_char() handles glyph derivation
 use std::collections::HashMap;
 
 /// Builder for cell styling and layout
@@ -121,8 +120,11 @@ impl CellStyleBuilder {
             cumulative_x + actual_cell_width // cursor_right (after glyph)
         ];
 
+        // Character rendering: use the stored character (already populated during cell creation)
+        let char = cell.display_char();
+
         // Track character count for char_widths array offset (legacy compatibility)
-        let char_count = cell.char.chars().count();
+        let char_count = char.chars().count();
         *char_width_offset += char_count;
 
         // cursor_right is at the right edge of the cell
@@ -138,47 +140,6 @@ impl CellStyleBuilder {
             ElementKind::RepeatRightBarline => "repeat-right-start".to_string(),
             ElementKind::DoubleBarline => "double-bar-start".to_string(),
             _ => String::new(),
-        };
-
-        // Character rendering strategy: render composite glyph from pitch_code
-        // For pitched elements with accidentals, compute the composite glyph codepoint
-        // For barlines, render the multi-char string (||, |:, :|)
-        let char = if cell.kind == ElementKind::PitchedElement && !cell.char.is_empty() {
-            if let Some(pitch_code) = cell.pitch_code {
-                // Extract base character (first char of cell.char, e.g., '1' from "1#")
-                let base_char = cell.char.chars().next().unwrap_or(' ');
-
-                // Get accidental type
-                let acc_type = pitch_code.accidental_type();
-                let acc_type_num = match acc_type {
-                    AccidentalType::Sharp => 1,
-                    AccidentalType::Flat => 2,
-                    AccidentalType::DoubleSharp => 3,
-                    AccidentalType::DoubleFlat => 4,
-                    _ => 0,
-                };
-
-                // Compute composite glyph based on accidental AND octave
-                if acc_type != AccidentalType::None && cell.octave != 0 {
-                    // BOTH accidental and octave: use combined glyph (e.g., "1# with dot above")
-                    let composite_glyph = get_combined_accidental_octave_glyph(base_char, acc_type_num, cell.octave);
-                    composite_glyph.to_string()
-                } else if acc_type != AccidentalType::None {
-                    // Only accidental, no octave: use accidental glyph (e.g., "1#")
-                    let composite_glyph = get_accidental_glyph_codepoint(base_char, acc_type_num);
-                    composite_glyph.to_string()
-                } else if cell.octave != 0 {
-                    // Only octave, no accidental: use octave glyph (e.g., "1 with dot above")
-                    get_glyph_codepoint(base_char, cell.octave).to_string()
-                } else {
-                    // No accidental, no octave - just base char
-                    base_char.to_string()
-                }
-            } else {
-                cell.char.clone()
-            }
-        } else {
-            cell.char.clone()
         };
 
 

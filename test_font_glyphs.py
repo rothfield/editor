@@ -3,8 +3,13 @@
 Test script to verify glyphs in the generated font have contours.
 """
 import fontforge
+import sys
+import os
 
-font_path = "/home/john/editor/static/fonts/NotationMonoDotted.ttf"
+# Default to Number system font in dist/fonts
+default_path = os.path.join(os.path.dirname(__file__), "dist/fonts/NotationFont-Number.ttf")
+font_path = sys.argv[1] if len(sys.argv) > 1 else default_path
+
 print(f"Loading font: {font_path}\n")
 font = fontforge.open(font_path)
 

@@ -38,6 +38,42 @@ pub use crate::api::types::{DirtyLine, EditResult, CopyResult};
 // Old applyOrnament and removeOrnament functions removed - replaced by copy/paste workflow
 // Old resolveOrnamentAttachments and computeOrnamentLayout functions removed - replaced by copy/paste workflow
 
+// ============================================================================
+// Font Measurement Cache (Startup Initialization)
+// ============================================================================
+
+/// Set the global glyph width cache
+///
+/// This should be called once at startup after measuring all NotationFont glyphs.
+/// The cache is used by the layout engine to look up glyph widths without
+/// requiring per-render measurement.
+///
+/// # Parameters
+/// - `cache_js`: JavaScript object mapping glyph character to width in CSS pixels
+///   Example: { "1": 12.5, "2": 13.0, "\uE000": 15.2, ... }
+///
+/// # Returns
+/// Ok(()) on success, JsValue error on failure
+#[wasm_bindgen(js_name = setGlyphWidthCache)]
+pub fn set_glyph_width_cache(cache_js: JsValue) -> Result<(), JsValue> {
+    wasm_info!("setGlyphWidthCache called");
+
+    // Deserialize JavaScript object to HashMap<String, f32>
+    let cache: std::collections::HashMap<String, f32> = serde_wasm_bindgen::from_value(cache_js)
+        .map_err(|e| {
+            wasm_error!("Cache deserialization error: {}", e);
+            JsValue::from_str(&format!("Cache deserialization error: {}", e))
+        })?;
+
+    wasm_info!("  Received {} glyph width entries", cache.len());
+
+    // Set the global cache
+    crate::html_layout::document::set_glyph_width_cache(cache);
+
+    wasm_info!("setGlyphWidthCache completed successfully");
+    Ok(())
+}
+
 /// Set the document title (LEGACY - Phase 0 API)
 /// DEPRECATED: Use the new setTitle() which uses internal DOCUMENT
 ///
@@ -157,6 +193,145 @@ pub fn set_composer(composer: &str) -> Result<(), JsValue> {
     doc.compute_glyphs();
 
     wasm_info!("setComposer completed successfully");
+    Ok(())
+}
+
+/// Set the document tonic (Phase 1 API)
+///
+/// Sets the musical tonic for the entire composition.
+/// Also automatically sets key_signature to match (assumes major key).
+///
+/// # Parameters
+/// - `tonic`: The tonic note (e.g., "C", "D", "E", etc.)
+///
+/// # Returns
+/// Ok(()) on success, or error if no document is loaded
+#[wasm_bindgen(js_name = setDocumentTonic)]
+pub fn set_document_tonic(tonic: &str) -> Result<(), JsValue> {
+    wasm_info!("setDocumentTonic called: tonic='{}'", tonic);
+
+    let mut doc_guard = lock_document()?;
+    let doc = doc_guard.as_mut()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    doc.tonic = Some(tonic.to_string());
+    wasm_info!("  Document tonic set to: '{}'", tonic);
+
+    // Also set key_signature for MusicXML export (assume major key)
+    let key_signature = format!("{} major", tonic);
+    doc.key_signature = Some(key_signature.clone());
+    wasm_info!("  Document key_signature set to: '{}'", key_signature);
+
+    // Compute glyphs after metadata change
+    doc.compute_glyphs();
+
+    wasm_info!("setDocumentTonic completed successfully");
+    Ok(())
+}
+
+/// Set the tonic for a specific line (Phase 1 API)
+///
+/// Sets the musical tonic for a specific line (overrides document tonic).
+/// Also automatically sets key_signature to match (assumes major key).
+///
+/// # Parameters
+/// - `line_idx`: The line index (0-based)
+/// - `tonic`: The tonic note (e.g., "C", "D", "E", etc.)
+///
+/// # Returns
+/// Ok(()) on success, or error if no document is loaded or line index is invalid
+#[wasm_bindgen(js_name = setLineTonic)]
+pub fn set_line_tonic(line_idx: usize, tonic: &str) -> Result<(), JsValue> {
+    wasm_info!("setLineTonic called: line_idx={}, tonic='{}'", line_idx, tonic);
+
+    let mut doc_guard = lock_document()?;
+    let doc = doc_guard.as_mut()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    // Validate line index
+    if line_idx >= doc.lines.len() {
+        let err_msg = format!("Line index {} out of bounds (document has {} lines)", line_idx, doc.lines.len());
+        wasm_error!("{}", err_msg);
+        return Err(JsValue::from_str(&err_msg));
+    }
+
+    // Set the line tonic
+    doc.lines[line_idx].tonic = tonic.to_string();
+    wasm_info!("  Line {} tonic set to: '{}'", line_idx, tonic);
+
+    // Also set key_signature for MusicXML export (assume major key)
+    let key_signature = format!("{} major", tonic);
+    doc.lines[line_idx].key_signature = key_signature.clone();
+    wasm_info!("  Line {} key_signature set to: '{}'", line_idx, key_signature);
+
+    // Compute glyphs after metadata change
+    doc.compute_glyphs();
+
+    wasm_info!("setLineTonic completed successfully");
+    Ok(())
+}
+
+/// Set the document-level key signature (Phase 1 API)
+///
+/// Sets the key signature for the entire composition.
+///
+/// # Parameters
+/// - `key_signature`: The key signature string (e.g., "C major", "D minor", "G major")
+///
+/// # Returns
+/// Ok(()) on success, or error if no document is loaded
+#[wasm_bindgen(js_name = setDocumentKeySignature)]
+pub fn set_document_key_signature(key_signature: &str) -> Result<(), JsValue> {
+    wasm_info!("setDocumentKeySignature called: key_signature='{}'", key_signature);
+
+    let mut doc_guard = lock_document()?;
+    let doc = doc_guard.as_mut()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    doc.key_signature = Some(key_signature.to_string());
+    wasm_info!("  Document key signature set to: '{}'", key_signature);
+
+    // Compute glyphs after metadata change
+    doc.compute_glyphs();
+
+    wasm_info!("setDocumentKeySignature completed successfully");
+    Ok(())
+}
+
+/// Set the line-level key signature (Phase 1 API)
+///
+/// Sets the key signature for a specific line.
+///
+/// # Parameters
+/// - `line_idx`: The index of the line to modify
+/// - `key_signature`: The key signature string (e.g., "C major", "D minor")
+///
+/// # Returns
+/// Ok(()) on success, or error if no document is loaded or line index is invalid
+#[wasm_bindgen(js_name = setLineKeySignature)]
+pub fn set_line_key_signature(line_idx: usize, key_signature: &str) -> Result<(), JsValue> {
+    wasm_info!("setLineKeySignature called: line_idx={}, key_signature='{}'", line_idx, key_signature);
+
+    let mut doc_guard = lock_document()?;
+    let doc = doc_guard.as_mut()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    if line_idx >= doc.lines.len() {
+        wasm_error!("Line index {} out of bounds (max: {})", line_idx, doc.lines.len() - 1);
+        return Err(JsValue::from_str(&format!(
+            "Line index {} out of bounds (document has {} lines)",
+            line_idx,
+            doc.lines.len()
+        )));
+    }
+
+    doc.lines[line_idx].key_signature = key_signature.to_string();
+    wasm_info!("  Line {} key signature set to: '{}'", line_idx, key_signature);
+
+    // Compute glyphs after metadata change
+    doc.compute_glyphs();
+
+    wasm_info!("setLineKeySignature completed successfully");
     Ok(())
 }
 
@@ -832,23 +1007,38 @@ pub fn insert_text(text: &str) -> Result<JsValue, JsValue> {
     let should_modify_prev = is_single_char && insert_pos > 0 && {
         let prev_cell = &line.cells[insert_pos - 1];
 
+        use crate::renderers::font_utils::BARLINE_SINGLE;
+        let barline_single_str = BARLINE_SINGLE.to_string();
+
         // Case 1: Typing accidental after pitched element
         if matches!(typed_char, '#' | 'b') && prev_cell.kind == ElementKind::PitchedElement {
             // Check if we haven't exceeded double accidental limit
             let current_accidentals = prev_cell.char.chars().filter(|c| matches!(c, '#' | 'b')).count();
             current_accidentals < 2
         }
-        // Case 2: Typing : after | (repeat left barline)
-        else if typed_char == ':' && prev_cell.char == "|" && prev_cell.kind == ElementKind::SingleBarline {
+        // Case 2: Typing : after | (repeat left barline) - check Unicode barline character
+        else if typed_char == ':' && prev_cell.char == barline_single_str && prev_cell.kind == ElementKind::SingleBarline {
             true
         }
         // Case 3: Typing | after : (repeat right barline)
         else if typed_char == '|' && prev_cell.char == ":" && prev_cell.kind == ElementKind::Symbol {
             true
         }
-        // Case 4: Typing | after | (double barline)
-        else if typed_char == '|' && prev_cell.char == "|" && prev_cell.kind == ElementKind::SingleBarline {
+        // Case 4: Typing | after | (double barline) - check Unicode barline character
+        else if typed_char == '|' && prev_cell.char == barline_single_str && prev_cell.kind == ElementKind::SingleBarline {
             true
+        }
+        // Case 5: Typing / after flat pitch (flat → half-flat mutation)
+        else if typed_char == '/' && prev_cell.kind == ElementKind::PitchedElement {
+            if let Some(pitch_code) = prev_cell.pitch_code {
+                use crate::models::PitchCode;
+                matches!(pitch_code,
+                    PitchCode::N1b | PitchCode::N2b | PitchCode::N3b | PitchCode::N4b |
+                    PitchCode::N5b | PitchCode::N6b | PitchCode::N7b
+                )
+            } else {
+                false
+            }
         }
         else {
             false
@@ -859,32 +1049,88 @@ pub fn insert_text(text: &str) -> Result<JsValue, JsValue> {
         // MODIFY EXISTING CELL
         wasm_info!("  Smart insert: modifying previous cell");
 
+        use crate::renderers::font_utils::{
+            BARLINE_SINGLE, BARLINE_DOUBLE, BARLINE_REPEAT_LEFT, BARLINE_REPEAT_RIGHT
+        };
+
         let prev_idx = insert_pos - 1;
         let prev_cell = &mut line.cells[prev_idx];
         let old_char = prev_cell.char.clone();
-
-        // Append character to previous cell
-        prev_cell.char.push(typed_char);
+        let barline_single_str = BARLINE_SINGLE.to_string();
 
         // Update kind and pitch_code based on new content
         if matches!(typed_char, '#' | 'b') {
-            // Accidental: reparse pitch_code
-            if let Some(pitch_system) = prev_cell.pitch_system {
-                prev_cell.pitch_code = PitchCode::from_string(&prev_cell.char, pitch_system);
-                wasm_info!("  Updated pitch_code: {:?}", prev_cell.pitch_code);
+            // Accidental: transform the pitch_code (N1 + 'b' → N1b, N1b + 'b' → N1bb)
+            if let Some(current_pc) = prev_cell.pitch_code {
+                let new_pitch_code = if typed_char == '#' {
+                    current_pc.add_sharp()
+                } else {
+                    current_pc.add_flat()
+                };
+
+                if let Some(new_pc) = new_pitch_code {
+                    prev_cell.pitch_code = Some(new_pc);
+
+                    // Regenerate the glyph character using lookup table
+                    if let Some(pitch_system) = prev_cell.pitch_system {
+                        use crate::renderers::font_utils::glyph_for_pitch;
+                        if let Some(glyph) = glyph_for_pitch(new_pc, prev_cell.octave, pitch_system) {
+                            prev_cell.char = glyph.to_string();
+                            wasm_info!("  Updated pitch_code: {:?} → {:?}, glyph: U+{:04X}",
+                                current_pc, new_pc, glyph as u32);
+                        }
+                    }
+                } else {
+                    wasm_info!("  Cannot add {} to {:?} (would exceed double accidental or mix sharp/flat)",
+                        typed_char, current_pc);
+                }
             }
-        } else if typed_char == ':' && old_char == "|" {
-            // |: → RepeatLeftBarline
+        } else if typed_char == ':' && old_char == barline_single_str {
+            // 𝄀 + : → 𝄆 (RepeatLeftBarline)
+            prev_cell.char = BARLINE_REPEAT_LEFT.to_string();
             prev_cell.kind = ElementKind::RepeatLeftBarline;
-            wasm_info!("  Changed kind to RepeatLeftBarline");
+            wasm_info!("  Changed to RepeatLeftBarline (Unicode U+1D106)");
         } else if typed_char == '|' && old_char == ":" {
-            // :| → RepeatRightBarline
+            // : + | → 𝄇 (RepeatRightBarline)
+            prev_cell.char = BARLINE_REPEAT_RIGHT.to_string();
             prev_cell.kind = ElementKind::RepeatRightBarline;
-            wasm_info!("  Changed kind to RepeatRightBarline");
-        } else if typed_char == '|' && old_char == "|" {
-            // || → DoubleBarline
+            wasm_info!("  Changed to RepeatRightBarline (Unicode U+1D107)");
+        } else if typed_char == '|' && old_char == barline_single_str {
+            // 𝄀 + | → 𝄁 (DoubleBarline)
+            prev_cell.char = BARLINE_DOUBLE.to_string();
             prev_cell.kind = ElementKind::DoubleBarline;
-            wasm_info!("  Changed kind to DoubleBarline");
+            wasm_info!("  Changed to DoubleBarline (Unicode U+1D101)");
+        } else if typed_char == '/' {
+            // Flat + / → Half-flat (N1b → N1hf)
+            if let Some(current_pc) = prev_cell.pitch_code {
+                use crate::models::PitchCode;
+                let new_pitch_code = match current_pc {
+                    PitchCode::N1b => Some(PitchCode::N1hf),
+                    PitchCode::N2b => Some(PitchCode::N2hf),
+                    PitchCode::N3b => Some(PitchCode::N3hf),
+                    PitchCode::N4b => Some(PitchCode::N4hf),
+                    PitchCode::N5b => Some(PitchCode::N5hf),
+                    PitchCode::N6b => Some(PitchCode::N6hf),
+                    PitchCode::N7b => Some(PitchCode::N7hf),
+                    _ => None,
+                };
+
+                if let Some(new_pc) = new_pitch_code {
+                    prev_cell.pitch_code = Some(new_pc);
+
+                    // Regenerate the glyph character using lookup table
+                    if let Some(pitch_system) = prev_cell.pitch_system {
+                        use crate::renderers::font_utils::glyph_for_pitch;
+                        if let Some(glyph) = glyph_for_pitch(new_pc, prev_cell.octave, pitch_system) {
+                            prev_cell.char = glyph.to_string();
+                            wasm_info!("  Updated pitch_code: {:?} → {:?} (half-flat), glyph: U+{:04X}",
+                                current_pc, new_pc, glyph as u32);
+                        }
+                    }
+                } else {
+                    wasm_info!("  Cannot convert {:?} to half-flat (not a flat pitch)", current_pc);
+                }
+            }
         }
 
         // TODO: Record undo for modification (for now, skip undo)
@@ -932,6 +1178,9 @@ pub fn insert_text(text: &str) -> Result<JsValue, JsValue> {
     doc.state.cursor.col = new_cursor_col;
 
     wasm_info!("  Cursor moved to ({}, {})", cursor_line, new_cursor_col);
+
+    // Recompute glyphs to convert pitch_code + octave to PUA codepoints
+    doc.compute_glyphs();
 
     // Return EditorDiff with cursor state
     let diff = doc.state.to_editor_diff(&doc, vec![cursor_line]);
@@ -1865,8 +2114,8 @@ pub fn compute_layout(
         })?;
 
     wasm_log!("  Document has {} lines", document.lines.len());
-    wasm_log!("  Config: {} cell widths, {} syllable widths",
-             config.cell_widths.len(), config.syllable_widths.len());
+    wasm_log!("  Config: {} syllable widths (cell widths from cache)",
+             config.syllable_widths.len());
 
     // Create layout engine and compute layout
     let engine = crate::html_layout::LayoutEngine::new();
@@ -2115,6 +2364,236 @@ pub fn extend_selection_to(line: usize, col: usize) -> Result<(), JsValue> {
     doc.state.selection_manager.extend_selection(&pos);
 
     Ok(())
+}
+
+// ==================== Constraint System API ====================
+
+/// Get all predefined scale constraints
+/// Returns a JSON array of constraint objects
+#[wasm_bindgen(js_name = getPredefinedConstraints)]
+pub fn get_predefined_constraints_wasm() -> Result<JsValue, JsValue> {
+    use crate::models::constraints::get_predefined_constraints;
+
+    let constraints = get_predefined_constraints();
+    serde_wasm_bindgen::to_value(&constraints)
+        .map_err(|e| JsValue::from_str(&format!("Failed to serialize constraints: {}", e)))
+}
+
+/// Check if a pitch is allowed by a constraint
+///
+/// # Arguments
+/// * `constraint_id` - The ID of the constraint to check against
+/// * `pitch_code` - The pitch code to check (e.g., "N1", "N2b", "N3hf")
+///
+/// # Returns
+/// * `true` if the pitch is allowed, `false` otherwise
+#[wasm_bindgen(js_name = isPitchAllowed)]
+pub fn is_pitch_allowed_wasm(constraint_id: String, pitch_code: String) -> Result<bool, JsValue> {
+    use crate::models::constraints::get_predefined_constraints;
+
+    // Find the constraint by ID
+    let constraints = get_predefined_constraints();
+    let constraint = constraints.iter()
+        .find(|c| c.id == constraint_id)
+        .ok_or_else(|| JsValue::from_str(&format!("Constraint '{}' not found", constraint_id)))?;
+
+    // Get document to determine pitch system (default to Number)
+    let doc_guard = lock_document()?;
+    let doc = doc_guard.as_ref()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+    let pitch_system = doc.pitch_system.unwrap_or(PitchSystem::Number);
+
+    // Parse the pitch code string into PitchCode enum
+    let pitch = PitchCode::from_string(&pitch_code, pitch_system)
+        .ok_or_else(|| JsValue::from_str(&format!("Invalid pitch code: {}", pitch_code)))?;
+
+    Ok(constraint.is_pitch_allowed(pitch))
+}
+
+/// Set the active constraint for the document
+/// Pass `null` or empty string to disable constraints
+#[wasm_bindgen(js_name = setActiveConstraint)]
+pub fn set_active_constraint(constraint_id: Option<String>) -> Result<(), JsValue> {
+    use crate::models::constraints::get_predefined_constraints;
+
+    let mut doc_guard = lock_document()?;
+    let doc = doc_guard.as_mut()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    if let Some(id) = constraint_id {
+        if id.is_empty() {
+            doc.active_constraint = None;
+            return Ok(());
+        }
+
+        // Find and clone the constraint
+        let constraints = get_predefined_constraints();
+        let constraint = constraints.into_iter()
+            .find(|c| c.id == id)
+            .ok_or_else(|| JsValue::from_str(&format!("Constraint '{}' not found", id)))?;
+
+        doc.active_constraint = Some(constraint);
+    } else {
+        doc.active_constraint = None;
+    }
+
+    Ok(())
+}
+
+/// Get the active constraint ID for the document
+/// Returns `null` if no constraint is active
+#[wasm_bindgen(js_name = getActiveConstraint)]
+pub fn get_active_constraint() -> Result<JsValue, JsValue> {
+    let doc_guard = lock_document()?;
+    let doc = doc_guard.as_ref()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    match &doc.active_constraint {
+        Some(constraint) => Ok(JsValue::from_str(&constraint.id)),
+        None => Ok(JsValue::NULL),
+    }
+}
+
+/// Get the list of notes in a scale constraint for a specific pitch system
+/// Returns an array of note names (e.g., ["1", "2", "3", "4", "5", "6", "7"] for Number system)
+#[wasm_bindgen(js_name = getConstraintNotes)]
+pub fn get_constraint_notes(constraint_id: String, pitch_system_str: String) -> Result<JsValue, JsValue> {
+    use crate::models::constraints::get_predefined_constraints;
+    use crate::models::pitch_code::AccidentalType;
+
+    // Helper function to get NotationFont glyph (single PUA codepoint) from degree and accidental
+    fn note_char_from_degree_accidental(
+        degree: usize,
+        accidental: AccidentalType,
+        pitch_system: PitchSystem
+    ) -> Option<String> {
+        use crate::models::pitch_code::PitchCode;
+        use crate::renderers::font_utils::glyph_for_pitch;
+
+        // Map degree to base pitch code
+        let base_pitch = match (degree, accidental) {
+            (1, AccidentalType::None) => PitchCode::N1,
+            (2, AccidentalType::None) => PitchCode::N2,
+            (3, AccidentalType::None) => PitchCode::N3,
+            (4, AccidentalType::None) => PitchCode::N4,
+            (5, AccidentalType::None) => PitchCode::N5,
+            (6, AccidentalType::None) => PitchCode::N6,
+            (7, AccidentalType::None) => PitchCode::N7,
+            (1, AccidentalType::Sharp) => PitchCode::N1s,
+            (2, AccidentalType::Sharp) => PitchCode::N2s,
+            (3, AccidentalType::Sharp) => PitchCode::N3s,
+            (4, AccidentalType::Sharp) => PitchCode::N4s,
+            (5, AccidentalType::Sharp) => PitchCode::N5s,
+            (6, AccidentalType::Sharp) => PitchCode::N6s,
+            (7, AccidentalType::Sharp) => PitchCode::N7s,
+            (1, AccidentalType::Flat) => PitchCode::N1b,
+            (2, AccidentalType::Flat) => PitchCode::N2b,
+            (3, AccidentalType::Flat) => PitchCode::N3b,
+            (4, AccidentalType::Flat) => PitchCode::N4b,
+            (5, AccidentalType::Flat) => PitchCode::N5b,
+            (6, AccidentalType::Flat) => PitchCode::N6b,
+            (7, AccidentalType::Flat) => PitchCode::N7b,
+            (1, AccidentalType::HalfFlat) => PitchCode::N1hf,
+            (2, AccidentalType::HalfFlat) => PitchCode::N2hf,
+            (3, AccidentalType::HalfFlat) => PitchCode::N3hf,
+            (4, AccidentalType::HalfFlat) => PitchCode::N4hf,
+            (5, AccidentalType::HalfFlat) => PitchCode::N5hf,
+            (6, AccidentalType::HalfFlat) => PitchCode::N6hf,
+            (7, AccidentalType::HalfFlat) => PitchCode::N7hf,
+            (1, AccidentalType::DoubleSharp) => PitchCode::N1ss,
+            (2, AccidentalType::DoubleSharp) => PitchCode::N2ss,
+            (3, AccidentalType::DoubleSharp) => PitchCode::N3ss,
+            (4, AccidentalType::DoubleSharp) => PitchCode::N4ss,
+            (5, AccidentalType::DoubleSharp) => PitchCode::N5ss,
+            (6, AccidentalType::DoubleSharp) => PitchCode::N6ss,
+            (7, AccidentalType::DoubleSharp) => PitchCode::N7ss,
+            (1, AccidentalType::DoubleFlat) => PitchCode::N1bb,
+            (2, AccidentalType::DoubleFlat) => PitchCode::N2bb,
+            (3, AccidentalType::DoubleFlat) => PitchCode::N3bb,
+            (4, AccidentalType::DoubleFlat) => PitchCode::N4bb,
+            (5, AccidentalType::DoubleFlat) => PitchCode::N5bb,
+            (6, AccidentalType::DoubleFlat) => PitchCode::N6bb,
+            (7, AccidentalType::DoubleFlat) => PitchCode::N7bb,
+            _ => return None,
+        };
+
+        // Use glyph_for_pitch to get NotationFont PUA codepoint
+        // Use octave 0 (base octave, no dots) for constraint display
+        glyph_for_pitch(base_pitch, 0, pitch_system).map(|ch| ch.to_string())
+    }
+
+    // Parse pitch system
+    let pitch_system = match pitch_system_str.as_str() {
+        "Number" => PitchSystem::Number,
+        "Western" => PitchSystem::Western,
+        "Sargam" => PitchSystem::Sargam,
+        _ => return Err(JsValue::from_str(&format!("Unknown pitch system: {}", pitch_system_str))),
+    };
+
+    // Find the constraint by ID
+    let constraints = get_predefined_constraints();
+    let constraint = constraints.iter()
+        .find(|c| c.id == constraint_id)
+        .ok_or_else(|| JsValue::from_str(&format!("Constraint not found: {}", constraint_id)))?;
+
+    // Build list of allowed notes
+    let mut notes = Vec::new();
+
+    // For each degree (1-7)
+    for degree in 1..=7 {
+        let degree_idx = degree - 1;
+        let degree_constraint = &constraint.degrees[degree_idx];
+
+        // Check what's allowed for this degree
+        match degree_constraint {
+            crate::models::constraints::DegreeConstraint::Omit => {
+                // Skip omitted degrees
+                continue;
+            },
+            crate::models::constraints::DegreeConstraint::Any => {
+                // For "Any", just show the natural note
+                if let Some(note) = note_char_from_degree_accidental(degree, AccidentalType::None, pitch_system) {
+                    notes.push(note);
+                }
+            },
+            crate::models::constraints::DegreeConstraint::Only(allowed_accidentals) => {
+                // For each allowed accidental, add the note
+                for accidental in allowed_accidentals {
+                    if let Some(note) = note_char_from_degree_accidental(degree, *accidental, pitch_system) {
+                        notes.push(note);
+                    }
+                }
+            }
+        }
+    }
+
+    // Convert to JsValue
+    serde_wasm_bindgen::to_value(&notes)
+        .map_err(|e| JsValue::from_str(&format!("Failed to serialize notes: {}", e)))
+}
+
+/// Check if a pitch is allowed by the document's active constraint
+/// If no constraint is active, all pitches are allowed
+#[wasm_bindgen(js_name = checkPitchAgainstActiveConstraint)]
+pub fn check_pitch_against_active_constraint(pitch_code: String) -> Result<bool, JsValue> {
+    let doc_guard = lock_document()?;
+    let doc = doc_guard.as_ref()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    // If no constraint is active, allow all pitches
+    let constraint = match &doc.active_constraint {
+        Some(c) => c,
+        None => return Ok(true),
+    };
+
+    // Get pitch system from document (default to Number)
+    let pitch_system = doc.pitch_system.unwrap_or(PitchSystem::Number);
+
+    // Parse the pitch code
+    let pitch = PitchCode::from_string(&pitch_code, pitch_system)
+        .ok_or_else(|| JsValue::from_str(&format!("Invalid pitch code: {}", pitch_code)))?;
+
+    Ok(constraint.is_pitch_allowed(pitch))
 }
 
 // ==================== Cursor Movement Commands ====================

@@ -3,8 +3,6 @@
 //! This module provides high-level emission functions that consume the intermediate
 //! representation (ExportLine, ExportMeasure, ExportEvent) and produce valid MusicXML strings.
 
-use crate::models::pitch::Pitch;
-use crate::models::{PitchSystem, Accidental, PitchCode};
 use super::export_ir::*;
 use super::builder::{MusicXmlBuilder, xml_escape};
 use super::grace_notes::ornament_position_to_placement;
@@ -450,42 +448,6 @@ fn emit_event(
     Ok(())
 }
 
-/// Convert PitchInfo to a Pitch object for use with the builder
-fn pitch_info_to_pitch(pitch_info: &PitchInfo) -> Pitch {
-    // Convert degree (1-7) to numeric base string
-    let degree = pitch_info.pitch_code.degree();
-    let base = degree.to_string();
-
-    // Convert alter value to Accidental
-    let accidental = match pitch_info.pitch_code {
-        // Naturals
-        PitchCode::N1 | PitchCode::N2 | PitchCode::N3 | PitchCode::N4 |
-        PitchCode::N5 | PitchCode::N6 | PitchCode::N7 => Accidental::Natural,
-
-        // Sharps
-        PitchCode::N1s | PitchCode::N2s | PitchCode::N3s | PitchCode::N4s |
-        PitchCode::N5s | PitchCode::N6s | PitchCode::N7s => Accidental::Sharp,
-
-        // Flats
-        PitchCode::N1b | PitchCode::N2b | PitchCode::N3b | PitchCode::N4b |
-        PitchCode::N5b | PitchCode::N6b | PitchCode::N7b => Accidental::Flat,
-
-        // Double sharps
-        PitchCode::N1ss | PitchCode::N2ss | PitchCode::N3ss | PitchCode::N4ss |
-        PitchCode::N5ss | PitchCode::N6ss | PitchCode::N7ss => Accidental::DoubleSharp,
-
-        // Double flats
-        PitchCode::N1bb | PitchCode::N2bb | PitchCode::N3bb | PitchCode::N4bb |
-        PitchCode::N5bb | PitchCode::N6bb | PitchCode::N7bb => Accidental::DoubleFlat,
-    };
-
-    Pitch {
-        base,
-        accidental,
-        octave: pitch_info.octave,
-        system: PitchSystem::Number,
-    }
-}
 
 /// Emit a note with grace notes, slurs, lyrics, etc.
 fn emit_note(
@@ -640,8 +602,6 @@ fn emit_chord(
 
     // Emit first note with chord flag for subsequent notes
     if !pitches.is_empty() {
-        let _first_pitch = pitch_info_to_pitch(&pitches[0]);
-
         // Convert lyric data to tuple format for the builder
         let lyric_tuple = lyrics.as_ref().map(|l| (
             l.syllable.clone(),
@@ -1756,6 +1716,130 @@ mod tests {
         // Should NOT have tuplet marking (2 is power of 2, standard duration)
         assert!(!xml.contains("<tuplet"),
                 "Standard binary divisions should not have tuplet marking");
+    }
+
+    #[test]
+    fn test_half_flat_musicxml_export() {
+        // Test that half-flat (quarter-flat) accidentals export correctly
+        // Expected MusicXML: <alter>-0.5</alter> and <accidental>quarter-flat</accidental>
+        let line = ExportLine {
+            system_id: 1,
+            part_id: "P1".to_string(),
+            staff_role: crate::models::core::StaffRole::Melody,
+            key_signature: None,
+            time_signature: Some("4/4".to_string()),
+            clef: "treble".to_string(),
+            label: String::new(),
+            show_bracket: false,
+            lyrics: String::new(),
+            measures: vec![ExportMeasure {
+                divisions: 4,
+                events: vec![
+                    // C half-flat (N1hf)
+                    ExportEvent::Note(NoteData {
+                        pitch: PitchInfo::new(PitchCode::N1hf, 4),
+                        divisions: 4,
+                        fraction: Fraction { numerator: 1, denominator: 1 },
+                        grace_notes_before: Vec::new(),
+                        grace_notes_after: Vec::new(),
+                        lyrics: None,
+                        slur: None,
+                        articulations: Vec::new(),
+                        beam: None,
+                        tie: None,
+                        tuplet: None,
+                    }),
+                ],
+            }],
+        };
+
+        let xml = emit_musicxml(&vec![line], None, None).expect("Failed to emit MusicXML");
+
+        // Debug output
+        eprintln!("\n=== HALF-FLAT MUSICXML ===\n{}\n=== END ===\n", xml);
+
+        // Verify <step>C</step>
+        assert!(xml.contains("<step>C</step>"),
+                "Should have C as the base step for N1hf");
+
+        // Verify <alter>-0.5</alter> (half a semitone down)
+        assert!(xml.contains("<alter>-0.5</alter>"),
+                "Should have alter=-0.5 for half-flat");
+
+        // Verify <accidental>quarter-flat</accidental>
+        assert!(xml.contains("<accidental>quarter-flat</accidental>"),
+                "Should have accidental=quarter-flat for half-flat");
+
+        // Verify structure: alter comes before accidental
+        let alter_pos = xml.find("<alter>-0.5</alter>").expect("alter not found");
+        let accidental_pos = xml.find("<accidental>quarter-flat</accidental>").expect("accidental not found");
+        assert!(alter_pos < accidental_pos,
+                "alter should come before accidental in MusicXML");
+    }
+
+    #[test]
+    fn test_all_accidental_types_in_musicxml() {
+        // Test that all accidental types export correctly
+        use crate::models::PitchCode::*;
+
+        let test_cases = vec![
+            (N1, None, None), // Natural - no alter, no accidental
+            (N1s, Some("1"), Some("sharp")), // Sharp
+            (N1b, Some("-1"), Some("flat")), // Flat
+            (N1hf, Some("-0.5"), Some("quarter-flat")), // Half-flat
+            (N1ss, Some("2"), Some("double-sharp")), // Double-sharp
+            (N1bb, Some("-2"), Some("flat-flat")), // Double-flat
+        ];
+
+        for (pitch_code, expected_alter, expected_accidental) in test_cases {
+            let line = ExportLine {
+                system_id: 1,
+                part_id: "P1".to_string(),
+                staff_role: crate::models::core::StaffRole::Melody,
+                key_signature: None,
+                time_signature: Some("4/4".to_string()),
+                clef: "treble".to_string(),
+                label: String::new(),
+                show_bracket: false,
+                lyrics: String::new(),
+                measures: vec![ExportMeasure {
+                    divisions: 4,
+                    events: vec![
+                        ExportEvent::Note(NoteData {
+                            pitch: PitchInfo::new(pitch_code, 4),
+                            divisions: 4,
+                            fraction: Fraction { numerator: 1, denominator: 1 },
+                            grace_notes_before: Vec::new(),
+                            grace_notes_after: Vec::new(),
+                            lyrics: None,
+                            slur: None,
+                            articulations: Vec::new(),
+                            beam: None,
+                            tie: None,
+                            tuplet: None,
+                        }),
+                    ],
+                }],
+            };
+
+            let xml = emit_musicxml(&vec![line], None, None).expect("Failed to emit MusicXML");
+
+            if let Some(alter_value) = expected_alter {
+                assert!(xml.contains(&format!("<alter>{}</alter>", alter_value)),
+                        "PitchCode {:?} should have alter={}", pitch_code, alter_value);
+            } else {
+                assert!(!xml.contains("<alter>"),
+                        "PitchCode {:?} should not have alter element", pitch_code);
+            }
+
+            if let Some(accidental_name) = expected_accidental {
+                assert!(xml.contains(&format!("<accidental>{}</accidental>", accidental_name)),
+                        "PitchCode {:?} should have accidental={}", pitch_code, accidental_name);
+            } else {
+                assert!(!xml.contains("<accidental>"),
+                        "PitchCode {:?} should not have accidental element", pitch_code);
+            }
+        }
     }
 
 }

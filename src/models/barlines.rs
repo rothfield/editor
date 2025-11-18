@@ -28,14 +28,20 @@ impl BarlineType {
         }
     }
 
-    /// Get barline symbol
-    pub fn symbol(&self) -> &'static str {
+    /// Get barline Unicode character for rendering
+    /// Returns actual Unicode musical symbols, not ASCII placeholders
+    pub fn symbol(&self) -> char {
+        use crate::renderers::font_utils::{
+            BARLINE_SINGLE, BARLINE_DOUBLE, BARLINE_REPEAT_LEFT, BARLINE_REPEAT_RIGHT
+        };
+
         match self {
-            BarlineType::Single => "|",
-            BarlineType::Double => "||",
-            BarlineType::StartRepeat => "|:",
-            BarlineType::EndRepeat => ":|",
-            BarlineType::Final => "|||",
+            BarlineType::Single => BARLINE_SINGLE,
+            BarlineType::Double => BARLINE_DOUBLE,
+            BarlineType::StartRepeat => BARLINE_REPEAT_LEFT,
+            BarlineType::EndRepeat => BARLINE_REPEAT_RIGHT,
+            // Final barline (|||) - use double barline for now (no dedicated Unicode char)
+            BarlineType::Final => BARLINE_DOUBLE,
         }
     }
 }
