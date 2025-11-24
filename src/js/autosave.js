@@ -60,6 +60,7 @@ class AutoSave {
   enable() {
     this.isEnabled = true;
     logger.info(LOG_CATEGORIES.AUTOSAVE, 'AutoSave enabled');
+  }
 
   /**
    * Disable auto-save
@@ -67,6 +68,7 @@ class AutoSave {
   disable() {
     this.isEnabled = false;
     logger.info(LOG_CATEGORIES.AUTOSAVE, 'AutoSave disabled');
+  }
 
   /**
    * Perform an auto-save operation
@@ -114,6 +116,7 @@ class AutoSave {
 
     } catch (error) {
       logger.error(LOG_CATEGORIES.AUTOSAVE, 'AutoSave failed', { error });
+    }
   }
 
   /**
@@ -161,6 +164,7 @@ class AutoSave {
 
     } catch (error) {
       logger.error(LOG_CATEGORIES.AUTOSAVE, 'AutoSave restore failed', { error });
+    }
   }
 
   /**
@@ -207,6 +211,7 @@ class AutoSave {
 
     } catch (error) {
       logger.error(LOG_CATEGORIES.AUTOSAVE, 'Failed to update autosave index', { error });
+    }
   }
 
   /**
@@ -238,9 +243,9 @@ class AutoSave {
 
       // Update index
       localStorage.setItem(this.AUTOSAVE_INDEX_KEY, JSON.stringify(toKeep));
-
     } catch (error) {
       logger.error(LOG_CATEGORIES.AUTOSAVE, 'AutoSave cleanup failed', { error });
+    }
   }
 
   /**
@@ -281,9 +286,9 @@ class AutoSave {
       localStorage.removeItem(this.AUTOSAVE_LAST_KEY);
 
       logger.info(LOG_CATEGORIES.AUTOSAVE, `AutoSave: Cleared ${index.length} autosaves`);
-
     } catch (error) {
       logger.error(LOG_CATEGORIES.AUTOSAVE, 'Failed to clear autosaves', { error });
+    }
   }
 
   /**

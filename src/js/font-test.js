@@ -108,6 +108,7 @@ export class FontTestUI {
       this.addSymbolsFromWasm();
     } else {
       logger.warn(LOG_CATEGORIES.WASM, 'No symbols found in WASM font config');
+    }
 
     // 2. Display each pitch system with all variants (including accidentals)
     for (const [systemKey, systemInfo] of Object.entries(PITCH_SYSTEMS)) {

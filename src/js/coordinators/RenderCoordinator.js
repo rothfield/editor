@@ -102,6 +102,8 @@ export default class RenderCoordinator {
       return this.editor.wasmModule.charPosToCellIndex(this.editor.getDocument(), charPos);
     } catch (error) {
       logger.error(LOG_CATEGORIES.WASM, 'Error converting char pos to cell index from WASM', { error });
+      return { cellIndex: 0, charOffsetInCell: 0 };
+    }
   }
 
   /**
@@ -118,6 +120,8 @@ export default class RenderCoordinator {
       return this.editor.wasmModule.cellIndexToCharPos(this.editor.getDocument(), cellIndex);
     } catch (error) {
       logger.error(LOG_CATEGORIES.WASM, 'Error converting cell index to char pos from WASM', { error });
+      return 0;
+    }
   }
 
   /**
@@ -134,6 +138,8 @@ export default class RenderCoordinator {
       return this.editor.wasmModule.charPosToPixel(this.editor.getDocument(), this.editor.renderer.displayList, charPos);
     } catch (error) {
       logger.error(LOG_CATEGORIES.WASM, 'Error converting char pos to pixel from WASM', { error });
+      return LEFT_MARGIN_PX;
+    }
   }
 
   /**
@@ -150,6 +156,8 @@ export default class RenderCoordinator {
       return this.editor.wasmModule.cellColToPixel(this.editor.getDocument(), this.editor.renderer.displayList, cellCol);
     } catch (error) {
       logger.error(LOG_CATEGORIES.WASM, 'Error converting cell col to pixel from WASM', { error });
+      return LEFT_MARGIN_PX;
+    }
   }
 
   /**

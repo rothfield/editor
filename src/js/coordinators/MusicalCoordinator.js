@@ -87,5 +87,6 @@ export default class MusicalCoordinator {
       }
     } catch (error) {
       logger.error(LOG_CATEGORIES.MUSICAL, 'Failed to set tala', { error });
+    }
   }
 }

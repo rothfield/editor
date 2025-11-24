@@ -23,6 +23,7 @@ class LilyPondPngTab {
     this.createUI();
     this.attachEventListeners();
     logger.info(LOG_CATEGORIES.UI, 'LilyPondDisplay: Initialized - click tab to refresh');
+  }
 
   /**
    * Create minimal UI - just a container for SVG
@@ -213,7 +214,6 @@ class LilyPondPngTab {
       return null;
     }
   }
-  }
 
   /**
    * Display multi-page SVG in render area (stacked vertically)
@@ -296,7 +296,8 @@ class LilyPondPngTab {
       logger.debug(LOG_CATEGORIES.UI, 'LilyPondDisplay: Multi-page SVG rendered successfully', { childCount: pagesContainer.children.length });
     } catch (error) {
       logger.error(LOG_CATEGORIES.UI, 'LilyPondDisplay: Multi-page SVG display error', { error });
-
+    }
+  }
 
   /**
    * Display single SVG in render area (backwards compatibility)
@@ -326,6 +327,7 @@ class LilyPondPngTab {
       logger.debug(LOG_CATEGORIES.UI, 'LilyPondDisplay: SVG rendered successfully');
     } catch (error) {
       logger.error(LOG_CATEGORIES.UI, 'LilyPondDisplay: SVG display error', { error });
+    }
   }
 
   /**

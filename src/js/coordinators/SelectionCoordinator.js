@@ -286,6 +286,8 @@ export default class SelectionCoordinator {
       }
     } catch (error) {
       logger.error(LOG_CATEGORIES.EDITOR, 'Primary selection update failed', { error });
+    }
+  }
 
   /**
    * Get visually selected cells from DOM

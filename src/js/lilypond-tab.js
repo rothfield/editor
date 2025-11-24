@@ -109,6 +109,7 @@ class LilyPondTab {
       }
     } catch (error) {
       logger.error(LOG_CATEGORIES.UI, 'LilyPondTab: Failed to generate source', { error });
+    }
   }
 
   /**

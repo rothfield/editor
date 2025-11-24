@@ -70,6 +70,8 @@ export class NewDocumentDialog {
       }
     } catch (error) {
       logger.error(LOG_CATEGORIES.WASM, 'Error loading pitch systems from WASM', { error });
+      this.pitchSystems = this.getFallbackPitchSystems();
+    }
   }
 
   /**

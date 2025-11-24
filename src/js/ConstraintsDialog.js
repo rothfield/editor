@@ -137,6 +137,7 @@ export class ConstraintsDialog {
       this.renderAllTabs();
     } catch (error) {
       logger.error(LOG_CATEGORIES.WASM, 'Error loading constraints', { error });
+    }
   }
 
   /**
@@ -233,6 +234,8 @@ export class ConstraintsDialog {
       return notes || [];
     } catch (error) {
       logger.error(LOG_CATEGORIES.WASM, 'Error getting constraint notes', { error });
+      return [];
+    }
   }
 
   /**
@@ -338,8 +341,11 @@ export class ConstraintsDialog {
         const activeConstraintId = wasmModule.getActiveConstraint();
         this.selectedConstraintId = activeConstraintId || null;
       }
-          } catch (error) {
-            logger.error(LOG_CATEGORIES.WASM, 'Error getting active constraint', { error });    // Reset search
+    } catch (error) {
+      logger.error(LOG_CATEGORIES.WASM, 'Error getting active constraint', { error });
+    }
+
+    // Reset search
     this.searchQuery = '';
     this.searchInput.value = '';
 

@@ -829,6 +829,8 @@ class UI {
         break;
       default:
         logger.warn(LOG_CATEGORIES.UI, 'Unknown menu action', { action });
+    }
+  }
 
   /**
      * Create new document
@@ -953,9 +955,10 @@ class UI {
           await this.editor.renderAndUpdate();
         } catch (error) {
           logger.error(LOG_CATEGORIES.WASM, 'Failed to set title via WASM', { error });
+        }
       }
     }
-  }  }
+  }
 
   /**
      * Set document composer
@@ -973,6 +976,7 @@ class UI {
           await this.editor.render(); // Re-render to show composer on canvas
         } catch (error) {
           logger.error(LOG_CATEGORIES.WASM, 'Failed to set composer via WASM', { error });
+        }
       }
     }
   }
@@ -1021,6 +1025,9 @@ class UI {
           this.editor.updateCurrentPitchSystemDisplay(); // Update UI
         } catch (error) {
           logger.error(LOG_CATEGORIES.UI, 'Failed to set pitch system', { error });
+        }
+      }
+    }
   }
 
   /**
@@ -1185,6 +1192,7 @@ class UI {
       }
     } catch (error) {
       logger.error(LOG_CATEGORIES.UI, 'Error getting constraint details', { error });
+    }
 
     // Update display based on enabled state
     if (this.constraintEnabled) {
@@ -1332,6 +1340,7 @@ class UI {
           this.editor.updateCurrentPitchSystemDisplay(); // Update UI
         } catch (error) {
           logger.error(LOG_CATEGORIES.UI, 'Failed to set line pitch system', { error });
+        }
       }
     }
   }
@@ -1378,6 +1387,7 @@ class UI {
         }
       } else {
         logger.error(LOG_CATEGORIES.UI, 'Invalid tala format. Only digits 0-9 and + are allowed.');
+      }
     }
   }
 
@@ -1825,6 +1835,7 @@ class UI {
       this.setupLineMenu();
     } catch (error) {
       logger.error(LOG_CATEGORIES.FILE, 'Failed to open file', { error });
+    }
   }
 
   /**
@@ -1914,6 +1925,7 @@ class UI {
       fileInput.click();
     } catch (error) {
       logger.error(LOG_CATEGORIES.FILE, 'Failed to import MusicXML', { error });
+    }
   }
 
   /**

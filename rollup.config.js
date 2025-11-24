@@ -18,6 +18,11 @@ export default {
     }
   },
   plugins: [
+    resolve({
+      browser: true,
+      preferBuiltins: false,
+      extensions: ['.ts', '.js']
+    }),
     typescript({
       tsconfig: './tsconfig.json',
       sourceMap: !production,
@@ -27,13 +32,7 @@ export default {
       compilerOptions: {
         outDir: 'dist',
         rootDir: 'src'
-      },
-      include: ['src/**/*.ts'] // <--- Add this line
-    }),
-    resolve({
-      browser: true,
-      preferBuiltins: false,
-      extensions: ['.js', '.ts']
+      }
     }),
     commonjs(),
     production && terser({

@@ -6,7 +6,7 @@
  * the application lifecycle.
  */
 
-import MusicNotationEditor from './editor.js';
+import MusicNotationEditor from './editor';
 import EventManager from './events.js';
 import { FileOperations } from './file-ops.js';
 import UI from './ui.js';

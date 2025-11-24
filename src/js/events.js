@@ -334,6 +334,7 @@ class EventManager {
         this.editor.showCursor();
       }
     }
+  }
 
   /**
      * Handle editor blur
@@ -362,7 +363,8 @@ class EventManager {
   handleOutsideClick(event) {
     // Could implement context menu dismissal or other behaviors
     logger.debug(LOG_CATEGORIES.EVENTS, 'Click detected outside editor');
-  }  }
+  }
+
   /**
      * Handle tab navigation
      */
@@ -399,7 +401,8 @@ class EventManager {
   handleEscapeKey() {
     // Could implement modal dismissal or escape behaviors
     logger.debug(LOG_CATEGORIES.EVENTS, 'Escape key pressed');
-  }  }
+  }
+
   /**
      * Handle Alt+N (New File)
      */
@@ -533,7 +536,8 @@ class EventManager {
   handleBeforeUnload(event) {
     // Could implement unsaved changes warning
     logger.debug(LOG_CATEGORIES.EVENTS, 'Page unloading');
-  }  }
+  }
+
   /**
      * Handle visibility change
      */
@@ -722,4 +726,8 @@ Focus Management:
     if (event.altKey) {
       logger.debug(LOG_CATEGORIES.EVENTS, 'getKeyString final result', { result });
     }
+    return result;
   }
+}
+
+export default EventManager;

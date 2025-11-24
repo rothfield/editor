@@ -143,6 +143,7 @@ class FileOperations {
       logger.info(LOG_CATEGORIES.FILE, 'New file created successfully');
     } catch (error) {
       logger.error(LOG_CATEGORIES.FILE, 'Error creating new file', { error });
+    }
   }
 
   /**
@@ -289,6 +290,7 @@ class FileOperations {
     await this.editor.loadDocument(document);
 
     logger.debug(LOG_CATEGORIES.FILE, 'After loadDocument, pitch_system is', { pitchSystem: this.editor.getDocument()?.pitch_system });
+  }
 
   /**
      * Load a file into the editor
@@ -361,6 +363,7 @@ class FileOperations {
       logger.info(LOG_CATEGORIES.FILE, 'MusicXML document loaded into editor');
     } catch (error) {
       logger.error(LOG_CATEGORIES.FILE, 'MusicXML import error', { error });
+    }
   }
 
   /**
@@ -635,6 +638,7 @@ class FileOperations {
       return pitchSystem;
     } catch (error) {
       logger.error(LOG_CATEGORIES.UI, 'Error showing new document dialog', { error });
+    }
   }
 
   /**
