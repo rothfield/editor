@@ -213,6 +213,7 @@ export default class SelectionCoordinator {
       this.clearSelection();
     } catch (error) {
       logger.error(LOG_CATEGORIES.EDITOR, 'Failed to replace selected text', { error });
+    }
   }
 
   /**

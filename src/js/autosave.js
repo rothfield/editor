@@ -5,6 +5,7 @@
  * and restores on page reload. Uses title + timestamp for versioning.
  */
 
+import logger, { LOG_CATEGORIES } from './logger.js';
 import { ENABLE_AUTOSAVE } from './constants.js';
 
 class AutoSave {

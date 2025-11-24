@@ -700,6 +700,13 @@ export interface WASMModule {
    * Generate IR (Intermediate Representation) JSON
    */
   generateIRJson(): string;
+
+  // ========== Ornament Edit Mode ==========
+
+  /**
+   * Toggle ornament edit mode on/off
+   */
+  toggleOrnamentEditMode(): void;
 }
 
 /**

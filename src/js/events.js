@@ -5,6 +5,8 @@
  * and event routing for the Music Notation Editor.
  */
 
+import logger, { LOG_CATEGORIES } from './logger.js';
+
 class EventManager {
   constructor(editor, fileOperations = null) {
     this.editor = editor;

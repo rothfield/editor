@@ -407,6 +407,7 @@ export class WASMBridge implements WASMModule {
   exportMIDI!: WASMModule['exportMIDI'];
   exportMIDIDirect!: WASMModule['exportMIDIDirect'];
   generateIRJson!: WASMModule['generateIRJson'];
+  toggleOrnamentEditMode!: WASMModule['toggleOrnamentEditMode'];
 }
 
 export default WASMBridge;

@@ -53,6 +53,9 @@ interface UI {
   activeTab?: string;
   updateDocumentTitle(title: string): void;
   updateCurrentPitchSystemDisplay(): void;
+  updateKeySignatureCornerDisplay?(): void;
+  setupOrnamentMenu?(): void;
+  updateModeToggleDisplay?(): void;
 }
 
 class MusicNotationEditor {
@@ -83,6 +86,7 @@ class MusicNotationEditor {
   autoSave: AutoSave;
   storage: StorageManager;
   debugHUD: DebugHUD;
+  eventManager: any; // TODO: Create IEventManager interface from events.js
   keyboardHandler: KeyboardHandler;
   mouseHandler: MouseHandler;
   exportManager: ExportManager;

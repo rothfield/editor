@@ -76,6 +76,7 @@ export default class RenderCoordinator {
       this.scheduleStaffNotationUpdate();
     } catch (error) {
       logger.error(LOG_CATEGORIES.RENDERER, 'Rendering failed', { error });
+    }
   }
 
   /**
@@ -234,6 +235,8 @@ export default class RenderCoordinator {
       return this.editor.wasmModule.getMaxCharPosition(this.editor.getDocument());
     } catch (error) {
       logger.error(LOG_CATEGORIES.WASM, 'Error getting max char position from WASM', { error });
+      return 0;
+    }
   }
 
   /**

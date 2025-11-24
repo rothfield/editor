@@ -5,6 +5,8 @@
  * Converted from MusicXML or generated from musical notation.
  */
 
+import logger, { LOG_CATEGORIES } from './logger.js';
+
 class LilyPondTab {
   constructor(editor) {
     this.editor = editor;

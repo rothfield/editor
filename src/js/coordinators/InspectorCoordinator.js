@@ -14,6 +14,7 @@
  * - Export operations (via ExportManager)
  */
 
+import logger, { LOG_CATEGORIES } from '../logger.js';
 import { toYAML } from '../utils/yaml.js';
 import { formatHTML } from '../utils/html-formatter.js';
 
