@@ -154,6 +154,9 @@ class DOMRenderer {
       head: doc.state?.selection_manager?.current_selection?.head
     });
 
+    // Call WASM to compute layout
+    const displayList = this.editor.wasmModule.computeLayout(doc, config);
+
     const layoutTime = performance.now() - layoutStart;
     logger.debug(LOG_CATEGORIES.PERFORMANCE, 'Layout time', {
       duration: `${layoutTime.toFixed(2)}ms`

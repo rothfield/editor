@@ -1220,23 +1220,27 @@ class UI {
    * Update the key signature display in the upper left corner
    */
   updateKeySignatureCornerDisplay() {
-    // Get the current key signature (document or line level)
-    const docSig = this.getKeySignature();
-    const lineSig = this.getLineKeySignature();
-    const keySignature = docSig || lineSig;
+    try {
+      // Get the current key signature (document or line level)
+      const docSig = this.getKeySignature();
+      const lineSig = this.getLineKeySignature();
+      const keySignature = docSig || lineSig;
 
-    logger.debug(LOG_CATEGORIES.UI, `updateKeySignatureCornerDisplay`, { docSig, lineSig, final: keySignature });
+      logger.debug(LOG_CATEGORIES.UI, `updateKeySignatureCornerDisplay`, { docSig, lineSig, final: keySignature });
 
-    // Create click handler that opens the key signature selector
-    const clickHandler = () => {
-      if (this.keySignatureSelector) {
-        const currentSig = this.getKeySignature() || this.getLineKeySignature();
-        this.keySignatureSelector.open('document', currentSig);
-      }
-    };
+      // Create click handler that opens the key signature selector
+      const clickHandler = () => {
+        if (this.keySignatureSelector) {
+          const currentSig = this.getKeySignature() || this.getLineKeySignature();
+          this.keySignatureSelector.open('document', currentSig);
+        }
+      };
 
-    // Call the display update function directly (already imported at top of file)
-    updateKeySigDisplay(keySignature, clickHandler);
+      // Call the display update function directly (already imported at top of file)
+      updateKeySigDisplay(keySignature, clickHandler);
+    } catch (error) {
+      logger.error(LOG_CATEGORIES.UI, 'Failed to update key signature display', { error });
+    }
   }
 
   /**

@@ -68,14 +68,23 @@ export default class RenderCoordinator {
 
       // Update pitch system and key signature displays in header
       if (this.editor.ui) {
-        this.editor.ui.updateCurrentPitchSystemDisplay();
-        this.editor.ui.updateKeySignatureCornerDisplay();
+        try {
+          this.editor.ui.updateCurrentPitchSystemDisplay();
+        } catch (e) {
+          logger.warn(LOG_CATEGORIES.RENDERER, 'Failed to update pitch system display', { error: e });
+        }
+        try {
+          this.editor.ui.updateKeySignatureCornerDisplay();
+        } catch (e) {
+          logger.warn(LOG_CATEGORIES.RENDERER, 'Failed to update key signature display', { error: e });
+        }
       }
 
       // Schedule staff notation update (debounced)
       this.scheduleStaffNotationUpdate();
     } catch (error) {
-      logger.error(LOG_CATEGORIES.RENDERER, 'Rendering failed', { error });
+      const errorInfo = error instanceof Error ? { message: error.message, stack: error.stack } : { error };
+      logger.error(LOG_CATEGORIES.RENDERER, 'Rendering failed', errorInfo);
     }
   }
 
