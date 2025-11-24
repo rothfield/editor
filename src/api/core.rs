@@ -173,7 +173,7 @@ pub fn set_composer(composer: &str) -> Result<(), JsValue> {
 /// Set the document tonic (Phase 1 API)
 ///
 /// Sets the musical tonic for the entire composition.
-/// Also automatically sets key_signature to match (assumes major key).
+/// Does not affect key_signature - these are independent fields.
 ///
 /// # Parameters
 /// - `tonic`: The tonic note (e.g., "C", "D", "E", etc.)
@@ -191,11 +191,6 @@ pub fn set_document_tonic(tonic: &str) -> Result<(), JsValue> {
     doc.tonic = Some(tonic.to_string());
     wasm_info!("  Document tonic set to: '{}'", tonic);
 
-    // Also set key_signature for MusicXML export (assume major key)
-    let key_signature = format!("{} major", tonic);
-    doc.key_signature = Some(key_signature.clone());
-    wasm_info!("  Document key_signature set to: '{}'", key_signature);
-
     // Compute glyphs after metadata change
     doc.compute_glyphs();
 
@@ -206,7 +201,7 @@ pub fn set_document_tonic(tonic: &str) -> Result<(), JsValue> {
 /// Set the tonic for a specific line (Phase 1 API)
 ///
 /// Sets the musical tonic for a specific line (overrides document tonic).
-/// Also automatically sets key_signature to match (assumes major key).
+/// Does not affect key_signature - these are independent fields.
 ///
 /// # Parameters
 /// - `line_idx`: The line index (0-based)
@@ -232,11 +227,6 @@ pub fn set_line_tonic(line_idx: usize, tonic: &str) -> Result<(), JsValue> {
     // Set the line tonic
     doc.lines[line_idx].tonic = tonic.to_string();
     wasm_info!("  Line {} tonic set to: '{}'", line_idx, tonic);
-
-    // Also set key_signature for MusicXML export (assume major key)
-    let key_signature = format!("{} major", tonic);
-    doc.lines[line_idx].key_signature = key_signature.clone();
-    wasm_info!("  Line {} key_signature set to: '{}'", line_idx, key_signature);
 
     // Compute glyphs after metadata change
     doc.compute_glyphs();
