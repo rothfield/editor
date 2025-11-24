@@ -971,9 +971,9 @@ class UI {
       if (this.editor && this.editor.getDocument() && this.editor.wasmModule) {
         // Call WASM setComposer function
         try {
-          this.editor.wasmModule.loadDocument(updatedDocument);
+          this.editor.wasmModule.setComposer(newComposer);
           logger.info(LOG_CATEGORIES.WASM, `Composer set to: ${newComposer}`);
-          await this.editor.render(); // Re-render to show composer on canvas
+          await this.editor.renderAndUpdate(); // Re-render to show composer on canvas
         } catch (error) {
           logger.error(LOG_CATEGORIES.WASM, 'Failed to set composer via WASM', { error });
         }
