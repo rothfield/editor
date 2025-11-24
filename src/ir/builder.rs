@@ -63,6 +63,8 @@ pub struct BeatAccumulator {
     /// Whether pitch context has been reset by a breath mark
     /// When true, following dashes become rests instead of extending the previous note
     pub pitch_context_reset: bool,
+    /// Tonic for this beat (for transposing pitches)
+    pub tonic: String,
 }
 
 impl BeatAccumulator {
@@ -78,6 +80,7 @@ impl BeatAccumulator {
             pending_slur_indicator: SlurIndicator::None,
             inside_slur: false,
             pitch_context_reset: false,
+            tonic: String::new(),
         }
     }
 
@@ -93,6 +96,7 @@ impl BeatAccumulator {
             pending_slur_indicator: SlurIndicator::None,
             inside_slur: false,
             pitch_context_reset: false,
+            tonic: String::new(),
         }
     }
 
@@ -159,7 +163,9 @@ impl BeatAccumulator {
         // Extract pitches from ornament cells
         for cell in &ornament.cells {
             if let Some(pitch_code) = cell.pitch_code {
-                let pitch = PitchInfo::new(pitch_code, cell.octave);
+                // Transpose by tonic if available
+                let transposed_pitch_code = transpose_pitch_by_tonic(pitch_code, &self.tonic);
+                let pitch = PitchInfo::new(transposed_pitch_code, cell.octave);
                 let grace = GraceNoteData {
                     pitch,
                     position,
@@ -263,12 +269,24 @@ impl BeatAccumulator {
     }
 }
 
+/// Helper function to transpose a pitch code by the tonic
+fn transpose_pitch_by_tonic(pitch_code: crate::models::PitchCode, tonic: &str) -> crate::models::PitchCode {
+    if tonic.is_empty() {
+        pitch_code
+    } else {
+        use crate::models::PitchCode;
+        let semitone_offset = PitchCode::semitone_offset_from_c(tonic);
+        pitch_code.transpose_by_semitones(semitone_offset)
+    }
+}
+
 /// FSM transition function
 /// Processes a single cell and updates state
 pub fn beat_transition(
     state: CellGroupingState,
     cell: &Cell,
     accum: &mut BeatAccumulator,
+    tonic: &str,
 ) -> CellGroupingState {
     // Extract slur indicator from ANY cell, even unpitched elements
     // This allows slur markers on spaces or other elements to be transferred to the next pitched element
@@ -292,7 +310,8 @@ pub fn beat_transition(
         // PITCH → transition from InBeat or CollectingDashes
         (CellGroupingState::InBeat, ElementKind::PitchedElement) => {
             if let Some(pitch_code) = cell.pitch_code {
-                let pitch = PitchInfo::new(pitch_code, cell.octave);
+                let transposed_pitch = transpose_pitch_by_tonic(pitch_code, tonic);
+                let pitch = PitchInfo::new(transposed_pitch, cell.octave);
                 accum.start_pitch(pitch);
                 // Slur indicator already extracted at top of beat_transition
                 accum.has_main_element = true;
@@ -313,7 +332,8 @@ pub fn beat_transition(
             // Finish the dash rest, then start the pitch
             accum.finish_dashes();
             if let Some(pitch_code) = cell.pitch_code {
-                let pitch = PitchInfo::new(pitch_code, cell.octave);
+                let transposed_pitch = transpose_pitch_by_tonic(pitch_code, tonic);
+                let pitch = PitchInfo::new(transposed_pitch, cell.octave);
                 accum.start_pitch(pitch);
                 // Slur indicator already extracted at top of beat_transition
                 accum.has_main_element = true;
@@ -328,7 +348,8 @@ pub fn beat_transition(
             // New pitch → finish previous and start new
             accum.finish_pitch();
             if let Some(pitch_code) = cell.pitch_code {
-                let pitch = PitchInfo::new(pitch_code, cell.octave);
+                let transposed_pitch = transpose_pitch_by_tonic(pitch_code, tonic);
+                let pitch = PitchInfo::new(transposed_pitch, cell.octave);
                 accum.start_pitch(pitch);
                 // Slur indicator already extracted at top of beat_transition
                 // New pitch clears the breath mark context reset flag
@@ -387,7 +408,7 @@ pub fn beat_transition(
 /// The pitch_context_reset flag tracks whether we've seen a breath mark since the last pitch.
 /// This flag must be carried forward across beats to correctly handle patterns like "1  '  ---"
 /// where the breath mark appears in a separate beat from both the note and the dashes.
-pub fn group_cells_into_events(beat_cells: &[&Cell], initial_pitch_context_reset: bool) -> (Vec<ExportEvent>, bool) {
+pub fn group_cells_into_events(beat_cells: &[&Cell], initial_pitch_context_reset: bool, tonic: &str) -> (Vec<ExportEvent>, bool) {
     if beat_cells.is_empty() {
         return (Vec::new(), initial_pitch_context_reset);
     }
@@ -397,11 +418,12 @@ pub fn group_cells_into_events(beat_cells: &[&Cell], initial_pitch_context_reset
 
     let mut accum = BeatAccumulator::new_with_subdivisions(beat_subdivisions);
     accum.pitch_context_reset = initial_pitch_context_reset;  // Initialize from previous beat
+    accum.tonic = tonic.to_string();  // Set tonic for transposition
     let mut state = CellGroupingState::InBeat;
 
     // Process each cell through the FSM
     for cell in beat_cells {
-        state = beat_transition(state, cell, &mut accum);
+        state = beat_transition(state, cell, &mut accum, tonic);
     }
 
     // Finalize any pending state
@@ -993,7 +1015,7 @@ fn transfer_slur_indicators_from_separators(cells: &mut [&Cell]) {
 /// 3. For each beat, processes cells through FSM to get events
 /// 4. Calculates measure divisions using LCM of beat divisions
 /// 5. Returns Vec<ExportMeasure>
-pub fn build_export_measures_from_line(line: &Line) -> Vec<ExportMeasure> {
+pub fn build_export_measures_from_line(line: &Line, document: Option<&Document>) -> Vec<ExportMeasure> {
     use crate::renderers::musicxml::fsm::*;
 
     let cells = &line.cells;
@@ -1001,6 +1023,19 @@ pub fn build_export_measures_from_line(line: &Line) -> Vec<ExportMeasure> {
     if cells.is_empty() {
         return Vec::new();
     }
+
+    // Determine effective tonic (line tonic overrides document tonic)
+    let effective_tonic = if !line.tonic.is_empty() {
+        &line.tonic
+    } else if let Some(doc) = document {
+        if let Some(tonic) = &doc.tonic {
+            tonic
+        } else {
+            ""
+        }
+    } else {
+        ""
+    };
 
     let mut measures = Vec::new();
     let mut state = MusicXMLState::MeasureReady;
@@ -1109,7 +1144,7 @@ pub fn build_export_measures_from_line(line: &Line) -> Vec<ExportMeasure> {
                     .map(|c| c.kind == ElementKind::BreathMark)
                     .unwrap_or(false);
 
-                let (beat_events, new_pitch_context_reset) = group_cells_into_events(&beat_cells_refs, measure_pitch_context_reset);
+                let (beat_events, new_pitch_context_reset) = group_cells_into_events(&beat_cells_refs, measure_pitch_context_reset, effective_tonic);
 
                 // If this beat starts with a REST and measure_pitch_context_reset is true,
                 // it means there was a breath mark between the previous note and this rest.
@@ -1222,7 +1257,7 @@ pub fn build_export_measures_from_document(document: &Document) -> Vec<ExportLin
     let mut export_lines = Vec::new();
 
     for line in &document.lines {
-        let measures = build_export_measures_from_line(line);
+        let measures = build_export_measures_from_line(line, Some(document));
 
         let export_line = ExportLine {
             system_id: line.system_id,
@@ -1282,7 +1317,7 @@ mod tests {
     fn test_single_dash_is_rest() {
         let cells = vec![make_cell(ElementKind::UnpitchedElement, "-", None)];
         let cell_refs: Vec<&Cell> = cells.iter().collect();
-        let (events, _) = group_cells_into_events(&cell_refs, false);
+        let (events, _) = group_cells_into_events(&cell_refs, false, "");
 
         assert_eq!(events.len(), 1);
         match &events[0] {
@@ -1298,7 +1333,7 @@ mod tests {
             make_cell(ElementKind::UnpitchedElement, "-", None),
         ];
         let cell_refs: Vec<&Cell> = cells.iter().collect();
-        let (events, _) = group_cells_into_events(&cell_refs, false);
+        let (events, _) = group_cells_into_events(&cell_refs, false, "");
 
         // Two consecutive dashes should be ONE rest with 2 divisions
         assert_eq!(events.len(), 1);
@@ -1317,7 +1352,7 @@ mod tests {
             make_cell(ElementKind::UnpitchedElement, "-", None),
         ];
         let cell_refs: Vec<&Cell> = cells.iter().collect();
-        let (events, _) = group_cells_into_events(&cell_refs, false);
+        let (events, _) = group_cells_into_events(&cell_refs, false, "");
 
         // -- bug: four dashes should be ONE rest with 4 divisions, not 1
         assert_eq!(events.len(), 1);
@@ -1339,7 +1374,7 @@ mod tests {
             make_cell(ElementKind::UnpitchedElement, "-", None),
         ];
         let cell_refs: Vec<&Cell> = cells.iter().collect();
-        let (events, _) = group_cells_into_events(&cell_refs, false);
+        let (events, _) = group_cells_into_events(&cell_refs, false, "");
 
         assert_eq!(events.len(), 1, "Two dashes should create one rest element");
         match &events[0] {
@@ -1352,7 +1387,7 @@ mod tests {
 
     #[test]
     fn test_empty_beat() {
-        let (events, _) = group_cells_into_events(&[], false);
+        let (events, _) = group_cells_into_events(&[], false, "");
         assert_eq!(events.len(), 0);
     }
 
@@ -1370,7 +1405,7 @@ mod tests {
         ];
 
         let cell_refs: Vec<&Cell> = cells.iter().collect();
-        let (beat_events, _) = group_cells_into_events(&cell_refs, false);
+        let (beat_events, _) = group_cells_into_events(&cell_refs, false, "");
 
         // At beat level (before scaling):
         // - Rest should have divisions=1 (1 subdivision out of 3)
@@ -1863,7 +1898,7 @@ mod tests {
         let mut line = Line::new();
         line.cells = cells;
 
-        let measures = build_export_measures_from_line(&line);
+        let measures = build_export_measures_from_line(&line, None);
 
         // Should have 1 measure with 2 notes (tied)
         assert_eq!(measures.len(), 1, "Expected 1 measure");

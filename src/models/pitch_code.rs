@@ -186,6 +186,132 @@ impl PitchCode {
         }
     }
 
+    /// Transpose this pitch code by a number of semitones
+    /// Positive values go up, negative go down
+    /// e.g., N1 transposed by 2 (D interval) becomes N2 (E)
+    pub fn transpose_by_semitones(&self, semitones: i32) -> PitchCode {
+        // Chromatic scale in semitones (within one octave)
+        // C=0, C#=1, D=2, D#=3, E=4, F=5, F#=6, G=7, G#=8, A=9, A#=10, B=11
+        //
+        // Number system mapping to semitones (C=0):
+        // 1 (C) = 0, 2 (D) = 2, 3 (E) = 4, 4 (F) = 5, 5 (G) = 7, 6 (A) = 9, 7 (B) = 11
+
+        let base_semitone = match self.degree() {
+            1 => 0,  // C
+            2 => 2,  // D
+            3 => 4,  // E
+            4 => 5,  // F
+            5 => 7,  // G
+            6 => 9,  // A
+            7 => 11, // B
+            _ => 0,
+        };
+
+        let accidental_offset = match self.accidental_type() {
+            AccidentalType::DoubleFlat => -2,
+            AccidentalType::Flat => -1,
+            AccidentalType::HalfFlat => 0, // Approximate as natural
+            AccidentalType::Sharp => 1,
+            AccidentalType::DoubleSharp => 2,
+            AccidentalType::None => 0,
+        };
+
+        let target_semitone = (base_semitone + accidental_offset + semitones) % 12;
+
+        // Map semitone back to degree with appropriate accidental
+        // This tries to preserve natural note names when possible
+        let (degree, accidental) = match target_semitone {
+            0 => (1, AccidentalType::None),      // C
+            1 => (1, AccidentalType::Sharp),     // C#
+            2 => (2, AccidentalType::None),      // D
+            3 => (2, AccidentalType::Sharp),     // D#
+            4 => (3, AccidentalType::None),      // E
+            5 => (4, AccidentalType::None),      // F
+            6 => (4, AccidentalType::Sharp),     // F#
+            7 => (5, AccidentalType::None),      // G
+            8 => (5, AccidentalType::Sharp),     // G#
+            9 => (6, AccidentalType::None),      // A
+            10 => (6, AccidentalType::Sharp),    // A#
+            11 => (7, AccidentalType::None),     // B
+            _ => (1, AccidentalType::None),
+        };
+
+        // Construct the new PitchCode
+        match (degree, accidental) {
+            (1, AccidentalType::None) => PitchCode::N1,
+            (1, AccidentalType::Sharp) => PitchCode::N1s,
+            (1, AccidentalType::Flat) => PitchCode::N1b,
+            (1, AccidentalType::DoubleSharp) => PitchCode::N1ss,
+            (1, AccidentalType::DoubleFlat) => PitchCode::N1bb,
+            (1, AccidentalType::HalfFlat) => PitchCode::N1hf,
+            (2, AccidentalType::None) => PitchCode::N2,
+            (2, AccidentalType::Sharp) => PitchCode::N2s,
+            (2, AccidentalType::Flat) => PitchCode::N2b,
+            (2, AccidentalType::DoubleSharp) => PitchCode::N2ss,
+            (2, AccidentalType::DoubleFlat) => PitchCode::N2bb,
+            (2, AccidentalType::HalfFlat) => PitchCode::N2hf,
+            (3, AccidentalType::None) => PitchCode::N3,
+            (3, AccidentalType::Sharp) => PitchCode::N3s,
+            (3, AccidentalType::Flat) => PitchCode::N3b,
+            (3, AccidentalType::DoubleSharp) => PitchCode::N3ss,
+            (3, AccidentalType::DoubleFlat) => PitchCode::N3bb,
+            (3, AccidentalType::HalfFlat) => PitchCode::N3hf,
+            (4, AccidentalType::None) => PitchCode::N4,
+            (4, AccidentalType::Sharp) => PitchCode::N4s,
+            (4, AccidentalType::Flat) => PitchCode::N4b,
+            (4, AccidentalType::DoubleSharp) => PitchCode::N4ss,
+            (4, AccidentalType::DoubleFlat) => PitchCode::N4bb,
+            (4, AccidentalType::HalfFlat) => PitchCode::N4hf,
+            (5, AccidentalType::None) => PitchCode::N5,
+            (5, AccidentalType::Sharp) => PitchCode::N5s,
+            (5, AccidentalType::Flat) => PitchCode::N5b,
+            (5, AccidentalType::DoubleSharp) => PitchCode::N5ss,
+            (5, AccidentalType::DoubleFlat) => PitchCode::N5bb,
+            (5, AccidentalType::HalfFlat) => PitchCode::N5hf,
+            (6, AccidentalType::None) => PitchCode::N6,
+            (6, AccidentalType::Sharp) => PitchCode::N6s,
+            (6, AccidentalType::Flat) => PitchCode::N6b,
+            (6, AccidentalType::DoubleSharp) => PitchCode::N6ss,
+            (6, AccidentalType::DoubleFlat) => PitchCode::N6bb,
+            (6, AccidentalType::HalfFlat) => PitchCode::N6hf,
+            (7, AccidentalType::None) => PitchCode::N7,
+            (7, AccidentalType::Sharp) => PitchCode::N7s,
+            (7, AccidentalType::Flat) => PitchCode::N7b,
+            (7, AccidentalType::DoubleSharp) => PitchCode::N7ss,
+            (7, AccidentalType::DoubleFlat) => PitchCode::N7bb,
+            (7, AccidentalType::HalfFlat) => PitchCode::N7hf,
+            _ => *self, // Fallback to original
+        }
+    }
+
+    /// Parse a tonic string and return the semitone offset from C
+    /// e.g., "C" -> 0, "D" -> 2, "E" -> 4, "F" -> 5, "G" -> 7, "A" -> 9, "B" -> 11
+    /// Handles accidentals: "C#" -> 1, "Db" -> 1, etc.
+    pub fn semitone_offset_from_c(tonic: &str) -> i32 {
+        match tonic.to_uppercase().as_str() {
+            "C" | "CN" => 0,
+            "C#" | "CS" => 1,
+            "DB" | "CB#" => 1,
+            "D" | "DN" => 2,
+            "D#" | "DS" => 3,
+            "EB" | "DB#" => 3,
+            "E" | "EN" => 4,
+            "E#" | "FB" => 5,
+            "F" | "FN" => 5,
+            "F#" | "FS" => 6,
+            "GB" => 6,
+            "G" | "GN" => 7,
+            "G#" | "GS" => 8,
+            "AB" => 8,
+            "A" | "AN" => 9,
+            "A#" | "AS" => 10,
+            "BB" => 10,
+            "B" | "BN" => 11,
+            "B#" | "CB" => 0,
+            _ => 0, // Default to C if unknown
+        }
+    }
+
     /// Convert PitchCode to string based on pitch system
     /// For Number system: N4s -> "4#", N4b -> "4b"
     /// For Western system: N4s -> "f#", N4b -> "fb"
