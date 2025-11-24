@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Number System - Font Test</title>
+    <style>
+        @font-face {
+            font-family: 'NotationFont';
+            src: url('/static/fonts/NotationFont.woff2') format('woff2'),
+                 url('/static/fonts/NotationFont.ttf') format('truetype');
+        }
+
+        body {
+            font-family: sans-serif;
+            padding: 40px;
+            background: #f5f5f5;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: #333;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 10px;
+        }
+
+        .test-section {
+            background: white;
+            padding: 30px;
+            margin: 20px 0;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        h2 {
+            color: #667eea;
+            margin-top: 0;
+        }
+
+        .scale {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin: 20px 0;
+        }
+
+        .note {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            background: #fafafa;
+            min-width: 80px;
+        }
+
+        .glyph {
+            font-family: 'NotationFont', sans-serif;
+            font-size: 60px;
+            line-height: 1.2;
+            margin: 10px 0;
+            color: #333;
+        }
+
+        .label {
+            font-size: 12px;
+            color: #666;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .codepoint {
+            font-size: 10px;
+            color: #999;
+            font-family: monospace;
+            margin-top: 5px;
+        }
+
+        .flat {
+            background: #e3f2fd;
+            border-color: #2196f3;
+        }
+
+        .sharp {
+            background: #fff3e0;
+            border-color: #ff9800;
+        }
+
+        .natural {
+            background: #f1f8e9;
+            border-color: #8bc34a;
+        }
+
+        .info-box {
+            background: #f0f4ff;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            margin: 20px 0;
+        }
+
+        .success {
+            background: #d4edda;
+            border: 1px solid #28a745;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔢 Number System - NotationFont Test</h1>
+
+    <div class="info-box">
+        <strong>Number System (1-7 Notation)</strong>
+        <p>Testing all chromatic notes with accidentals. This is the default pitch system used in Indian classical music notation.</p>
+        <ul>
+            <li><strong>Natural notes:</strong> 1, 2, 3, 4, 5, 6, 7</li>
+            <li><strong>Flat notes:</strong> 2♭, 3♭, 6♭, 7♭ (should show flat symbol)</li>
+            <li><strong>Sharp notes:</strong> 4# (should show sharp symbol)</li>
+        </ul>
+    </div>
+
+    <div class="test-section">
+        <h2>Complete Chromatic Scale (12 Notes)</h2>
+        <div class="success">
+            <strong>✓ Expected:</strong> Accidentals (♭ and #) should appear as composite glyphs.
+        </div>
+        <div class="scale" id="chromatic-scale"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Natural Notes (1-7)</h2>
+        <div class="scale" id="natural-notes"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Flat Notes</h2>
+        <div class="scale" id="flat-notes"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Sharp Notes</h2>
+        <div class="scale" id="sharp-notes"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Half-Flat Notes</h2>
+        <div class="success">
+            <strong>✓ Expected:</strong> Half-flat symbol (♭ with slash) should appear.
+        </div>
+        <div class="scale" id="half-flat-notes"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Double Flat Notes</h2>
+        <div class="success">
+            <strong>✓ Expected:</strong> Double-flat symbol (♭♭) should appear.
+        </div>
+        <div class="scale" id="double-flat-notes"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Double Sharp Notes</h2>
+        <div class="success">
+            <strong>✓ Expected:</strong> Double-sharp symbol (𝄪) should appear.
+        </div>
+        <div class="scale" id="double-sharp-notes"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Octave Variants (Example: Note "1")</h2>
+        <div class="success">
+            <strong>✓ Expected:</strong> Dots above/below indicate octave shifts.<br>
+            1 dot above = +1 octave, 2 dots above = +2 octaves<br>
+            1 dot below = -1 octave, 2 dots below = -2 octaves
+        </div>
+        <div class="scale" id="octave-variants"></div>
+    </div>
+
+    <script>
+        // Number system configuration (from atoms.yaml)
+        // Characters: 1234567 (indices 0-6 in character_order)
+        // PUA base: 0xE000
+        const NUMBER_NOTES = [
+            { char: '1', label: '1', desc: 'Sa (natural)', pua_base: 0xE000, char_index: 0, acc_type: 0, natural: true },
+            { char: '2♭', label: '2♭', desc: 'Re (flat)', pua_base: 0xE000, char_index: 1, acc_type: 1, flat: true },
+            { char: '2', label: '2', desc: 'Re (natural)', pua_base: 0xE000, char_index: 1, acc_type: 0, natural: true },
+            { char: '3♭', label: '3♭', desc: 'Ga (flat)', pua_base: 0xE000, char_index: 2, acc_type: 1, flat: true },
+            { char: '3', label: '3', desc: 'Ga (natural)', pua_base: 0xE000, char_index: 2, acc_type: 0, natural: true },
+            { char: '4', label: '4', desc: 'Ma (natural)', pua_base: 0xE000, char_index: 3, acc_type: 0, natural: true },
+            { char: '4#', label: '4#', desc: 'Ma (sharp)', pua_base: 0xE000, char_index: 3, acc_type: 5, sharp: true },
+            { char: '5', label: '5', desc: 'Pa (natural)', pua_base: 0xE000, char_index: 4, acc_type: 0, natural: true },
+            { char: '6♭', label: '6♭', desc: 'Dha (flat)', pua_base: 0xE000, char_index: 5, acc_type: 1, flat: true },
+            { char: '6', label: '6', desc: 'Dha (natural)', pua_base: 0xE000, char_index: 5, acc_type: 0, natural: true },
+            { char: '7♭', label: '7♭', desc: 'Ni (flat)', pua_base: 0xE000, char_index: 6, acc_type: 1, flat: true },
+            { char: '7', label: '7', desc: 'Ni (natural)', pua_base: 0xE000, char_index: 6, acc_type: 0, natural: true },
+        ];
+
+        function renderNote(note, containerId) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+
+            const noteDiv = document.createElement('div');
+            noteDiv.className = 'note';
+            if (note.natural) noteDiv.classList.add('natural');
+            if (note.flat) noteDiv.classList.add('flat');
+            if (note.sharp) noteDiv.classList.add('sharp');
+
+            // Calculate codepoint: pua_base + (char_index × 30) + variant_index
+            // variant_index = (acc_type × 5) + octave_idx
+            // octave_idx 0 = base octave
+            // acc_type: 0=natural, 1=flat, 2=half-flat, 3=double-flat, 4=double-sharp, 5=sharp
+            const variant_index = (note.acc_type * 5) + 0;
+            const codepoint = note.pua_base + (note.char_index * 30) + variant_index;
+            const glyph = String.fromCodePoint(codepoint);
+
+            noteDiv.innerHTML = `
+                <div class="label">${note.label}</div>
+                <div class="glyph">${glyph}</div>
+                <div class="codepoint">U+${codepoint.toString(16).toUpperCase()}</div>
+                <div class="codepoint">${note.desc}</div>
+            `;
+
+            container.appendChild(noteDiv);
+        }
+
+        // Render chromatic scale
+        NUMBER_NOTES.forEach(note => renderNote(note, 'chromatic-scale'));
+
+        // Render natural notes
+        NUMBER_NOTES.filter(note => note.natural).forEach(note => renderNote(note, 'natural-notes'));
+
+        // Render flat notes
+        NUMBER_NOTES.filter(note => note.flat).forEach(note => renderNote(note, 'flat-notes'));
+
+        // Render sharp notes
+        NUMBER_NOTES.filter(note => note.sharp).forEach(note => renderNote(note, 'sharp-notes'));
+
+        // Generate and render half-flat notes (acc_type: 2)
+        const HALF_FLAT_NOTES = [
+            { char: '2♭/', label: '2 half-flat', desc: 'Re (half-flat)', pua_base: 0xE000, char_index: 1, acc_type: 2, flat: true },
+            { char: '3♭/', label: '3 half-flat', desc: 'Ga (half-flat)', pua_base: 0xE000, char_index: 2, acc_type: 2, flat: true },
+            { char: '6♭/', label: '6 half-flat', desc: 'Dha (half-flat)', pua_base: 0xE000, char_index: 5, acc_type: 2, flat: true },
+            { char: '7♭/', label: '7 half-flat', desc: 'Ni (half-flat)', pua_base: 0xE000, char_index: 6, acc_type: 2, flat: true },
+        ];
+        HALF_FLAT_NOTES.forEach(note => renderNote(note, 'half-flat-notes'));
+
+        // Generate and render double-flat notes (acc_type: 3)
+        const DOUBLE_FLAT_NOTES = [
+            { char: '2♭♭', label: '2 double-flat', desc: 'Re (double-flat)', pua_base: 0xE000, char_index: 1, acc_type: 3, flat: true },
+            { char: '3♭♭', label: '3 double-flat', desc: 'Ga (double-flat)', pua_base: 0xE000, char_index: 2, acc_type: 3, flat: true },
+            { char: '6♭♭', label: '6 double-flat', desc: 'Dha (double-flat)', pua_base: 0xE000, char_index: 5, acc_type: 3, flat: true },
+            { char: '7♭♭', label: '7 double-flat', desc: 'Ni (double-flat)', pua_base: 0xE000, char_index: 6, acc_type: 3, flat: true },
+        ];
+        DOUBLE_FLAT_NOTES.forEach(note => renderNote(note, 'double-flat-notes'));
+
+        // Generate and render double-sharp notes (acc_type: 4)
+        const DOUBLE_SHARP_NOTES = [
+            { char: '1𝄪', label: '1 double-sharp', desc: 'Sa (double-sharp)', pua_base: 0xE000, char_index: 0, acc_type: 4, sharp: true },
+            { char: '4𝄪', label: '4 double-sharp', desc: 'Ma (double-sharp)', pua_base: 0xE000, char_index: 3, acc_type: 4, sharp: true },
+            { char: '5𝄪', label: '5 double-sharp', desc: 'Pa (double-sharp)', pua_base: 0xE000, char_index: 4, acc_type: 4, sharp: true },
+        ];
+        DOUBLE_SHARP_NOTES.forEach(note => renderNote(note, 'double-sharp-notes'));
+
+        // Generate and render octave variants for note "1" (Sa)
+        // octave_idx: 0=base, 1=+1_dot_above, 2=+2_dots_above, 3=-1_dot_below, 4=-2_dots_below
+        const OCTAVE_VARIANTS = [
+            { char: '1̇', label: '1 (base)', desc: 'Base octave', pua_base: 0xE000, char_index: 0, acc_type: 0, octave_idx: 0, natural: true },
+            { char: '1̇', label: '1 (+1 octave)', desc: '1 dot above', pua_base: 0xE000, char_index: 0, acc_type: 0, octave_idx: 1, natural: true },
+            { char: '1̈', label: '1 (+2 octaves)', desc: '2 dots above', pua_base: 0xE000, char_index: 0, acc_type: 0, octave_idx: 2, natural: true },
+            { char: '1̣', label: '1 (-1 octave)', desc: '1 dot below', pua_base: 0xE000, char_index: 0, acc_type: 0, octave_idx: 3, natural: true },
+            { char: '1̤', label: '1 (-2 octaves)', desc: '2 dots below', pua_base: 0xE000, char_index: 0, acc_type: 0, octave_idx: 4, natural: true },
+        ];
+
+        function renderNoteWithOctave(note, containerId) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+
+            const noteDiv = document.createElement('div');
+            noteDiv.className = 'note';
+            if (note.natural) noteDiv.classList.add('natural');
+            if (note.flat) noteDiv.classList.add('flat');
+            if (note.sharp) noteDiv.classList.add('sharp');
+
+            // Calculate codepoint: pua_base + (char_index × 30) + variant_index
+            // variant_index = (acc_type × 5) + octave_idx
+            const variant_index = (note.acc_type * 5) + note.octave_idx;
+            const codepoint = note.pua_base + (note.char_index * 30) + variant_index;
+            const glyph = String.fromCodePoint(codepoint);
+
+            noteDiv.innerHTML = `
+                <div class="label">${note.label}</div>
+                <div class="glyph">${glyph}</div>
+                <div class="codepoint">U+${codepoint.toString(16).toUpperCase()}</div>
+                <div class="codepoint">${note.desc}</div>
+            `;
+
+            container.appendChild(noteDiv);
+        }
+
+        OCTAVE_VARIANTS.forEach(note => renderNoteWithOctave(note, 'octave-variants'));
+
+        console.log('✓ Number system font test loaded');
+        console.log('Check that flat notes show ♭ symbol and sharp notes show # symbol');
+        console.log('Check that half-flats, double-flats, and double-sharps render correctly');
+        console.log('Check that octave variants show dots above/below');
+    </script>
+</body>
+</html>

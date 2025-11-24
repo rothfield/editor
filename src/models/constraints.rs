@@ -117,7 +117,7 @@ pub fn get_predefined_constraints() -> Vec<ScaleConstraint> {
         create_bhairavi(),       // Thaat
         create_todi(),           // Thaat
 
-        // ADDITIONAL POPULAR RAGAS (10)
+        // ADDITIONAL POPULAR RAGAS (13)
         create_bhupali(),
         create_bageshri(),
         create_desh(),
@@ -131,6 +131,9 @@ pub fn get_predefined_constraints() -> Vec<ScaleConstraint> {
         create_bihag(),
         create_lalit(),
         create_miyan_ki_todi(),
+        create_rag_khammaj(),
+        create_jinjhoti(),
+        create_hindol(),
 
         // DEPRECATED (keeping for backward compatibility, but marked as such)
         create_basant_mukhari(), // = Phrygian Dominant
@@ -574,11 +577,11 @@ fn create_kalyan_yaman() -> ScaleConstraint {
     }
 }
 
-/// Khamaj: 1 2 3 4 5 6 ♭7 (Mixolydian)
+/// Khammaj That: 1 2 3 4 5 6 ♭7 (Mixolydian)
 fn create_khamaj() -> ScaleConstraint {
     ScaleConstraint {
         id: "khamaj".to_string(),
-        name: "Khamaj".to_string(),
+        name: "Khammaj That (1 ni)".to_string(),
         category: ScaleCategory::Raga,
         degrees: [
             natural_only(),  // 1 (Sa)
@@ -589,7 +592,7 @@ fn create_khamaj() -> ScaleConstraint {
             natural_only(),  // 6 (shuddha Dha)
             flat_only(),     // ♭7 (komal Ni)
         ],
-        description: Some("Khamaj thaat with komal Ni, equivalent to Mixolydian, light classical style".to_string()),
+        description: Some("Khammaj thaat with komal Ni (1 ni), equivalent to Mixolydian, light classical style".to_string()),
         is_custom: false,
     }
 }
@@ -939,6 +942,66 @@ fn create_miyan_ki_todi() -> ScaleConstraint {
     }
 }
 
+/// Rag Khammaj: 1 2 3 4 5 6 7/♭7 (uses both shuddha and komal Ni)
+fn create_rag_khammaj() -> ScaleConstraint {
+    ScaleConstraint {
+        id: "rag_khammaj".to_string(),
+        name: "Rag Khammaj".to_string(),
+        category: ScaleCategory::Raga,
+        degrees: [
+            natural_only(),  // 1 (Sa)
+            natural_only(),  // 2 (shuddha Re)
+            natural_only(),  // 3 (shuddha Ga)
+            natural_only(),  // 4 (shuddha Ma)
+            natural_only(),  // 5 (Pa)
+            natural_only(),  // 6 (shuddha Dha)
+            DegreeConstraint::Only(vec![AccidentalType::None, AccidentalType::Flat]), // 7 (both Ni used)
+        ],
+        description: Some("From Khammaj thaat, uses both shuddha and komal Ni (has 2 sevenths), evening raga with playful mood".to_string()),
+        is_custom: false,
+    }
+}
+
+/// Jinjhoti: 1 2 3 4 5 6 ♭7 (Mixolydian)
+fn create_jinjhoti() -> ScaleConstraint {
+    ScaleConstraint {
+        id: "jinjhoti".to_string(),
+        name: "Jinjhoti".to_string(),
+        category: ScaleCategory::Raga,
+        degrees: [
+            natural_only(),  // 1 (Sa)
+            natural_only(),  // 2 (shuddha Re)
+            natural_only(),  // 3 (shuddha Ga)
+            natural_only(),  // 4 (shuddha Ma)
+            natural_only(),  // 5 (Pa)
+            natural_only(),  // 6 (shuddha Dha)
+            flat_only(),     // ♭7 (komal Ni)
+        ],
+        description: Some("From Khammaj thaat, light and playful raga, popular in light classical music".to_string()),
+        is_custom: false,
+    }
+}
+
+/// Hindol: 1 3 4 6 7 (pentatonic - omits 2 and 5)
+fn create_hindol() -> ScaleConstraint {
+    ScaleConstraint {
+        id: "hindol".to_string(),
+        name: "Hindol".to_string(),
+        category: ScaleCategory::Raga,
+        degrees: [
+            natural_only(),         // 1 (Sa)
+            DegreeConstraint::Omit, // 2 (Re omitted)
+            natural_only(),         // 3 (shuddha Ga)
+            natural_only(),         // 4 (shuddha Ma)
+            DegreeConstraint::Omit, // 5 (Pa omitted)
+            natural_only(),         // 6 (shuddha Dha)
+            natural_only(),         // 7 (shuddha Ni)
+        ],
+        description: Some("Pentatonic (5 notes), omits Re and Pa, spring raga with devotional mood".to_string()),
+        is_custom: false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -995,8 +1058,8 @@ mod tests {
     fn test_all_predefined_constraints_are_valid() {
         let constraints = get_predefined_constraints();
         // 7 Western modes + 3 maqams + 3 Western/Jazz scales
-        // + 10 Thaats + 13 additional ragas + 2 Deprecated
-        assert_eq!(constraints.len(), 38);
+        // + 10 Thaats + 16 additional ragas + 2 Deprecated
+        assert_eq!(constraints.len(), 41);
 
         // Verify each has a unique ID
         let ids: Vec<&str> = constraints.iter().map(|c| c.id.as_str()).collect();

@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "compilerOptions": {
+    // Output configuration
+    "noEmit": false,                       // Allow compilation (handled by Rollup)
+
+    // Module resolution
+    "target": "ES2020",                    // Match existing Rollup config
+    "module": "ES2020",                    // ESM modules
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+
+    // Path aliases
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"],
+      "~types/*": ["src/types/*"],
+      "@utils/*": ["src/js/utils/*"],
+      "@coordinators/*": ["src/js/coordinators/*"],
+      "@handlers/*": ["src/js/handlers/*"],
+      "@managers/*": ["src/js/managers/*"],
+      "@core/*": ["src/js/core/*"]
+    },
+
+    // Strict type-checking options (incremental enablement)
+    "strict": false,                       // Start relaxed, enable incrementally
+    "noImplicitAny": false,                // Will enable in Phase 2
+    "strictNullChecks": false,             // Will enable in Phase 3
+    "strictFunctionTypes": true,
+    "strictBindCallApply": true,
+    "strictPropertyInitialization": false,
+    "noImplicitThis": true,
+    "alwaysStrict": true,
+
+    // Additional checks
+    "noUnusedLocals": false,               // Too noisy initially
+    "noUnusedParameters": false,
+    "noImplicitReturns": false,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": false,     // Enable in Phase 4
+
+    // Interop and compatibility
+    "skipLibCheck": true,                  // Skip node_modules type checking
+    "forceConsistentCasingInFileNames": true,
+
+    // JavaScript support (during migration)
+    "allowJs": true,                       // Allow .js files alongside .ts
+    "checkJs": false                       // Don't type-check .js files yet
+  },
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.js",                         // Include JS during migration
+    "tests/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "target",
+    "pkg",
+    "**/*.spec.js",                        // Exclude test files for now
+    "src/js/dev-server.js"                 // Exclude dev tooling
+  ]
+}

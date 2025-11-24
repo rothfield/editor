@@ -148,13 +148,11 @@ class DOMRenderer {
       beat_loop_height: BEAT_LOOP_HEIGHT,
     };
 
-    // Debug: Log selection state in document before computeLayout
-    console.log(`[RENDERER @ ${Date.now()}] computeLayout input - has_selection:`,
-      !!doc.state?.selection_manager?.current_selection,
-      'anchor:', doc.state?.selection_manager?.current_selection?.anchor,
-      'head:', doc.state?.selection_manager?.current_selection?.head);
-
-    const displayList = this.editor.wasmModule.computeLayout(doc, config);
+    logger.debug(LOG_CATEGORIES.RENDERER, 'computeLayout input', {
+      has_selection: !!doc.state?.selection_manager?.current_selection,
+      anchor: doc.state?.selection_manager?.current_selection?.anchor,
+      head: doc.state?.selection_manager?.current_selection?.head
+    });
 
     const layoutTime = performance.now() - layoutStart;
     logger.debug(LOG_CATEGORIES.PERFORMANCE, 'Layout time', {

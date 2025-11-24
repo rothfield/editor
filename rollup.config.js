@@ -1,6 +1,7 @@
 import resolve from '@rollup/plugin-node-resolve';
 import commonjs from '@rollup/plugin-commonjs';
 import terser from '@rollup/plugin-terser';
+import typescript from '@rollup/plugin-typescript';
 
 const production = !process.env.ROLLUP_WATCH;
 
@@ -17,9 +18,22 @@ export default {
     }
   },
   plugins: [
+    typescript({
+      tsconfig: './tsconfig.json',
+      sourceMap: !production,
+      inlineSources: !production,
+      declaration: false,
+      declarationMap: false,
+      compilerOptions: {
+        outDir: 'dist',
+        rootDir: 'src'
+      },
+      include: ['src/**/*.ts'] // <--- Add this line
+    }),
     resolve({
       browser: true,
       preferBuiltins: false,
+      extensions: ['.js', '.ts']
     }),
     commonjs(),
     production && terser({

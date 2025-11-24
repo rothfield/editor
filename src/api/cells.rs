@@ -103,7 +103,7 @@ pub fn insert_character(
         cells.last().map(|c| c.col + 1).unwrap_or(0)
     };
 
-    let new_cell = parse_single(c, pitch_system, column);
+    let new_cell = parse_single(c, pitch_system, column, None);
 
     // Insert the new cell at the cursor position
     let insert_pos = cursor_pos.min(cells.len());
@@ -293,7 +293,7 @@ pub fn parse_text(text: &str, pitch_system: u8) -> Result<js_sys::Array, JsValue
 
     wasm_log!("  Parsing {} characters...", text.chars().count());
     for c in text.chars() {
-        let cell = parse_single(c, pitch_system, column);
+        let cell = parse_single(c, pitch_system, column, None);
         cells.push(cell);
         column += 1;
     }

@@ -4,6 +4,7 @@
 //! musical notation into various output formats.
 
 pub mod musicxml;
+pub mod midi;
 pub mod layout_engine;
 pub mod display_list;
 pub mod lyrics;

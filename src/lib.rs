@@ -13,7 +13,7 @@ pub mod converters;
 pub mod undo;
 pub mod text;      // Layer 0: Text buffer (proof-of-concept for layered architecture)
 pub mod structure; // Layer 2: Musical structure analysis (proof-of-concept)
-pub mod fontgen;   // Font specification and generation (Rust source of truth)
+pub mod ir;        // Intermediate Representation for format-agnostic export
 
 // Include generated font constants from build.rs
 include!(concat!(env!("OUT_DIR"), "/font_constants.rs"));

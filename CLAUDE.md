@@ -160,6 +160,24 @@ test('feature works correctly', async ({ page }) => {
 - The processing algorithm for converting spatial layout to precise durations
 - LilyPond and MusicXML mapping
 
+### Beat Boundaries and Rhythm Interpretation
+
+**CRITICAL: Spaces create beat boundaries.**
+
+Each beat is interpreted as 1/1 of a beat, which in 4/4 time equals a quarter note. This applies regardless of the number of subdivisions within that beat.
+
+**Key principles:**
+- **Beat boundaries created by:** spaces, barlines, symbols, text, newlines
+- **Beat elements (do NOT create boundaries):** pitches, dashes, breath marks, ornaments
+- Each beat gets fraction 1/1, normalized to the measure's time signature
+- Within a beat, elements are subdivided proportionally
+
+**Examples:**
+- `1'---` → ONE beat with 4 subdivisions: note (1/4) + rest (3/4)
+- `1 '---` → TWO beats: note (1/1) + rest (1/1) = quarter + quarter in 4/4
+- `1' ---` → TWO beats: note (1/1) + rest (1/1) = quarter + quarter in 4/4
+- `1 2 3` → THREE beats: each note gets 1/1 = three quarter notes in 4/4
+
 ## Music Notation Font System
 
 ### NotationFont - Custom Font for Text-Based Music Notation
@@ -227,6 +245,55 @@ You:
 - `build.rs` - Compile-time code generation from atoms.yaml
 - `FONT_MIGRATION_NOTO_MUSIC.md` - Complete migration guide
 - `FONT_ARCHITECTURE_NOTO.md` - Technical deep-dive on font system
+
+### Pitch System Test Pages (Required)
+
+**⚠️ CRITICAL: There MUST be a test page for each pitch system.**
+
+Each pitch system requires a standalone HTML test page to verify:
+- Font rendering correctness
+- Glyph-to-PUA codepoint mapping
+- Accidental behavior (when accidentals should/shouldn't appear)
+- Normalized pitch mapping
+
+**Required test pages:**
+- `number.html` - Number system (1-7) with accidentals
+- `sargam.html` - Sargam system (S, r, R, g, G, m, M, P, d, D, n, N)
+- `western.html` - Western system (C-D-E-F-G-A-B) with accidentals
+- `doremi.html` - Doremi system (do-re-mi-fa-sol-la-ti) [TODO: create]
+
+**What each test page must include:**
+1. Direct font loading from `/static/fonts/NotationFont.woff2` and `.ttf`
+2. Display all chromatic notes (12 semitones) for that system
+3. Show PUA codepoint for each glyph (for debugging)
+4. Color-coded sections (natural, flat, sharp)
+5. Explanatory text about expected accidental behavior
+6. Proper character index and variant_index calculation matching atoms.yaml
+
+**Special cases to verify:**
+- **Sargam**: komal notes (r, g, m, d, n) and tivra Ma (M) must NOT show accidentals (case IS the pitch)
+- **Number**: accidentals MUST appear correctly (2♭, 3♭, 4#, 6♭, 7♭)
+- **Western**: standard accidental display (flats and sharps)
+
+**Formula used in all test pages:**
+```javascript
+const variant_index = (acc_type * 5) + octave_idx;
+const codepoint = pua_base + (char_index * 30) + variant_index;
+// acc_type: 0=natural, 1=flat, 2=half-flat, 3=double-flat, 4=double-sharp, 5=sharp
+// octave_idx: 0=base, 1=+1 octave, 2=+2 octaves, etc.
+```
+
+**When to use these test pages:**
+- After any font generation changes (`make fonts`)
+- When modifying `tools/fontgen/generate.py` or `atoms.yaml`
+- To verify special cases (like Sargam komal/tivra exclusions)
+- When debugging glyph rendering issues
+
+**How to verify:**
+1. Open test page in browser (e.g., `http://localhost:8080/number.html`)
+2. Visually inspect all glyphs render correctly
+3. Check that accidental symbols appear/don't appear as expected
+4. Verify PUA codepoints match atoms.yaml allocations
 
 ### ⚠️ NEW ARCHITECTURE: Layered Text-First Design
 
@@ -431,15 +498,19 @@ MusicXML (Standard interchange format)
 ### Key Components
 
 **IR (Intermediate Representation):**
-- **Location**: `src/renderers/musicxml/line_to_ir.rs`, `src/renderers/musicxml/export_ir.rs`
-- **Responsibilities**: Convert Cell-based document to structured musical events
+- **Location**: `src/ir/` (top-level module, format-agnostic)
+  - `src/ir/types.rs` - IR type definitions
+  - `src/ir/builder.rs` - Document-to-IR conversion logic
+  - `src/ir/mod.rs` - Public API exports
+- **Responsibilities**: Convert Cell-based document to structured musical events (format-agnostic)
 - **Key types**: `ExportLine`, `ExportMeasure`, `ExportEvent`, `NoteData`, `SlurData`, `TieData`, etc.
-- **Future**: Will move to `src/renderers/ir/` when architecture is fully shared
+- **Import**: `use crate::ir::*;` or `use crate::ir::build_export_measures_from_document;`
 
-**Line-to-IR Conversion (FSM):**
-- **Location**: `src/renderers/musicxml/line_to_ir.rs`
+**Document-to-IR Conversion (FSM):**
+- **Location**: `src/ir/builder.rs`
 - **Process**: Finite State Machine processes cells sequentially, grouping them into beat-level events
 - **Handles**: Grace notes, dashes (rests/extensions), rhythmic grouping, lyrics, slurs, ties
+- **Entry point**: `build_export_measures_from_document(&document) -> Vec<ExportLine>`
 
 **MusicXML Export:**
 - **Location**: `src/renderers/musicxml/emitter.rs`, `builder.rs`
@@ -451,9 +522,11 @@ MusicXML (Standard interchange format)
 When adding support for a new musical element (e.g., slurs):
 
 1. **Add to Cell model** if it's user-creatable (e.g., `SlurIndicator` on Cell)
-2. **Add to IR types** if it needs to be exported (e.g., `SlurData` in `NoteData`)
-3. **Wire up conversion** in `line_to_ir.rs` FSM to extract from Cell and populate IR
-4. **Verify emission** in `emitter.rs` / `builder.rs` to ensure MusicXML output is correct
+2. **Add to IR types** in `src/ir/types.rs` if it needs to be exported (e.g., `SlurData` in `NoteData`)
+3. **Wire up conversion** in `src/ir/builder.rs` FSM to extract from Cell and populate IR
+4. **Export to formats**:
+   - **MusicXML**: Update `src/renderers/musicxml/emitter.rs` and `builder.rs` to ensure correct XML output
+   - **LilyPond**: Update LilyPond emitter when implemented
 5. **Test end-to-end**: Document → Cell → IR → MusicXML → Inspector tab
 
 This ensures the feature works across all downstream renderers automatically.

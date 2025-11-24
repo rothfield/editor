@@ -74,46 +74,62 @@ pub fn set_glyph_width_cache(cache_js: JsValue) -> Result<(), JsValue> {
     Ok(())
 }
 
-/// Set the document title (LEGACY - Phase 0 API)
-/// DEPRECATED: Use the new setTitle() which uses internal DOCUMENT
+/// Get available pitch systems with metadata
 ///
-/// # Parameters
-/// - `document_js`: JavaScript Document object
-/// - `title`: The new title for the document
-///
-/// # Returns
-/// Updated JavaScript Document object with the title set
-#[wasm_bindgen(js_name = setTitleLegacy)]
-pub fn set_title_legacy(
-    document_js: JsValue,
-    title: &str,
-) -> Result<JsValue, JsValue> {
-    wasm_warn!("⚠️  setTitleLegacy called - DEPRECATED, use setTitle() instead");
-    wasm_info!("setTitleLegacy called: title='{}'", title);
+/// Returns a JSON array of pitch system objects with:
+/// - value: String identifier ("number", "western", "sargam")
+/// - name: Display name
+/// - description: Description text
+/// - example: Array of example glyphs from NotationFont
+/// - shortcut: Keyboard shortcut number
+#[wasm_bindgen(js_name = getAvailablePitchSystems)]
+pub fn get_available_pitch_systems() -> Result<JsValue, JsValue> {
+    use serde::Serialize;
 
-    // Deserialize document from JavaScript
-    let mut document: Document = serde_wasm_bindgen::from_value(document_js)
-        .map_err(|e| {
-            wasm_error!("Deserialization error: {}", e);
-            JsValue::from_str(&format!("Deserialization error: {}", e))
-        })?;
+    #[derive(Serialize)]
+    struct PitchSystemInfo {
+        value: String,
+        name: String,
+        description: String,
+        example: Vec<String>,
+        shortcut: String,
+    }
 
-    // Set the title
-    document.title = Some(title.to_string());
-    wasm_info!("  Document title set to: '{}'", title);
+    let systems = vec![
+        PitchSystemInfo {
+            value: "number".to_string(),
+            name: "Number System".to_string(),
+            description: "1-7 notation (Sa Re Ga Ma Pa Dha Ni)".to_string(),
+            example: vec!["1", "2♭", "2", "3♭", "3", "4", "4#", "5", "6♭", "6", "7♭", "7"]
+                .into_iter()
+                .map(String::from)
+                .collect(),
+            shortcut: "1".to_string(),
+        },
+        PitchSystemInfo {
+            value: "western".to_string(),
+            name: "Western Notation".to_string(),
+            description: "C D E F G A B (traditional staff notation)".to_string(),
+            example: vec!["C", "D♭", "D", "E♭", "E", "F", "F#", "G", "A♭", "A", "B♭", "B"]
+                .into_iter()
+                .map(String::from)
+                .collect(),
+            shortcut: "2".to_string(),
+        },
+        PitchSystemInfo {
+            value: "sargam".to_string(),
+            name: "Sargam".to_string(),
+            description: "S R G M P D N (Indian classical)".to_string(),
+            example: vec!["S", "r", "R", "g", "G", "m", "M", "P", "d", "D", "n", "N"]
+                .into_iter()
+                .map(String::from)
+                .collect(),
+            shortcut: "3".to_string(),
+        },
+    ];
 
-    // Compute glyphs before serialization
-    document.compute_glyphs();
-
-    // Serialize back to JavaScript
-    let result = serde_wasm_bindgen::to_value(&document)
-        .map_err(|e| {
-            wasm_error!("Serialization error: {}", e);
-            JsValue::from_str(&format!("Serialization error: {}", e))
-        })?;
-
-    wasm_info!("setTitleLegacy completed successfully");
-    Ok(result)
+    serde_wasm_bindgen::to_value(&systems)
+        .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
 }
 
 /// Set the document title (Phase 1 - uses internal DOCUMENT)
@@ -133,48 +149,6 @@ pub fn set_title(title: &str) -> Result<(), JsValue> {
 
     wasm_info!("setTitle completed successfully");
     Ok(())
-}
-
-/// Set the document composer (LEGACY - Phase 0 API)
-/// DEPRECATED: Use the new setComposer() which uses internal DOCUMENT
-///
-/// # Parameters
-/// - `document_js`: JavaScript Document object
-/// - `composer`: The new composer name for the document
-///
-/// # Returns
-/// Updated JavaScript Document object with the composer set
-#[wasm_bindgen(js_name = setComposerLegacy)]
-pub fn set_composer_legacy(
-    document_js: JsValue,
-    composer: &str,
-) -> Result<JsValue, JsValue> {
-    wasm_warn!("⚠️  setComposerLegacy called - DEPRECATED, use setComposer() instead");
-    wasm_info!("setComposerLegacy called: composer='{}'", composer);
-
-    // Deserialize document from JavaScript
-    let mut document: Document = serde_wasm_bindgen::from_value(document_js)
-        .map_err(|e| {
-            wasm_error!("Deserialization error: {}", e);
-            JsValue::from_str(&format!("Deserialization error: {}", e))
-        })?;
-
-    // Set the composer
-    document.composer = Some(composer.to_string());
-    wasm_info!("  Document composer set to: '{}'", composer);
-
-    // Compute glyphs before serialization
-    document.compute_glyphs();
-
-    // Serialize back to JavaScript
-    let result = serde_wasm_bindgen::to_value(&document)
-        .map_err(|e| {
-            wasm_error!("Serialization error: {}", e);
-            JsValue::from_str(&format!("Serialization error: {}", e))
-        })?;
-
-    wasm_info!("setComposerLegacy completed successfully");
-    Ok(result)
 }
 
 /// Set the document composer (Phase 1 - uses internal DOCUMENT)
@@ -335,29 +309,132 @@ pub fn set_line_key_signature(line_idx: usize, key_signature: &str) -> Result<()
     Ok(())
 }
 
-/// Set the document pitch system (LEGACY - Phase 0 API)
-/// DEPRECATED: Use the new setDocumentPitchSystem() which uses internal DOCUMENT
+/// Set label for a specific line (Phase 1 API - WASM-First)
 ///
 /// # Parameters
-/// - `document_js`: JavaScript Document object
+/// - `line_index`: Index of the line to set label for (0-based)
+/// - `label`: The label text to set
+///
+/// # Returns
+/// Ok(()) on success, or error if no document is loaded or line index is invalid
+#[wasm_bindgen(js_name = setLineLabel)]
+pub fn set_line_label(line_index: usize, label: &str) -> Result<(), JsValue> {
+    wasm_info!("setLineLabel called (Phase 1): line_index={}, label='{}'", line_index, label);
+
+    let mut doc_guard = lock_document()?;
+    let doc = doc_guard.as_mut()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    // Validate line index
+    if line_index >= doc.lines.len() {
+        wasm_error!("Line index {} out of bounds (max: {})", line_index, doc.lines.len() - 1);
+        return Err(JsValue::from_str("Line index out of bounds"));
+    }
+
+    // Set the label for the line
+    doc.lines[line_index].label = label.to_string();
+    wasm_info!("  Line {} label set to: '{}'", line_index, label);
+
+    // Compute glyphs after metadata change
+    doc.compute_glyphs();
+
+    wasm_info!("setLineLabel completed successfully");
+    Ok(())
+}
+
+/// Set lyrics for a specific line (Phase 1 API - WASM-First)
+///
+/// # Parameters
+/// - `line_index`: Index of the line to set lyrics for (0-based)
+/// - `lyrics`: The lyrics text to set
+///
+/// # Returns
+/// Ok(()) on success, or error if no document is loaded or line index is invalid
+#[wasm_bindgen(js_name = setLineLyrics)]
+pub fn set_line_lyrics(line_index: usize, lyrics: &str) -> Result<(), JsValue> {
+    wasm_info!("setLineLyrics called (Phase 1): line_index={}, lyrics='{}'", line_index, lyrics);
+
+    let mut doc_guard = lock_document()?;
+    let doc = doc_guard.as_mut()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    // Validate line index
+    if line_index >= doc.lines.len() {
+        wasm_error!("Line index {} out of bounds (max: {})", line_index, doc.lines.len() - 1);
+        return Err(JsValue::from_str("Line index out of bounds"));
+    }
+
+    // Set the lyrics for the line
+    doc.lines[line_index].lyrics = lyrics.to_string();
+    wasm_info!("  Line {} lyrics set to: '{}'", line_index, lyrics);
+
+    // Compute glyphs after metadata change
+    doc.compute_glyphs();
+
+    wasm_info!("setLineLyrics completed successfully");
+    Ok(())
+}
+
+/// Set tala for a specific line (Phase 1 API - WASM-First)
+///
+/// # Parameters
+/// - `line_index`: Index of the line to set tala for (0-based)
+/// - `tala`: The tala string (digits 0-9+)
+///
+/// # Returns
+/// Ok(()) on success, or error if no document is loaded or line index is invalid
+#[wasm_bindgen(js_name = setLineTala)]
+pub fn set_line_tala(line_index: usize, tala: &str) -> Result<(), JsValue> {
+    wasm_info!("setLineTala called (Phase 1): line_index={}, tala='{}'", line_index, tala);
+
+    let mut doc_guard = lock_document()?;
+    let doc = doc_guard.as_mut()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    // Validate line index
+    if line_index >= doc.lines.len() {
+        wasm_error!("Line index {} out of bounds (max: {})", line_index, doc.lines.len() - 1);
+        return Err(JsValue::from_str("Line index out of bounds"));
+    }
+
+    // Validate tala format (allow empty to clear, or only digits 0-9 and +)
+    if !tala.is_empty() && !tala.chars().all(|c| c.is_ascii_digit() || c == '+') {
+        wasm_error!("Invalid tala format: '{}' (only digits 0-9, + allowed, or empty to clear)", tala);
+        return Err(JsValue::from_str("Invalid tala format"));
+    }
+
+    // Set the tala for the line
+    doc.lines[line_index].tala = tala.to_string();
+    wasm_info!("  Line {} tala set to: '{}'", line_index, tala);
+
+    // Compute glyphs after metadata change
+    doc.compute_glyphs();
+
+    wasm_info!("setLineTala completed successfully");
+    Ok(())
+}
+
+/// Set pitch system for a specific line (Phase 1 API - WASM-First)
+///
+/// # Parameters
+/// - `line_index`: Index of the line to set pitch system for (0-based)
 /// - `pitch_system`: The new pitch system (0-5, where 1=Number, 2=Western, 3=Sargam, 4=Bhatkhande, 5=Tabla)
 ///
 /// # Returns
-/// Updated JavaScript Document object with the pitch system set
-#[wasm_bindgen(js_name = setDocumentPitchSystemLegacy)]
-pub fn set_document_pitch_system_legacy(
-    document_js: JsValue,
-    pitch_system: u8,
-) -> Result<JsValue, JsValue> {
-    wasm_warn!("⚠️  setDocumentPitchSystemLegacy called - DEPRECATED, use setDocumentPitchSystem() instead");
-    wasm_info!("setDocumentPitchSystemLegacy called: pitch_system={}", pitch_system);
+/// Ok(()) on success, or error if no document is loaded or line index is invalid
+#[wasm_bindgen(js_name = setLinePitchSystem)]
+pub fn set_line_pitch_system(line_index: usize, pitch_system: u8) -> Result<(), JsValue> {
+    wasm_info!("setLinePitchSystem called (Phase 1): line_index={}, pitch_system={}", line_index, pitch_system);
 
-    // Deserialize document from JavaScript
-    let mut document: Document = serde_wasm_bindgen::from_value(document_js)
-        .map_err(|e| {
-            wasm_error!("Deserialization error: {}", e);
-            JsValue::from_str(&format!("Deserialization error: {}", e))
-        })?;
+    let mut doc_guard = lock_document()?;
+    let doc = doc_guard.as_mut()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    // Validate line index
+    if line_index >= doc.lines.len() {
+        wasm_error!("Line index {} out of bounds (max: {})", line_index, doc.lines.len() - 1);
+        return Err(JsValue::from_str(&format!("Line index {} out of bounds", line_index)));
+    }
 
     // Validate and set the pitch system
     let system = match pitch_system {
@@ -373,20 +450,190 @@ pub fn set_document_pitch_system_legacy(
         }
     };
 
-    document.pitch_system = Some(system);
-    wasm_info!("  Document pitch system set to: {:?}", system);
+    doc.lines[line_index].pitch_system = Some(system);
+    wasm_info!("  Line {} pitch system set to: {:?}", line_index, system);
 
-    // Compute glyphs before serialization
-    document.compute_glyphs();
+    // Compute glyphs after metadata change
+    doc.compute_glyphs();
 
-    // Serialize back to JavaScript
-    let result = serde_wasm_bindgen::to_value(&document)
+    wasm_info!("setLinePitchSystem completed successfully");
+    Ok(())
+}
+
+/// Set whether a line starts a new stave block/system (Phase 1 API - WASM-First)
+///
+/// # Parameters
+/// - `line_index`: Index of the line to modify
+/// - `new_system`: Boolean indicating whether this line starts a new system
+///
+/// When new_system=true, this line begins a new grouped system (e.g., piano grand staff).
+/// All subsequent lines with new_system=false belong to this system until
+/// the next line with new_system=true or end of document.
+///
+/// # Returns
+/// Ok(()) on success, or error if no document is loaded or line index is invalid
+#[wasm_bindgen(js_name = setLineNewSystem)]
+pub fn set_line_new_system(line_index: usize, new_system: bool) -> Result<(), JsValue> {
+    wasm_info!("setLineNewSystem called (Phase 1): line_index={}, new_system={}", line_index, new_system);
+
+    let mut doc_guard = lock_document()?;
+    let doc = doc_guard.as_mut()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    // Validate line index
+    if line_index >= doc.lines.len() {
+        wasm_error!("Line index {} out of bounds (max: {})", line_index, doc.lines.len() - 1);
+        return Err(JsValue::from_str("Line index out of bounds"));
+    }
+
+    // Set the new_system flag for the line
+    doc.lines[line_index].new_system = new_system;
+    wasm_info!("  Line {} new_system set to: {}", line_index, new_system);
+
+    // Recalculate system_id and part_id for all lines
+    doc.recalculate_system_and_part_ids();
+    wasm_info!("  System and part IDs recalculated");
+
+    // Compute glyphs after metadata change
+    doc.compute_glyphs();
+
+    wasm_info!("setLineNewSystem completed successfully");
+    Ok(())
+}
+
+/// Split a line at the given character position (Phase 1 API - WASM-First)
+///
+/// # Parameters
+/// - `stave_index`: The index of the line/stave to split (0-based)
+/// - `char_pos`: The character position where to split (0-based)
+///
+/// # Returns
+/// EditorDiff showing which lines changed (the split line and the new line)
+///
+/// # Behavior
+/// - Cells before char_pos stay in the current line
+/// - Cells after char_pos move to the new line
+/// - New line inherits: pitch_system, tonic, key_signature, time_signature
+/// - New line gets empty: label, lyrics, tala
+#[wasm_bindgen(js_name = splitLineAtPosition)]
+pub fn split_line_at_position(
+    stave_index: usize,
+    char_pos: usize,
+) -> Result<JsValue, JsValue> {
+    wasm_info!("splitLineAtPosition called (Phase 1): stave_index={}, char_pos={}", stave_index, char_pos);
+
+    let mut doc_guard = lock_document()?;
+    let doc = doc_guard.as_mut()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    // Validate stave index
+    if stave_index >= doc.lines.len() {
+        wasm_warn!("Stave index {} out of bounds (document has {} lines)", stave_index, doc.lines.len());
+        return Err(JsValue::from_str("Stave index out of bounds"));
+    }
+
+    let current_line = &doc.lines[stave_index];
+    wasm_log!("Current line has {} cells", current_line.cells.len());
+
+    // Convert character position to cell index
+    let mut char_count = 0;
+    let mut split_cell_index = current_line.cells.len();
+
+    for (i, cell) in current_line.cells.iter().enumerate() {
+        let cell_char_count = cell.char.chars().count();
+        if char_count + cell_char_count > char_pos {
+            // Found the cell that contains the split point
+            split_cell_index = i;
+            break;
+        }
+        char_count += cell_char_count;
+    }
+
+    wasm_log!("Split point: char_pos={}, split_cell_index={}", char_pos, split_cell_index);
+
+    // Split the cells array
+    let mut line = doc.lines.remove(stave_index);
+    let cells_after = line.cells.split_off(split_cell_index);
+
+    // Create new line with cells after split, inheriting musical properties
+    let new_line = Line {
+        cells: cells_after,
+        label: String::new(), // New line starts with no label
+        tala: String::new(),  // New line starts with no tala
+        lyrics: String::new(), // New line starts with no lyrics
+        tonic: line.tonic.clone(), // Inherit tonic
+        pitch_system: line.pitch_system, // Inherit pitch system
+        key_signature: line.key_signature.clone(), // Inherit key signature
+        tempo: line.tempo.clone(), // Inherit tempo
+        time_signature: line.time_signature.clone(), // Inherit time signature
+        new_system: false, // New line does not start a new system
+        staff_role: StaffRole::default(), // Default to Melody
+        system_id: 0, // Will be recalculated
+        part_id: String::new(), // Will be recalculated
+        beats: Vec::new(),
+        slurs: Vec::new(),
+    };
+
+    wasm_log!("Old line now has {} cells, new line has {} cells",
+              line.cells.len(), new_line.cells.len());
+
+    // Insert both lines back into document
+    doc.lines.insert(stave_index, line);
+    doc.lines.insert(stave_index + 1, new_line);
+
+    // Recalculate system_id and part_id after splitting
+    doc.recalculate_system_and_part_ids();
+
+    // Compute glyphs after structural change
+    doc.compute_glyphs();
+
+    wasm_info!("Line split successfully, document now has {} lines", doc.lines.len());
+
+    // Get current caret and selection info for the diff
+    let caret_info = CaretInfo {
+        caret: doc.state.cursor.clone(),
+        desired_col: doc.state.selection_manager.desired_col,
+    };
+
+    let selection_info = if let Some(ref selection) = doc.state.selection_manager.current_selection {
+        let is_forward = selection.anchor.line < selection.head.line
+            || (selection.anchor.line == selection.head.line && selection.anchor.col <= selection.head.col);
+        let (start, end) = if is_forward {
+            (selection.anchor.clone(), selection.head.clone())
+        } else {
+            (selection.head.clone(), selection.anchor.clone())
+        };
+        let is_empty = selection.anchor == selection.head;
+
+        Some(SelectionInfo {
+            anchor: selection.anchor.clone(),
+            head: selection.head.clone(),
+            start,
+            end,
+            is_empty,
+            is_forward,
+        })
+    } else {
+        None
+    };
+
+    // Return EditorDiff showing both lines changed
+    let diff = EditorDiff {
+        dirty_lines: vec![
+            DirtyLine { row: stave_index, cells: doc.lines[stave_index].cells.clone() },
+            DirtyLine { row: stave_index + 1, cells: doc.lines[stave_index + 1].cells.clone() },
+        ],
+        caret: caret_info,
+        selection: selection_info,
+    };
+
+    let result = serde_wasm_bindgen::to_value(&diff)
         .map_err(|e| {
-            wasm_error!("Serialization error: {}", e);
-            JsValue::from_str(&format!("Serialization error: {}", e))
+            wasm_error!("EditorDiff serialization error: {}", e);
+            JsValue::from_str(&format!("EditorDiff serialization error: {}", e))
         })?;
 
-    wasm_info!("setDocumentPitchSystemLegacy completed successfully");
+    wasm_info!("splitLineAtPosition completed successfully");
     Ok(result)
 }
 
@@ -437,273 +684,6 @@ fn expand_ornaments_to_cells(_line: &mut Line) {
 fn collapse_ornaments_from_cells(_line: &mut Line) {
     // With the new system, ornaments are stored inline with cells
     // No expansion/collapse logic is needed
-}
-
-/// Set lyrics for a specific line
-///
-/// # Parameters
-/// - `document_js`: JavaScript Document object
-/// - `line_index`: Index of the line to set lyrics for (0-based)
-/// - `lyrics`: The lyrics text to set
-///
-/// # Returns
-/// Updated JavaScript Document object with the lyrics set
-#[wasm_bindgen(js_name = setLineLyrics)]
-pub fn set_line_lyrics(
-    document_js: JsValue,
-    line_index: usize,
-    lyrics: &str,
-) -> Result<JsValue, JsValue> {
-    wasm_info!("setLineLyrics called: line_index={}, lyrics='{}'", line_index, lyrics);
-
-    // Deserialize document from JavaScript
-    let mut document: Document = serde_wasm_bindgen::from_value(document_js)
-        .map_err(|e| {
-            wasm_error!("Deserialization error: {}", e);
-            JsValue::from_str(&format!("Deserialization error: {}", e))
-        })?;
-
-    // Validate line index
-    if line_index >= document.lines.len() {
-        wasm_error!("Line index {} out of bounds (max: {})", line_index, document.lines.len() - 1);
-        return Err(JsValue::from_str("Line index out of bounds"));
-    }
-
-    // Set the lyrics for the line
-    document.lines[line_index].lyrics = lyrics.to_string();
-    wasm_info!("  Line {} lyrics set to: '{}'", line_index, lyrics);
-
-    // Compute glyphs before serialization
-    document.compute_glyphs();
-
-    // Serialize back to JavaScript
-    let result = serde_wasm_bindgen::to_value(&document)
-        .map_err(|e| {
-            wasm_error!("Serialization error: {}", e);
-            JsValue::from_str(&format!("Serialization error: {}", e))
-        })?;
-
-    wasm_info!("setLineLyrics completed successfully");
-    Ok(result)
-}
-
-/// Set tala for a specific line
-///
-/// # Parameters
-/// - `document_js`: JavaScript Document object
-/// - `line_index`: Index of the line to set tala for (0-based)
-/// - `tala`: The tala string (digits 0-9+)
-///
-/// # Returns
-/// Updated JavaScript Document object with the tala set
-#[wasm_bindgen(js_name = setLineTala)]
-pub fn set_line_tala(
-    document_js: JsValue,
-    line_index: usize,
-    tala: &str,
-) -> Result<JsValue, JsValue> {
-    wasm_info!("setLineTala called: line_index={}, tala='{}'", line_index, tala);
-
-    // Deserialize document from JavaScript
-    let mut document: Document = serde_wasm_bindgen::from_value(document_js)
-        .map_err(|e| {
-            wasm_error!("Deserialization error: {}", e);
-            JsValue::from_str(&format!("Deserialization error: {}", e))
-        })?;
-
-    // Validate line index
-    if line_index >= document.lines.len() {
-        wasm_error!("Line index {} out of bounds (max: {})", line_index, document.lines.len() - 1);
-        return Err(JsValue::from_str("Line index out of bounds"));
-    }
-
-    // Validate tala format (allow empty to clear, or only digits 0-9 and +)
-    if !tala.is_empty() && !tala.chars().all(|c| c.is_ascii_digit() || c == '+') {
-        wasm_error!("Invalid tala format: '{}' (only digits 0-9, + allowed, or empty to clear)", tala);
-        return Err(JsValue::from_str("Invalid tala format"));
-    }
-
-    // Set the tala for the line
-    document.lines[line_index].tala = tala.to_string();
-    wasm_info!("  Line {} tala set to: '{}'", line_index, tala);
-
-    // Compute glyphs before serialization
-    document.compute_glyphs();
-
-    // Serialize back to JavaScript
-    let result = serde_wasm_bindgen::to_value(&document)
-        .map_err(|e| {
-            wasm_error!("Serialization error: {}", e);
-            JsValue::from_str(&format!("Serialization error: {}", e))
-        })?;
-
-    wasm_info!("setLineTala completed successfully");
-    Ok(result)
-}
-
-/// Set pitch system for a specific line
-///
-/// # Parameters
-/// - `document_js`: JavaScript Document object
-/// - `line_index`: Index of the line to set pitch system for (0-based)
-/// - `pitch_system`: The new pitch system (0-5, where 1=Number, 2=Western, 3=Sargam, 4=Bhatkhande, 5=Tabla)
-///
-/// # Returns
-/// Updated JavaScript Document object with the line pitch system set
-#[wasm_bindgen(js_name = setLinePitchSystem)]
-pub fn set_line_pitch_system(
-    document_js: JsValue,
-    line_index: usize,
-    pitch_system: u8,
-) -> Result<JsValue, JsValue> {
-    wasm_info!("setLinePitchSystem called: line_index={}, pitch_system={}", line_index, pitch_system);
-
-    // Deserialize document from JavaScript
-    let mut document: Document = serde_wasm_bindgen::from_value(document_js)
-        .map_err(|e| {
-            wasm_error!("Deserialization error: {}", e);
-            JsValue::from_str(&format!("Deserialization error: {}", e))
-        })?;
-
-    // Validate line index
-    if line_index >= document.lines.len() {
-        wasm_error!("Line index {} out of bounds (max: {})", line_index, document.lines.len() - 1);
-        return Err(JsValue::from_str(&format!("Line index {} out of bounds", line_index)));
-    }
-
-    // Validate and set the pitch system
-    let system = match pitch_system {
-        0 => PitchSystem::Unknown,
-        1 => PitchSystem::Number,
-        2 => PitchSystem::Western,
-        3 => PitchSystem::Sargam,
-        4 => PitchSystem::Bhatkhande,
-        5 => PitchSystem::Tabla,
-        _ => {
-            wasm_error!("Invalid pitch system value: {}", pitch_system);
-            return Err(JsValue::from_str(&format!("Invalid pitch system: {}", pitch_system)));
-        }
-    };
-
-    document.lines[line_index].pitch_system = Some(system);
-    wasm_info!("  Line pitch system set to: {:?}", system);
-
-    // Compute glyphs before serialization
-    document.compute_glyphs();
-
-    // Serialize back to JavaScript
-    let result = serde_wasm_bindgen::to_value(&document)
-        .map_err(|e| {
-            wasm_error!("Serialization error: {}", e);
-            JsValue::from_str(&format!("Serialization error: {}", e))
-        })?;
-
-    wasm_info!("setLinePitchSystem completed successfully");
-    Ok(result)
-}
-
-/// Set label for a specific line
-///
-/// # Parameters
-/// - `document_js`: JavaScript Document object
-/// - `line_index`: Index of the line to set label for (0-based)
-/// - `label`: The label text to set
-///
-/// # Returns
-/// Updated JavaScript Document object with the label set
-#[wasm_bindgen(js_name = setLineLabel)]
-pub fn set_line_label(
-    document_js: JsValue,
-    line_index: usize,
-    label: &str,
-) -> Result<JsValue, JsValue> {
-    wasm_info!("setLineLabel called: line_index={}, label='{}'", line_index, label);
-
-    // Deserialize document from JavaScript
-    let mut document: Document = serde_wasm_bindgen::from_value(document_js)
-        .map_err(|e| {
-            wasm_error!("Deserialization error: {}", e);
-            JsValue::from_str(&format!("Deserialization error: {}", e))
-        })?;
-
-    // Validate line index
-    if line_index >= document.lines.len() {
-        wasm_error!("Line index {} out of bounds (max: {})", line_index, document.lines.len() - 1);
-        return Err(JsValue::from_str("Line index out of bounds"));
-    }
-
-    // Set the label for the line
-    document.lines[line_index].label = label.to_string();
-    wasm_info!("  Line {} label set to: '{}'", line_index, label);
-
-    // Compute glyphs before serialization
-    document.compute_glyphs();
-
-    // Serialize back to JavaScript
-    let result = serde_wasm_bindgen::to_value(&document)
-        .map_err(|e| {
-            wasm_error!("Serialization error: {}", e);
-            JsValue::from_str(&format!("Serialization error: {}", e))
-        })?;
-
-    wasm_info!("setLineLabel completed successfully");
-    Ok(result)
-}
-
-/// Set whether a line starts a new stave block (system)
-///
-/// # Parameters
-/// - `document_js`: JavaScript Document object
-/// - `line_index`: Index of the line to modify
-/// - `new_system`: Boolean indicating whether this line starts a new system
-///
-/// When new_system=true, this line begins a new grouped system (e.g., piano grand staff).
-/// All subsequent lines with new_system=false belong to this system until
-/// the next line with new_system=true or end of document.
-///
-/// # Returns
-/// Updated Document object serialized to JavaScript
-#[wasm_bindgen(js_name = setLineNewSystem)]
-pub fn set_line_new_system(
-    document_js: JsValue,
-    line_index: usize,
-    new_system: bool,
-) -> Result<JsValue, JsValue> {
-    wasm_info!("setLineNewSystem called: line_index={}, new_system={}", line_index, new_system);
-
-    // Deserialize document from JavaScript
-    let mut document: Document = serde_wasm_bindgen::from_value(document_js)
-        .map_err(|e| {
-            wasm_error!("Deserialization error: {}", e);
-            JsValue::from_str(&format!("Deserialization error: {}", e))
-        })?;
-
-    // Validate line index
-    if line_index >= document.lines.len() {
-        wasm_error!("Line index {} out of bounds (max: {})", line_index, document.lines.len() - 1);
-        return Err(JsValue::from_str("Line index out of bounds"));
-    }
-
-    // Set the new_system flag for the line
-    document.lines[line_index].new_system = new_system;
-    wasm_info!("  Line {} new_system set to: {}", line_index, new_system);
-
-    // Recalculate system_id and part_id for all lines
-    document.recalculate_system_and_part_ids();
-    wasm_info!("  System and part IDs recalculated");
-
-    // Compute glyphs before serialization
-    document.compute_glyphs();
-
-    // Serialize back to JavaScript
-    let result = serde_wasm_bindgen::to_value(&document)
-        .map_err(|e| {
-            wasm_error!("Serialization error: {}", e);
-            JsValue::from_str(&format!("Serialization error: {}", e))
-        })?;
-
-    wasm_info!("setLineNewStave completed successfully");
-    Ok(result)
 }
 
 /// Set the staff role for a specific line
@@ -989,11 +969,12 @@ pub fn insert_text(text: &str) -> Result<JsValue, JsValue> {
         )));
     }
 
-    // Get the pitch system before mutably borrowing
+    // Get the pitch system and constraint before mutably borrowing
     let pitch_system = {
         let line = &doc.lines[cursor_line];
         doc.effective_pitch_system(line)
     };
+    let active_constraint = doc.active_constraint.as_ref();
 
     // SMART INSERT: Check if this is an accidental or barline modifier
     // If typing single character that modifies previous cell, update instead of insert
@@ -1012,9 +993,17 @@ pub fn insert_text(text: &str) -> Result<JsValue, JsValue> {
 
         // Case 1: Typing accidental after pitched element
         if matches!(typed_char, '#' | 'b') && prev_cell.kind == ElementKind::PitchedElement {
-            // Check if we haven't exceeded double accidental limit
-            let current_accidentals = prev_cell.char.chars().filter(|c| matches!(c, '#' | 'b')).count();
-            current_accidentals < 2
+            // Check if we haven't exceeded double accidental limit by inspecting pitch_code
+            if let Some(pc) = prev_cell.pitch_code {
+                // Check if adding this accidental would succeed (not already double accidental)
+                if typed_char == 'b' {
+                    pc.add_flat().is_some()
+                } else {
+                    pc.add_sharp().is_some()
+                }
+            } else {
+                false
+            }
         }
         // Case 2: Typing : after | (repeat left barline) - check Unicode barline character
         else if typed_char == ':' && prev_cell.char == barline_single_str && prev_cell.kind == ElementKind::SingleBarline {
@@ -1058,6 +1047,8 @@ pub fn insert_text(text: &str) -> Result<JsValue, JsValue> {
         let old_char = prev_cell.char.clone();
         let barline_single_str = BARLINE_SINGLE.to_string();
 
+        let mut modification_succeeded = false;
+
         // Update kind and pitch_code based on new content
         if matches!(typed_char, '#' | 'b') {
             // Accidental: transform the pitch_code (N1 + 'b' → N1b, N1b + 'b' → N1bb)
@@ -1078,24 +1069,29 @@ pub fn insert_text(text: &str) -> Result<JsValue, JsValue> {
                             prev_cell.char = glyph.to_string();
                             wasm_info!("  Updated pitch_code: {:?} → {:?}, glyph: U+{:04X}",
                                 current_pc, new_pc, glyph as u32);
+                            modification_succeeded = true;
                         }
                     }
                 } else {
-                    wasm_info!("  Cannot add {} to {:?} (would exceed double accidental or mix sharp/flat)",
+                    // Modification failed - will fall back to creating new cell
+                    wasm_info!("  Cannot add {} to {:?}, creating new cell instead",
                         typed_char, current_pc);
                 }
             }
         } else if typed_char == ':' && old_char == barline_single_str {
+            modification_succeeded = true;
             // 𝄀 + : → 𝄆 (RepeatLeftBarline)
             prev_cell.char = BARLINE_REPEAT_LEFT.to_string();
             prev_cell.kind = ElementKind::RepeatLeftBarline;
             wasm_info!("  Changed to RepeatLeftBarline (Unicode U+1D106)");
         } else if typed_char == '|' && old_char == ":" {
+            modification_succeeded = true;
             // : + | → 𝄇 (RepeatRightBarline)
             prev_cell.char = BARLINE_REPEAT_RIGHT.to_string();
             prev_cell.kind = ElementKind::RepeatRightBarline;
             wasm_info!("  Changed to RepeatRightBarline (Unicode U+1D107)");
         } else if typed_char == '|' && old_char == barline_single_str {
+            modification_succeeded = true;
             // 𝄀 + | → 𝄁 (DoubleBarline)
             prev_cell.char = BARLINE_DOUBLE.to_string();
             prev_cell.kind = ElementKind::DoubleBarline;
@@ -1125,6 +1121,7 @@ pub fn insert_text(text: &str) -> Result<JsValue, JsValue> {
                             prev_cell.char = glyph.to_string();
                             wasm_info!("  Updated pitch_code: {:?} → {:?} (half-flat), glyph: U+{:04X}",
                                 current_pc, new_pc, glyph as u32);
+                            modification_succeeded = true;
                         }
                     }
                 } else {
@@ -1133,16 +1130,43 @@ pub fn insert_text(text: &str) -> Result<JsValue, JsValue> {
             }
         }
 
-        // TODO: Record undo for modification (for now, skip undo)
+        // If modification succeeded, cursor stays at same position
+        // If modification failed, fall back to normal insert
+        if modification_succeeded {
+            // TODO: Record undo for modification (for now, skip undo)
+            (cursor_col, 0)
+        } else {
+            // Fall back to normal insert - create new cell
+            wasm_info!("  Modification failed, falling back to normal insert");
+            let cell = parse_single(typed_char, pitch_system, insert_pos, active_constraint);
+            line.cells.insert(insert_pos, cell.clone());
 
-        // Cursor stays at same position (after the modified cell)
-        (cursor_col, 0)
+            // Update annotation positions
+            doc.annotation_layer.on_insert(crate::text::cursor::TextPos::new(cursor_line, insert_pos));
+
+            // Update column indices for cells after insertion
+            for i in (insert_pos + 1)..line.cells.len() {
+                line.cells[i].col += 1;
+            }
+
+            // Record undo command
+            let command = Command::InsertText {
+                line: cursor_line,
+                start_col: insert_pos,
+                cells: vec![cell],
+            };
+            let cursor_pos = (cursor_line, insert_pos);
+            doc.state.undo_stack.push(command, cursor_pos);
+
+            // Move cursor after inserted cell
+            (cursor_col + 1, 1)
+        }
     } else {
         // NORMAL INSERT: Parse and insert new cells
         let mut new_cells: Vec<Cell> = Vec::new();
         for (i, ch) in text.chars().enumerate() {
             let column = cursor_col + i;
-            let cell = parse_single(ch, pitch_system, column);
+            let cell = parse_single(ch, pitch_system, column, active_constraint);
             new_cells.push(cell);
         }
 
@@ -2143,105 +2167,6 @@ pub fn compute_layout(
     Ok(result)
 }
 
-/// Split a line at the given character position
-///
-/// # Parameters
-/// - `doc_js`: JavaScript object representing the Document
-/// - `stave_index`: The index of the line/stave to split (0-based)
-/// - `char_pos`: The character position where to split (0-based)
-///
-/// # Returns
-/// JavaScript object representing the updated Document with the line split
-///
-/// # Behavior
-/// - Cells before char_pos stay in the current line
-/// - Cells after char_pos move to the new line
-/// - New line inherits: pitch_system, tonic, key_signature, time_signature
-/// - New line gets empty: label, lyrics, tala
-#[wasm_bindgen(js_name = splitLineAtPosition)]
-pub fn split_line_at_position(
-    doc_js: JsValue,
-    stave_index: usize,
-    char_pos: usize,
-) -> Result<JsValue, JsValue> {
-    wasm_info!("splitLineAtPosition called: stave_index={}, char_pos={}", stave_index, char_pos);
-
-    // Deserialize document from JavaScript
-    let mut doc: Document = serde_wasm_bindgen::from_value(doc_js)
-        .map_err(|e| {
-            wasm_error!("Document deserialization error: {}", e);
-            JsValue::from_str(&format!("Document deserialization error: {}", e))
-        })?;
-
-    // Validate stave index
-    if stave_index >= doc.lines.len() {
-        wasm_warn!("Stave index {} out of bounds (document has {} lines)", stave_index, doc.lines.len());
-        return Err(JsValue::from_str("Stave index out of bounds"));
-    }
-
-    let current_line = &doc.lines[stave_index];
-    wasm_log!("Current line has {} cells", current_line.cells.len());
-
-    // Convert character position to cell index
-    let mut char_count = 0;
-    let mut split_cell_index = current_line.cells.len();
-
-    for (i, cell) in current_line.cells.iter().enumerate() {
-        let cell_char_count = cell.char.chars().count();
-        if char_count + cell_char_count > char_pos {
-            // Found the cell that contains the split point
-            split_cell_index = i;
-            break;
-        }
-        char_count += cell_char_count;
-    }
-
-    wasm_log!("Split point: char_pos={}, split_cell_index={}", char_pos, split_cell_index);
-
-    // Split the cells array
-    let mut line = doc.lines.remove(stave_index);
-    let cells_after = line.cells.split_off(split_cell_index);
-
-    // Create new line with cells after split, inheriting musical properties
-    let new_line = Line {
-        cells: cells_after,
-        label: String::new(), // New line starts with no label
-        tala: String::new(),  // New line starts with no tala
-        lyrics: String::new(), // New line starts with no lyrics
-        tonic: line.tonic.clone(), // Inherit tonic
-        pitch_system: line.pitch_system.clone(), // Inherit pitch system
-        key_signature: line.key_signature.clone(), // Inherit key signature
-        tempo: line.tempo.clone(), // Inherit tempo
-        time_signature: line.time_signature.clone(), // Inherit time signature
-        new_system: false, // New line does not start a new system
-        staff_role: StaffRole::default(), // Default to Melody
-        system_id: 0, // Will be recalculated
-        part_id: String::new(), // Will be recalculated
-        beats: Vec::new(),
-        slurs: Vec::new(),
-    };
-
-    wasm_log!("Old line now has {} cells, new line has {} cells",
-              line.cells.len(), new_line.cells.len());
-
-    // Insert both lines back into document
-    doc.lines.insert(stave_index, line);
-    doc.lines.insert(stave_index + 1, new_line);
-
-    // Recalculate system_id and part_id after splitting
-    doc.recalculate_system_and_part_ids();
-
-    wasm_info!("Line split successfully, document now has {} lines", doc.lines.len());
-
-    // Serialize and return updated document
-    let result = serde_wasm_bindgen::to_value(&doc)
-        .map_err(|e| {
-            wasm_error!("Document serialization error: {}", e);
-            JsValue::from_str(&format!("Document serialization error: {}", e))
-        })?;
-
-    Ok(result)
-}
 
 // ============================================================================
 // CURSOR AND SELECTION API (Anchor/Head Model)
@@ -3449,14 +3374,14 @@ mod tests {
         // Test: Type "1#" then backspace should result in "1" with correct pitch_code
 
         // Step 1: Parse "1"
-        let mut cells = vec![parse_single('1', PitchSystem::Number, 0)];
+        let mut cells = vec![parse_single('1', PitchSystem::Number, 0, None)];
         assert_eq!(cells.len(), 1);
         assert_eq!(cells[0].char, "1");
         assert_eq!(cells[0].pitch_code, Some(crate::models::PitchCode::N1));  // N1 = 1 natural
         // assert_eq!(cells[0].continuation, false);
 
         // Step 2: Parse "#" and add it
-        cells.push(parse_single('#', PitchSystem::Number, 1));
+        cells.push(parse_single('#', PitchSystem::Number, 1, None));
         assert_eq!(cells.len(), 2);
 
         // Step 3: Mark continuations - this should combine "1" + "#" = "1#" with pitch_code N1s
@@ -3471,7 +3396,7 @@ mod tests {
 
         // Step 5: IMPORTANT: After deleting from a multi-cell glyph, reparse the root!
         // This is what delete_character() should do
-        let reparsed = parse(&cells[0].char, PitchSystem::Number, cells[0].col);
+        let reparsed = parse(&cells[0].char, PitchSystem::Number, cells[0].col, None);
         cells[0].pitch_code = reparsed.pitch_code;
         cells[0].kind = reparsed.kind;
 

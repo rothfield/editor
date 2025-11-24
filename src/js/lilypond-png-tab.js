@@ -5,6 +5,8 @@
  * Click the tab button to refresh the preview.
  */
 
+import logger, { LOG_CATEGORIES } from './logger.js';
+
 class LilyPondPngTab {
   constructor(editor, lilypondRenderer) {
     this.editor = editor;
@@ -20,8 +22,7 @@ class LilyPondPngTab {
   initialize() {
     this.createUI();
     this.attachEventListeners();
-    console.log('[LilyPondDisplay] Initialized - click tab to refresh');
-  }
+    logger.info(LOG_CATEGORIES.UI, 'LilyPondDisplay: Initialized - click tab to refresh');
 
   /**
    * Create minimal UI - just a container for SVG
@@ -29,7 +30,7 @@ class LilyPondPngTab {
   createUI() {
     const tabContainer = document.getElementById('tab-content-lilypond-png');
     if (!tabContainer) {
-      console.warn('[LilyPondDisplay] Tab container not found');
+      logger.warn(LOG_CATEGORIES.UI, 'LilyPondDisplay: Tab container not found');
       return;
     }
 
@@ -67,7 +68,7 @@ class LilyPondPngTab {
   attachEventListeners() {
     // Find the LilyPond PNG tab button by ID
     const tabButton = document.getElementById('tab-lilypond-png');
-    console.log('[LilyPondDisplay] attachEventListeners - tabButton:', !!tabButton);
+    logger.debug(LOG_CATEGORIES.UI, 'LilyPondDisplay: attachEventListeners - tabButton', { exists: !!tabButton });
 
     if (tabButton) {
       // Add tooltip
@@ -76,19 +77,19 @@ class LilyPondPngTab {
 
       // When tab button is clicked, render immediately
       const originalOnClick = tabButton.onclick;
-      console.log('[LilyPondDisplay] Original onclick:', !!originalOnClick);
+      logger.debug(LOG_CATEGORIES.UI, 'LilyPondDisplay: Original onclick', { exists: !!originalOnClick });
 
       tabButton.onclick = (e) => {
-        console.log('[LilyPondDisplay] ===== TAB CLICKED =====');
-        console.log('[LilyPondDisplay] this:', this);
-        console.log('[LilyPondDisplay] this.render:', !!this.render);
+        logger.debug(LOG_CATEGORIES.UI, 'LilyPondDisplay: TAB CLICKED');
+        logger.debug(LOG_CATEGORIES.UI, 'LilyPondDisplay: context', { context: this });
+        logger.debug(LOG_CATEGORIES.UI, 'LilyPondDisplay: render method available', { available: !!this.render });
         this.render();
         if (originalOnClick) originalOnClick(e);
       };
 
-      console.log('[LilyPondDisplay] Click handler attached');
+      logger.debug(LOG_CATEGORIES.UI, 'LilyPondDisplay: Click handler attached');
     } else {
-      console.warn('[LilyPondDisplay] Tab button not found');
+      logger.warn(LOG_CATEGORIES.UI, 'LilyPondDisplay: Tab button not found');
     }
   }
 
@@ -110,14 +111,14 @@ class LilyPondPngTab {
     if (this.isRendering) return;
     this.isRendering = true;
 
-    console.log('[LilyPondDisplay] _performRender started');
+    logger.debug(LOG_CATEGORIES.UI, 'LilyPondDisplay: _performRender started');
 
     try {
       // Get LilyPond source from document
-      console.log('[LilyPondDisplay] Getting LilyPond source...');
+      logger.debug(LOG_CATEGORIES.UI, 'LilyPondDisplay: Getting LilyPond source...');
       const lilypondSource = this.getLilyPondSource();
 
-      console.log('[LilyPondDisplay] Source retrieved:', {
+      logger.debug(LOG_CATEGORIES.UI, 'LilyPondDisplay: Source retrieved', {
         isNull: lilypondSource === null,
         isUndefined: lilypondSource === undefined,
         isEmpty: lilypondSource === '',
@@ -126,13 +127,13 @@ class LilyPondPngTab {
       });
 
       if (!lilypondSource) {
-        console.log('[LilyPondDisplay] No source, displaying message');
+        logger.debug(LOG_CATEGORIES.UI, 'LilyPondDisplay: No source, displaying message');
         this.displayMessage('No musical content to render');
         this.isRendering = false;
         return;
       }
 
-      console.log('[LilyPondDisplay] Rendering compact SVG...');
+      logger.debug(LOG_CATEGORIES.UI, 'LilyPondDisplay: Rendering compact SVG...');
 
       // Render using LilyPond service
       await this.lilypondRenderer.renderNow(lilypondSource, {
@@ -150,15 +151,14 @@ class LilyPondPngTab {
           }
         },
         onError: (error) => {
-          console.error('[LilyPondDisplay] Render error:', error);
+          logger.error(LOG_CATEGORIES.UI, 'LilyPondDisplay: Render error', { error });
           // Show detailed error message
           const errorMsg = error?.message || error || 'Unknown error';
           this.displayMessage(`Render error: ${errorMsg}`);
-          console.log('[LilyPondDisplay] Full error object:', error);
         }
       });
     } catch (error) {
-      console.error('[LilyPondDisplay] Error:', error);
+      logger.error(LOG_CATEGORIES.UI, 'LilyPondDisplay: Error', { error });
       this.displayMessage(`Error: ${error.message}`);
     } finally {
       this.isRendering = false;
@@ -169,25 +169,25 @@ class LilyPondPngTab {
    * Get LilyPond source from document using WASM conversion
    */
   getLilyPondSource() {
-    console.log('[LilyPondDisplay] getLilyPondSource called');
+    logger.debug(LOG_CATEGORIES.UI, 'LilyPondDisplay: getLilyPondSource called');
 
     if (!this.editor?.getDocument() || !this.editor?.wasmModule) {
-      console.error('[LilyPondDisplay] Document or WASM module not available');
+      logger.error(LOG_CATEGORIES.WASM, 'LilyPondDisplay: Document or WASM module not available');
       return null;
     }
 
     try {
-      console.log('[LilyPondDisplay] Exporting to MusicXML...');
+      logger.debug(LOG_CATEGORIES.WASM, 'LilyPondDisplay: Exporting to MusicXML...');
       // Export to MusicXML
       const musicxml = this.editor.wasmModule.exportMusicXML(this.editor.getDocument());
-      console.log('[LilyPondDisplay] MusicXML export: ', musicxml?.length || 0, 'bytes');
+      logger.debug(LOG_CATEGORIES.WASM, 'LilyPondDisplay: MusicXML export', { length: musicxml?.length || 0, unit: 'bytes' });
 
       if (!musicxml) {
-        console.error('[LilyPondDisplay] Empty MusicXML export');
+        logger.error(LOG_CATEGORIES.WASM, 'LilyPondDisplay: Empty MusicXML export');
         return null;
       }
 
-      console.log('[LilyPondDisplay] Converting MusicXML to LilyPond...');
+      logger.debug(LOG_CATEGORIES.WASM, 'LilyPondDisplay: Converting MusicXML to LilyPond...');
       // Convert to LilyPond with no title (forces Compact template)
       const settings = JSON.stringify({
         target_lilypond_version: "2.24.0",
@@ -202,23 +202,24 @@ class LilyPondPngTab {
       const parsed = JSON.parse(result);
 
       if (!parsed.lilypond_source) {
-        console.error('[LilyPondDisplay] No LilyPond source generated');
+        logger.error(LOG_CATEGORIES.WASM, 'LilyPondDisplay: No LilyPond source generated');
         return null;
       }
 
-      console.log('[LilyPondDisplay] Generated LilyPond:', parsed.lilypond_source.length, 'bytes');
+      logger.debug(LOG_CATEGORIES.WASM, 'LilyPondDisplay: Generated LilyPond', { length: parsed.lilypond_source.length, unit: 'bytes' });
       return parsed.lilypond_source;
     } catch (e) {
-      console.error('[LilyPondDisplay] WASM conversion failed:', e.message);
+      logger.error(LOG_CATEGORIES.WASM, 'LilyPondDisplay: WASM conversion failed', { message: e.message });
       return null;
     }
+  }
   }
 
   /**
    * Display multi-page SVG in render area (stacked vertically)
    */
   displayMultiPageSVG(pagesBase64, pageCount) {
-    console.log('[LilyPondDisplay] displayMultiPageSVG called', {
+    logger.debug(LOG_CATEGORIES.UI, 'LilyPondDisplay: displayMultiPageSVG called', {
       pagesBase64Type: typeof pagesBase64,
       pagesBase64IsArray: Array.isArray(pagesBase64),
       pageCount,
@@ -227,12 +228,12 @@ class LilyPondPngTab {
     });
 
     if (!this.renderArea) {
-      console.error('[LilyPondDisplay] renderArea not found!');
+      logger.error(LOG_CATEGORIES.UI, 'LilyPondDisplay: renderArea not found!');
       return;
     }
 
     try {
-      console.log(`[LilyPondDisplay] Displaying ${pageCount} page(s)`);
+      logger.debug(LOG_CATEGORIES.UI, `LilyPondDisplay: Displaying ${pageCount} page(s)`);
 
       // Update render area styling for multi-page display
       this.renderArea.style.cssText = `
@@ -260,11 +261,11 @@ class LilyPondPngTab {
         max-width: 800px;
       `;
 
-      console.log('[LilyPondDisplay] Processing pages...');
+      logger.debug(LOG_CATEGORIES.UI, 'LilyPondDisplay: Processing pages...');
 
       // Add each page as an img element
       pagesBase64.forEach((base64Data, index) => {
-        console.log(`[LilyPondDisplay] Processing page ${index + 1}, base64 length: ${base64Data?.length}`);
+        logger.debug(LOG_CATEGORIES.UI, `LilyPondDisplay: Processing page ${index + 1}`, { base64Length: base64Data?.length });
 
         const binaryString = atob(base64Data);
         const bytes = new Uint8Array(binaryString.length);
@@ -285,20 +286,17 @@ class LilyPondPngTab {
           border-radius: 4px;
         `;
 
-        console.log(`[LilyPondDisplay] Created img element for page ${index + 1}, src: ${url.substring(0, 50)}...`);
+        logger.debug(LOG_CATEGORIES.UI, `LilyPondDisplay: Created img element for page ${index + 1}`, { src: `${url.substring(0, 50)}...` });
 
         pagesContainer.appendChild(img);
       });
 
       this.renderArea.appendChild(pagesContainer);
 
-      console.log('[LilyPondDisplay] Multi-page SVG rendered successfully, container has', pagesContainer.children.length, 'children');
+      logger.debug(LOG_CATEGORIES.UI, 'LilyPondDisplay: Multi-page SVG rendered successfully', { childCount: pagesContainer.children.length });
     } catch (error) {
-      console.error('[LilyPondDisplay] Multi-page SVG display error:', error);
-      console.error('[LilyPondDisplay] Error stack:', error.stack);
-      this.displayMessage('Failed to display multi-page SVG: ' + error.message);
-    }
-  }
+      logger.error(LOG_CATEGORIES.UI, 'LilyPondDisplay: Multi-page SVG display error', { error });
+
 
   /**
    * Display single SVG in render area (backwards compatibility)
@@ -325,11 +323,9 @@ class LilyPondPngTab {
       `;
       this.renderArea.appendChild(img);
 
-      console.log('[LilyPondDisplay] SVG rendered successfully');
+      logger.debug(LOG_CATEGORIES.UI, 'LilyPondDisplay: SVG rendered successfully');
     } catch (error) {
-      console.error('[LilyPondDisplay] SVG display error:', error);
-      this.displayMessage('Failed to display SVG');
-    }
+      logger.error(LOG_CATEGORIES.UI, 'LilyPondDisplay: SVG display error', { error });
   }
 
   /**

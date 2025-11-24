@@ -531,6 +531,12 @@ def create_accidental_composites(
             print(f"    WARNING: Could not access U+{char_code:04X}: {e}")
             accidental_glyphs[accidental_type] = None
 
+    # Sargam notes that should NOT get accidentals (case indicates komal/tivra)
+    # r = komal Re (not R♭), g = komal Ga (not G♭), m = komal ma (not M♭♭), d = komal Dha (not D♭), n = komal Ni (not N♭)
+    # M = tivra Ma (not m#)
+    # In Sargam, the case itself IS the pitch - these are not accidental modifications
+    SARGAM_NO_ACCIDENTALS = {'r', 'g', 'm', 'd', 'n', 'M'}
+
     # Create composites for each accidental type
     composites_created = 0
     for accidental_type, (pua_start, pua_end) in ACCIDENTAL_RANGES.items():
@@ -554,6 +560,9 @@ def create_accidental_composites(
 
         # Create composite for each character
         for i, base_char in enumerate(all_chars):
+            # SKIP: Sargam komal/tivra notes should NOT get accidentals
+            if base_char in SARGAM_NO_ACCIDENTALS:
+                continue
             # Choose source font: bold for pitch characters, regular for everything else
             is_pitch = pitch_chars and base_char in pitch_chars
             source_font = bold_font if (is_pitch and bold_font) else font
@@ -1263,6 +1272,10 @@ def build_font(
         if atom.character == "7":
             dot_x_offset -= base_width * 0.04
 
+        # Special adjustment for "S" (Sargam Sa): shift dots left by 1/10 of character width
+        if atom.character == "S":
+            dot_x_offset -= base_width * 0.1
+
         # Create composite glyph
         g = font.createChar(atom.assigned_codepoint, f"{atom.character}_v{atom.variant_index}")
         g.clear()
@@ -1280,7 +1293,10 @@ def build_font(
         # Add accidental symbol if not natural
         # CRITICAL: Must match assign_codepoints() acc_blocks ordering (lines 369-376)
         # acc_type from variant_index: 0=natural, 1=flat, 2=half-flat, 3=double-flat, 4=double-sharp, 5=sharp
-        if acc_type > 0:
+        # EXCEPTION: Sargam komal/tivra notes (r, g, m, d, n, M) should NEVER get accidentals
+        # In Sargam, case itself indicates pitch: r=komal Re, g=komal Ga, m=komal ma, d=komal Dha, n=komal Ni, M=tivra Ma
+        SARGAM_NO_ACCIDENTALS = {'r', 'g', 'm', 'd', 'n', 'M'}
+        if acc_type > 0 and atom.character not in SARGAM_NO_ACCIDENTALS:
             try:
                 acc_glyph = None
                 if acc_type == 1:  # Flat
@@ -1295,8 +1311,14 @@ def build_font(
                     acc_glyph = font[0x266F]
 
                 if acc_glyph and acc_glyph.glyphname:
+                    # Calculate y-offset (raise sharp and double-sharp symbols by 30% of font height)
+                    y_offset = 0
+                    if acc_type == 5 or acc_type == 4:  # Sharp or Double-sharp
+                        char_height = by_max - by_min
+                        y_offset = char_height * 0.3
+
                     # Position accidental to the right of the character (at bx_max where char ends)
-                    g.addReference(acc_glyph.glyphname, (1, 0, 0, 1, bx_max, 0))
+                    g.addReference(acc_glyph.glyphname, (1, 0, 0, 1, bx_max, y_offset))
 
                     # Store the target width for later (will be set after unlinkRef())
                     # Width = where base ends + accidental advance width
@@ -1678,13 +1700,13 @@ def main():
     )
     parser.add_argument(
         "--atoms",
-        default="tools/fontgen/atoms.yaml",
-        help="Path to atoms.yaml (default: tools/fontgen/atoms.yaml)"
+        default="build/atoms.yaml",
+        help="Path to atoms.yaml (default: build/atoms.yaml)"
     )
     parser.add_argument(
         "--fontspec",
-        default="src/fontgen/fontspec.json",
-        help="Path to fontspec.json (default: src/fontgen/fontspec.json)"
+        default="tools/fontgen/fontspec.json",
+        help="Path to fontspec.json (default: tools/fontgen/fontspec.json)"
     )
     parser.add_argument(
         "--output-dir",
@@ -1715,29 +1737,7 @@ def main():
 
     args = parser.parse_args()
 
-    # Handle "all" systems by generating each one
-    if args.system == "all":
-        systems = ["number", "western", "sargam", "doremi"]
-        print(f"\nGenerating fonts for all systems: {', '.join(systems)}\n")
-
-        for system in systems:
-            print(f"\n{'='*70}")
-            print(f"Generating {system.upper()} system font...")
-            print(f"{'='*70}\n")
-
-            # Create a copy of args with specific system
-            system_args = argparse.Namespace(**vars(args))
-            system_args.system = system
-
-            # Call generation function with system-specific args
-            generate_font_for_system(system_args)
-
-        print(f"\n{'='*70}")
-        print(f"ALL SYSTEMS COMPLETE!")
-        print(f"{'='*70}")
-        return
-
-    # Single system generation
+    # Always generate a single font containing all systems
     generate_font_for_system(args)
 
 
@@ -1756,13 +1756,12 @@ def generate_font_for_system(args):
     bravura_path = os.path.join(repo_root, args.bravura_font)
     output_dir = os.path.join(repo_root, args.output_dir)
 
-    # Generate system-specific filename (no longer handles "all" case here)
-    # Capitalize first letter for filenames: number -> Number
-    font_basename = f"NotationFont-{args.system.capitalize()}"
+    # Always generate single unified font
+    font_basename = "NotationFont"
 
     output_font = os.path.join(output_dir, f"{font_basename}.ttf")
     output_mapping = os.path.join(output_dir, f"{font_basename}-map.json")
-    output_html = os.path.join(output_dir, f"debug-specimen-{args.system}.html")
+    output_html = os.path.join(output_dir, f"debug-specimen.html")
 
     print("=" * 70)
     print("NOTATION FONT GENERATOR (Noto Sans + Noto Music + Bravura)")
@@ -1864,7 +1863,7 @@ def generate_font_for_system(args):
     print("\n" + "=" * 70)
     print("SUCCESS!")
     print("=" * 70)
-    print(f"\nGenerated files:")
+    print(f"\nGenerated unified font containing all systems (Number, Western, Sargam, Doremi):")
     print(f"  ✓ {output_font}")
     output_woff2 = output_font.replace('.ttf', '.woff2')
     if os.path.exists(output_woff2):

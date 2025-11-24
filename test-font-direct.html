@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Font Test</title>
+    <style>
+        @font-face {
+            font-family: 'NotationFont';
+            src: url('dist/fonts/NotationFont.woff2') format('woff2'),
+                 url('dist/fonts/NotationFont.ttf') format('truetype');
+        }
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+        }
+        .test {
+            font-family: 'NotationFont', monospace;
+            font-size: 48px;
+            margin: 10px 0;
+            border: 1px solid #ccc;
+            padding: 10px;
+        }
+        .label {
+            font-family: monospace;
+            font-size: 12px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <h1>Direct Font Test</h1>
+
+    <div>
+        <div class="label">ASCII '1' (U+0031):</div>
+        <div class="test">1</div>
+    </div>
+
+    <div>
+        <div class="label">Sharp at U+E019 (expected 1#):</div>
+        <div class="test" id="sharp1"></div>
+        <script>
+            document.getElementById('sharp1').textContent = String.fromCharCode(0xE019);
+        </script>
+    </div>
+
+    <div>
+        <div class="label">Sharp at U+E037 (expected 2#):</div>
+        <div class="test" id="sharp2"></div>
+        <script>
+            document.getElementById('sharp2').textContent = String.fromCharCode(0xE037);
+        </script>
+    </div>
+
+    <div>
+        <div class="label">What WASM should output for "1#":</div>
+        <div class="test" id="wasm-output"></div>
+        <script>
+            // This is what WASM glyph_for_pitch(N1s, 0, Number) returns
+            document.getElementById('wasm-output').textContent = '\uE019';
+        </script>
+    </div>
+
+    <div>
+        <div class="label">Font loaded:</div>
+        <div id="font-status">Checking...</div>
+        <script>
+            document.fonts.ready.then(function() {
+                document.getElementById('font-status').textContent =
+                    document.fonts.check('48px NotationFont') ? 'YES - NotationFont loaded' : 'NO - Font not loaded';
+            });
+        </script>
+    </div>
+</body>
+</html>

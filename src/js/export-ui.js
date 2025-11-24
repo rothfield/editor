@@ -10,6 +10,8 @@
  * Uses Uno.css for styling (no dependencies required)
  */
 
+import logger, { LOG_CATEGORIES } from './logger.js';
+
 class ExportUI {
   constructor(editor, fileOperations = null) {
     this.editor = editor;
@@ -96,7 +98,7 @@ class ExportUI {
       {
         id: 'midi',
         label: 'MIDI',
-        description: 'Audio playback format',
+        description: 'Direct export (fast)',
         icon: '🎹',
         color: 'from-blue-500 to-blue-600',
         lightColor: 'bg-blue-50 border-blue-200 hover:border-blue-400 hover:shadow-md hover:shadow-blue-200'
@@ -228,29 +230,37 @@ class ExportUI {
    * @private
    */
   async exportMusicXML(baseFilename) {
-    // TODO: Implement MusicXML export
-    // This will convert the internal document format to MusicXML
-    const xml = this.generateMusicXML();
-
-    const blob = new Blob([xml], { type: 'application/vnd.recordare.musicxml+xml' });
-    this.downloadFile(blob, `${baseFilename}.musicxml`);
-
-    return { success: true, format: 'musicxml' };
-  }
-
-  /**
-   * Export as MIDI using WASM converter
-   * @private
-   */
-  async exportMIDI(baseFilename) {
-    if (!this.editor.wasmModule || !this.editor.wasmModule.exportMIDI) {
+    if (!this.editor.wasmModule || !this.editor.wasmModule.exportMusicXML) {
       throw new Error('WASM module not initialized');
     }
 
     try {
-      // Call WASM function to export MIDI (uses WASM internal document)
-      // exportMIDI(tpq=480)
-      const midiData = this.editor.wasmModule.exportMIDI(480);
+      // Call WASM function to export MusicXML
+      const xml = this.editor.wasmModule.exportMusicXML(this.editor.getDocument());
+
+      const blob = new Blob([xml], { type: 'application/vnd.recordare.musicxml+xml' });
+      this.downloadFile(blob, `${baseFilename}.musicxml`);
+
+      return { success: true, format: 'musicxml' };
+    } catch (error) {
+      throw new Error(`MusicXML export failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Export as MIDI using direct IR-to-MIDI converter (fast)
+   * @private
+   */
+  async exportMIDI(baseFilename) {
+    if (!this.editor.wasmModule || !this.editor.wasmModule.exportMIDIDirect) {
+      throw new Error('WASM module not initialized');
+    }
+
+    try {
+      // Call WASM function to export MIDI using direct IR-to-MIDI conversion
+      // exportMIDIDirect(tpq=480, tempo_bpm=120.0)
+      // This is 2-5x faster than the legacy MusicXML-based export
+      const midiData = this.editor.wasmModule.exportMIDIDirect(480, 120.0);
 
       // Convert Uint8Array to Blob
       const blob = new Blob([midiData], { type: 'audio/midi' });
@@ -317,42 +327,6 @@ class ExportUI {
 
 
   /**
-   * Generate MusicXML from document
-   * @private
-   */
-  generateMusicXML() {
-    // TODO: Implement MusicXML generation from internal format
-    const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<score-partwise version="3.1">
-  <part-list>
-    <score-part id="P1">
-      <part-name>Music</part-name>
-    </score-part>
-  </part-list>
-  <part id="P1">
-    <measure number="1">
-      <attributes>
-        <divisions>4</divisions>
-        <key>
-          <fifths>0</fifths>
-        </key>
-        <time>
-          <beats>4</beats>
-          <beat-type>4</beat-type>
-        </time>
-        <clef>
-          <sign>G</sign>
-          <line>2</line>
-        </clef>
-      </attributes>
-    </measure>
-  </part>
-</score-partwise>`;
-
-    return xml;
-  }
-
-  /**
    * Download a file
    * @private
    */
@@ -408,7 +382,7 @@ class ExportUI {
     if (this.editor && this.editor.showUserNotification) {
       this.editor.showUserNotification(message, type);
     } else {
-      console.log(`[${type.toUpperCase()}] ${message}`);
+      logger.log(LOG_CATEGORIES.UI, `[${type.toUpperCase()}] ${message}`);
     }
   }
 }

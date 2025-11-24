@@ -30,16 +30,16 @@ class AutoSave {
    */
   start() {
     if (!this.isEnabled) {
-      console.log('AutoSave is disabled (ENABLE_AUTOSAVE flag is false)');
+      logger.info(LOG_CATEGORIES.AUTOSAVE, 'AutoSave is disabled (ENABLE_AUTOSAVE flag is false)');
       return;
     }
 
     if (this.saveInterval) {
-      console.warn('AutoSave already running');
+      logger.warn(LOG_CATEGORIES.AUTOSAVE, 'AutoSave already running');
       return;
     }
 
-    console.log(`AutoSave started (interval: ${this.saveIntervalMs}ms)`);
+    logger.info(LOG_CATEGORIES.AUTOSAVE, `AutoSave started (interval: ${this.saveIntervalMs}ms)`);
     this.saveInterval = setInterval(this.performAutoSave, this.saveIntervalMs);
   }
 
@@ -50,7 +50,7 @@ class AutoSave {
     if (this.saveInterval) {
       clearInterval(this.saveInterval);
       this.saveInterval = null;
-      console.log('AutoSave stopped');
+      logger.info(LOG_CATEGORIES.AUTOSAVE, 'AutoSave stopped');
     }
   }
 
@@ -59,16 +59,14 @@ class AutoSave {
    */
   enable() {
     this.isEnabled = true;
-    console.log('AutoSave enabled');
-  }
+    logger.info(LOG_CATEGORIES.AUTOSAVE, 'AutoSave enabled');
 
   /**
    * Disable auto-save
    */
   disable() {
     this.isEnabled = false;
-    console.log('AutoSave disabled');
-  }
+    logger.info(LOG_CATEGORIES.AUTOSAVE, 'AutoSave disabled');
 
   /**
    * Perform an auto-save operation
@@ -82,7 +80,7 @@ class AutoSave {
     try {
       const document = this.editor.getDocument();
       if (!document) {
-        console.warn('AutoSave: No document to save');
+        logger.warn(LOG_CATEGORIES.AUTOSAVE, 'AutoSave: No document to save');
         return;
       }
 
@@ -115,8 +113,7 @@ class AutoSave {
       this.cleanupOldAutosaves();
 
     } catch (error) {
-      console.error('AutoSave failed:', error);
-    }
+      logger.error(LOG_CATEGORIES.AUTOSAVE, 'AutoSave failed', { error });
   }
 
   /**
@@ -127,7 +124,7 @@ class AutoSave {
    */
   async restoreLastAutosave() {
     if (!this.isEnabled) {
-      console.log('AutoSave restore is disabled (ENABLE_AUTOSAVE flag is false)');
+      logger.info(LOG_CATEGORIES.AUTOSAVE, 'AutoSave restore is disabled (ENABLE_AUTOSAVE flag is false)');
       return false;
     }
 
@@ -136,7 +133,7 @@ class AutoSave {
       const lastSaveKey = localStorage.getItem(this.AUTOSAVE_LAST_KEY);
 
       if (!lastSaveKey) {
-        console.log('AutoSave: No autosave found to restore');
+        logger.info(LOG_CATEGORIES.AUTOSAVE, 'AutoSave: No autosave found to restore');
         return false;
       }
 
@@ -144,14 +141,14 @@ class AutoSave {
       const documentJson = localStorage.getItem(lastSaveKey);
 
       if (!documentJson) {
-        console.warn(`AutoSave: Last save key "${lastSaveKey}" points to missing data`);
+        logger.warn(LOG_CATEGORIES.AUTOSAVE, `AutoSave: Last save key "${lastSaveKey}" points to missing data`);
         return false;
       }
 
       // Parse and load into editor
       const document = JSON.parse(documentJson);
 
-      console.log(`AutoSave: Restoring from "${lastSaveKey}"`, {
+      logger.info(LOG_CATEGORIES.AUTOSAVE, `AutoSave: Restoring from "${lastSaveKey}"`, {
         title: document.title,
         modified_at: document.modified_at,
         lines: document.lines?.length || 0
@@ -159,13 +156,11 @@ class AutoSave {
 
       await this.editor.loadDocument(document);
 
-      console.log('AutoSave: Document restored successfully');
+      logger.info(LOG_CATEGORIES.AUTOSAVE, 'AutoSave: Document restored successfully');
       return true;
 
     } catch (error) {
-      console.error('AutoSave restore failed:', error);
-      return false;
-    }
+      logger.error(LOG_CATEGORIES.AUTOSAVE, 'AutoSave restore failed', { error });
   }
 
   /**
@@ -211,8 +206,7 @@ class AutoSave {
       localStorage.setItem(this.AUTOSAVE_INDEX_KEY, JSON.stringify(index));
 
     } catch (error) {
-      console.error('Failed to update autosave index:', error);
-    }
+      logger.error(LOG_CATEGORIES.AUTOSAVE, 'Failed to update autosave index', { error });
   }
 
   /**
@@ -246,8 +240,7 @@ class AutoSave {
       localStorage.setItem(this.AUTOSAVE_INDEX_KEY, JSON.stringify(toKeep));
 
     } catch (error) {
-      console.error('AutoSave cleanup failed:', error);
-    }
+      logger.error(LOG_CATEGORIES.AUTOSAVE, 'AutoSave cleanup failed', { error });
   }
 
   /**
@@ -265,7 +258,7 @@ class AutoSave {
 
       return index;
     } catch (error) {
-      console.error('Failed to get autosave history:', error);
+      logger.error(LOG_CATEGORIES.AUTOSAVE, 'Failed to get autosave history', { error });
       return [];
     }
   }
@@ -287,11 +280,10 @@ class AutoSave {
       localStorage.removeItem(this.AUTOSAVE_INDEX_KEY);
       localStorage.removeItem(this.AUTOSAVE_LAST_KEY);
 
-      console.log(`AutoSave: Cleared ${index.length} autosaves`);
+      logger.info(LOG_CATEGORIES.AUTOSAVE, `AutoSave: Cleared ${index.length} autosaves`);
 
     } catch (error) {
-      console.error('Failed to clear autosaves:', error);
-    }
+      logger.error(LOG_CATEGORIES.AUTOSAVE, 'Failed to clear autosaves', { error });
   }
 
   /**

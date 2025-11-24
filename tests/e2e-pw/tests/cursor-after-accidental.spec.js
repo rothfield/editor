@@ -8,7 +8,7 @@ import { test, expect } from '@playwright/test';
  *
  * Expected behavior:
  * - "1#23" creates 3 cells (not 4!):
- *   • Cell 0: "1#" (single composite glyph U+E1F0)
+ *   • Cell 0: "1#" (single composite glyph U+E019)
  *   • Cell 1: "2"
  *   • Cell 2: "3"
  * - Cursor should be at column 3 (after the 3rd cell)
@@ -46,7 +46,7 @@ test.describe('Cursor Position After Accidentals', () => {
 
     // Verify first cell is composite glyph
     const firstCellText = await cells[0].textContent();
-    expect(firstCellText.charCodeAt(0)).toBe(0xE1F0); // 1# composite glyph
+    expect(firstCellText.charCodeAt(0)).toBe(0xE019); // 1# composite glyph
 
     // Verify second cell is "2"
     const secondCellText = await cells[1].textContent();

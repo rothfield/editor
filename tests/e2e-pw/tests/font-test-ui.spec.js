@@ -98,7 +98,7 @@ test.describe('Font Test UI', () => {
     expect(count).toBe(188);
   });
 
-  test('Sharps display correctly in font test (verify U+E1F0 range)', async ({ page }) => {
+  test('Sharps display correctly in font test (verify U+E019 range)', async ({ page }) => {
     await page.goto('/');
 
     const fontTestTab = page.getByTestId('tab-font-test');
@@ -115,7 +115,7 @@ test.describe('Font Test UI', () => {
     // Check if the codepoint display shows E1F0
     const cpText = await firstGlyph.locator('.font-test-glyph-codepoint').textContent();
     console.log(`First sharp codepoint: ${cpText}`);
-    expect(cpText).toBe('U+E1F0');
+    expect(cpText).toBe('U+E019');
   });
 
   test('Octaves display correctly in font test (verify U+E000 range)', async ({ page }) => {

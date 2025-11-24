@@ -47,7 +47,7 @@ class EventManager {
     document.addEventListener('keydown', this.handleGlobalKeyDown, { capture: true });
     this.earlyKeyboardListenersAttached = true;
 
-    console.log('⚡ Early keyboard listeners attached (before WASM initialization)');
+    logger.info(LOG_CATEGORIES.EVENTS, 'Early keyboard listeners attached (before WASM initialization)');
   }
 
   /**
@@ -62,7 +62,7 @@ class EventManager {
     this.setupFocusManagement();
     this.setupKeyboardShortcuts();
 
-    console.log('Event management system initialized');
+    logger.info(LOG_CATEGORIES.EVENTS, 'Event management system initialized');
   }
 
   /**
@@ -167,7 +167,7 @@ class EventManager {
     // We only want to process them when they're used WITH another key
     const modifierKeys = ['Alt', 'Control', 'Shift', 'Meta', 'AltGraph'];
     if (modifierKeys.includes(event.key)) {
-      console.log('⏭️ Ignoring bare modifier key press:', event.key);
+      logger.debug(LOG_CATEGORIES.EVENTS, 'Ignoring bare modifier key press', { key: event.key });
       return;
     }
 
@@ -181,27 +181,28 @@ class EventManager {
         // Shift+Alt+L → open lyrics dialog
         event.preventDefault();
         event.stopImmediatePropagation();
-        console.log('🎵 Shift+Alt+L: Opening lyrics dialog');
+        logger.info(LOG_CATEGORIES.EVENTS, 'Shift+Alt+L: Opening lyrics dialog');
         try {
           this.editor?.ui?.setLyrics();
         } catch (error) {
-          console.error('Shift+Alt+L action failed:', error);
+          logger.error(LOG_CATEGORIES.EVENTS, 'Shift+Alt+L action failed', { error });
         }
         return;
       } else {
         // Alt+L → toggle octave down (handled via globalShortcuts below, but this is a safety net)
-        console.log('🎵 Alt+L: Toggle octave down');
+        logger.info(LOG_CATEGORIES.EVENTS, 'Alt+L: Toggle octave down');
       }
     }
 
     // Debug logging for Alt key combinations
     if (event.altKey) {
-      console.log('🔍 EventManager Alt key debug:');
-      console.log('  event.key:', event.key);
-      console.log('  event.code:', event.code);
-      console.log('  event.altKey:', event.altKey);
-      console.log('  event.ctrlKey:', event.ctrlKey);
-      console.log('  event.shiftKey:', event.shiftKey);
+      logger.debug(LOG_CATEGORIES.EVENTS, 'Alt key debug', {
+        eventKey: event.key,
+        eventCode: event.code,
+        altKey: event.altKey,
+        ctrlKey: event.ctrlKey,
+        shiftKey: event.shiftKey,
+      });
     }
 
     const key = this.getKeyString(event);
@@ -223,9 +224,9 @@ class EventManager {
     }
 
     // Route to editor if it has focus
-    console.log('[EventManager] Checking if editor has focus...');
+    logger.debug(LOG_CATEGORIES.EVENTS, 'Checking if editor has focus...');
     if (this.editorFocus()) {
-      console.log('[EventManager] Editor HAS focus, routing key:', key);
+      logger.debug(LOG_CATEGORIES.EVENTS, 'Editor HAS focus, routing key', { key });
       // Prevent certain default behaviors
       if (this.preventDefaultWhenFocused.includes(key)) {
         event.preventDefault();
@@ -233,15 +234,15 @@ class EventManager {
 
       // Route to editor
       if (this.editor && this.editor.handleKeyboardEvent) {
-        console.log('[EventManager] Calling editor.handleKeyboardEvent');
+        logger.debug(LOG_CATEGORIES.EVENTS, 'Calling editor.handleKeyboardEvent');
         await this.editor.handleKeyboardEvent(event);
         // Prevent further propagation after editor handles the event
         event.stopPropagation();
       } else {
-        console.log('[EventManager] ERROR: editor or handleKeyboardEvent not available');
+        logger.error(LOG_CATEGORIES.EVENTS, 'ERROR: editor or handleKeyboardEvent not available');
       }
     } else {
-      console.log('[EventManager] Editor does NOT have focus');
+      logger.debug(LOG_CATEGORIES.EVENTS, 'Editor does NOT have focus');
     }
   }
 
@@ -326,15 +327,13 @@ class EventManager {
       // Log focus activation time
       const activationTime = focusTime - this.focusState.lastFocusTime;
       if (activationTime > 0 && activationTime < 1000) {
-        console.log(`Focus activated in ${activationTime.toFixed(2)}ms`);
+        logger.debug(LOG_CATEGORIES.EVENTS, `Focus activated`, { duration: `${activationTime.toFixed(2)}ms` });
       }
-
       // Focus the cursor
       if (this.editor && this.editor.showCursor) {
         this.editor.showCursor();
       }
     }
-  }
 
   /**
      * Handle editor blur
@@ -362,9 +361,8 @@ class EventManager {
      */
   handleOutsideClick(event) {
     // Could implement context menu dismissal or other behaviors
-    console.log('Click detected outside editor');
-  }
-
+    logger.debug(LOG_CATEGORIES.EVENTS, 'Click detected outside editor');
+  }  }
   /**
      * Handle tab navigation
      */
@@ -400,19 +398,18 @@ class EventManager {
      */
   handleEscapeKey() {
     // Could implement modal dismissal or escape behaviors
-    console.log('Escape key pressed');
-  }
-
+    logger.debug(LOG_CATEGORIES.EVENTS, 'Escape key pressed');
+  }  }
   /**
      * Handle Alt+N (New File)
      */
   handleNewFile() {
-    console.log('Alt+N: New file shortcut triggered');
+    logger.info(LOG_CATEGORIES.EVENTS, 'Alt+N: New file shortcut triggered');
     // Use the same path as File menu -> New
     if (this.editor && this.editor.ui && this.editor.ui.executeMenuAction) {
       this.editor.ui.executeMenuAction('new-document');
     } else {
-      console.warn('UI menu action handler not available');
+      logger.warn(LOG_CATEGORIES.EVENTS, 'UI menu action handler not available');
     }
   }
 
@@ -420,12 +417,12 @@ class EventManager {
      * Handle Alt+O / Ctrl+O (Open File)
      */
   handleOpenFile() {
-    console.log('Ctrl+O: Open file shortcut triggered');
+    logger.info(LOG_CATEGORIES.EVENTS, 'Ctrl+O: Open file shortcut triggered');
     // Use the same path as File menu -> Open
     if (this.editor && this.editor.ui && this.editor.ui.executeMenuAction) {
       this.editor.ui.executeMenuAction('open-document');
     } else {
-      console.warn('UI menu action handler not available');
+      logger.warn(LOG_CATEGORIES.EVENTS, 'UI menu action handler not available');
     }
   }
 
@@ -433,11 +430,11 @@ class EventManager {
    * Apply ornament to selection (Alt+O)
    */
   applyOrnament() {
-    console.log('Alt+O: Apply ornament shortcut triggered');
+    logger.info(LOG_CATEGORIES.EVENTS, 'Alt+O: Apply ornament shortcut triggered');
     if (this.editor && this.editor.ui && this.editor.ui.pasteOrnament) {
       this.editor.ui.pasteOrnament();
     } else {
-      console.warn('Apply ornament not available');
+      logger.warn(LOG_CATEGORIES.EVENTS, 'Apply ornament not available');
     }
   }
 
@@ -535,19 +532,18 @@ class EventManager {
      */
   handleBeforeUnload(event) {
     // Could implement unsaved changes warning
-    console.log('Page unloading');
-  }
-
+    logger.debug(LOG_CATEGORIES.EVENTS, 'Page unloading');
+  }  }
   /**
      * Handle visibility change
      */
   handleVisibilityChange() {
     if (document.hidden) {
       // Page hidden - pause background operations
-      console.log('Page hidden');
+      logger.debug(LOG_CATEGORIES.EVENTS, 'Page hidden');
     } else {
       // Page visible - resume operations
-      console.log('Page visible');
+      logger.debug(LOG_CATEGORIES.EVENTS, 'Page visible');
     }
   }
 
@@ -655,9 +651,9 @@ Focus Management:
      */
   logFocusEvent(detail) {
     if (detail.hasFocus) {
-      console.log('Editor focused:', detail.element);
+      logger.debug(LOG_CATEGORIES.EVENTS, 'Editor focused', { element: detail.element });
     } else {
-      console.log('Editor blurred');
+      logger.debug(LOG_CATEGORIES.EVENTS, 'Editor blurred');
     }
   }
 
@@ -707,16 +703,16 @@ Focus Management:
     let key = event.key;
     if (event.altKey && (key === 'alt' || key === 'Alt')) {
       const code = event.code;
-      console.log('🔧 getKeyString detected Alt key issue:');
-      console.log('  originalKey:', event.key);
-      console.log('  code:', event.code);
-      console.log('  code.startsWith("Key"):', code && code.startsWith('Key'));
+      logger.debug(LOG_CATEGORIES.EVENTS, 'getKeyString detected Alt key issue');
+      logger.debug(LOG_CATEGORIES.EVENTS, 'originalKey', { key: event.key });
+      logger.debug(LOG_CATEGORIES.EVENTS, 'code', { code: event.code });
+      logger.debug(LOG_CATEGORIES.EVENTS, 'code.startsWith("Key")', { startsWithKey: code && code.startsWith('Key') });
 
       if (code && code.startsWith('Key')) {
         key = code.replace('Key', '').toLowerCase();
-        console.log('  fixedKey:', key);
+        logger.debug(LOG_CATEGORIES.EVENTS, 'fixedKey', { key });
       } else {
-        console.log('  ❌ Could not fix - code does not start with "Key"');
+        logger.warn(LOG_CATEGORIES.EVENTS, 'Could not fix - code does not start with "Key"');
       }
     }
 
@@ -724,23 +720,6 @@ Focus Management:
 
     const result = parts.join('+');
     if (event.altKey) {
-      console.log('🔍 getKeyString final result:', result);
+      logger.debug(LOG_CATEGORIES.EVENTS, 'getKeyString final result', { result });
     }
-
-    return result;
   }
-
-  /**
-     * Clean up event listeners
-     */
-  destroy() {
-    document.removeEventListener('keydown', this.handleGlobalKeyDown, { capture: true });
-    document.removeEventListener('focusin', this.handleGlobalFocus);
-    document.removeEventListener('focusout', this.handleGlobalBlur);
-    document.removeEventListener('click', this.handleGlobalClick);
-
-    this.eventListeners.clear();
-  }
-}
-
-export default EventManager;

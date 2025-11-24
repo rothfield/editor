@@ -1,1 +1,1526 @@
-{"title":"Untitled Document","pitch_system":1,"created_at":"2025-10-14T17:15:25.483Z","modified_at":"2025-10-14T17:15:25.483Z","lines":[{"cells":[{"glyph":"1","kind":1,"col":0,"flags":1,"pitch_code":"1","pitch_system":1,"octave":0,"slur_indicator":0},{"glyph":"1","kind":1,"col":1,"flags":1,"pitch_code":"1","pitch_system":1,"octave":0,"slur_indicator":0},{"glyph":"1","kind":1,"col":2,"flags":1,"pitch_code":"1","pitch_system":1,"octave":0,"slur_indicator":0},{"glyph":"1","kind":1,"col":3,"flags":1,"pitch_code":"1","pitch_system":1,"octave":0,"slur_indicator":0},{"glyph":"1","kind":1,"col":4,"flags":1,"pitch_code":"1","pitch_system":1,"octave":0,"slur_indicator":0},{"glyph":"1","kind":1,"col":5,"flags":1,"pitch_code":"1","pitch_system":1,"octave":0,"slur_indicator":0},{"glyph":"2","kind":1,"col":6,"flags":1,"pitch_code":"2","pitch_system":1,"octave":0,"slur_indicator":0},{"glyph":"2","kind":1,"col":7,"flags":1,"pitch_code":"2","pitch_system":1,"octave":0,"slur_indicator":0}],"label":"","tala":"","lyrics":"","tonic":"","pitch_system":0,"key_signature":"","tempo":"","time_signature":"","beats":[{"start":0,"end":7,"duration":1,"visual":{"loop_offset_px":20,"loop_height_px":6,"draw_single_cell":false}}]}],"state":{"cursor":{"stave":0,"lane":1,"column":8},"selection":null,"has_focus":false}}
+{
+  "pitch_system": 2,
+  "created_at": "2025-11-19T05:35:40.144Z",
+  "modified_at": "2025-11-19T05:35:40.144Z",
+  "lines": [
+    {
+      "cells": [
+        {
+          "char": "",
+          "kind": {
+            "name": "pitched_element",
+            "value": 1
+          },
+          "col": 0,
+          "flags": 0,
+          "pitch_code": "N7bb",
+          "pitch_system": 2,
+          "octave": 0,
+          "slur_indicator": {
+            "name": "none",
+            "value": 0
+          }
+        }
+      ],
+      "label": "",
+      "tala": "",
+      "lyrics": "",
+      "tonic": "",
+      "key_signature": "",
+      "tempo": "",
+      "time_signature": "",
+      "new_system": false,
+      "system_id": 1,
+      "part_id": "P1",
+      "staff_role": "melody"
+    }
+  ],
+  "ornament_edit_mode": false,
+  "annotation_layer": {
+    "ornaments": {},
+    "slurs": []
+  },
+  "state": {
+    "cursor": {
+      "line": 0,
+      "col": 1
+    },
+    "selection_manager": {
+      "mode": "Normal",
+      "desired_col": 0
+    },
+    "primary_selection": {
+      "text": "111",
+      "cells": [
+        {
+          "char": "1",
+          "kind": {
+            "name": "text",
+            "value": 5
+          },
+          "col": 0,
+          "flags": 0,
+          "octave": 0,
+          "slur_indicator": {
+            "name": "none",
+            "value": 0
+          }
+        },
+        {
+          "char": "1",
+          "kind": {
+            "name": "text",
+            "value": 5
+          },
+          "col": 0,
+          "flags": 0,
+          "octave": 0,
+          "slur_indicator": {
+            "name": "none",
+            "value": 0
+          }
+        },
+        {
+          "char": "1",
+          "kind": {
+            "name": "text",
+            "value": 5
+          },
+          "col": 0,
+          "flags": 0,
+          "octave": 0,
+          "slur_indicator": {
+            "name": "none",
+            "value": 0
+          }
+        }
+      ],
+      "selection": {
+        "anchor": {
+          "line": 0,
+          "col": 0
+        },
+        "head": {
+          "line": 0,
+          "col": 3
+        }
+      }
+    },
+    "has_focus": false,
+    "undo_stack": {
+      "commands": [
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 0,
+            "deleted_cells": [
+              {
+                "char": "6",
+                "kind": {
+                  "name": "text",
+                  "value": 5
+                },
+                "col": 0,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 15,
+            "deleted_cells": [
+              {
+                "char": "2",
+                "kind": {
+                  "name": "text",
+                  "value": 5
+                },
+                "col": 1,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 14,
+            "deleted_cells": [
+              {
+                "char": "1",
+                "kind": {
+                  "name": "text",
+                  "value": 5
+                },
+                "col": 0,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 13,
+            "deleted_cells": [
+              {
+                "char": "2",
+                "kind": {
+                  "name": "text",
+                  "value": 5
+                },
+                "col": 1,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 12,
+            "deleted_cells": [
+              {
+                "char": "1",
+                "kind": {
+                  "name": "text",
+                  "value": 5
+                },
+                "col": 0,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 11,
+            "deleted_cells": [
+              {
+                "char": "2",
+                "kind": {
+                  "name": "text",
+                  "value": 5
+                },
+                "col": 1,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 10,
+            "deleted_cells": [
+              {
+                "char": "1",
+                "kind": {
+                  "name": "text",
+                  "value": 5
+                },
+                "col": 0,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 9,
+            "deleted_cells": [
+              {
+                "char": "2",
+                "kind": {
+                  "name": "text",
+                  "value": 5
+                },
+                "col": 1,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 8,
+            "deleted_cells": [
+              {
+                "char": "1",
+                "kind": {
+                  "name": "text",
+                  "value": 5
+                },
+                "col": 0,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 7,
+            "deleted_cells": [
+              {
+                "char": "2",
+                "kind": {
+                  "name": "text",
+                  "value": 5
+                },
+                "col": 1,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 6,
+            "deleted_cells": [
+              {
+                "char": "1",
+                "kind": {
+                  "name": "text",
+                  "value": 5
+                },
+                "col": 0,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 5,
+            "deleted_cells": [
+              {
+                "char": "2",
+                "kind": {
+                  "name": "text",
+                  "value": 5
+                },
+                "col": 1,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 4,
+            "deleted_cells": [
+              {
+                "char": "1",
+                "kind": {
+                  "name": "text",
+                  "value": 5
+                },
+                "col": 0,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 3,
+            "deleted_cells": [
+              {
+                "char": "2",
+                "kind": {
+                  "name": "text",
+                  "value": 5
+                },
+                "col": 1,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 2,
+            "deleted_cells": [
+              {
+                "char": "1",
+                "kind": {
+                  "name": "text",
+                  "value": 5
+                },
+                "col": 0,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 1,
+            "deleted_cells": [
+              {
+                "char": "2",
+                "kind": {
+                  "name": "text",
+                  "value": 5
+                },
+                "col": 1,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 0,
+            "deleted_cells": [
+              {
+                "char": "1",
+                "kind": {
+                  "name": "text",
+                  "value": 5
+                },
+                "col": 0,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "Batch": {
+            "commands": [
+              {
+                "InsertText": {
+                  "line": 0,
+                  "start_col": 0,
+                  "cells": [
+                    {
+                      "char": "1",
+                      "kind": {
+                        "name": "text",
+                        "value": 5
+                      },
+                      "col": 0,
+                      "flags": 0,
+                      "octave": 0,
+                      "slur_indicator": {
+                        "name": "none",
+                        "value": 0
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "InsertText": {
+                  "line": 0,
+                  "start_col": 1,
+                  "cells": [
+                    {
+                      "char": "2",
+                      "kind": {
+                        "name": "text",
+                        "value": 5
+                      },
+                      "col": 1,
+                      "flags": 0,
+                      "octave": 0,
+                      "slur_indicator": {
+                        "name": "none",
+                        "value": 0
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 1,
+            "deleted_cells": [
+              {
+                "char": "2",
+                "kind": {
+                  "name": "text",
+                  "value": 5
+                },
+                "col": 1,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 0,
+            "deleted_cells": [
+              {
+                "char": "1",
+                "kind": {
+                  "name": "text",
+                  "value": 5
+                },
+                "col": 0,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "InsertText": {
+            "line": 0,
+            "start_col": 2,
+            "cells": [
+              {
+                "char": "\\",
+                "kind": {
+                  "name": "symbol",
+                  "value": 12
+                },
+                "col": 2,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 2,
+            "deleted_cells": [
+              {
+                "char": "\\",
+                "kind": {
+                  "name": "symbol",
+                  "value": 12
+                },
+                "col": 2,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 1,
+            "deleted_cells": [
+              {
+                "char": "1",
+                "kind": {
+                  "name": "text",
+                  "value": 5
+                },
+                "col": 0,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 0,
+            "deleted_cells": [
+              {
+                "char": "1",
+                "kind": {
+                  "name": "text",
+                  "value": 5
+                },
+                "col": 0,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 1,
+            "deleted_cells": [
+              {
+                "char": "1",
+                "kind": {
+                  "name": "text",
+                  "value": 5
+                },
+                "col": 0,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 0,
+            "deleted_cells": [
+              {
+                "char": "1",
+                "kind": {
+                  "name": "text",
+                  "value": 5
+                },
+                "col": 0,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "Batch": {
+            "commands": [
+              {
+                "InsertText": {
+                  "line": 0,
+                  "start_col": 22,
+                  "cells": [
+                    {
+                      "char": "",
+                      "kind": {
+                        "name": "pitched_element",
+                        "value": 1
+                      },
+                      "col": 22,
+                      "flags": 0,
+                      "pitch_code": "N1",
+                      "pitch_system": 2,
+                      "octave": 0,
+                      "slur_indicator": {
+                        "name": "none",
+                        "value": 0
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "InsertText": {
+                  "line": 0,
+                  "start_col": 23,
+                  "cells": [
+                    {
+                      "char": "",
+                      "kind": {
+                        "name": "pitched_element",
+                        "value": 1
+                      },
+                      "col": 23,
+                      "flags": 0,
+                      "pitch_code": "N1",
+                      "pitch_system": 2,
+                      "octave": 0,
+                      "slur_indicator": {
+                        "name": "none",
+                        "value": 0
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "InsertText": {
+                  "line": 0,
+                  "start_col": 24,
+                  "cells": [
+                    {
+                      "char": "",
+                      "kind": {
+                        "name": "pitched_element",
+                        "value": 1
+                      },
+                      "col": 24,
+                      "flags": 0,
+                      "pitch_code": "N1",
+                      "pitch_system": 2,
+                      "octave": 0,
+                      "slur_indicator": {
+                        "name": "none",
+                        "value": 0
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "InsertText": {
+            "line": 0,
+            "start_col": 25,
+            "cells": [
+              {
+                "char": " ",
+                "kind": {
+                  "name": "whitespace",
+                  "value": 11
+                },
+                "col": 25,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 25,
+            "deleted_cells": [
+              {
+                "char": " ",
+                "kind": {
+                  "name": "whitespace",
+                  "value": 11
+                },
+                "col": 25,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "InsertText": {
+            "line": 0,
+            "start_col": 25,
+            "cells": [
+              {
+                "char": " ",
+                "kind": {
+                  "name": "whitespace",
+                  "value": 11
+                },
+                "col": 25,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 25,
+            "deleted_cells": [
+              {
+                "char": " ",
+                "kind": {
+                  "name": "whitespace",
+                  "value": 11
+                },
+                "col": 25,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "Batch": {
+            "commands": [
+              {
+                "InsertText": {
+                  "line": 0,
+                  "start_col": 25,
+                  "cells": [
+                    {
+                      "char": " ",
+                      "kind": {
+                        "name": "whitespace",
+                        "value": 11
+                      },
+                      "col": 25,
+                      "flags": 0,
+                      "octave": 0,
+                      "slur_indicator": {
+                        "name": "none",
+                        "value": 0
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "InsertText": {
+                  "line": 0,
+                  "start_col": 26,
+                  "cells": [
+                    {
+                      "char": "",
+                      "kind": {
+                        "name": "pitched_element",
+                        "value": 1
+                      },
+                      "col": 26,
+                      "flags": 0,
+                      "pitch_code": "N7",
+                      "pitch_system": 2,
+                      "octave": 0,
+                      "slur_indicator": {
+                        "name": "none",
+                        "value": 0
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 26,
+            "deleted_cells": [
+              {
+                "char": "",
+                "kind": {
+                  "name": "pitched_element",
+                  "value": 1
+                },
+                "col": 26,
+                "flags": 0,
+                "pitch_code": "N7bb",
+                "pitch_system": 2,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 25,
+            "deleted_cells": [
+              {
+                "char": " ",
+                "kind": {
+                  "name": "whitespace",
+                  "value": 11
+                },
+                "col": 25,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 24,
+            "deleted_cells": [
+              {
+                "char": "",
+                "kind": {
+                  "name": "pitched_element",
+                  "value": 1
+                },
+                "col": 24,
+                "flags": 0,
+                "pitch_code": "N1bb",
+                "pitch_system": 2,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 23,
+            "deleted_cells": [
+              {
+                "char": "",
+                "kind": {
+                  "name": "pitched_element",
+                  "value": 1
+                },
+                "col": 23,
+                "flags": 0,
+                "pitch_code": "N1",
+                "pitch_system": 2,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 22,
+            "deleted_cells": [
+              {
+                "char": "",
+                "kind": {
+                  "name": "pitched_element",
+                  "value": 1
+                },
+                "col": 22,
+                "flags": 0,
+                "pitch_code": "N1",
+                "pitch_system": 2,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 21,
+            "deleted_cells": [
+              {
+                "char": "1",
+                "kind": {
+                  "name": "text",
+                  "value": 5
+                },
+                "col": 0,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 20,
+            "deleted_cells": [
+              {
+                "char": "1",
+                "kind": {
+                  "name": "text",
+                  "value": 5
+                },
+                "col": 0,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 19,
+            "deleted_cells": [
+              {
+                "char": "1",
+                "kind": {
+                  "name": "text",
+                  "value": 5
+                },
+                "col": 0,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 18,
+            "deleted_cells": [
+              {
+                "char": "1",
+                "kind": {
+                  "name": "text",
+                  "value": 5
+                },
+                "col": 0,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 17,
+            "deleted_cells": [
+              {
+                "char": "1",
+                "kind": {
+                  "name": "text",
+                  "value": 5
+                },
+                "col": 0,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 16,
+            "deleted_cells": [
+              {
+                "char": "1",
+                "kind": {
+                  "name": "text",
+                  "value": 5
+                },
+                "col": 0,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 15,
+            "deleted_cells": [
+              {
+                "char": "1",
+                "kind": {
+                  "name": "text",
+                  "value": 5
+                },
+                "col": 0,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 14,
+            "deleted_cells": [
+              {
+                "char": "1",
+                "kind": {
+                  "name": "text",
+                  "value": 5
+                },
+                "col": 0,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 13,
+            "deleted_cells": [
+              {
+                "char": "1",
+                "kind": {
+                  "name": "text",
+                  "value": 5
+                },
+                "col": 0,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 12,
+            "deleted_cells": [
+              {
+                "char": "1",
+                "kind": {
+                  "name": "text",
+                  "value": 5
+                },
+                "col": 0,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 11,
+            "deleted_cells": [
+              {
+                "char": "1",
+                "kind": {
+                  "name": "text",
+                  "value": 5
+                },
+                "col": 0,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 10,
+            "deleted_cells": [
+              {
+                "char": "1",
+                "kind": {
+                  "name": "text",
+                  "value": 5
+                },
+                "col": 0,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 9,
+            "deleted_cells": [
+              {
+                "char": "1",
+                "kind": {
+                  "name": "text",
+                  "value": 5
+                },
+                "col": 0,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 8,
+            "deleted_cells": [
+              {
+                "char": "1",
+                "kind": {
+                  "name": "text",
+                  "value": 5
+                },
+                "col": 0,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 7,
+            "deleted_cells": [
+              {
+                "char": "1",
+                "kind": {
+                  "name": "text",
+                  "value": 5
+                },
+                "col": 0,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 6,
+            "deleted_cells": [
+              {
+                "char": "1",
+                "kind": {
+                  "name": "text",
+                  "value": 5
+                },
+                "col": 0,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 5,
+            "deleted_cells": [
+              {
+                "char": "1",
+                "kind": {
+                  "name": "text",
+                  "value": 5
+                },
+                "col": 0,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 4,
+            "deleted_cells": [
+              {
+                "char": "1",
+                "kind": {
+                  "name": "text",
+                  "value": 5
+                },
+                "col": 0,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 3,
+            "deleted_cells": [
+              {
+                "char": "1",
+                "kind": {
+                  "name": "text",
+                  "value": 5
+                },
+                "col": 0,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 2,
+            "deleted_cells": [
+              {
+                "char": "1",
+                "kind": {
+                  "name": "text",
+                  "value": 5
+                },
+                "col": 0,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "DeleteText": {
+            "line": 0,
+            "start_col": 1,
+            "deleted_cells": [
+              {
+                "char": "1",
+                "kind": {
+                  "name": "text",
+                  "value": 5
+                },
+                "col": 0,
+                "flags": 0,
+                "octave": 0,
+                "slur_indicator": {
+                  "name": "none",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "current_index": 58,
+      "max_size": 100
+    },
+    "render_state": {
+      "dirty": false,
+      "dirty_regions": [],
+      "render_metrics": {
+        "last_render_time_ms": 0,
+        "cells_rendered": 0,
+        "beats_rendered": 0,
+        "slurs_rendered": 0,
+        "average_render_time_ms": 0
+      }
+    }
+  }
+}

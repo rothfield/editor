@@ -20,9 +20,23 @@ A high-performance **letter music notation editor** where pitches are represente
 
 ### Prerequisites
 
-- **Node.js** 18+ ([install](https://nodejs.org/))
-- **Rust** 1.75+ ([install](https://rustup.rs/))
-- **wasm-pack** (installed via `make setup`)
+**System Requirements:**
+- Node.js 18+ and npm 9+
+- Rust 1.75+ with cargo
+- Python 3.8+ with pip
+- Docker 20.10+ (optional, for LilyPond service and cross-browser testing)
+
+**See [DEPENDENCIES.md](DEPENDENCIES.md) for detailed installation instructions.**
+
+**Quick Verification:**
+```bash
+make verify-deps
+```
+
+**Automated Setup:**
+```bash
+make setup
+```
 
 ### Development Setup
 
@@ -97,6 +111,34 @@ editor/
 ├── Makefile                     # Build orchestration
 └── BUILD_OPTIMIZATION_GUIDE.md  # Detailed build info
 ```
+
+## Build System Architecture
+
+This project uses a **layered build system** with Makefile as the primary developer interface:
+
+```
+┌─────────────────────────────────────────┐
+│  Makefile (Primary Developer Interface) │
+└──────────────┬──────────────────────────┘
+               │
+       ┌───────┴────────┬─────────────┬─────────────┐
+       │                │             │             │
+   ┌───▼───┐    ┌──────▼──────┐  ┌──▼──┐    ┌─────▼─────┐
+   │  npm  │    │   cargo     │  │ py  │    │   bash    │
+   │scripts│    │  (Rust)     │  │(font│    │ scripts   │
+   └───────┘    └─────────────┘  └─────┘    └───────────┘
+```
+
+**When to use each tool:**
+
+- **Makefile:** All development tasks (`make dev`, `make build`, `make test`)
+- **npm:** JavaScript-specific tools (linting, formatting) when working in JS codebase
+- **cargo:** Direct Rust development (unit tests, clippy) when working in Rust codebase
+- **Never directly call:** Python scripts, bash scripts (use Makefile targets instead)
+
+**Key Design Principle:** Developers should be able to work effectively using only `make` commands.
+
+For complete dependency information, see [DEPENDENCIES.md](DEPENDENCIES.md).
 
 ## Architecture
 

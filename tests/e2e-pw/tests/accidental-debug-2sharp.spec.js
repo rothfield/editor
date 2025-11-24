@@ -44,16 +44,16 @@ test.describe('Debug: 2# Sharp Accidental', () => {
     console.log('=== 2# Debug Info ===');
     console.log(`Text content: "${textContent}"`);
     console.log(`Codepoint: U+${codepoint.toString(16).toUpperCase().padStart(4, '0')} (decimal: ${codepoint})`);
-    console.log(`Expected: U+E1F1 (decimal: ${0xE1F1})`);
+    console.log(`Expected: U+E037 (decimal: ${0xE037})`);
     console.log(`Font family: ${fontFamily}`);
     console.log(`Classes: ${classes}`);
     console.log(`Data attributes:`, JSON.stringify(dataAttrs, null, 2));
 
     // Check if it's the sharp glyph
-    if (codepoint === 0xE1F1) {
-      console.log('✓ 2# renders as expected sharp glyph U+E1F1');
+    if (codepoint === 0xE037) {
+      console.log('✓ 2# renders as expected sharp glyph U+E037');
     } else {
-      console.log(`✗ 2# renders as U+${codepoint.toString(16).toUpperCase().padStart(4, '0')} instead of U+E1F1`);
+      console.log(`✗ 2# renders as U+${codepoint.toString(16).toUpperCase().padStart(4, '0')} instead of U+E037`);
     }
   });
 });

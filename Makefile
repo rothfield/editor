@@ -1,7 +1,7 @@
 # Music Notation Editor POC - Build Orchestration
 # Supports development, production, and testing workflows
 
-.PHONY: help setup build build-dev build-prod build-wasm build-js build-css clean serve serve-prod kill test test-e2e test-headless test-coverage lint format type-check pre-commit install-tools lilypond-start lilypond-stop lilypond-logs lilypond-health lilypond-test lilypond-build lilypond-clean lilypond-restart lilypond-install-docker-arch build-fast build-wasm-fast build-profile-analyze fonts-spec fonts fonts-validate fonts-debug fonts-test fonts-install
+.PHONY: help setup verify-deps build build-dev build-prod build-wasm build-js build-css clean serve serve-prod kill test test-e2e test-headless test-coverage lint format type-check pre-commit install-tools lilypond-start lilypond-stop lilypond-logs lilypond-health lilypond-test lilypond-build lilypond-clean lilypond-restart lilypond-install-docker-arch build-fast build-wasm-fast build-profile-analyze fonts-spec fonts fonts-validate fonts-debug fonts-test fonts-install
 
 # Default target - Generate NotationFont
 .DEFAULT_GOAL := fonts
@@ -11,6 +11,7 @@ help:
 	@echo ""
 	@echo "Setup and Installation:"
 	@echo "  setup          - Install all dependencies and tools"
+	@echo "  verify-deps    - Verify all system dependencies are installed"
 	@echo "  install-tools  - Install development tools only"
 	@echo ""
 	@echo "Build Commands:"
@@ -34,8 +35,8 @@ help:
 	@echo "  fonts-install  - Install NotationFont locally (Arch Linux/Wayland)"
 	@echo ""
 	@echo "Development:"
-	@echo "  dev            - Start dev server with auto-rebuild + hot reload ⚡"
-	@echo "  serve          - Start dev server + LilyPond service ⚡"
+	@echo "  dev            - Build once + start dev server with auto-rebuild ⚡"
+	@echo "  serve          - Start LilyPond + dev server (skips initial build) ⚡"
 	@echo "  serve-prod     - Serve production build"
 	@echo "  kill           - Kill the running development server"
 	@echo "  clean          - Clean all build artifacts"
@@ -69,14 +70,19 @@ setup:
 	@echo "Setting up development environment..."
 	npm install
 	cargo install wasm-pack
-	python3 -m pip install --user playwright pytest pytest-cov PyYAML
+	python3 -m pip install --user -r requirements.txt
 	playwright install
 	@echo "Setup complete!"
+	@echo ""
+	@echo "Run 'make verify-deps' to verify all dependencies are installed correctly."
+
+verify-deps:
+	@bash scripts/verify-dependencies.sh
 
 install-tools:
 	@echo "Installing development tools..."
 	cargo install wasm-pack
-	python3 -m pip install --user playwright pytest pytest-cov PyYAML
+	python3 -m pip install --user -r requirements.txt
 	playwright install
 	@echo "Tools installed!"
 
@@ -110,6 +116,9 @@ build-wasm:
 build-js:
 	@echo "Bundling JavaScript..."
 	npm run build-js
+	@echo "Copying vendor libraries..."
+	@mkdir -p dist/lib
+	@cp node_modules/opensheetmusicdisplay/build/opensheetmusicdisplay.min.js dist/lib/
 	@echo "JavaScript build complete!"
 
 build-css:
@@ -132,10 +141,15 @@ fonts-spec:
 
 # Generate final TTF font (requires fontspec.json from Rust)
 fonts: fonts-spec
-	@echo "Generating NotationFont.ttf from fontspec.json + Noto Music..."
+	@echo "Generating unified NotationFont.ttf from fontspec.json + Noto Music..."
 	@mkdir -p dist/fonts
 	@python3 tools/fontgen/generate.py --strict --output-dir dist/fonts
-	@echo "✓ Font generated: dist/fonts/NotationFont.ttf"
+	@echo "Copying unified font to static/fonts..."
+	@mkdir -p static/fonts
+	@cp dist/fonts/NotationFont.ttf static/fonts/
+	@cp dist/fonts/NotationFont.woff2 static/fonts/
+	@cp dist/fonts/NotationFont-map.json static/fonts/
+	@echo "✓ Font generated: dist/fonts/NotationFont.ttf (contains all systems: Number, Western, Sargam, Doremi)"
 
 # Validate configuration (Rust + Python pipeline)
 fonts-validate: fonts-spec
@@ -166,7 +180,34 @@ fonts-install:
 	@echo "  Run 'fc-list | grep -i notation' to verify installation"
 
 # Development
-dev: fonts build-wasm build-css
+dev: build-wasm build-css
+	@if [ ! -f dist/fonts/NotationFont.ttf ] && [ ! -f dist/fonts/NotationFont.woff2 ]; then \
+		echo "NotationFont not found in dist/fonts/ - building..."; \
+		$(MAKE) fonts; \
+	else \
+		echo "NotationFont exists - skipping font generation"; \
+		echo "  (run 'make fonts' manually if atoms.yaml changes)"; \
+	fi
+	@echo "Copying vendor libraries..."
+	@mkdir -p dist/lib
+	@cp node_modules/opensheetmusicdisplay/build/opensheetmusicdisplay.min.js dist/lib/
+	@echo "Starting development server with auto-rebuild + hot reload..."
+	@echo "Edit files in src/js/ (rollup watches) or src/*.rs (cargo watch rebuilds WASM)"
+	@echo "Browser will auto-refresh on JS changes via hot reload"
+	npm run dev
+
+# Start watchers without initial WASM build (cargo-watch will build immediately)
+dev-watch-only: build-css
+	@if [ ! -f dist/fonts/NotationFont.ttf ] && [ ! -f dist/fonts/NotationFont.woff2 ]; then \
+		echo "NotationFont not found in dist/fonts/ - building..."; \
+		$(MAKE) fonts; \
+	else \
+		echo "NotationFont exists - skipping font generation"; \
+		echo "  (run 'make fonts' manually if atoms.yaml changes)"; \
+	fi
+	@echo "Copying vendor libraries..."
+	@mkdir -p dist/lib
+	@cp node_modules/opensheetmusicdisplay/build/opensheetmusicdisplay.min.js dist/lib/
 	@echo "Starting development server with auto-rebuild + hot reload..."
 	@echo "Edit files in src/js/ (rollup watches) or src/*.rs (cargo watch rebuilds WASM)"
 	@echo "Browser will auto-refresh on JS changes via hot reload"
@@ -180,7 +221,7 @@ serve:
 	@echo ""
 	@echo "Starting development server..."
 	@echo ""
-	@$(MAKE) dev
+	@$(MAKE) dev-watch-only
 
 serve-prod: build-prod
 	@echo "Starting production server..."

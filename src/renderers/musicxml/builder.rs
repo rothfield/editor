@@ -3,7 +3,7 @@
 use crate::models::PitchCode;
 use super::duration::duration_to_note_type_fraction;
 use super::pitch::{pitch_code_to_step_alter, pitch_code_to_accidental};
-use super::export_ir::Syllabic;
+use crate::ir::Syllabic;
 
 /// Articulation types supported in MusicXML export
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -686,7 +686,6 @@ impl Default for MusicXmlBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{PitchSystem, Accidental};
 
     #[test]
     fn test_builder_new() {
@@ -701,10 +700,10 @@ mod tests {
     fn test_write_note_updates_last_note() {
         let mut builder = MusicXmlBuilder::new();
         builder.start_measure();
-        let pitch = Pitch::new("1".to_string(), Accidental::Natural, 0, PitchSystem::Number);
-        builder.write_note(&pitch, 4, 1.0).unwrap();
+        let pitch_code = PitchCode::N1;
+        builder.write_note_with_beam_from_pitch_code(&pitch_code, 0, 4, 1.0, None, None, None, None, None, None, None).unwrap();
 
-        assert!(builder.last_note_legacy.is_some());
+        assert!(builder.last_note.is_some());
         assert!(builder.buffer.contains("<step>C</step>"));
         assert!(builder.buffer.contains("<octave>4</octave>"));
     }
@@ -713,8 +712,8 @@ mod tests {
     fn test_write_rest_clears_last_note() {
         let mut builder = MusicXmlBuilder::new();
         builder.start_measure();
-        let pitch = Pitch::new("1".to_string(), Accidental::Natural, 0, PitchSystem::Number);
-        builder.write_note(&pitch, 4, 1.0).unwrap();
+        let pitch_code = PitchCode::N1;
+        builder.write_note_with_beam_from_pitch_code(&pitch_code, 0, 4, 1.0, None, None, None, None, None, None, None).unwrap();
         builder.write_rest(4, 1.0);
 
         assert_eq!(builder.last_note, None);
@@ -725,9 +724,9 @@ mod tests {
     fn test_reset_context() {
         let mut builder = MusicXmlBuilder::new();
         builder.start_measure();
-        let pitch = Pitch::new("2".to_string(), Accidental::Natural, 1, PitchSystem::Number);
-        builder.write_note(&pitch, 2, 0.5).unwrap();
-        assert!(builder.last_note_legacy.is_some());
+        let pitch_code = PitchCode::N2;
+        builder.write_note_with_beam_from_pitch_code(&pitch_code, 1, 2, 0.5, None, None, None, None, None, None, None).unwrap();
+        assert!(builder.last_note.is_some());
 
         builder.reset_context();
         assert_eq!(builder.last_note, None);
@@ -737,8 +736,8 @@ mod tests {
     fn test_octave_conversion() {
         let mut builder = MusicXmlBuilder::new();
         builder.start_measure();
-        let pitch = Pitch::new("1".to_string(), Accidental::Natural, 0, PitchSystem::Number);
-        builder.write_note(&pitch, 4, 1.0).unwrap();
+        let pitch_code = PitchCode::N1;
+        builder.write_note_with_beam_from_pitch_code(&pitch_code, 0, 4, 1.0, None, None, None, None, None, None, None).unwrap();
 
         // octave 0 in music-text = MIDI octave 4 (middle C)
         assert!(builder.buffer.contains("<octave>4</octave>"));
@@ -748,8 +747,8 @@ mod tests {
     fn test_alter_omitted_for_natural() {
         let mut builder = MusicXmlBuilder::new();
         builder.start_measure();
-        let pitch = Pitch::new("1".to_string(), Accidental::Natural, 0, PitchSystem::Number);
-        builder.write_note(&pitch, 4, 1.0).unwrap();
+        let pitch_code = PitchCode::N1;
+        builder.write_note_with_beam_from_pitch_code(&pitch_code, 0, 4, 1.0, None, None, None, None, None, None, None).unwrap();
 
         // Natural notes should not have <alter> element
         assert!(!builder.buffer.contains("<alter>"));
@@ -759,8 +758,8 @@ mod tests {
     fn test_alter_included_for_sharp() {
         let mut builder = MusicXmlBuilder::new();
         builder.start_measure();
-        let pitch = Pitch::new("1".to_string(), Accidental::Sharp, 0, PitchSystem::Number);
-        builder.write_note(&pitch, 4, 1.0).unwrap();
+        let pitch_code = PitchCode::N1s;
+        builder.write_note_with_beam_from_pitch_code(&pitch_code, 0, 4, 1.0, None, None, None, None, None, None, None).unwrap();
 
         assert!(builder.buffer.contains("<alter>1</alter>"));
     }

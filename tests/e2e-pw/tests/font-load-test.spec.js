@@ -16,8 +16,11 @@ test('NotationFont loads without timeout', async ({ page }) => {
   // Navigate to editor
   await page.goto('http://localhost:8080');
 
-  // Wait for editor to initialize
-  await page.waitForSelector('#editor', { state: 'visible', timeout: 10000 });
+  // Wait for editor to initialize (check that it's attached to DOM, not necessarily visible)
+  await page.waitForSelector('#notation-editor', { state: 'attached', timeout: 10000 });
+
+  // Wait for WASM to load
+  await page.waitForFunction(() => window.editor !== undefined, { timeout: 10000 });
 
   // Check console logs for font loading
   const fontLoadMessages = consoleMessages.filter(msg =>
@@ -35,23 +38,15 @@ test('NotationFont loads without timeout', async ({ page }) => {
   expect(hasTimeout).toBe(false);
   console.log('✓ No font load timeout warning');
 
-  // NOTE: System-specific font loading is currently disabled.
-  // Full NotationFont is loaded via @font-face in index.html.
-  // The following check is commented out:
-  /*
-  const hasSuccess = consoleMessages.some(msg =>
-    msg.includes('NotationFont-Number') && msg.includes('loaded successfully')
-  );
-  expect(hasSuccess).toBe(true);
-  console.log('✓ NotationFont-Number loaded successfully');
-  */
+  // NOTE: Unified NotationFont (containing all systems) is loaded via @font-face in index.html.
+  // No system-specific fonts - single NotationFont.ttf contains Number, Western, Sargam, and Doremi.
 
   // Verify no errors
   expect(errors).toHaveLength(0);
   console.log('✓ No console errors');
 
   // Type some text to verify font renders
-  const editor = page.locator('#editor');
+  const editor = page.locator('#notation-editor');
   await editor.click();
   await page.keyboard.type('1 2 3');
 

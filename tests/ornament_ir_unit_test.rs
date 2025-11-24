@@ -1,5 +1,5 @@
 use editor_wasm::models::{Cell, ElementKind, Line, PitchCode, Ornament, OrnamentPlacement, SlurIndicator};
-use editor_wasm::renderers::musicxml::line_to_ir::build_export_measures_from_line;
+use editor_wasm::ir::build_export_measures_from_line;
 
 #[test]
 fn test_note_with_ornament_creates_note_with_grace_notes() {

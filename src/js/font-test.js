@@ -6,6 +6,8 @@
  * regardless of changes to atoms.yaml or font generation.
  */
 
+import logger, { LOG_CATEGORIES } from './logger.js';
+
 // Font configuration loaded from WASM only (single source of truth)
 let fontConfig = null;
 
@@ -34,11 +36,14 @@ const PITCH_SYSTEMS = {
 };
 
 // Octave variants mapping
+// Octave variants - MUST match Rust octave_index() order in font_lookup_tables.rs
+// Index 0: octave 0 (base), Index 1: octave -2, Index 2: octave -1, Index 3: octave +1, Index 4: octave +2
 const OCTAVE_VARIANTS = [
-  { shift: 1, label: "1 dot above (octave +1)" },
-  { shift: 2, label: "2 dots above (octave +2)" },
-  { shift: -1, label: "1 dot below (octave -1)" },
-  { shift: -2, label: "2 dots below (octave -2)" }
+  { shift: 0, label: "(natural - octave 0)" },     // Index 0
+  { shift: -2, label: "2 dots below (octave -2)" }, // Index 1
+  { shift: -1, label: "1 dot below (octave -1)" },  // Index 2
+  { shift: 1, label: "1 dot above (octave +1)" },   // Index 3
+  { shift: 2, label: "2 dots above (octave +2)" }   // Index 4
 ];
 
 // Initialize font config from WASM (single source of truth)
@@ -59,12 +64,10 @@ async function initFontConfig() {
     }
 
     fontConfig = config;
-    console.log('✓ Font config loaded from WASM:', fontConfig);
-    console.log('  - Systems:', fontConfig.systems?.length || 0);
-    console.log('  - Symbols:', fontConfig.symbols?.length || 0);
+    logger.info(LOG_CATEGORIES.WASM, 'Font config loaded from WASM', { fontConfig });
     return true;
   } catch (e) {
-    console.error('Error loading font config:', e);
+    logger.error(LOG_CATEGORIES.WASM, 'Error loading font config', { error: e });
     return false;
   }
 }
@@ -104,8 +107,7 @@ export class FontTestUI {
     if (fontConfig?.symbols && fontConfig.symbols.length > 0) {
       this.addSymbolsFromWasm();
     } else {
-      console.warn('No symbols found in WASM font config');
-    }
+      logger.warn(LOG_CATEGORIES.WASM, 'No symbols found in WASM font config');
 
     // 2. Display each pitch system with all variants (including accidentals)
     for (const [systemKey, systemInfo] of Object.entries(PITCH_SYSTEMS)) {
@@ -156,7 +158,7 @@ export class FontTestUI {
     // Get per-system PUA config from fontConfig.systems
     const systemConfig = fontConfig.systems?.find(s => s.system_name === systemKey);
     if (!systemConfig) {
-      console.warn(`No PUA config found for system: ${systemKey}`);
+      logger.warn(LOG_CATEGORIES.WASM, `No PUA config found for system: ${systemKey}`);
       return;
     }
 
@@ -181,11 +183,8 @@ export class FontTestUI {
       const variantGrid = document.createElement('div');
       variantGrid.className = 'grid grid-cols-4 gap-2 mb-3';
 
-      // Natural version (no octave shift)
-      const naturalItem = this.createGlyphItem(char, `${char} (natural)`, null);
-      variantGrid.appendChild(naturalItem);
-
-      // All octave variants (variants 0-3)
+      // All octave variants (octave 0, -2, -1, +1, +2 at indices 0-4)
+      // CRITICAL: Must match Rust octave_index() order in font_lookup_tables.rs
       for (let variantIdx = 0; variantIdx < OCTAVE_VARIANTS.length; variantIdx++) {
         const variant = OCTAVE_VARIANTS[variantIdx];
         const cp = systemConfig.pua_base + (charIndexInSystem * systemConfig.variants_per_character) + variantIdx;
@@ -365,15 +364,21 @@ export class FontTestUI {
       const char = allChars[charIdx];
       const systemName = this.getCharacterSystem(char);
 
-      // Natural (no octave shift)
-      const cpNatural = char.charCodeAt(0);
-      tbody.appendChild(this.createTableRow(cpNatural, char, `${char} (natural)`, 'Base Pitch', systemName));
+      // Get the system config for this character
+      const systemConfig = this.getSystemConfigForChar(char);
+      if (!systemConfig) continue;
 
-      // Octave variants
-      for (let variantIdx = 0; variantIdx < 4; variantIdx++) {
-        const cp = fontConfig.pua_start + (charIdx * fontConfig.chars_per_variant) + variantIdx;
+      // Calculate character index within its system
+      const charIndexInSystem = systemConfig.characters.indexOf(char);
+      if (charIndexInSystem === -1) continue;
+
+      // All octave variants (octave 0, -2, -1, +1, +2 at indices 0-4)
+      // CRITICAL: Must match Rust octave_index() order in font_lookup_tables.rs
+      for (let variantIdx = 0; variantIdx < OCTAVE_VARIANTS.length; variantIdx++) {
+        const cp = systemConfig.pua_base + (charIndexInSystem * systemConfig.variants_per_character) + variantIdx;
         const variantLabel = OCTAVE_VARIANTS[variantIdx].label;
-        tbody.appendChild(this.createTableRow(cp, String.fromCodePoint(cp), `${char} with ${variantLabel}`, 'Octave Variant', `${systemName} +octave`));
+        const octaveShift = OCTAVE_VARIANTS[variantIdx].shift;
+        tbody.appendChild(this.createTableRow(cp, String.fromCodePoint(cp), `${char} ${variantLabel}`, 'Octave Variant', `${systemName} octave ${octaveShift >= 0 ? '+' : ''}${octaveShift}`));
       }
     }
 
@@ -438,6 +443,15 @@ export class FontTestUI {
     return 'Unknown';
   }
 
+  getSystemConfigForChar(char) {
+    for (const [systemKey, systemInfo] of Object.entries(PITCH_SYSTEMS)) {
+      if (systemInfo.characters.includes(char)) {
+        return systemInfo;
+      }
+    }
+    return null;
+  }
+
   getSymbolType(cp) {
     if (SYMBOLS.accidentals.find(s => s.cp === cp)) return 'Accidental';
     if (SYMBOLS.barlines.find(s => s.cp === cp)) return 'Barline';
@@ -482,7 +496,7 @@ function initFontSandbox() {
     // Find the system config from fontConfig.systems
     const systemConfig = fontConfig.systems?.find(s => s.system_name === systemKey);
     if (!systemConfig) {
-      console.warn(`System ${systemKey} not found in fontConfig`);
+      logger.warn(LOG_CATEGORIES.WASM, `System ${systemKey} not found in fontConfig`);
       continue;
     }
 
@@ -563,7 +577,7 @@ async function initFontTestUI() {
   const wasmReady = await initFontConfig();
 
   if (!wasmReady) {
-    console.error('FATAL: Font config initialization failed. Font Test UI cannot function without WASM.');
+    logger.error(LOG_CATEGORIES.WASM, 'FATAL: Font config initialization failed. Font Test UI cannot function without WASM.');
     return;
   }
 

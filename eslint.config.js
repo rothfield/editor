@@ -1,9 +1,13 @@
 import js from "@eslint/js";
 import globals from "globals";
+import tsPlugin from "@typescript-eslint/eslint-plugin";
+import tsParser from "@typescript-eslint/parser";
 
 export default [
   js.configs.recommended,
+  // JavaScript files configuration
   {
+    files: ["**/*.js", "**/*.mjs", "**/*.cjs"],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: "module",
@@ -121,6 +125,43 @@ export default [
 
       // WASM-specific rules
       "no-empty": ["error", { "allowEmptyCatch": true }],
+    },
+  },
+  // TypeScript files configuration
+  {
+    files: ["**/*.ts", "**/*.tsx"],
+    languageOptions: {
+      parser: tsParser,
+      parserOptions: {
+        ecmaVersion: 2022,
+        sourceType: "module",
+        project: "./tsconfig.json",
+      },
+      globals: {
+        ...globals.browser,
+        ...globals.node,
+      },
+    },
+    plugins: {
+      "@typescript-eslint": tsPlugin,
+    },
+    rules: {
+      // Extend recommended TypeScript rules
+      ...tsPlugin.configs.recommended.rules,
+
+      // TypeScript-specific overrides
+      "@typescript-eslint/no-explicit-any": "warn", // Allow during migration
+      "@typescript-eslint/no-unused-vars": "error",
+      "@typescript-eslint/explicit-function-return-type": "off", // Too strict initially
+      "@typescript-eslint/explicit-module-boundary-types": "off",
+      "@typescript-eslint/no-non-null-assertion": "warn",
+      "@typescript-eslint/ban-ts-comment": "warn",
+
+      // Disable JS rules that conflict with TS rules
+      "no-unused-vars": "off", // Use @typescript-eslint/no-unused-vars instead
+      "no-undef": "off", // TypeScript handles this
+      "no-redeclare": "off",
+      "@typescript-eslint/no-redeclare": "error",
     },
   },
   {

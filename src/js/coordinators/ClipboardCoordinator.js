@@ -158,6 +158,9 @@ export default class ClipboardCoordinator {
 
       this.editor.addToConsoleLog(`Pasted ${cellsToPaste.length} cells`);
       await this.editor.render();
+
+      // Show cursor after paste operation
+      this.editor.showCursor();
     } catch (error) {
       console.error('Paste failed:', error);
       this.editor.showError('Paste failed', { details: error.message });

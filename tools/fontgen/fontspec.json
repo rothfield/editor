@@ -1,6 +1,6 @@
 {
   "glyph_variants": {
-    "accidental_types": 5,
+    "accidental_types": 6,
     "octave_variants": 5
   },
   "notation_systems": [
@@ -15,8 +15,8 @@
         "7"
       ],
       "name": "number",
-      "pua_base": 57600,
-      "variants_per_char": 25
+      "pua_base": 57344,
+      "variants_per_char": 30
     },
     {
       "characters": [
@@ -36,8 +36,8 @@
         "b"
       ],
       "name": "western",
-      "pua_base": 57856,
-      "variants_per_char": 25
+      "pua_base": 57600,
+      "variants_per_char": 30
     },
     {
       "characters": [
@@ -55,8 +55,8 @@
         "N"
       ],
       "name": "sargam",
-      "pua_base": 58368,
-      "variants_per_char": 25
+      "pua_base": 58112,
+      "variants_per_char": 30
     },
     {
       "characters": [
@@ -76,8 +76,8 @@
         "T"
       ],
       "name": "doremi",
-      "pua_base": 58880,
-      "variants_per_char": 25
+      "pua_base": 58624,
+      "variants_per_char": 30
     }
   ]
 }

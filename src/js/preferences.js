@@ -9,6 +9,8 @@
  * Uses UnoCSS for styling and localStorage for persistence
  */
 
+import logger, { LOG_CATEGORIES } from './logger.js';
+
 class PreferencesUI {
   constructor(editor) {
     this.editor = editor;
@@ -342,7 +344,7 @@ class PreferencesUI {
    */
   showNotification(message, type = 'info') {
     // For now, just log to console
-    console.log(`[${type.toUpperCase()}] ${message}`);
+    logger.log(LOG_CATEGORIES.UI, `[${type.toUpperCase()}] ${message}`);
 
     // Optional: display a toast notification
     // This could be enhanced with a toast component later

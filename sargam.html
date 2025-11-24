@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Sargam System - Font Test</title>
+    <style>
+        @font-face {
+            font-family: 'NotationFont';
+            src: url('/static/fonts/NotationFont.woff2') format('woff2'),
+                 url('/static/fonts/NotationFont.ttf') format('truetype');
+        }
+
+        body {
+            font-family: sans-serif;
+            padding: 40px;
+            background: #f5f5f5;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: #333;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 10px;
+        }
+
+        .test-section {
+            background: white;
+            padding: 30px;
+            margin: 20px 0;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        h2 {
+            color: #667eea;
+            margin-top: 0;
+        }
+
+        .scale {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin: 20px 0;
+        }
+
+        .note {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            background: #fafafa;
+            min-width: 80px;
+        }
+
+        .glyph {
+            font-family: 'NotationFont', sans-serif;
+            font-size: 60px;
+            line-height: 1.2;
+            margin: 10px 0;
+            color: #333;
+        }
+
+        .label {
+            font-size: 12px;
+            color: #666;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .codepoint {
+            font-size: 10px;
+            color: #999;
+            font-family: monospace;
+            margin-top: 5px;
+        }
+
+        .warning {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+
+        .success {
+            background: #d4edda;
+            border: 1px solid #28a745;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+
+        .komal {
+            background: #e3f2fd;
+            border-color: #2196f3;
+        }
+
+        .tivra {
+            background: #fff3e0;
+            border-color: #ff9800;
+        }
+
+        .info-box {
+            background: #f0f4ff;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎵 Sargam System - NotationFont Test</h1>
+
+    <div class="info-box">
+        <strong>Sargam (Indian Classical Music Notation)</strong>
+        <p>Testing all 12 chromatic notes. <strong>Important:</strong> In Sargam notation, case indicates komal (flat) vs shuddha (natural):</p>
+        <ul>
+            <li><strong>Komal notes</strong> (lowercase): r, g, m, d, n - should appear WITHOUT accidental symbols</li>
+            <li><strong>Shuddha notes</strong> (uppercase): R, G, P, D, N - natural pitches</li>
+            <li><strong>Tivra Ma</strong> (uppercase M) - should appear WITHOUT sharp symbol</li>
+        </ul>
+    </div>
+
+    <div class="test-section">
+        <h2>Complete Chromatic Scale (12 Notes)</h2>
+        <div class="scale" id="chromatic-scale"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Komal Notes (Should Have NO Accidentals)</h2>
+        <div class="success">
+            <strong>✓ Expected:</strong> These notes should appear as plain letters WITHOUT flat symbols.<br>
+            The lowercase itself indicates komal (flat) pitch.
+        </div>
+        <div class="scale" id="komal-notes"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Tivra Ma (Should Have NO Accidental)</h2>
+        <div class="success">
+            <strong>✓ Expected:</strong> Uppercase M should appear WITHOUT sharp symbol.<br>
+            The uppercase itself indicates tivra (sharp) pitch.
+        </div>
+        <div class="scale" id="tivra-notes"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Octave Variants (Example: Sa)</h2>
+        <div class="success">
+            <strong>✓ Expected:</strong> Dots above/below indicate octave shifts.<br>
+            1 dot above = +1 octave, 2 dots above = +2 octaves<br>
+            1 dot below = -1 octave, 2 dots below = -2 octaves<br>
+            <strong>Note:</strong> ALL Sargam notes (including komal/tivra) can have octave variants.
+        </div>
+        <div class="scale" id="octave-variants"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Accidentals on Shuddha Notes (Example: S, R, G)</h2>
+        <div class="warning">
+            <strong>⚠ Note:</strong> Only shuddha (natural) notes can have accidentals in theory.<br>
+            Komal notes (r, g, m, d, n) and tivra Ma (M) should NEVER have accidentals - the case IS the pitch.
+        </div>
+        <div class="scale" id="shuddha-accidentals"></div>
+    </div>
+
+    <script>
+        // Sargam system configuration (from atoms.yaml)
+        // Index 21-32 in character_order: "SrRgGmMPdDnN"
+        const SARGAM_NOTES = [
+            { char: 'S', label: 'Sa', desc: 'Root (S)', pua_base: 0xE300, char_index: 0 },
+            { char: 'r', label: 'komal Re', desc: 'Flat Re (r)', pua_base: 0xE300, char_index: 1, komal: true },
+            { char: 'R', label: 'Re', desc: 'Natural Re (R)', pua_base: 0xE300, char_index: 2 },
+            { char: 'g', label: 'komal Ga', desc: 'Flat Ga (g)', pua_base: 0xE300, char_index: 3, komal: true },
+            { char: 'G', label: 'Ga', desc: 'Natural Ga (G)', pua_base: 0xE300, char_index: 4 },
+            { char: 'm', label: 'komal ma', desc: 'Flat ma (m)', pua_base: 0xE300, char_index: 5, komal: true },
+            { char: 'M', label: 'tivra Ma', desc: 'Sharp Ma (M)', pua_base: 0xE300, char_index: 6, tivra: true },
+            { char: 'P', label: 'Pa', desc: 'Perfect 5th (P)', pua_base: 0xE300, char_index: 7 },
+            { char: 'd', label: 'komal Dha', desc: 'Flat Dha (d)', pua_base: 0xE300, char_index: 8, komal: true },
+            { char: 'D', label: 'Dha', desc: 'Natural Dha (D)', pua_base: 0xE300, char_index: 9 },
+            { char: 'n', label: 'komal Ni', desc: 'Flat Ni (n)', pua_base: 0xE300, char_index: 10, komal: true },
+            { char: 'N', label: 'Ni', desc: 'Natural Ni (N)', pua_base: 0xE300, char_index: 11 },
+        ];
+
+        function renderNote(note, containerId) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+
+            const noteDiv = document.createElement('div');
+            noteDiv.className = 'note';
+            if (note.komal) noteDiv.classList.add('komal');
+            if (note.tivra) noteDiv.classList.add('tivra');
+
+            // Calculate codepoint: pua_base + (char_index × 30) + variant_index
+            // variant_index 0 = natural, octave 0
+            const codepoint = note.pua_base + (note.char_index * 30) + 0;
+            const glyph = String.fromCodePoint(codepoint);
+
+            noteDiv.innerHTML = `
+                <div class="label">${note.label}</div>
+                <div class="glyph">${glyph}</div>
+                <div class="codepoint">U+${codepoint.toString(16).toUpperCase()}</div>
+                <div class="codepoint">${note.desc}</div>
+            `;
+
+            container.appendChild(noteDiv);
+        }
+
+        // Render chromatic scale
+        SARGAM_NOTES.forEach(note => renderNote(note, 'chromatic-scale'));
+
+        // Render komal notes separately
+        SARGAM_NOTES.filter(note => note.komal).forEach(note => renderNote(note, 'komal-notes'));
+
+        // Render tivra note separately
+        SARGAM_NOTES.filter(note => note.tivra).forEach(note => renderNote(note, 'tivra-notes'));
+
+        // Generate and render octave variants for Sa
+        // octave_idx: 0=base, 1=+1_dot_above, 2=+2_dots_above, 3=-1_dot_below, 4=-2_dots_below
+        const OCTAVE_VARIANTS = [
+            { char: 'S', label: 'S (base)', desc: 'Base octave', pua_base: 0xE300, char_index: 0, acc_type: 0, octave_idx: 0 },
+            { char: 'Ṡ', label: 'S (+1 octave)', desc: '1 dot above', pua_base: 0xE300, char_index: 0, acc_type: 0, octave_idx: 1 },
+            { char: 'S̈', label: 'S (+2 octaves)', desc: '2 dots above', pua_base: 0xE300, char_index: 0, acc_type: 0, octave_idx: 2 },
+            { char: 'Ṣ', label: 'S (-1 octave)', desc: '1 dot below', pua_base: 0xE300, char_index: 0, acc_type: 0, octave_idx: 3 },
+            { char: 'S̤', label: 'S (-2 octaves)', desc: '2 dots below', pua_base: 0xE300, char_index: 0, acc_type: 0, octave_idx: 4 },
+        ];
+
+        function renderNoteWithOctave(note, containerId) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+
+            const noteDiv = document.createElement('div');
+            noteDiv.className = 'note';
+            if (note.komal) noteDiv.classList.add('komal');
+            if (note.tivra) noteDiv.classList.add('tivra');
+
+            // Calculate codepoint: pua_base + (char_index × 30) + variant_index
+            // variant_index = (acc_type × 5) + octave_idx
+            const variant_index = (note.acc_type * 5) + note.octave_idx;
+            const codepoint = note.pua_base + (note.char_index * 30) + variant_index;
+            const glyph = String.fromCodePoint(codepoint);
+
+            noteDiv.innerHTML = `
+                <div class="label">${note.label}</div>
+                <div class="glyph">${glyph}</div>
+                <div class="codepoint">U+${codepoint.toString(16).toUpperCase()}</div>
+                <div class="codepoint">${note.desc}</div>
+            `;
+
+            container.appendChild(noteDiv);
+        }
+
+        OCTAVE_VARIANTS.forEach(note => renderNoteWithOctave(note, 'octave-variants'));
+
+        // Generate example accidentals on shuddha notes (for demonstration)
+        // IMPORTANT: In actual usage, these are rare - komal/tivra notes never get accidentals
+        const SHUDDHA_ACCIDENTALS = [
+            { char: 'S♭', label: 'S flat', desc: 'Sa (flat)', pua_base: 0xE300, char_index: 0, acc_type: 1, octave_idx: 0 },
+            { char: 'S#', label: 'S sharp', desc: 'Sa (sharp)', pua_base: 0xE300, char_index: 0, acc_type: 5, octave_idx: 0 },
+            { char: 'R♭', label: 'R flat', desc: 'Re (flat)', pua_base: 0xE300, char_index: 2, acc_type: 1, octave_idx: 0 },
+            { char: 'R#', label: 'R sharp', desc: 'Re (sharp)', pua_base: 0xE300, char_index: 2, acc_type: 5, octave_idx: 0 },
+            { char: 'G♭', label: 'G flat', desc: 'Ga (flat)', pua_base: 0xE300, char_index: 4, acc_type: 1, octave_idx: 0 },
+            { char: 'G#', label: 'G sharp', desc: 'Ga (sharp)', pua_base: 0xE300, char_index: 4, acc_type: 5, octave_idx: 0 },
+        ];
+        SHUDDHA_ACCIDENTALS.forEach(note => renderNoteWithOctave(note, 'shuddha-accidentals'));
+
+        console.log('✓ Sargam font test loaded');
+        console.log('Check that komal notes (r, g, m, d, n) and tivra Ma (M) have NO accidental symbols');
+        console.log('Check that octave variants show dots above/below');
+        console.log('Check that only shuddha notes can have accidentals');
+    </script>
+</body>
+</html>

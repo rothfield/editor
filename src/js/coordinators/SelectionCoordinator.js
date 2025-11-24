@@ -30,7 +30,7 @@ export default class SelectionCoordinator {
       try {
         this.editor.wasmModule.clearSelection();
       } catch (error) {
-        console.warn('Failed to clear selection in WASM:', error);
+        logger.warn(LOG_CATEGORIES.WASM, 'Failed to clear selection in WASM', { error });
       }
     }
 
@@ -51,7 +51,7 @@ export default class SelectionCoordinator {
       // Ensure we return boolean false, not null
       return !!(selectionInfo && !selectionInfo.is_empty);
     } catch (error) {
-      console.warn('Failed to get selection info from WASM:', error);
+      logger.warn(LOG_CATEGORIES.WASM, 'Failed to get selection info from WASM', { error });
       return false;
     }
   }
@@ -78,7 +78,7 @@ export default class SelectionCoordinator {
         active: true // Compatibility with old code
       };
     } catch (error) {
-      console.warn('Failed to get selection from WASM:', error);
+      logger.warn(LOG_CATEGORIES.WASM, 'Failed to get selection from WASM', { error });
       return null;
     }
   }
@@ -212,9 +212,7 @@ export default class SelectionCoordinator {
       // Clear selection
       this.clearSelection();
     } catch (error) {
-      console.error('Failed to replace selected text:', error);
-      this.editor.showError('Failed to replace selection');
-    }
+      logger.error(LOG_CATEGORIES.EDITOR, 'Failed to replace selected text', { error });
   }
 
   /**
@@ -287,7 +285,171 @@ export default class SelectionCoordinator {
         });
       }
     } catch (error) {
-      console.error('Primary selection update failed:', error);
+      logger.error(LOG_CATEGORIES.EDITOR, 'Primary selection update failed', { error });
+
+  /**
+   * Get visually selected cells from DOM
+   */
+  getVisuallySelectedCells() {
+    const selectedCells = this.editor.element.querySelectorAll('.char-cell.selected');
+    if (selectedCells.length === 0) {
+      return null;
+    }
+
+    // Extract cell indices from data-cell-index attributes
+    const indices = Array.from(selectedCells)
+      .map(cell => parseInt(cell.dataset.cellIndex))
+      .filter(idx => !isNaN(idx))
+      .sort((a, b) => a - b);
+
+    if (indices.length === 0) {
+      return null;
+    }
+
+    return {
+      start: Math.min(...indices),
+      end: Math.max(...indices) + 1 // Half-open range
+    };
+  }
+
+  /**
+   * Get effective selection: either user selection or single element to left of cursor
+   * Returns {start, end} or null if no valid selection available
+   * Priority: 1) Visual DOM selection, 2) WASM selection, 3) Cursor position
+   */
+  getEffectiveSelection() {
+    // FIRST: Check for visually highlighted cells in DOM
+    const visualSelection = this.getVisuallySelectedCells();
+    if (visualSelection) {
+      return visualSelection;
+    }
+
+    // SECOND: If there's a user selection in WASM, use it
+    if (this.hasSelection()) {
+      const sel = this.getSelection();
+      // Convert to simple numeric range for single-line selection
+      if (sel.start.line === sel.end.line) {
+        return {
+          start: Math.min(sel.start.col, sel.end.col),
+          end: Math.max(sel.start.col, sel.end.col)
+        };
+      }
+      // Multi-line not yet supported
+      return null;
+    }
+
+    // THIRD: No selection, get cell at cursor position
+    const line = this.editor.getCurrentLine();
+    if (!line || !line.cells || line.cells.length === 0) {
+      return null;
+    }
+
+    const cursorPos = this.editor.getCursorPosition();
+
+    // Special case: cursor at position 0 with cells present -> target first cell
+    if (cursorPos === 0 && line.cells.length > 0) {
+      return {
+        start: 0,
+        end: 1
+      };
+    }
+
+    const { cell_index: cellIndex, char_offset_in_cell: charOffsetInCell } = this.editor.charPosToCellIndex(cursorPos);
+
+    // Determine which cell to target
+    let targetCellIndex;
+    if (charOffsetInCell > 0) {
+      // Cursor is in the middle or end of a cell, so target is this cell
+      targetCellIndex = cellIndex;
+    } else if (cellIndex > 0) {
+      // Cursor is at start of cell (not first cell), so target is previous cell
+      targetCellIndex = cellIndex - 1;
+    } else {
+      // No valid cell to target
+      return null;
+    }
+
+    // Return half-open range [start, end)
+    return {
+      start: targetCellIndex,
+      end: targetCellIndex + 1
+    };
+  }
+
+  /**
+   * Validate selection for musical commands
+   */
+  validateSelectionForCommands() {
+    const selection = this.getEffectiveSelection();
+    if (!selection) {
+      logger.warn(LOG_CATEGORIES.EDITOR, 'No selection or element to left of cursor');
+      return false;
+    }
+
+    // Check if selection is empty (half-open range [start, end))
+    if (selection.start >= selection.end) {
+      logger.warn(LOG_CATEGORIES.EDITOR, 'Empty selection for command');
+      return false;
+    }
+
+    // Get selected text from the line to check if it contains valid musical elements
+    const line = this.editor.getCurrentLine();
+    if (!line || !line.cells) {
+      logger.warn(LOG_CATEGORIES.EDITOR, 'No line or cells available for validation');
+      return false;
+    }
+
+    const cells = line.cells || [];
+    // Use half-open range [start, end)
+    const selectedCells = cells.filter((cell, index) =>
+      index >= selection.start && index < selection.end
+    );
+    const selectedText = selectedCells.map(cell => cell.char || '').join('');
+
+    if (!selectedText || selectedText.trim().length === 0) {
+      this.editor.showError('Empty selection - please select text to apply musical commands', {
+        source: 'Command Validation'
+      });
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
+   * Handle Select All (Ctrl+A)
+   */
+  handleSelectAll() {
+    if (!this.editor.getDocument() || !this.editor.wasmModule) {
+      logger.warn(LOG_CATEGORIES.EDITOR, 'Cannot select all: document or WASM not ready');
+      return;
+    }
+
+    const doc = this.editor.getDocument();
+
+    // Find first and last positions
+    if (!doc.lines || doc.lines.length === 0) {
+      logger.warn(LOG_CATEGORIES.EDITOR, 'No content to select');
+      return;
+    }
+
+    // Start: first cell of first line
+    const anchor = { line: 0, col: 0 };
+
+    // End: position AFTER last cell (selection is [anchor, head))
+    const lastLine = doc.lines[doc.lines.length - 1];
+    const lastCol = lastLine.cells ? lastLine.cells.length : 0;
+    const head = { line: doc.lines.length - 1, col: lastCol };
+
+    // Set selection in WASM
+    try {
+      this.editor.wasmModule.setSelection(anchor, head);
+      logger.info(LOG_CATEGORIES.EDITOR, 'Selected from', { anchor, head });
+
+      // Re-render to show selection
+      this.editor.render();
+    } catch (error) {
+      logger.error(LOG_CATEGORIES.EDITOR, 'Failed to select all', { error });
     }
   }
 }

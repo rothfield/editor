@@ -3,6 +3,8 @@
  * Provides a tabbed, searchable UI for selecting scale constraints
  */
 
+import logger, { LOG_CATEGORIES } from './logger.js';
+
 export class ConstraintsDialog {
   constructor(editor) {
     this.editor = editor;
@@ -127,15 +129,14 @@ export class ConstraintsDialog {
       // Get constraints from WASM
       const wasmModule = this.editor.wasmModule;
       if (!wasmModule || typeof wasmModule.getPredefinedConstraints !== 'function') {
-        console.error('[ConstraintsDialog] WASM module not ready or getPredefinedConstraints not available');
+        logger.error(LOG_CATEGORIES.WASM, 'WASM module not ready or getPredefinedConstraints not available');
         return;
       }
 
       this.constraints = wasmModule.getPredefinedConstraints();
       this.renderAllTabs();
     } catch (error) {
-      console.error('[ConstraintsDialog] Error loading constraints:', error);
-    }
+      logger.error(LOG_CATEGORIES.WASM, 'Error loading constraints', { error });
   }
 
   /**
@@ -143,8 +144,8 @@ export class ConstraintsDialog {
    */
   renderAllTabs() {
     this.renderTab('western');
-    this.renderTab('indian');
-    this.renderTab('arabic');
+    this.renderTab('raga');
+    this.renderTab('maqam');
     this.renderTab('all');
   }
 
@@ -224,16 +225,14 @@ export class ConstraintsDialog {
     try {
       const wasmModule = this.editor.wasmModule;
       if (!wasmModule || typeof wasmModule.getConstraintNotes !== 'function') {
-        console.warn('[ConstraintsDialog] getConstraintNotes not available');
+        logger.warn(LOG_CATEGORIES.WASM, 'getConstraintNotes not available');
         return [];
       }
 
       const notes = wasmModule.getConstraintNotes(constraintId, this.selectedPitchSystem);
       return notes || [];
     } catch (error) {
-      console.error('[ConstraintsDialog] Error getting constraint notes:', error);
-      return [];
-    }
+      logger.error(LOG_CATEGORIES.WASM, 'Error getting constraint notes', { error });
   }
 
   /**
@@ -339,11 +338,8 @@ export class ConstraintsDialog {
         const activeConstraintId = wasmModule.getActiveConstraint();
         this.selectedConstraintId = activeConstraintId || null;
       }
-    } catch (error) {
-      console.error('[ConstraintsDialog] Error getting active constraint:', error);
-    }
-
-    // Reset search
+          } catch (error) {
+            logger.error(LOG_CATEGORIES.WASM, 'Error getting active constraint', { error });    // Reset search
     this.searchQuery = '';
     this.searchInput.value = '';
 
@@ -377,7 +373,7 @@ export class ConstraintsDialog {
     try {
       const wasmModule = this.editor.wasmModule;
       if (!wasmModule || typeof wasmModule.setActiveConstraint !== 'function') {
-        console.error('[ConstraintsDialog] WASM module not ready');
+        logger.error(LOG_CATEGORIES.WASM, 'WASM module not ready');
         return;
       }
 
@@ -392,9 +388,9 @@ export class ConstraintsDialog {
       this.renderAllTabs();
       this.updateDisplay();
 
-      console.log(`[ConstraintsDialog] Active constraint set to: ${constraintId}`);
+      logger.info(LOG_CATEGORIES.UI, `Active constraint set to: ${constraintId}`);
     } catch (error) {
-      console.error('[ConstraintsDialog] Error setting constraint:', error);
+      logger.error(LOG_CATEGORIES.WASM, 'Error setting constraint', { error });
     }
   }
 
@@ -405,13 +401,14 @@ export class ConstraintsDialog {
     try {
       const wasmModule = this.editor.wasmModule;
       if (!wasmModule || typeof wasmModule.setActiveConstraint !== 'function') {
-        console.error('[ConstraintsDialog] WASM module not ready');
+        logger.error(LOG_CATEGORIES.WASM, 'WASM module not ready');
         return;
       }
 
       // Clear constraint in WASM (null clears it)
       // Note: setActiveConstraint is in documentMutatingFunctions, so WASMBridge
       // automatically triggers renderAndUpdate() and updateDocumentDisplay()
+      // which includes updateModeToggleDisplay()
       wasmModule.setActiveConstraint(null);
 
       // Update dialog UI
@@ -419,9 +416,9 @@ export class ConstraintsDialog {
       this.renderAllTabs();
       this.updateDisplay();
 
-      console.log('[ConstraintsDialog] Constraint cleared');
+      logger.info(LOG_CATEGORIES.UI, 'Constraint cleared');
     } catch (error) {
-      console.error('[ConstraintsDialog] Error clearing constraint:', error);
+      logger.error(LOG_CATEGORIES.WASM, 'Error clearing constraint', { error });
     }
   }
 

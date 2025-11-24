@@ -8,6 +8,8 @@ pnpm-debug.log*
 # Build outputs
 dist/
 build/
+!build/fontgen/
+!build/atoms.yaml
 out/
 target/
 pkg/
@@ -164,4 +166,7 @@ pnpm-lock.yaml
 archive/
 attic/
 screenshots/
+
+# Generated font specification (created by build.rs)
+tools/fontgen/fontspec.json
 

@@ -7,6 +7,7 @@
 
 import { DOM_SELECTORS } from './constants/editorConstants.js';
 import { updateKeySignatureDisplay as updateKeySigDisplay } from './key-signature-selector.js';
+import logger, { LOG_CATEGORIES } from './logger.js';
 
 class UI {
   constructor(editor, fileOperations = null, preferencesUI = null) {
@@ -59,7 +60,7 @@ class UI {
     // (prevents double-render: one from autosave timer, one from switchTab)
     this.isInitialized = true;
 
-    console.log('UI components initialized');
+    logger.info(LOG_CATEGORIES.UI, 'UI components initialized');
   }
 
   /**
@@ -69,9 +70,9 @@ class UI {
     // Import and initialize the key signature selector
     import('./key-signature-selector.js').then(module => {
       this.keySignatureSelector = module.initKeySignatureSelector(this);
-      console.log('Key Signature Selector initialized');
+      logger.info(LOG_CATEGORIES.UI, 'Key Signature Selector initialized');
     }).catch(error => {
-      console.error('Failed to load key signature selector:', error);
+      logger.error(LOG_CATEGORIES.UI, 'Failed to load key signature selector', { error });
     });
   }
 
@@ -82,9 +83,9 @@ class UI {
     // Import and initialize the constraints dialog
     import('./ConstraintsDialog.js').then(module => {
       this.constraintsDialog = new module.ConstraintsDialog(this.editor);
-      console.log('Constraints Dialog initialized');
+      logger.info(LOG_CATEGORIES.UI, 'Constraints Dialog initialized');
     }).catch(error => {
-      console.error('Failed to load constraints dialog:', error);
+      logger.error(LOG_CATEGORIES.UI, 'Failed to load constraints dialog', { error });
     });
   }
 
@@ -128,11 +129,15 @@ class UI {
   setupFileMenu() {
     const menuItems = [
       { id: 'menu-new', label: 'New', action: 'new-document' },
+      { id: 'menu-open-file', label: 'Open File...', action: 'open-file' },
+      { id: 'menu-separator-0', label: null, separator: true },
       { id: 'menu-save-to-storage', label: 'Save to Storage...', action: 'save-to-storage' },
       { id: 'menu-load-from-storage', label: 'Load from Storage...', action: 'load-from-storage' },
       { id: 'menu-separator-1', label: null, separator: true },
       { id: 'menu-export-json', label: 'Export as JSON...', action: 'export-json' },
+      { id: 'menu-export-musicxml', label: 'Export MusicXML...', action: 'export-musicxml' },
       { id: 'menu-import-json', label: 'Import from JSON...', action: 'import-json' },
+      { id: 'menu-import-musicxml', label: 'Import MusicXML...', action: 'import-musicxml' },
       { id: 'menu-separator-2', label: null, separator: true },
       { id: 'menu-set-title', label: 'Set Title...', action: 'set-title' },
       { id: 'menu-set-composer', label: 'Set Composer...', action: 'set-composer' },
@@ -176,8 +181,9 @@ class UI {
       { id: 'menu-cut', label: 'Cut (Ctrl+X)', action: 'cut', testid: 'menu-cut' },
       { id: 'menu-paste', label: 'Paste (Ctrl+V)', action: 'paste', testid: 'menu-paste' },
       { id: 'menu-separator-1', label: null, separator: true },
-      { id: 'menu-apply-slur', label: 'Apply Slur (Alt+S)', action: 'apply-slur' },
+      { id: 'menu-toggle-ornament-edit-mode', label: 'Toggle Ornament Edit Mode (Alt+Shift+O)', action: 'toggle-ornament-edit-mode', checkable: true, checked: this.editor.ornamentEditMode, testid: 'menu-toggle-ornament-edit-mode' },
       { id: 'menu-separator-2', label: null, separator: true },
+      { id: 'menu-apply-slur', label: 'Apply Slur (Alt+S)', action: 'apply-slur' },
       { id: 'menu-octave-highest', label: 'Highest Octave (Alt+H)', action: 'octave-highest' },
       { id: 'menu-octave-upper', label: 'Upper Octave (Alt+U)', action: 'octave-upper' },
       { id: 'menu-octave-middle', label: 'Middle Octave (Alt+M)', action: 'octave-middle' },
@@ -211,8 +217,19 @@ class UI {
           // Add checkbox indicator for checkable items
           const checkbox = document.createElement('span');
           checkbox.className = 'menu-checkbox';
-          checkbox.textContent = '☐ '; // Empty checkbox
-          checkbox.dataset.checked = 'false';
+          checkbox.textContent = item.checked ? '✓ ' : '☐ '; // Checkmark or empty square
+          checkbox.dataset.checked = item.checked ? 'true' : 'false';
+          menuItem.appendChild(checkbox);
+
+          const label = document.createElement('span');
+          label.textContent = item.label;
+          menuItem.appendChild(label);
+        } else if (item.id === 'menu-toggle-ornament-edit-mode') {
+          // Specific handling for ornament edit mode to show its checked state
+          const checkbox = document.createElement('span');
+          checkbox.className = 'menu-checkbox';
+          checkbox.textContent = this.editor.ornamentEditMode ? '✓ ' : '☐ ';
+          checkbox.dataset.checked = this.editor.ornamentEditMode ? 'true' : 'false';
           menuItem.appendChild(checkbox);
 
           const label = document.createElement('span');
@@ -512,17 +529,17 @@ class UI {
      * Handle menu item clicks
      */
   async handleMenuItemClick(event) {
-    console.log('[UI] handleMenuItemClick event received');
+    logger.debug(LOG_CATEGORIES.UI, 'handleMenuItemClick event received');
     const menuItem = event.target.closest('.menu-item');
     if (!menuItem) {
-      console.log('[UI] No menu item found in event target');
+      logger.warn(LOG_CATEGORIES.UI, 'No menu item found in event target');
       return;
     }
 
     const action = menuItem.dataset.action;
-    console.log('[UI] Menu item action:', action);
+    logger.debug(LOG_CATEGORIES.UI, 'Menu item action', { action });
     if (!action) {
-      console.log('[UI] No action found on menu item');
+      logger.warn(LOG_CATEGORIES.UI, 'No action found on menu item');
       return;
     }
 
@@ -554,7 +571,7 @@ class UI {
      * Switch to a specific tab
      */
   async switchTab(tabName) {
-    console.log(`[UI] switchTab('${tabName}') called`);
+    logger.debug(LOG_CATEGORIES.UI, `switchTab called`, { tabName });
 
     // Hide all tab contents
     document.querySelectorAll('[data-tab-content]').forEach(content => {
@@ -579,7 +596,7 @@ class UI {
     }
 
     this.activeTab = tabName;
-    console.log(`[UI] activeTab set to: '${this.activeTab}'`);
+    logger.debug(LOG_CATEGORIES.UI, `activeTab set`, { activeTab: this.activeTab });
 
     // Save tab preference to localStorage with debounce
     this.scheduleTabSave();
@@ -643,9 +660,9 @@ class UI {
   saveTabPreference() {
     try {
       localStorage.setItem('editor_active_tab', this.activeTab);
-      console.log(`[Tab Preference] Saved active tab: ${this.activeTab}`);
+      logger.info(LOG_CATEGORIES.UI, `Tab Preference: Saved active tab`, { activeTab: this.activeTab });
     } catch (error) {
-      console.error('Failed to save tab preference to localStorage:', error);
+      logger.error(LOG_CATEGORIES.UI, 'Failed to save tab preference to localStorage', { error });
     }
   }
 
@@ -660,12 +677,12 @@ class UI {
         const tabElement = document.querySelector(`[data-tab="${savedTab}"]`);
         if (tabElement) {
           this.switchTab(savedTab);
-          console.log(`[Tab Preference] Restored active tab: ${savedTab}`);
+          logger.info(LOG_CATEGORIES.UI, `Tab Preference: Restored active tab`, { savedTab });
           return;
         }
       }
     } catch (error) {
-      console.error('Failed to restore tab preference from localStorage:', error);
+      logger.error(LOG_CATEGORIES.UI, 'Failed to restore tab preference from localStorage', { error });
     }
 
     // Fallback to default tab if nothing was saved or restoration failed
@@ -676,10 +693,13 @@ class UI {
      * Execute menu action
      */
   async executeMenuAction(action) {
-    console.log('[UI] executeMenuAction called with action:', action);
+    logger.debug(LOG_CATEGORIES.UI, 'executeMenuAction called', { action });
     switch (action) {
       case 'new-document':
         this.newDocument();
+        break;
+      case 'open-file':
+        this.openFile();
         break;
       case 'open-document':
         this.openDocument();
@@ -696,8 +716,14 @@ class UI {
       case 'export-json':
         this.exportAsJSON();
         break;
+      case 'export-musicxml':
+        this.exportMusicXML();
+        break;
       case 'import-json':
         this.importFromJSON();
+        break;
+      case 'import-musicxml':
+        this.importMusicXML();
         break;
       case 'export-dialog':
         this.openExportDialog();
@@ -734,6 +760,9 @@ class UI {
         break;
       case 'paste':
         this.editor.handlePaste();
+        break;
+      case 'toggle-ornament-edit-mode':
+        await this.editor.toggleOrnamentEditMode();
         break;
       case 'ornament-position-before':
         this.setOrnamentPosition('before');
@@ -799,34 +828,32 @@ class UI {
         this.openPreferences();
         break;
       default:
-        console.log('Unknown menu action:', action);
-    }
-  }
+        logger.warn(LOG_CATEGORIES.UI, 'Unknown menu action', { action });
 
   /**
      * Create new document
      */
   async newDocument() {
-    console.log('🔵 UI.newDocument() called');
-    console.log('🔍 fileOperations available?', !!this.fileOperations);
+    logger.debug(LOG_CATEGORIES.UI, 'newDocument() called');
+    logger.debug(LOG_CATEGORIES.UI, 'fileOperations available', { available: !!this.fileOperations });
 
     // Use FileOperations if available (includes pitch system prompt)
     if (this.fileOperations) {
-      console.log('✅ Using FileOperations.newFile()');
+      logger.info(LOG_CATEGORIES.UI, 'Using FileOperations.newFile()');
       await this.fileOperations.newFile();
       this.setupLineMenu();
       return;
     }
 
     // Fallback to direct editor method (no pitch system prompt)
-    console.log('⚠️ Falling back to editor.createNewDocument()');
+    logger.warn(LOG_CATEGORIES.UI, 'Falling back to editor.createNewDocument()');
     if (this.editor) {
       try {
         await this.editor.createNewDocument();
-        this.editor.addToConsoleLog('Created new document');
+        logger.info(LOG_CATEGORIES.FILE, 'Created new document');
         this.setupLineMenu();
       } catch (error) {
-        console.error('Failed to create new document:', error);
+        logger.error(LOG_CATEGORIES.UI, 'Failed to create new document', { error });
       }
     }
   }
@@ -846,9 +873,9 @@ class UI {
           const text = await file.text();
           await this.editor.loadDocument(text);
           this.updateDocumentTitle(file.name);
-          this.editor.addToConsoleLog(`Opened document: ${file.name}`);
+          logger.info(LOG_CATEGORIES.FILE, `Opened document: ${file.name}`);
         } catch (error) {
-          console.error('Failed to open document:', error);
+          logger.error(LOG_CATEGORIES.UI, 'Failed to open document', { error });
         }
       }
     };
@@ -872,9 +899,9 @@ class UI {
         a.click();
 
         URL.revokeObjectURL(url);
-        this.editor.addToConsoleLog(`Document saved: ${this.getDocumentTitle()}.json`);
+        logger.info(LOG_CATEGORIES.FILE, `Document saved: ${this.getDocumentTitle()}.json`);
       } catch (error) {
-        console.error('Failed to save document:', error);
+        logger.error(LOG_CATEGORIES.UI, 'Failed to save document', { error });
       }
     }
   }
@@ -886,7 +913,7 @@ class UI {
     if (this.editor && this.editor.exportUI) {
       this.editor.exportUI.open();
     } else {
-      console.error('Export UI not available');
+      logger.error(LOG_CATEGORIES.UI, 'Export UI not available');
     }
   }
 
@@ -897,7 +924,7 @@ class UI {
     if (this.preferencesUI) {
       this.preferencesUI.open();
     } else {
-      console.error('Preferences UI not available');
+      logger.error(LOG_CATEGORIES.UI, 'Preferences UI not available');
     }
   }
 
@@ -921,25 +948,14 @@ class UI {
       if (this.editor && this.editor.getDocument() && this.editor.wasmModule) {
         // Call WASM setTitle function
         try {
-          // Preserve the state field before WASM call
-          const preservedState = this.editor.getDocument().state;
-
-          const updatedDocument = await this.editor.wasmModule.setTitle(this.editor.getDocument(), newTitle);
-
-          // Restore the state field after WASM call
-          updatedDocument.state = preservedState;
-
-          // Load updated document back into WASM (WASM owns the state)
-          this.editor.wasmModule.loadDocument(updatedDocument);
+          await this.editor.wasmModule.setTitle(newTitle);
           this.editor.addToConsoleLog(`Document title set to: ${newTitle}`);
-          await this.editor.render(); // Re-render to show title on canvas
+          await this.editor.renderAndUpdate();
         } catch (error) {
-          console.error('Failed to set title via WASM:', error);
-          this.editor.addToConsoleLog(`Error setting title: ${error.message}`);
-        }
+          logger.error(LOG_CATEGORIES.WASM, 'Failed to set title via WASM', { error });
       }
     }
-  }
+  }  }
 
   /**
      * Set document composer
@@ -952,21 +968,11 @@ class UI {
       if (this.editor && this.editor.getDocument() && this.editor.wasmModule) {
         // Call WASM setComposer function
         try {
-          // Preserve the state field before WASM call
-          const preservedState = this.editor.getDocument().state;
-
-          const updatedDocument = await this.editor.wasmModule.setComposer(this.editor.getDocument(), newComposer);
-
-          // Restore the state field after WASM call
-          updatedDocument.state = preservedState;
-
           this.editor.wasmModule.loadDocument(updatedDocument);
-          this.editor.addToConsoleLog(`Composer set to: ${newComposer}`);
+          logger.info(LOG_CATEGORIES.WASM, `Composer set to: ${newComposer}`);
           await this.editor.render(); // Re-render to show composer on canvas
         } catch (error) {
-          console.error('Failed to set composer via WASM:', error);
-          this.editor.addToConsoleLog(`Error setting composer: ${error.message}`);
-        }
+          logger.error(LOG_CATEGORIES.WASM, 'Failed to set composer via WASM', { error });
       }
     }
   }
@@ -983,7 +989,7 @@ class UI {
 
       if (this.editor && this.editor.wasmModule) {
         this.editor.wasmModule.setDocumentTonic(newTonic);
-        this.editor.addToConsoleLog(`Document tonic set to: ${newTonic}`);
+        logger.info(LOG_CATEGORIES.WASM, `Document tonic set to: ${newTonic}`);
         await this.editor.renderAndUpdate();
       }
     }
@@ -993,44 +999,28 @@ class UI {
      * Set pitch system
      */
   async setPitchSystem() {
-    console.log('🎵 setPitchSystem called');
+    logger.info(LOG_CATEGORIES.UI, 'setPitchSystem called');
     const currentSystem = this.getCurrentPitchSystem();
-    console.log('🎵 Current system:', currentSystem);
+    logger.debug(LOG_CATEGORIES.UI, 'Current system', { currentSystem });
     const newSystem = this.showPitchSystemDialog(currentSystem);
-    console.log('🎵 New system selected:', newSystem);
+    logger.debug(LOG_CATEGORIES.UI, 'New system selected', { newSystem });
 
     if (newSystem !== null && newSystem !== currentSystem) {
-      console.log('🎵 Updating pitch system...');
-      if (this.editor && this.editor.getDocument() && this.editor.wasmModule) {
+      logger.info(LOG_CATEGORIES.UI, 'Updating pitch system...');
+      if (this.editor && this.editor.wasmModule) {
         try {
-          // Preserve the state field before WASM call
-          const preservedState = this.editor.getDocument().state;
+          // Call WASM function to set pitch system (Phase 1 - uses internal DOCUMENT)
+          logger.debug(LOG_CATEGORIES.WASM, 'Calling WASM setDocumentPitchSystem', { newSystem });
+          await this.editor.wasmModule.setDocumentPitchSystem(newSystem);
+          logger.debug(LOG_CATEGORIES.WASM, 'WASM setDocumentPitchSystem completed');
 
-          // Call WASM function to set pitch system
-          console.log('🎵 Calling WASM setDocumentPitchSystem with system:', newSystem);
-          const updatedDocument = await this.editor.wasmModule.setDocumentPitchSystem(
-            this.editor.getDocument(),
-            newSystem
-          );
-          console.log('🎵 WASM returned updated document:', updatedDocument?.pitch_system);
-
-          // Restore the state field after WASM call
-          updatedDocument.state = preservedState;
-
-          // Update the editor's document reference
-          this.editor.wasmModule.loadDocument(updatedDocument);
-
-          this.editor.addToConsoleLog(`Document pitch system set to: ${this.getPitchSystemName(newSystem)}`);
-          console.log('🎨 Rendering after document pitch system change...');
+          logger.info(LOG_CATEGORIES.WASM, `Document pitch system set to: ${this.getPitchSystemName(newSystem)}`);
+          logger.debug(LOG_CATEGORIES.UI, 'Rendering after document pitch system change...');
           await this.editor.renderAndUpdate();
-          console.log('🎨 Render complete');
+          logger.debug(LOG_CATEGORIES.UI, 'Render complete');
           this.editor.updateCurrentPitchSystemDisplay(); // Update UI
         } catch (error) {
-          console.error('Failed to set pitch system:', error);
-          this.editor.showError('Failed to set pitch system');
-        }
-      }
-    }
+          logger.error(LOG_CATEGORIES.UI, 'Failed to set pitch system', { error });
   }
 
   /**
@@ -1076,7 +1066,7 @@ class UI {
 
         if (this.editor && this.editor.getDocument()) {
           this.editor.getDocument().key_signature = newSignature;
-          this.editor.addToConsoleLog(`Document key signature set to: ${newSignature}`);
+          logger.info(LOG_CATEGORIES.UI, `Document key signature set to: ${newSignature}`);
           await this.editor.renderAndUpdate();
 
           // Update the display in corner
@@ -1093,7 +1083,7 @@ class UI {
     if (this.constraintsDialog) {
       await this.constraintsDialog.open();
     } else {
-      console.error('[UI] ConstraintsDialog not initialized');
+      logger.error(LOG_CATEGORIES.UI, 'ConstraintsDialog not initialized');
     }
   }
 
@@ -1103,17 +1093,17 @@ class UI {
   setupModeToggleButton() {
     const modeBtn = document.getElementById('mode-toggle-btn');
     if (!modeBtn) {
-      console.warn('[UI] Mode toggle button not found');
+      logger.warn(LOG_CATEGORIES.UI, 'Mode toggle button not found');
       return;
     }
 
     // Single click = toggle constraint on/off
-    modeBtn.addEventListener('click', this.handleModeToggleClick);
+    modeBtn.addEventListener('click', this.handleModeToggleClick.bind(this));
 
     // Double click = open constraints dialog
-    modeBtn.addEventListener('dblclick', this.handleModeToggleDblClick);
+    modeBtn.addEventListener('dblclick', this.handleModeToggleDblClick.bind(this));
 
-    console.log('Mode toggle button initialized');
+    logger.info(LOG_CATEGORIES.UI, 'Mode toggle button initialized');
   }
 
   /**
@@ -1126,7 +1116,7 @@ class UI {
     // Check if there's an active constraint
     const wasmModule = this.editor.wasmModule;
     if (!wasmModule || typeof wasmModule.getActiveConstraint !== 'function') {
-      console.warn('[UI] WASM module not ready');
+      logger.warn(LOG_CATEGORIES.WASM, 'WASM module not ready');
       return;
     }
 
@@ -1139,7 +1129,7 @@ class UI {
 
     // Toggle enabled state
     this.constraintEnabled = !this.constraintEnabled;
-    console.log(`[UI] Constraint ${this.constraintEnabled ? 'enabled' : 'disabled'}`);
+    logger.info(LOG_CATEGORIES.UI, `Constraint ${this.constraintEnabled ? 'enabled' : 'disabled'}`);
 
     // Update display
     this.updateModeToggleDisplay();
@@ -1194,8 +1184,7 @@ class UI {
         constraintName = constraint.name;
       }
     } catch (error) {
-      console.error('[UI] Error getting constraint details:', error);
-    }
+      logger.error(LOG_CATEGORIES.UI, 'Error getting constraint details', { error });
 
     // Update display based on enabled state
     if (this.constraintEnabled) {
@@ -1228,7 +1217,7 @@ class UI {
     const lineSig = this.getLineKeySignature();
     const keySignature = docSig || lineSig;
 
-    console.log(`[updateKeySignatureCornerDisplay] docSig="${docSig}", lineSig="${lineSig}", final="${keySignature}"`);
+    logger.debug(LOG_CATEGORIES.UI, `updateKeySignatureCornerDisplay`, { docSig, lineSig, final: keySignature });
 
     // Create click handler that opens the key signature selector
     const clickHandler = () => {
@@ -1248,7 +1237,7 @@ class UI {
    */
   async selectAll() {
     if (!this.editor || !this.editor.getDocument()) {
-      console.warn('Cannot select all: editor or document not available');
+      logger.warn(LOG_CATEGORIES.UI, 'Cannot select all: editor or document not available');
       return;
     }
 
@@ -1267,9 +1256,9 @@ class UI {
       // Update UI from WASM state
       await this.editor.updateCursorFromWASM(diff);
 
-      console.log('[UI] Selected entire line at index:', lineIndex);
+      logger.info(LOG_CATEGORIES.UI, 'Selected entire line', { lineIndex });
     } catch (error) {
-      console.error('Select all error:', error);
+      logger.error(LOG_CATEGORIES.UI, 'Select all error', { error });
     }
   }
 
@@ -1284,23 +1273,14 @@ class UI {
       this.updateLineLabelDisplay(newLabel);
 
       if (this.editor && this.editor.getDocument() && this.editor.getDocument().lines.length > 0 && this.editor.wasmModule) {
-        // Call WASM setStaveLabel function
+        // Call WASM setLineLabel function (modern WASM-First API)
         try {
-          // Preserve the state field before WASM call
-          const preservedState = this.editor.getDocument().state;
-
           const lineIdx = this.getCurrentLineIndex();
-          const updatedDocument = await this.editor.wasmModule.setLineLabel(this.editor.getDocument(), lineIdx, newLabel);
-
-          // Restore the state field after WASM call
-          updatedDocument.state = preservedState;
-
-          this.editor.wasmModule.loadDocument(updatedDocument);
-          this.editor.addToConsoleLog(`Line label set to: ${newLabel}`);
-          await this.editor.render();
+          this.editor.wasmModule.setLineLabel(lineIdx, newLabel);
+          logger.info(LOG_CATEGORIES.WASM, `Line label set to: ${newLabel}`);
+          await this.editor.renderAndUpdate();
         } catch (error) {
-          console.error('Failed to set label via WASM:', error);
-          this.editor.addToConsoleLog(`Error setting label: ${error.message}`);
+          logger.error(LOG_CATEGORIES.WASM, 'Failed to set label via WASM', { error });
         }
       }
     }
@@ -1319,7 +1299,7 @@ class UI {
       if (this.editor && this.editor.wasmModule && this.editor.getDocument() && this.editor.getDocument().lines.length > 0) {
         const lineIdx = this.getCurrentLineIndex();
         this.editor.wasmModule.setLineTonic(lineIdx, newTonic);
-        this.editor.addToConsoleLog(`Line tonic set to: ${newTonic}`);
+        logger.info(LOG_CATEGORIES.WASM, `Line tonic set to: ${newTonic}`);
         await this.editor.renderAndUpdate();
       }
     }
@@ -1341,32 +1321,17 @@ class UI {
     if (newSystem !== null && newSystem !== currentSystem) {
       if (this.editor && this.editor.getDocument() && this.editor.wasmModule) {
         try {
-          // Preserve the state field before WASM call
-          const preservedState = this.editor.getDocument().state;
-
-          // Call WASM function to set line pitch system
+          // Call WASM function to set line pitch system (modern WASM-First API)
           const lineIdx = this.getCurrentLineIndex();
-          const updatedDocument = await this.editor.wasmModule.setLinePitchSystem(
-            this.editor.getDocument(),
-            lineIdx,
-            newSystem
-          );
+          this.editor.wasmModule.setLinePitchSystem(lineIdx, newSystem);
 
-          // Restore the state field after WASM call
-          updatedDocument.state = preservedState;
-
-          // Update the editor's document reference
-          this.editor.wasmModule.loadDocument(updatedDocument);
-
-          this.editor.addToConsoleLog(`Line pitch system set to: ${this.getPitchSystemName(newSystem)}`);
-          console.log('🎨 Rendering after line pitch system change...');
+          logger.info(LOG_CATEGORIES.WASM, `Line pitch system set to: ${this.getPitchSystemName(newSystem)}`);
+          logger.debug(LOG_CATEGORIES.UI, 'Rendering after line pitch system change...');
           await this.editor.renderAndUpdate();
-          console.log('🎨 Render complete');
+          logger.debug(LOG_CATEGORIES.UI, 'Render complete');
           this.editor.updateCurrentPitchSystemDisplay(); // Update UI
         } catch (error) {
-          console.error('Failed to set line pitch system:', error);
-          this.editor.showError('Failed to set line pitch system');
-        }
+          logger.error(LOG_CATEGORIES.UI, 'Failed to set line pitch system', { error });
       }
     }
   }
@@ -1381,24 +1346,15 @@ class UI {
     // Allow empty string to clear lyrics - all validation and updates handled in WASM
     if (newLyrics !== null) {
       if (this.editor && this.editor.getDocument() && this.editor.getDocument().lines.length > 0 && this.editor.wasmModule) {
-        // Call WASM setLineLyrics function (handles empty string to clear)
+        // Call WASM setLineLyrics function (modern WASM-First API, handles empty string to clear)
         try {
-          // Preserve the state field before WASM call
-          const preservedState = this.editor.getDocument().state;
-
           const lineIdx = this.getCurrentLineIndex();
-          const updatedDocument = await this.editor.wasmModule.setLineLyrics(this.editor.getDocument(), lineIdx, newLyrics);
-
-          // Restore the state field after WASM call
-          updatedDocument.state = preservedState;
-
-          this.editor.wasmModule.loadDocument(updatedDocument);
+          this.editor.wasmModule.setLineLyrics(lineIdx, newLyrics);
           const displayMsg = newLyrics === '' ? 'Lyrics cleared' : `Lyrics set to: ${newLyrics}`;
-          this.editor.addToConsoleLog(displayMsg);
-          await this.editor.render();
+          logger.info(LOG_CATEGORIES.WASM, displayMsg);
+          await this.editor.renderAndUpdate();
         } catch (error) {
-          console.error('Failed to set lyrics via WASM:', error);
-          this.editor.addToConsoleLog(`Error setting lyrics: ${error.message}`);
+          logger.error(LOG_CATEGORIES.WASM, 'Failed to set lyrics via WASM', { error });
         }
       }
     }
@@ -1421,8 +1377,7 @@ class UI {
           await this.editor.setTala(newTala);
         }
       } else {
-        console.error('Invalid tala format. Only digits 0-9 and + are allowed.');
-      }
+        logger.error(LOG_CATEGORIES.UI, 'Invalid tala format. Only digits 0-9 and + are allowed.');
     }
   }
 
@@ -1454,7 +1409,7 @@ class UI {
         if (this.editor && this.editor.getDocument() && this.editor.getDocument().lines.length > 0) {
           const lineIdx = this.getCurrentLineIndex();
           this.editor.getDocument().lines[lineIdx].key_signature = newSignature;
-          this.editor.addToConsoleLog(`Line key signature set to: ${newSignature}`);
+          logger.info(LOG_CATEGORIES.UI, `Line key signature set to: ${newSignature}`);
           await this.editor.renderAndUpdate();
 
           // Update the display in corner
@@ -1678,8 +1633,8 @@ class UI {
     const lineIdx = this.getCurrentLineIndex();
     const tala = this.editor?.getDocument()?.lines?.length > lineIdx
       ? this.editor.getDocument().lines[lineIdx].tala || '' : '';
-    console.log(`🎯 getTala: lineIdx=${lineIdx}, tala="${tala}", lines.length=${this.editor?.getDocument()?.lines?.length}`);
-    console.log(`   Line[${lineIdx}]:`, this.editor?.getDocument()?.lines?.[lineIdx]);
+    logger.debug(LOG_CATEGORIES.UI, 'getTala', { lineIdx, tala, linesLength: this.editor?.getDocument()?.lines?.length });
+    logger.debug(LOG_CATEGORIES.UI, `Line[${lineIdx}]`, { line: this.editor?.getDocument()?.lines?.[lineIdx] });
     return tala;
   }
 
@@ -1696,12 +1651,12 @@ class UI {
      */
   updateTonicDisplay(tonic) {
     // This would update UI to show current tonic
-    console.log(`Tonic updated: ${tonic}`);
+    logger.debug(LOG_CATEGORIES.UI, `Tonic updated: ${tonic}`);
   }
 
   updateKeySignatureDisplay(signature) {
     // Update the key signature display in the upper left corner
-    console.log(`Key signature updated: ${signature}`);
+    logger.debug(LOG_CATEGORIES.UI, `Key signature updated: ${signature}`);
 
     // Call the actual display update function
     const openKeySigSelector = () => {
@@ -1715,32 +1670,32 @@ class UI {
 
   updateLineLabelDisplay(label) {
     // This would update UI to show line label
-    console.log(`Line label updated: ${label}`);
+    logger.debug(LOG_CATEGORIES.UI, `Line label updated: ${label}`);
   }
 
   updateLineTonicDisplay(tonic) {
     // This would update UI to show line tonic
-    console.log(`Line tonic updated: ${tonic}`);
+    logger.debug(LOG_CATEGORIES.UI, `Line tonic updated: ${tonic}`);
   }
 
   updateLinePitchSystemDisplay(system) {
     // This would update UI to show line pitch system
-    console.log(`Line pitch system updated: ${this.getPitchSystemName(system)}`);
+    logger.debug(LOG_CATEGORIES.UI, `Line pitch system updated: ${this.getPitchSystemName(system)}`);
   }
 
   updateLyricsDisplay(lyrics) {
     // This would update UI to show lyrics
-    console.log(`Lyrics updated: ${lyrics}`);
+    logger.debug(LOG_CATEGORIES.UI, `Lyrics updated: ${lyrics}`);
   }
 
   updateTalaDisplay(tala) {
     // This would update UI to show tala notation
-    console.log(`Tala updated: ${tala}`);
+    logger.debug(LOG_CATEGORIES.UI, `Tala updated: ${tala}`);
   }
 
   updateLineKeySignatureDisplay(signature) {
     // This would update UI to show line key signature
-    console.log(`Line key signature updated: ${signature}`);
+    logger.debug(LOG_CATEGORIES.UI, `Line key signature updated: ${signature}`);
   }
 
   /**
@@ -1776,11 +1731,10 @@ class UI {
     try {
       const success = await this.editor.storage.saveDocument(name);
       if (success) {
-        this.editor.addToConsoleLog(`✅ Document saved to storage: "${name}"`);
+        logger.info(LOG_CATEGORIES.STORAGE, `Document saved to storage: "${name}"`);
       }
     } catch (error) {
-      console.error('Failed to save to storage:', error);
-      alert(`Failed to save: ${error.message}`);
+      logger.error(LOG_CATEGORIES.STORAGE, 'Failed to save to storage', { error });
     }
   }
 
@@ -1809,12 +1763,11 @@ class UI {
 
       const success = await this.editor.storage.loadDocument(selectedName);
       if (success) {
-        this.editor.addToConsoleLog(`✅ Document loaded from storage: "${selectedName}"`);
+        logger.info(LOG_CATEGORIES.STORAGE, `Document loaded from storage: "${selectedName}"`);
         this.setupLineMenu();
       }
     } catch (error) {
-      console.error('Failed to load from storage:', error);
-      alert(`Failed to load: ${error.message}`);
+      logger.error(LOG_CATEGORIES.STORAGE, 'Failed to load from storage', { error });
     }
   }
 
@@ -1832,10 +1785,9 @@ class UI {
       if (filename === null) return; // User cancelled
 
       await this.editor.storage.exportAsJSON(filename);
-      this.editor.addToConsoleLog(`✅ Document exported as JSON: "${filename}.json"`);
+      logger.info(LOG_CATEGORIES.FILE, `Document exported as JSON: "${filename}.json"`);
     } catch (error) {
-      console.error('Failed to export as JSON:', error);
-      alert(`Failed to export: ${error.message}`);
+      logger.error(LOG_CATEGORIES.FILE, 'Failed to export as JSON', { error });
     }
   }
 
@@ -1851,13 +1803,117 @@ class UI {
     try {
       const success = await this.editor.storage.importFromJSON();
       if (success) {
-        this.editor.addToConsoleLog('✅ Document imported from JSON');
+        logger.info(LOG_CATEGORIES.FILE, 'Document imported from JSON');
         this.setupLineMenu();
       }
     } catch (error) {
-      console.error('Failed to import from JSON:', error);
-      alert(`Failed to import: ${error.message}`);
+      logger.error(LOG_CATEGORIES.FILE, 'Failed to import from JSON', { error });
     }
+  }
+
+  /**
+   * Open a file (JSON, MusicXML, or text)
+   */
+  async openFile() {
+    if (!this.fileOperations) {
+      alert('File operations not available');
+      return;
+    }
+
+    try {
+      await this.fileOperations.openFile();
+      this.setupLineMenu();
+    } catch (error) {
+      logger.error(LOG_CATEGORIES.FILE, 'Failed to open file', { error });
+  }
+
+  /**
+   * Export document as MusicXML file
+   */
+  async exportMusicXML() {
+    if (!this.editor || !this.editor.wasmModule) {
+      alert('Editor or WASM module not available');
+      return;
+    }
+
+    try {
+      const filename = prompt('Enter filename (without .musicxml):', this.getDocumentTitle());
+      if (filename === null) return; // User cancelled
+
+      logger.info(LOG_CATEGORIES.FILE, 'Exporting MusicXML...');
+
+      // Call WASM exportMusicXML function
+      const musicxml = this.editor.wasmModule.exportMusicXML(this.editor.getDocument());
+
+      logger.info(LOG_CATEGORIES.FILE, 'MusicXML exported successfully');
+
+      // Create blob and download
+      const blob = new Blob([musicxml], { type: 'application/vnd.recordare.musicxml+xml' });
+      const url = URL.createObjectURL(blob);
+
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${filename}.musicxml`;
+      a.click();
+
+      URL.revokeObjectURL(url);
+      logger.info(LOG_CATEGORIES.FILE, `MusicXML exported: "${filename}.musicxml"`);
+    } catch (error) {
+      logger.error(LOG_CATEGORIES.FILE, 'Failed to export MusicXML', { error });
+    }
+  }
+
+  /**
+   * Import MusicXML file
+   */
+  async importMusicXML() {
+    if (!this.editor || !this.editor.wasmModule) {
+      alert('Editor or WASM module not available');
+      return;
+    }
+
+    try {
+      // Create file input
+      const fileInput = document.createElement('input');
+      fileInput.type = 'file';
+      fileInput.accept = '.musicxml,.xml';
+      fileInput.style.display = 'none';
+
+      fileInput.addEventListener('change', async (event) => {
+        const file = event.target.files[0];
+        if (file) {
+          try {
+            const text = await file.text();
+
+            logger.info(LOG_CATEGORIES.FILE, 'Importing MusicXML', { filename: file.name });
+
+            // Call WASM importMusicXML function
+            const document = this.editor.wasmModule.importMusicXML(text);
+
+            logger.info(LOG_CATEGORIES.FILE, 'MusicXML imported successfully');
+
+            // Set title from filename if not set
+            if (document && !document.title) {
+              document.title = file.name.replace(/\.(musicxml|xml)$/i, '');
+            }
+
+            // Load the imported document
+            await this.editor.loadDocument(document);
+
+            logger.info(LOG_CATEGORIES.FILE, `MusicXML imported: "${file.name}"`);
+            this.setupLineMenu();
+          } catch (error) {
+            logger.error(LOG_CATEGORIES.FILE, 'Failed to import MusicXML', { error });
+            alert(`Failed to import MusicXML: ${error.message}`);
+          }
+        }
+        document.body.removeChild(fileInput);
+      });
+
+      document.body.appendChild(fileInput);
+      fileInput.click();
+    } catch (error) {
+      logger.error(LOG_CATEGORIES.FILE, 'Failed to import MusicXML', { error });
   }
 
   /**
@@ -1893,7 +1949,7 @@ class UI {
    * Set ornament position and update menu checkmarks
    */
   setOrnamentPosition(position) {
-    console.log('[UI] setOrnamentPosition:', position);
+    logger.debug(LOG_CATEGORIES.UI, 'setOrnamentPosition', { position });
 
     // Store pending position for next paste
     this.pendingOrnamentPosition = position;
@@ -1946,11 +2002,11 @@ class UI {
 
           // Render
           this.editor.renderAndUpdate();
-          this.editor.addToConsoleLog(`Ornament position set to: ${position}`);
+          logger.info(LOG_CATEGORIES.UI, `Ornament position set to: ${position}`);
         }
       } catch (error) {
         // Ornament doesn't exist yet, that's okay - position will be used for next paste
-        console.log('[UI] No ornament to update position:', error.message);
+        logger.debug(LOG_CATEGORIES.UI, 'No ornament to update position', { message: error.message });
       }
     }
   }

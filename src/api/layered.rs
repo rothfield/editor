@@ -751,6 +751,7 @@ pub fn remove_slur_layered(line: usize, start_col: usize, end_col: usize) -> JsV
 
     // Remove slurs overlapping the selection
     let range = TextRange::new(TextPos::new(line, start_col), TextPos::new(line, end_col));
+    #[cfg(target_arch = "wasm32")]
     let before_count = document.annotation_layer.slurs.len();
     document.annotation_layer.slurs.retain(|slur| {
         // Keep slurs that don't overlap with the selection
@@ -769,6 +770,7 @@ pub fn remove_slur_layered(line: usize, start_col: usize, end_col: usize) -> JsV
 
         should_keep
     });
+    #[cfg(target_arch = "wasm32")]
     let after_count = document.annotation_layer.slurs.len();
 
     #[cfg(target_arch = "wasm32")]

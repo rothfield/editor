@@ -3,7 +3,8 @@
 //! This module provides high-level emission functions that consume the intermediate
 //! representation (ExportLine, ExportMeasure, ExportEvent) and produce valid MusicXML strings.
 
-use super::export_ir::*;
+use crate::ir::*;
+// PitchCode not needed in emitter (pitch info comes from IR)
 use super::builder::{MusicXmlBuilder, xml_escape};
 use super::grace_notes::ornament_position_to_placement;
 
@@ -502,8 +503,8 @@ fn emit_note(
         matches!(slur_data.type_, SlurType::Continue | SlurType::Stop)
     });
 
-    let lyric = if let Some(ref lyric_data) = note.lyrics {
-        Some(lyric_data.clone())
+    let lyric: Option<LyricData> = if let Some(lyric_data) = note.lyrics.clone() {
+        Some(lyric_data)
     } else if !is_melisma_note && *lyric_index < syllables.len() {
         // Only assign syllables to non-melisma notes
         // Check if there are multiple remaining syllables
@@ -672,7 +673,7 @@ fn parse_lyrics_to_syllables(lyrics: &str) -> Vec<(String, Syllabic)> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::OrnamentPositionType;
+    use crate::models::{OrnamentPositionType, PitchCode};
 
     #[test]
     fn test_parse_lyrics_single_syllable() {
@@ -737,6 +738,7 @@ mod tests {
             beam: None,
             tie: None,
             tuplet: None,
+            breath_mark_after: false,
         };
 
         // Note has explicit lyrics, so it should use those
@@ -856,6 +858,7 @@ mod tests {
             beam: None,
             tie: None,
             tuplet: None,
+            breath_mark_after: false,
         };
 
         let mut builder = MusicXmlBuilder::new();
@@ -902,6 +905,7 @@ mod tests {
             beam: None,
             tie: None,
             tuplet: None,
+            breath_mark_after: false,
         };
 
         let mut builder = MusicXmlBuilder::new();
@@ -949,6 +953,7 @@ mod tests {
             beam: None,
             tie: None,
             tuplet: None,
+            breath_mark_after: false,
         };
 
         let mut builder = MusicXmlBuilder::new();
@@ -998,6 +1003,7 @@ mod tests {
             beam: None,
             tie: None,
             tuplet: None,
+            breath_mark_after: false,
         };
 
         let mut builder = MusicXmlBuilder::new();
@@ -1053,6 +1059,7 @@ mod tests {
                     beam: None,
                     tie: None,
                     tuplet: None,
+            breath_mark_after: false,
                 })],
             }],
         };
@@ -1081,6 +1088,7 @@ mod tests {
                     beam: None,
                     tie: None,
                     tuplet: None,
+            breath_mark_after: false,
                 })],
             }],
         };
@@ -1140,6 +1148,7 @@ mod tests {
                     beam: None,
                     tie: None,
                     tuplet: None,
+            breath_mark_after: false,
                 })],
             }],
         };
@@ -1168,6 +1177,7 @@ mod tests {
                     beam: None,
                     tie: None,
                     tuplet: None,
+            breath_mark_after: false,
                 })],
             }],
         };
@@ -1196,6 +1206,7 @@ mod tests {
                     beam: None,
                     tie: None,
                     tuplet: None,
+            breath_mark_after: false,
                 })],
             }],
         };
@@ -1250,6 +1261,7 @@ mod tests {
                     beam: None,
                     tie: None,
                     tuplet: None,
+            breath_mark_after: false,
                 })],
             }],
         };
@@ -1278,6 +1290,7 @@ mod tests {
                     beam: None,
                     tie: None,
                     tuplet: None,
+            breath_mark_after: false,
                 })],
             }],
         };
@@ -1306,6 +1319,7 @@ mod tests {
                     beam: None,
                     tie: None,
                     tuplet: None,
+            breath_mark_after: false,
                 })],
             }],
         };
@@ -1378,6 +1392,7 @@ mod tests {
                     beam: None,
                     tie: None,
                     tuplet: None,
+            breath_mark_after: false,
                 })],
             }],
         };
@@ -1406,6 +1421,7 @@ mod tests {
                     beam: None,
                     tie: None,
                     tuplet: None,
+            breath_mark_after: false,
                 })],
             }],
         };
@@ -1504,6 +1520,7 @@ mod tests {
                             bracket_start: false,
                             bracket_stop: true,
                         }),
+                        breath_mark_after: false,
                     }),
                 ],
             }],
@@ -1559,6 +1576,7 @@ mod tests {
                     beam: None,
                     tie: None,
                     tuplet: None,
+            breath_mark_after: false,
                 })],
             }],
         };
@@ -1604,6 +1622,7 @@ mod tests {
                             bracket_start: true,
                             bracket_stop: false,
                         }),
+                        breath_mark_after: false,
                     }),
                     ExportEvent::Note(NoteData {
                         pitch: PitchInfo::new(PitchCode::N2, 4),
@@ -1622,6 +1641,7 @@ mod tests {
                             bracket_start: false,
                             bracket_stop: false,
                         }),
+                        breath_mark_after: false,
                     }),
                     ExportEvent::Note(NoteData {
                         pitch: PitchInfo::new(PitchCode::N3, 4),
@@ -1640,6 +1660,7 @@ mod tests {
                             bracket_start: false,
                             bracket_stop: true,
                         }),
+                        breath_mark_after: false,
                     }),
                 ],
             }],
@@ -1689,6 +1710,7 @@ mod tests {
                         beam: None,
                         tie: None,
                         tuplet: None,
+            breath_mark_after: false,
                     }),
                     ExportEvent::Note(NoteData {
                         pitch: PitchInfo::new(PitchCode::N2, 4),
@@ -1702,6 +1724,7 @@ mod tests {
                         beam: None,
                         tie: None,
                         tuplet: None,
+            breath_mark_after: false,
                     }),
                 ],
             }],
@@ -1748,6 +1771,7 @@ mod tests {
                         beam: None,
                         tie: None,
                         tuplet: None,
+            breath_mark_after: false,
                     }),
                 ],
             }],
@@ -1817,6 +1841,7 @@ mod tests {
                             beam: None,
                             tie: None,
                             tuplet: None,
+            breath_mark_after: false,
                         }),
                     ],
                 }],

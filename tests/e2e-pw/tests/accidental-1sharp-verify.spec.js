@@ -32,13 +32,13 @@ test.describe('1# Sharp Accidental Glyph - Verification', () => {
     // The font-family should be NotationFont
     expect(fontFamily).toContain('NotationFont');
 
-    // The text content should be a single character with codepoint U+E1F0
+    // The text content should be a single character with codepoint U+E019
     // (for '1' sharp in the NotationFont font)
     const codepoint = textContent.charCodeAt(0);
-    console.log(`Expecting: U+E1F0 (${0xE1F0}), Got: U+${codepoint.toString(16).toUpperCase().padStart(4, '0')} (${codepoint})`);
+    console.log(`Expecting: U+E019 (${0xE019}), Got: U+${codepoint.toString(16).toUpperCase().padStart(4, '0')} (${codepoint})`);
 
     // Verify it's the correct glyph
-    expect(codepoint).toBe(0xE1F0); // Single glyph from NotationFont PUA
+    expect(codepoint).toBe(0xE019); // Single glyph from NotationFont PUA
   });
 
   test('1# character should not have data-accidental attribute (using glyph instead)', async ({ page }) => {

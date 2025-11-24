@@ -20,7 +20,8 @@ const LOG_CATEGORIES = {
   SELECTION: 'Selection',
   CURSOR: 'Cursor',
   COMMAND: 'Command',
-  PERFORMANCE: 'Performance'
+  PERFORMANCE: 'Performance',
+  SERVER_DEV: 'ServerDev'
 };
 
 class Logger {

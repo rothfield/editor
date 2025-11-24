@@ -4,13 +4,13 @@ test.describe('Sharp Accidentals - All Pitch Systems', () => {
   test('All number pitch system sharps render as glyphs (1# through 7#)', async ({ page }) => {
     // Test all number pitches with sharps
     const testCases = [
-      { pitch: '1#', expected_codepoint: 0xE1F0 }, // 1 is at index 0
-      { pitch: '2#', expected_codepoint: 0xE1F1 }, // 2 is at index 1
-      { pitch: '3#', expected_codepoint: 0xE1F2 }, // 3 is at index 2
-      { pitch: '4#', expected_codepoint: 0xE1F3 }, // 4 is at index 3
-      { pitch: '5#', expected_codepoint: 0xE1F4 }, // 5 is at index 4
-      { pitch: '6#', expected_codepoint: 0xE1F5 }, // 6 is at index 5
-      { pitch: '7#', expected_codepoint: 0xE1F6 }, // 7 is at index 6
+      { pitch: '1#', expected_codepoint: 0xE019 }, // 1 is at index 0
+      { pitch: '2#', expected_codepoint: 0xE037 }, // 2 is at index 1
+      { pitch: '3#', expected_codepoint: 0xE055 }, // 3 is at index 2
+      { pitch: '4#', expected_codepoint: 0xE073 }, // 4 is at index 3
+      { pitch: '5#', expected_codepoint: 0xE091 }, // 5 is at index 4
+      { pitch: '6#', expected_codepoint: 0xE0AF }, // 6 is at index 5
+      { pitch: '7#', expected_codepoint: 0xE0CD }, // 7 is at index 6
     ];
 
     for (const testCase of testCases) {
@@ -49,13 +49,13 @@ test.describe('Sharp Accidentals - All Pitch Systems', () => {
     // Test Western note names with sharps
     // C=0, D=1, E=2, F=3, G=4, A=5, B=6
     const testCases = [
-      { pitch: 'C#', expected_codepoint: 0xE1F0 }, // C is at index 0
-      { pitch: 'D#', expected_codepoint: 0xE1F1 }, // D is at index 1
-      { pitch: 'E#', expected_codepoint: 0xE1F2 }, // E is at index 2
-      { pitch: 'F#', expected_codepoint: 0xE1F3 }, // F is at index 3
-      { pitch: 'G#', expected_codepoint: 0xE1F4 }, // G is at index 4
-      { pitch: 'A#', expected_codepoint: 0xE1F5 }, // A is at index 5
-      { pitch: 'B#', expected_codepoint: 0xE1F6 }, // B is at index 6
+      { pitch: 'C#', expected_codepoint: 0xE019 }, // C is at index 0
+      { pitch: 'D#', expected_codepoint: 0xE037 }, // D is at index 1
+      { pitch: 'E#', expected_codepoint: 0xE055 }, // E is at index 2
+      { pitch: 'F#', expected_codepoint: 0xE073 }, // F is at index 3
+      { pitch: 'G#', expected_codepoint: 0xE091 }, // G is at index 4
+      { pitch: 'A#', expected_codepoint: 0xE0AF }, // A is at index 5
+      { pitch: 'B#', expected_codepoint: 0xE0CD }, // B is at index 6
     ];
 
     for (const testCase of testCases) {
@@ -145,11 +145,11 @@ test.describe('Sharp Accidentals - All Pitch Systems', () => {
     console.log(`Cell 2: U+${cp2.toString(16).toUpperCase().padStart(4, '0')}`);
     expect(cp2).toBeGreaterThanOrEqual(0xE000); // Octave variants start here
 
-    // Third cell: '3#' (sharp - should be in accidental range U+E1F0-U+E21E)
+    // Third cell: '3#' (sharp - should be in accidental range U+E019-U+E21E)
     const cell3 = pitchCells.nth(2);
     const content3 = await cell3.textContent();
     const cp3 = content3.charCodeAt(0);
     console.log(`Cell 3: U+${cp3.toString(16).toUpperCase().padStart(4, '0')}`);
-    expect(cp3).toBe(0xE1F2); // 3 sharp (index 2)
+    expect(cp3).toBe(0xE055); // 3 sharp (index 2)
   });
 });

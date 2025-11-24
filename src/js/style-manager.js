@@ -47,12 +47,13 @@ class StyleManager {
     style.textContent = `
       /* ===== WEB FONTS ===== */
       /* NOTE: System-specific font loading is currently NOT USED.
-         Full NotationFont is loaded via @font-face in index.html instead.
+         Unified NotationFont (containing all systems) is loaded via @font-face in index.html instead.
+         Single NotationFont.ttf contains Number, Western, Sargam, and Doremi systems.
          The following @font-face declaration is commented out: */
       /*
       @font-face {
         font-family: 'NotationFont';
-        src: url('/dist/fonts/NotationFont-Number.woff2') format('woff2');
+        src: url('/dist/fonts/NotationFont.woff2') format('woff2');
         font-weight: normal;
         font-style: normal;
         font-display: swap;

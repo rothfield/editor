@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NotationFont Glyph Test - All Pitch Systems</title>
+    <style>
+        @font-face {
+            font-family: 'NotationFont';
+            src: url('dist/fonts/NotationFont.woff2') format('woff2'),
+                 url('dist/fonts/NotationFont.ttf') format('truetype');
+            font-weight: normal;
+            font-style: normal;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #f5f5f5;
+        }
+
+        h1 {
+            color: #333;
+        }
+
+        .system-section {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        h2 {
+            color: #0066cc;
+            border-bottom: 2px solid #0066cc;
+            padding-bottom: 10px;
+        }
+
+        .glyph-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+
+        .glyph-card {
+            background: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            text-align: center;
+        }
+
+        .glyph-display {
+            font-family: 'NotationFont', monospace;
+            font-size: 48px;
+            line-height: 1.2;
+            margin: 10px 0;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .glyph-info {
+            font-size: 11px;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .glyph-label {
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .codepoint {
+            font-family: monospace;
+            color: #0066cc;
+            font-size: 10px;
+        }
+
+        .octave-section {
+            margin: 20px 0;
+        }
+
+        .octave-label {
+            font-weight: bold;
+            color: #666;
+            margin-bottom: 10px;
+        }
+
+        .error {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            padding: 10px;
+            border-radius: 4px;
+            color: #856404;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+
+        th, td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }
+
+        th {
+            background: #0066cc;
+            color: white;
+        }
+
+        tr:nth-child(even) {
+            background: #f9f9f9;
+        }
+
+        .notation-char {
+            font-family: 'NotationFont', monospace;
+            font-size: 36px;
+        }
+    </style>
+</head>
+<body>
+    <h1>NotationFont Glyph Verification</h1>
+    <p>This page verifies that all notation system glyphs render correctly in NotationFont.</p>
+
+    <!-- Sargam System -->
+    <div class="system-section">
+        <h2>Sargam System (Sa Re Ga Ma Pa Dha Ni)</h2>
+        <p>Uppercase = Shuddha (natural), Lowercase = Komal (flat), Uppercase M = Tivra</p>
+
+        <h3>Base Characters (Octave 0)</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>PitchCode</th>
+                    <th>Expected</th>
+                    <th>Rendered</th>
+                    <th>Codepoint</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>N1</td>
+                    <td>S</td>
+                    <td class="notation-char" data-codepoint="0xE300"></td>
+                    <td class="codepoint">U+E300</td>
+                    <td>Sa (always shuddha)</td>
+                </tr>
+                <tr>
+                    <td>N2</td>
+                    <td>R</td>
+                    <td class="notation-char" data-codepoint="0xE33C"></td>
+                    <td class="codepoint">U+E33C</td>
+                    <td>Re (shuddha, uppercase)</td>
+                </tr>
+                <tr>
+                    <td>N2b</td>
+                    <td>r</td>
+                    <td class="notation-char" data-codepoint="0xE323"></td>
+                    <td class="codepoint">U+E323</td>
+                    <td>re (komal, lowercase)</td>
+                </tr>
+                <tr>
+                    <td>N3</td>
+                    <td>G</td>
+                    <td class="notation-char" data-codepoint="0xE378"></td>
+                    <td class="codepoint">U+E378</td>
+                    <td>Ga (shuddha, uppercase)</td>
+                </tr>
+                <tr>
+                    <td>N3b</td>
+                    <td>g</td>
+                    <td class="notation-char" data-codepoint="0xE35F"></td>
+                    <td class="codepoint">U+E35F</td>
+                    <td>ga (komal, lowercase)</td>
+                </tr>
+                <tr>
+                    <td>N4</td>
+                    <td>m</td>
+                    <td class="notation-char" data-codepoint="0xE3A5"></td>
+                    <td class="codepoint">U+E3A5</td>
+                    <td>ma (shuddha, lowercase)</td>
+                </tr>
+                <tr>
+                    <td>N4s</td>
+                    <td>M</td>
+                    <td class="notation-char" data-codepoint="0xE3BE"></td>
+                    <td class="codepoint">U+E3BE</td>
+                    <td>Ma (tivra, uppercase)</td>
+                </tr>
+                <tr>
+                    <td>N5</td>
+                    <td>P</td>
+                    <td class="notation-char" data-codepoint="0xE3D2"></td>
+                    <td class="codepoint">U+E3D2</td>
+                    <td>Pa (always shuddha)</td>
+                </tr>
+                <tr>
+                    <td>N6</td>
+                    <td>D</td>
+                    <td class="notation-char" data-codepoint="0xE40E"></td>
+                    <td class="codepoint">U+E40E</td>
+                    <td>Dha (shuddha, uppercase)</td>
+                </tr>
+                <tr>
+                    <td>N6b</td>
+                    <td>d</td>
+                    <td class="notation-char" data-codepoint="0xE3F5"></td>
+                    <td class="codepoint">U+E3F5</td>
+                    <td>dha (komal, lowercase)</td>
+                </tr>
+                <tr>
+                    <td>N7</td>
+                    <td>N</td>
+                    <td class="notation-char" data-codepoint="0xE44A"></td>
+                    <td class="codepoint">U+E44A</td>
+                    <td>Ni (shuddha, uppercase)</td>
+                </tr>
+                <tr>
+                    <td>N7b</td>
+                    <td>n</td>
+                    <td class="notation-char" data-codepoint="0xE431"></td>
+                    <td class="codepoint">U+E431</td>
+                    <td>ni (komal, lowercase)</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h3>Octave Variants</h3>
+        <div class="glyph-grid">
+            <!-- Sa with octave dots -->
+            <div class="glyph-card">
+                <div class="glyph-label">S (octave -2)</div>
+                <div class="glyph-display" data-codepoint="0xE301"></div>
+                <div class="glyph-info codepoint">U+E301</div>
+            </div>
+            <div class="glyph-card">
+                <div class="glyph-label">S (octave -1)</div>
+                <div class="glyph-display" data-codepoint="0xE302"></div>
+                <div class="glyph-info codepoint">U+E302</div>
+            </div>
+            <div class="glyph-card">
+                <div class="glyph-label">S (base)</div>
+                <div class="glyph-display" data-codepoint="0xE300"></div>
+                <div class="glyph-info codepoint">U+E300</div>
+            </div>
+            <div class="glyph-card">
+                <div class="glyph-label">S (octave +1)</div>
+                <div class="glyph-display" data-codepoint="0xE303"></div>
+                <div class="glyph-info codepoint">U+E303</div>
+            </div>
+            <div class="glyph-card">
+                <div class="glyph-label">S (octave +2)</div>
+                <div class="glyph-display" data-codepoint="0xE304"></div>
+                <div class="glyph-info codepoint">U+E304</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Number System -->
+    <div class="system-section">
+        <h2>Number System (1-7)</h2>
+        <div class="glyph-grid">
+            <div class="glyph-card">
+                <div class="glyph-label">1</div>
+                <div class="glyph-display" data-codepoint="0xE000"></div>
+                <div class="glyph-info codepoint">U+E000</div>
+            </div>
+            <div class="glyph-card">
+                <div class="glyph-label">2</div>
+                <div class="glyph-display" data-codepoint="0xE01E"></div>
+                <div class="glyph-info codepoint">U+E01E</div>
+            </div>
+            <div class="glyph-card">
+                <div class="glyph-label">3</div>
+                <div class="glyph-display" data-codepoint="0xE03C"></div>
+                <div class="glyph-info codepoint">U+E03C</div>
+            </div>
+            <div class="glyph-card">
+                <div class="glyph-label">4</div>
+                <div class="glyph-display" data-codepoint="0xE05A"></div>
+                <div class="glyph-info codepoint">U+E05A</div>
+            </div>
+            <div class="glyph-card">
+                <div class="glyph-label">5</div>
+                <div class="glyph-display" data-codepoint="0xE078"></div>
+                <div class="glyph-info codepoint">U+E078</div>
+            </div>
+            <div class="glyph-card">
+                <div class="glyph-label">6</div>
+                <div class="glyph-display" data-codepoint="0xE096"></div>
+                <div class="glyph-info codepoint">U+E096</div>
+            </div>
+            <div class="glyph-card">
+                <div class="glyph-label">7</div>
+                <div class="glyph-display" data-codepoint="0xE0B4"></div>
+                <div class="glyph-info codepoint">U+E0B4</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Western System -->
+    <div class="system-section">
+        <h2>Western System (C-B)</h2>
+        <div class="glyph-grid">
+            <div class="glyph-card">
+                <div class="glyph-label">C</div>
+                <div class="glyph-display" data-codepoint="0xE100"></div>
+                <div class="glyph-info codepoint">U+E100</div>
+            </div>
+            <div class="glyph-card">
+                <div class="glyph-label">D</div>
+                <div class="glyph-display" data-codepoint="0xE11E"></div>
+                <div class="glyph-info codepoint">U+E11E</div>
+            </div>
+            <div class="glyph-card">
+                <div class="glyph-label">E</div>
+                <div class="glyph-display" data-codepoint="0xE13C"></div>
+                <div class="glyph-info codepoint">U+E13C</div>
+            </div>
+            <div class="glyph-card">
+                <div class="glyph-label">F</div>
+                <div class="glyph-display" data-codepoint="0xE15A"></div>
+                <div class="glyph-info codepoint">U+E15A</div>
+            </div>
+            <div class="glyph-card">
+                <div class="glyph-label">G</div>
+                <div class="glyph-display" data-codepoint="0xE178"></div>
+                <div class="glyph-info codepoint">U+E178</div>
+            </div>
+            <div class="glyph-card">
+                <div class="glyph-label">A</div>
+                <div class="glyph-display" data-codepoint="0xE196"></div>
+                <div class="glyph-info codepoint">U+E196</div>
+            </div>
+            <div class="glyph-card">
+                <div class="glyph-label">B</div>
+                <div class="glyph-display" data-codepoint="0xE1B4"></div>
+                <div class="glyph-info codepoint">U+E1B4</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Render glyphs from codepoints
+        document.querySelectorAll('[data-codepoint]').forEach(el => {
+            const codepoint = parseInt(el.getAttribute('data-codepoint'), 16);
+            el.textContent = String.fromCodePoint(codepoint);
+        });
+
+        // Font loading verification
+        document.fonts.ready.then(() => {
+            const notationFont = Array.from(document.fonts).find(f => f.family === 'NotationFont');
+            if (notationFont) {
+                console.log('✓ NotationFont loaded successfully');
+                console.log('  Status:', notationFont.status);
+            } else {
+                console.error('✗ NotationFont not found in document.fonts');
+                document.body.insertAdjacentHTML('afterbegin',
+                    '<div class="error">⚠️ NotationFont failed to load. Check font files in dist/fonts/</div>'
+                );
+            }
+        });
+
+        // Log all rendered characters for debugging
+        console.log('=== Sargam Glyphs ===');
+        console.log('N1  (Sa):       U+E300 →', String.fromCodePoint(0xE300));
+        console.log('N2  (Re):       U+E33C →', String.fromCodePoint(0xE33C));
+        console.log('N2b (re komal): U+E323 →', String.fromCodePoint(0xE323));
+        console.log('N3  (Ga):       U+E378 →', String.fromCodePoint(0xE378));
+        console.log('N3b (ga komal): U+E35F →', String.fromCodePoint(0xE35F));
+        console.log('N4  (ma):       U+E3A5 →', String.fromCodePoint(0xE3A5));
+        console.log('N4s (Ma tivra): U+E3BE →', String.fromCodePoint(0xE3BE));
+        console.log('N5  (Pa):       U+E3D2 →', String.fromCodePoint(0xE3D2));
+        console.log('N6  (Dha):      U+E40E →', String.fromCodePoint(0xE40E));
+        console.log('N6b (dha komal):U+E3F5 →', String.fromCodePoint(0xE3F5));
+        console.log('N7  (Ni):       U+E44A →', String.fromCodePoint(0xE44A));
+        console.log('N7b (ni komal): U+E431 →', String.fromCodePoint(0xE431));
+    </script>
+</body>
+</html>

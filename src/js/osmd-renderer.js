@@ -1,6 +1,7 @@
 // OSMD (OpenSheetMusicDisplay) renderer for VexFlow staff notation output
 // Implements IndexedDB caching for fast startup (FR-032)
 import PlaybackEngine from 'osmd-audio-player';
+import logger, { LOG_CATEGORIES } from './logger.js';
 
 export class OSMDRenderer {
     constructor(containerId) {
@@ -27,14 +28,14 @@ export class OSMDRenderer {
 
             dbRequest.onsuccess = (e) => {
                 this.cache = e.target.result;
-                console.log('[OSMD] Cache initialized');
+                logger.info(LOG_CATEGORIES.OSMD, 'Cache initialized');
             };
 
             dbRequest.onerror = (e) => {
-                console.warn('[OSMD] Cache init failed, will render without cache', e);
+                logger.warn(LOG_CATEGORIES.OSMD, 'Cache init failed, will render without cache', { error: e });
             };
         } catch (e) {
-            console.warn('[OSMD] IndexedDB not available', e);
+            logger.warn(LOG_CATEGORIES.OSMD, 'IndexedDB not available', { error: e });
         }
     }
 
@@ -64,11 +65,11 @@ export class OSMDRenderer {
                 };
 
                 request.onerror = () => {
-                    console.warn('[OSMD] Cache read error');
+                    logger.warn(LOG_CATEGORIES.OSMD, 'Cache read error');
                     resolve(null);
                 };
             } catch (e) {
-                console.warn('[OSMD] Cache get failed', e);
+                logger.warn(LOG_CATEGORIES.OSMD, 'Cache get failed', { error: e });
                 resolve(null);
             }
         });
@@ -83,7 +84,7 @@ export class OSMDRenderer {
             const store = transaction.objectStore('renders');
             store.put(svg, hash);
         } catch (e) {
-            console.warn('[OSMD] Cache write failed', e);
+            logger.warn(LOG_CATEGORIES.OSMD, 'Cache write failed', { error: e });
         }
     }
 
@@ -95,9 +96,9 @@ export class OSMDRenderer {
             const transaction = this.cache.transaction(['renders'], 'readwrite');
             const store = transaction.objectStore('renders');
             store.delete(hash);
-            console.log('[OSMD] Cleared cache for hash:', hash);
+            logger.info(LOG_CATEGORIES.OSMD, 'Cleared cache for hash', { hash });
         } catch (e) {
-            console.warn('[OSMD] Cache clear failed', e);
+            logger.warn(LOG_CATEGORIES.OSMD, 'Cache clear failed', { error: e });
         }
     }
 
@@ -109,9 +110,9 @@ export class OSMDRenderer {
             const transaction = this.cache.transaction(['renders'], 'readwrite');
             const store = transaction.objectStore('renders');
             store.clear();
-            console.log('[OSMD] Cleared all cached renders');
+            logger.info(LOG_CATEGORIES.OSMD, 'Cleared all cached renders');
         } catch (e) {
-            console.warn('[OSMD] Cache clear all failed', e);
+            logger.warn(LOG_CATEGORIES.OSMD, 'Cache clear all failed', { error: e });
         }
     }
 
@@ -149,7 +150,7 @@ export class OSMDRenderer {
 
         // Skip if unchanged (dirty flag check - e.g., arrow key navigation)
         if (hash === this.lastMusicXmlHash) {
-            console.log('[OSMD] MusicXML unchanged, skipping render');
+            logger.debug(LOG_CATEGORIES.OSMD, 'MusicXML unchanged, skipping render');
             return;
         }
 
@@ -179,7 +180,7 @@ export class OSMDRenderer {
                 if (myToken !== this.renderToken) return; // canceled by newer update
 
                 this.lastMusicXmlHash = hash; // Track what we rendered
-                console.log('[OSMD] Rendered from cache (<50ms)');
+                logger.debug(LOG_CATEGORIES.OSMD, 'Rendered from cache');
 
                 // Reload audio player with new score if it exists
                 await this.reloadAudioPlayerIfNeeded();
@@ -187,7 +188,7 @@ export class OSMDRenderer {
             }
 
             // Cache miss - perform full render (FR-032c: invalidate on content change)
-            console.log('[OSMD] Cache miss, rendering...');
+            logger.debug(LOG_CATEGORIES.OSMD, 'Cache miss, rendering...');
 
             await this.init();
             await this.osmd.load(musicxml);
@@ -202,14 +203,12 @@ export class OSMDRenderer {
             await this.setCachedRender(hash, renderedSvg);
 
             this.lastMusicXmlHash = hash; // Track what we rendered
-            console.log('[OSMD] Rendered successfully and cached');
+            logger.debug(LOG_CATEGORIES.OSMD, 'Rendered successfully and cached');
 
             // Reload audio player with new score if it exists
             await this.reloadAudioPlayerIfNeeded();
         } catch (e) {
-            console.error('[OSMD] Render error:', e);
-            document.getElementById(this.containerId).innerHTML =
-                '<div style="color:#b00020;padding:20px;">Failed to render staff notation (see console)</div>';
+            logger.error(LOG_CATEGORIES.OSMD, 'Render error', { error: e });
         }
     }
 
@@ -217,11 +216,11 @@ export class OSMDRenderer {
     async reloadAudioPlayerIfNeeded() {
         if (this.audioPlayer && this.osmd && this.osmd.Sheet) {
             try {
-                console.log('[OSMD] Reloading audio player with updated score...');
+                logger.debug(LOG_CATEGORIES.OSMD, 'Reloading audio player with updated score...');
                 await this.audioPlayer.loadScore(this.osmd);
-                console.log('[OSMD] Audio player reloaded with new content');
+                logger.debug(LOG_CATEGORIES.OSMD, 'Audio player reloaded with new content');
             } catch (e) {
-                console.warn('[OSMD] Failed to reload audio player:', e);
+                logger.warn(LOG_CATEGORIES.OSMD, 'Failed to reload audio player', { error: e });
             }
         }
     }
@@ -230,10 +229,10 @@ export class OSMDRenderer {
     async initAudioPlayer() {
         if (this.audioPlayer) {
             // Already initialized, just reload the score
-            console.log('[OSMD] Reloading score into existing audio player...');
+            logger.debug(LOG_CATEGORIES.OSMD, 'Reloading score into existing audio player...');
             await this.audioPlayer.loadScore(this.osmd);
-            console.log('[OSMD] Audio player reloaded. State:', this.audioPlayer.state, 'Ready:', this.audioPlayer.ready);
-            console.log('[OSMD] Iteration steps:', this.audioPlayer.iterationSteps);
+            logger.debug(LOG_CATEGORIES.OSMD, 'Audio player reloaded', { state: this.audioPlayer.state, ready: this.audioPlayer.ready });
+            logger.debug(LOG_CATEGORIES.OSMD, 'Iteration steps', { steps: this.audioPlayer.iterationSteps });
             return;
         }
 
@@ -241,11 +240,13 @@ export class OSMDRenderer {
             throw new Error('OSMD not initialized or no sheet loaded. Please enter some notes first.');
         }
 
-        console.log('[OSMD] Initializing audio player (first play)...');
-        console.log('[OSMD] OSMD instance:', this.osmd);
-        console.log('[OSMD] OSMD Sheet:', this.osmd.Sheet);
-        console.log('[OSMD] Sheet Instruments:', this.osmd.Sheet.Instruments);
-        console.log('[OSMD] Source Measures:', this.osmd.Sheet.SourceMeasures);
+        logger.info(LOG_CATEGORIES.OSMD, 'Initializing audio player (first play)...');
+        logger.debug(LOG_CATEGORIES.OSMD, 'OSMD instance details', {
+            osmdInstance: this.osmd,
+            osmdSheet: this.osmd.Sheet,
+            sheetInstruments: this.osmd.Sheet.Instruments,
+            sourceMeasures: this.osmd.Sheet.SourceMeasures
+        });
 
         // Check if sheet has actual music content
         if (this.osmd.Sheet.SourceMeasures.length === 0) {
@@ -253,26 +254,28 @@ export class OSMDRenderer {
         }
 
         this.audioPlayer = new PlaybackEngine();
-        console.log('[OSMD] PlaybackEngine created, loading score...');
+        logger.debug(LOG_CATEGORIES.OSMD, 'PlaybackEngine created, loading score...');
 
         await this.audioPlayer.loadScore(this.osmd);
-        console.log('[OSMD] Score loaded. State:', this.audioPlayer.state, 'Ready:', this.audioPlayer.ready);
+        logger.debug(LOG_CATEGORIES.OSMD, 'Score loaded', { state: this.audioPlayer.state, ready: this.audioPlayer.ready });
 
         this.audioPlayer.setBpm(120); // Default tempo
-        console.log('[OSMD] Audio player initialized with BPM 120');
-        console.log('[OSMD] Available instruments:', this.audioPlayer.availableInstruments.map(i => i.name));
-        console.log('[OSMD] Score instruments:', this.audioPlayer.scoreInstruments.map(i => i.Name));
-        console.log('[OSMD] Iteration steps:', this.audioPlayer.iterationSteps);
-        console.log('[OSMD] Scheduler:', this.audioPlayer.scheduler);
-        console.log('[OSMD] Scheduler step queue:', this.audioPlayer.scheduler?.stepQueue);
+        logger.info(LOG_CATEGORIES.OSMD, 'Audio player initialized with BPM 120');
+        logger.debug(LOG_CATEGORIES.OSMD, 'Audio player details', {
+            availableInstruments: this.audioPlayer.availableInstruments.map(i => i.name),
+            scoreInstruments: this.audioPlayer.scoreInstruments.map(i => i.Name),
+            iterationSteps: this.audioPlayer.iterationSteps,
+            scheduler: this.audioPlayer.scheduler,
+            schedulerStepQueue: this.audioPlayer.scheduler?.stepQueue
+        });
 
         // Debug: Check if cursor works
         if (this.osmd.cursor) {
-            console.log('[OSMD] Cursor exists:', this.osmd.cursor);
-            console.log('[OSMD] Cursor Iterator:', this.osmd.cursor.Iterator);
-            console.log('[OSMD] Current voice entries:', this.osmd.cursor.Iterator.CurrentVoiceEntries);
+            logger.debug(LOG_CATEGORIES.OSMD, 'Cursor exists', { exists: !!this.osmd.cursor });
+            logger.debug(LOG_CATEGORIES.OSMD, 'Cursor Iterator', { iterator: this.osmd.cursor.Iterator });
+            logger.debug(LOG_CATEGORIES.OSMD, 'Current voice entries', { entries: this.osmd.cursor.Iterator.CurrentVoiceEntries });
         } else {
-            console.error('[OSMD] No cursor found!');
+            logger.error(LOG_CATEGORIES.OSMD, 'No cursor found!');
         }
     }
 }

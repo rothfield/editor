@@ -1,24 +1,24 @@
-# Spatial Rhythmic Notation System
+# Pulse/Subdivision Notation System
 
 ## Overview
 
-The core innovation of this notation system is using **horizontal space to represent musical time**. This document details the most complex aspect of the parser: converting spatial layout into precise rhythmic durations.
+This notation system uses **horizontal space to represent musical pulses and subdivisions**, a well-established approach commonly used in drum notation and rhythm pedagogy. This document details the most complex aspect of the parser: converting pulse/subdivision layout into precise rhythmic durations.
 
 ## Fundamental Concept
 
-### Traditional vs. Spatial Notation
+### Traditional vs. Pulse/Subdivision Notation
 
 **Traditional Western Notation:**
 ```
 ♪ ♫ ♪    (uses note shapes for duration)
 ```
 
-**Spatial Rhythmic Notation:**
+**Pulse/Subdivision Notation:**
 ```
-S--r --g-    (uses horizontal space for duration)
+S--r --g-    (uses horizontal space for pulses and subdivisions)
 ```
 
-The key insight: **Physical distance on the page = Musical time duration**
+The key principle: **Each character = one subdivision of the pulse; spaces separate pulses (beats)**
 
 ## Core Principles
 
@@ -59,7 +59,36 @@ Example: `1--2 --3-`
 - Result: `c8. d16~ d4 e4` (the "2" ties across the beat boundary)
 - The tie (`~`) is a standard music notation element that extends notes beyond their written duration
 
-This two-stage approach (lexical tokenization → rhythmic interpretation) allows the parser to maintain spatial relationships while correctly generating musical durations in the final output.
+This two-stage approach (lexical tokenization → rhythmic interpretation) allows the parser to maintain pulse/subdivision relationships while correctly generating musical durations in the final output.
+
+### Breath Marks Reset Pitch Context
+
+**The breath mark `'` is critical for controlling when dashes become rests.**
+
+When a breath mark appears after a pitch, it **resets the pitch context**, causing following dashes to be **collected together into a rest** instead of extending the previous pitch.
+
+**Dash Collection Behavior:**
+- **After a pitch (no breath mark):** Consecutive dashes are collected to extend that pitch duration
+- **After a breath mark:** Consecutive dashes are collected into a **single rest** of that total duration
+
+**Examples:**
+
+| Input | Output | Explanation |
+|-------|--------|-------------|
+| `1' -` | `c4 r4` | Breath mark resets context → 1 dash = quarter rest |
+| `1' ---2` | `c4 r4. d8` | Breath mark → 3 dashes collected into dotted quarter rest |
+| `1 -` | `c4~ c4` | No breath mark → dash extends note (tie across beats) |
+| `1 ---` | `c4~ c4` | No breath mark → 3 dashes extend pitch (beat 1: c4, beat 2: 3 dashes = c4 tied) |
+| `1---` | `c4` | Single beat: 1+3 dashes = 4 subdivisions = 1 quarter note |
+| `1' 1` | `c4 c4` | Breath mark separates two distinct notes |
+| `1 2' --3- --4-` | `c4 d4 r8 e8~ e8 f8` | "2" has breath mark → 2 dashes = eighth rest; "3" has no breath mark → 2 dashes extend "3" (tie) |
+
+**Key Principle:**
+- Dashes are always **collected consecutively** (whether for extensions or rests)
+- The breath mark determines whether collected dashes extend a pitch or become a rest
+- This mirrors the dash extension behavior: just as `1---` collects 3 dashes to extend pitch duration, `1' ---` collects 3 dashes to create rest duration
+
+This allows precise control over articulation and phrasing in the pulse/subdivision notation system.
 
 ### 2. Beat Grouping
 
@@ -265,7 +294,7 @@ Benefits:
 
 ### Current Rust Implementation
 
-Focuses on the core spatial→temporal conversion:
+Focuses on the core pulse/subdivision→temporal conversion:
 
 ```rust
 fn fraction_to_lilypond_proper(frac: Fraction) -> Vec<String> {
@@ -280,11 +309,11 @@ fn fraction_to_lilypond_proper(frac: Fraction) -> Vec<String> {
 
 ## Mathematical Foundation
 
-### Proportional Time
+### Pulse and Subdivision Model
 
-The system implements **proportional notation** where:
-- Horizontal distance ∝ Time duration
-- Character count = Rhythmic subdivision
+The system implements **pulse/subdivision notation** where:
+- Each character = One subdivision of the pulse
+- Character count within a beat = Number of subdivisions
 - Fraction arithmetic = Musical duration
 
 ### Fraction Arithmetic
@@ -346,7 +375,7 @@ fn normalize_durations(beats: Vec<Beat>) -> Vec<NormalizedBeat> {
 
 ### Memory Usage
 
-- **Node Tree:** Hierarchical structure preserves spatial relationships
+- **Node Tree:** Hierarchical structure preserves pulse/subdivision relationships
 - **Fraction Storage:** Rational arithmetic avoids floating-point errors
 - **String Building:** Efficient string concatenation for output
 
@@ -368,7 +397,7 @@ fn test_simple_subdivision() {
 
 ### Integration Tests
 
-Verify end-to-end conversion from spatial notation to valid LilyPond:
+Verify end-to-end conversion from pulse/subdivision notation to valid LilyPond:
 
 ```rust
 #[test] 
@@ -408,4 +437,4 @@ fn rhythm_duration_conservation() {
 - Irrational time signatures  
 - Spectral rhythm techniques
 
-The spatial rhythmic notation system represents a fundamental reimagining of how musical time can be represented in text, bridging the gap between intuitive spatial relationships and precise mathematical timing.
+The pulse/subdivision notation system is commonly used in drum notation and rhythm pedagogy, bridging the gap between intuitive pulse relationships and precise mathematical timing.

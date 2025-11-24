@@ -501,6 +501,11 @@ impl Document {
         self.state = DocumentState::new();
     }
 
+    /// Toggle ornament edit mode
+    pub fn toggle_ornament_edit_mode(&mut self) {
+        self.ornament_edit_mode = !self.ornament_edit_mode;
+    }
+
     /// Get the effective pitch system for a line
     pub fn effective_pitch_system(&self, line: &Line) -> PitchSystem {
         // Line-level pitch system takes precedence over document-level
@@ -545,6 +550,9 @@ impl Document {
                                 glyph as u32, char_str.len()).into());
                         }
                         cell.char = char_str;
+                        // CRITICAL: Update cell.pitch_system to match the effective system
+                        // This ensures CSS classes and metadata stay in sync with the glyph
+                        cell.pitch_system = Some(effective_system);
                     } else {
                         // Fallback to old behavior if glyph not found (shouldn't happen)
                         #[cfg(target_arch = "wasm32")]
@@ -552,6 +560,7 @@ impl Document {
                             web_sys::console::log_1(&format!("[compute_glyphs] WARNING: glyph_for_pitch returned None for {:?}", pitch_code).into());
                         }
                         cell.char = pitch_code.to_string(effective_system);
+                        cell.pitch_system = Some(effective_system);
                     }
                 }
             }

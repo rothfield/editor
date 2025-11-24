@@ -1,0 +1,50 @@
+import { test, expect } from '@playwright/test';
+
+test('1 with TWO spaces then breath-mark-dashes produces 2 beats', async ({ page }) => {
+  await page.goto('/');
+  
+  const editor = page.locator('#notation-editor');
+  await expect(editor).toBeVisible({ timeout: 10000 });
+  
+  // Wait for WASM to load
+  await page.waitForFunction(() => window.editor !== undefined, { timeout: 10000 });
+  
+  // Type: 1 (space) (space) '---
+  await editor.click();
+  await page.keyboard.type('1  ');  // Note with TWO spaces
+  await page.keyboard.type("'---");  // Then breath mark and dashes
+  
+  // Wait for processing
+  await page.waitForTimeout(500);
+  
+  // Click LilyPond tab
+  const lyTab = page.locator('[data-testid="tab-lilypond"]');
+  await expect(lyTab).toBeVisible();
+  await lyTab.click();
+  
+  // Get LilyPond output
+  const lyPane = page.locator('[data-testid="pane-lilypond"]');
+  await expect(lyPane).toBeVisible();
+  
+  // Wait for content
+  await expect(async () => {
+    const text = await lyPane.innerText();
+    expect(text.length).toBeGreaterThan(0);
+  }).toPass({ timeout: 5000 });
+  
+  const lyContent = await lyPane.innerText();
+  console.log('\n=== LilyPond Output for "1  \'---" (TWO spaces) ===');
+  console.log(lyContent);
+  
+  // Extract just the notes section
+  const notesMatch = lyContent.match(/\\clef treble\s+(.*?)\s+}/s);
+  if (notesMatch) {
+    console.log('\n=== Notes section ===');
+    console.log(notesMatch[1].trim());
+  }
+  
+  // Should produce: c'4 r4 (quarter note + quarter rest)
+  // NOT: c'4 \tuplet or anything else
+  expect(lyContent).toMatch(/c'4\s+r4/);
+  expect(lyContent).not.toContain('\\tuplet');
+});

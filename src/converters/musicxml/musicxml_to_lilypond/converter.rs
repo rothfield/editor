@@ -614,7 +614,7 @@ mod tests {
 
     #[test]
     fn test_parse_lyric_from_note_single_syllable() {
-        let xml = r#"<?xml version="1.0"?>
+        let _xml = r#"<?xml version="1.0"?>
 <note>
   <pitch><step>C</step><octave>4</octave></pitch>
   <duration>4</duration>

@@ -20,14 +20,14 @@ export class KeyboardHandler {
    */
   async handleKeyboardEvent(event) {
     let key = event.key;
-    console.log(`[JS] handleKeyboardEvent called with key: "${key}"`);
+    logger.debug(LOG_CATEGORIES.KEYBOARD, `handleKeyboardEvent called`, { key });
 
     const modifiers = {
       alt: event.altKey,
       ctrl: event.ctrlKey,
       shift: event.shiftKey
     };
-    console.log('[JS] Modifiers:', modifiers);
+    logger.debug(LOG_CATEGORIES.KEYBOARD, 'Modifiers', { modifiers });
 
     // Fix for browsers that return "alt" instead of the actual key when Alt is pressed
     // Use event.code as fallback (e.g., "KeyL" -> "l")
@@ -76,6 +76,12 @@ export class KeyboardHandler {
     this.editor.addToConsoleLog(`Musical command: Alt+${key.toLowerCase()}`);
 
     switch (key.toLowerCase()) {
+      case 'n':
+        // New document
+        if (this.editor.ui && this.editor.ui.newDocument) {
+          await this.editor.ui.newDocument();
+        }
+        break;
       case 's':
         // Apply slur using layered API
         await this._applySlurLayered();
@@ -93,13 +99,13 @@ export class KeyboardHandler {
         await this._applyOctaveLayered(-1);
         break;
       case 't':
-        this.editor.showTalaDialog();
+        await this.editor.showTalaDialog();
         break;
       default:
-        console.log('Unknown Alt command:', key);
+        logger.warn(LOG_CATEGORIES.KEYBOARD, 'Unknown Alt command', { key });
         this.editor.showWarning(`Unknown musical command: Alt+${key}`, {
           important: false,
-          details: `Available commands: Alt+S (slur), Alt+U (upper octave), Alt+M (middle octave), Alt+L (lower octave), Alt+T (tala)`
+          details: `Available commands: Alt+N (new), Alt+S (slur), Alt+U (upper octave), Alt+M (middle octave), Alt+L (lower octave), Alt+T (tala)`
         });
         return;
     }
@@ -124,7 +130,7 @@ export class KeyboardHandler {
       const start_col = selection.start.col;
       const end_col = selection.end.col;
 
-      console.log('applySlurLayered');
+      logger.debug(LOG_CATEGORIES.EDITOR, 'applySlurLayered');
       this.editor.wasmModule.toggleSlur(line, start_col, end_col);
       await this.editor.renderAndUpdate();
 
@@ -137,7 +143,7 @@ export class KeyboardHandler {
       this.editor.wasmModule.setSelection(selection.anchor, selection.head);
       await this.editor.render(); // Re-render to show selection
     } catch (error) {
-      console.error('Failed to toggle slur:', error);
+      logger.error(LOG_CATEGORIES.EDITOR, 'Failed to toggle slur', { error });
     }
   }
 
@@ -169,7 +175,7 @@ export class KeyboardHandler {
       this.editor.wasmModule.setSelection(selection.anchor, selection.head);
       await this.editor.render(); // Re-render to show selection
     } catch (error) {
-      console.error('Failed to set octave:', error);
+      logger.error(LOG_CATEGORIES.EDITOR, 'Failed to set octave', { error });
     }
   }
 
@@ -185,11 +191,15 @@ export class KeyboardHandler {
         // Remove slur using layered API
         await this._removeSlurLayered();
         break;
+      case 'o':
+        // Toggle ornament edit mode
+        await this.editor.toggleOrnamentEditMode();
+        break;
       default:
-        console.log('Unknown Alt+Shift command:', key);
+        logger.warn(LOG_CATEGORIES.KEYBOARD, 'Unknown Alt+Shift command', { key });
         this.editor.showWarning(`Unknown mode command: Alt+Shift+${key.toUpperCase()}`, {
           important: false,
-          details: `Available commands: Alt+Shift+S (remove slur)`
+          details: `Available commands: Alt+Shift+S (remove slur), Alt+Shift+O (toggle ornament edit mode)`
         });
         return;
     }
@@ -210,11 +220,10 @@ export class KeyboardHandler {
     }
 
     try {
-      const line = selection.start.line;
       const start_col = selection.start.col;
       const end_col = selection.end.col;
 
-      console.log('removeSlurLayered');
+      logger.debug(LOG_CATEGORIES.EDITOR, 'removeSlurLayered');
       this.editor.wasmModule.removeSlurLayered(line, start_col, end_col);
       await this.editor.renderAndUpdate();
 
@@ -222,7 +231,7 @@ export class KeyboardHandler {
       this.editor.wasmModule.setSelection(selection.anchor, selection.head);
       await this.editor.render(); // Re-render to show selection
     } catch (error) {
-      console.error('Failed to remove slur:', error);
+      logger.error(LOG_CATEGORIES.EDITOR, 'Failed to remove slur', { error });
     }
   }
 
@@ -253,7 +262,7 @@ export class KeyboardHandler {
         this.editor.handleRedo();
         break;
       default:
-        console.log('Unknown Ctrl command:', key);
+        logger.warn(LOG_CATEGORIES.KEYBOARD, 'Unknown Ctrl command', { key });
         return;
     }
   }
@@ -266,7 +275,7 @@ export class KeyboardHandler {
     try {
       // Load document to ensure WASM has latest state
       if (!this.editor.getDocument()) {
-        console.warn('No document available for selection');
+        logger.warn(LOG_CATEGORIES.EDITOR, 'No document available for selection');
         return;
       }
       this.editor.wasmModule.loadDocument(this.editor.getDocument());
@@ -300,7 +309,7 @@ export class KeyboardHandler {
       // Update cursor and selection from WASM diff
       await this.editor.updateCursorFromWASM(diff);
     } catch (error) {
-      console.error('Selection extension error:', error);
+      logger.error(LOG_CATEGORIES.EDITOR, 'Selection extension error', { error });
     }
   }
 
@@ -309,7 +318,7 @@ export class KeyboardHandler {
    * @param {string} key - Key name
    */
   handleNormalKey(key) {
-    console.log(`[JS] handleNormalKey called with key: "${key}"`);
+    logger.debug(LOG_CATEGORIES.KEYBOARD, `handleNormalKey called`, { key });
 
     switch (key) {
       case 'ArrowLeft':
@@ -318,7 +327,7 @@ export class KeyboardHandler {
       case 'ArrowDown':
       case 'Home':
       case 'End':
-        console.log('[JS] Arrow/navigation key detected, calling handleNavigation');
+        logger.debug(LOG_CATEGORIES.KEYBOARD, 'Arrow/navigation key detected, calling handleNavigation');
         // WASM now handles selection collapse logic for standard text editor behavior
         this.handleNavigation(key);
         break;
@@ -333,68 +342,10 @@ export class KeyboardHandler {
         break;
       default:
         // Insert text character - do NOT replace selection
+        // Constraint filtering is now handled in WASM parser
         if (key.length === 1 && !key.match(/[Ff][0-9]/)) { // Exclude F-keys
-          // Check constraint before inserting
-          if (this.isAllowedByConstraint(key)) {
-            this.editor.insertText(key);
-          } else {
-            // Constraint blocked this pitch
-            console.log(`[KeyboardHandler] Pitch '${key}' blocked by active constraint`);
-            this.editor.showWarning(`Pitch '${key}' not allowed in current scale constraint`, {
-              timeout: 2000,
-              color: '#ef4444'
-            });
-          }
+          this.editor.insertText(key);
         }
-    }
-  }
-
-  /**
-   * Check if a character is allowed by the active constraint
-   * @param {string} char - Single character to check
-   * @returns {boolean} - True if allowed, false if blocked
-   */
-  isAllowedByConstraint(char) {
-    // If no WASM module or function not available, allow all
-    if (!this.editor.wasmModule ||
-        typeof this.editor.wasmModule.checkPitchAgainstActiveConstraint !== 'function') {
-      return true;
-    }
-
-    // Check if constraint is active (selected AND enabled)
-    // User can toggle constraint off with mode button
-    if (!this.editor.ui || !this.editor.ui.isConstraintActive()) {
-      return true; // Constraint disabled or not selected
-    }
-
-    // Check if this is a pitch character (1-7, accidentals, etc.)
-    // For simplicity, we'll pass it to WASM and let it decide
-    // WASM will return true for non-pitch characters (spaces, dashes, etc.)
-    try {
-      // Build a pitch code from the character
-      // For now, just pass the character directly
-      // WASM's checkPitchAgainstActiveConstraint expects a PitchCode string
-
-      // If no active constraint, allow all
-      const activeConstraint = this.editor.wasmModule.getActiveConstraint();
-      if (!activeConstraint) {
-        return true; // No constraint active, allow everything
-      }
-
-      // For pitch characters (1-7), build the pitch code
-      // This is a simplified approach - assumes Number system
-      if (char.match(/[1-7]/)) {
-        // Basic pitch without accidental (natural)
-        const pitchCode = `N${char}`;
-        return this.editor.wasmModule.checkPitchAgainstActiveConstraint(pitchCode);
-      }
-
-      // For accidentals and other characters, allow them (they'll combine with pitch)
-      // TODO: Handle accidental input (b, s, etc.) in combination with pitch
-      return true;
-    } catch (error) {
-      console.error('[KeyboardHandler] Error checking constraint:', error);
-      return true; // On error, allow to avoid blocking all input
     }
   }
 
@@ -403,24 +354,24 @@ export class KeyboardHandler {
    * @param {string} key - Key name
    */
   async handleNavigation(key) {
-    console.log(`[JS] handleNavigation called with key: ${key}`);
+    logger.debug(LOG_CATEGORIES.KEYBOARD, `handleNavigation called`, { key });
 
     try {
       // Load document to ensure WASM has latest state
       if (!this.editor.getDocument()) {
-        console.warn('No document available for navigation');
+        logger.warn(LOG_CATEGORIES.EDITOR, 'No document available for navigation');
         return;
       }
 
-      console.log(`[JS] Current cursor before navigation:`, this.editor.getDocument().state.cursor);
+      logger.debug(LOG_CATEGORIES.EDITOR, 'Current cursor before navigation', { cursor: this.editor.getDocument().state.cursor });
       this.editor.wasmModule.loadDocument(this.editor.getDocument());
 
       let diff;
       switch (key) {
         case 'ArrowLeft':
-          console.log('[JS] Calling moveLeft...');
+          logger.debug(LOG_CATEGORIES.EDITOR, 'Calling moveLeft...');
           diff = this.editor.wasmModule.moveLeft(false);
-          console.log('[JS] moveLeft returned:', diff);
+          logger.debug(LOG_CATEGORIES.EDITOR, 'moveLeft returned', { diff });
           break;
         case 'ArrowRight':
           diff = this.editor.wasmModule.moveRight(false);
@@ -438,16 +389,16 @@ export class KeyboardHandler {
           diff = this.editor.wasmModule.moveEnd(false);
           break;
         default:
-          console.log('Unknown navigation key:', key);
+          logger.warn(LOG_CATEGORIES.KEYBOARD, 'Unknown navigation key', { key });
           return;
       }
 
       // Update cursor display from diff
-      console.log('[JS] About to update cursor from diff:', diff);
+      logger.debug(LOG_CATEGORIES.EDITOR, 'About to update cursor from diff', { diff });
       await this.editor.updateCursorFromWASM(diff);
-      console.log(`[JS] Cursor after updateCursorFromWASM:`, this.editor.getDocument().state.cursor);
+      logger.debug(LOG_CATEGORIES.EDITOR, 'Cursor after updateCursorFromWASM', { cursor: this.editor.getDocument().state.cursor });
     } catch (error) {
-      console.error('Navigation error:', error);
+      logger.error(LOG_CATEGORIES.EDITOR, 'Navigation error', { error });
     }
   }
 }

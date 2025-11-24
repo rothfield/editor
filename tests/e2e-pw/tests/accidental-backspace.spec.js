@@ -35,7 +35,7 @@ test('Accidental backspace removes accidental and reparses as natural', async ({
   const textBefore = await cellBefore.textContent();
   const codepointBefore = textBefore.charCodeAt(0);
   console.log(`  Text: "${textBefore}", Codepoint: U+${codepointBefore.toString(16).toUpperCase().padStart(4, '0')}`);
-  expect(codepointBefore).toBe(0xE1F0); // U+E1F0 = 1# composite glyph
+  expect(codepointBefore).toBe(0xE019); // U+E019 = 1# composite glyph
 
   // Press backspace once to delete the "#" character
   await page.keyboard.press('Backspace');

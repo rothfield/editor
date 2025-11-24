@@ -35,19 +35,20 @@ class Logger {
     const logEntry = {
       timestamp,
       level: levelName,
+      category: 'ServerDev', // Always use ServerDev category
       message,
       ...meta
     };
 
-    const output = `[${timestamp}] ${levelName.toUpperCase()}: ${message}`;
+    const output = `[${timestamp}] [SERVER_DEV] ${levelName.toUpperCase()}: ${message}`;
     const metaStr = Object.keys(meta).length > 0 ? ` ${JSON.stringify(meta)}` : '';
 
     if (levelName === 'error') {
-      console.error(output + metaStr);
+      process.stderr.write(output + metaStr + '\n');
     } else if (levelName === 'warn') {
-      console.warn(output + metaStr);
+      process.stderr.write(output + metaStr + '\n');
     } else {
-      console.log(output + metaStr);
+      process.stdout.write(output + metaStr + '\n');
     }
   }
 
@@ -748,14 +749,7 @@ async function gracefulShutdown(signal) {
     logger.info('Graceful shutdown complete');
     clearTimeout(shutdownTimeout);
 
-    // Print final summary
-    console.log('');
-    console.log('==========================================');
-    console.log('Development Environment Stopped');
-    console.log('==========================================');
-    console.log('Session complete. To restart, run: make serve');
-    console.log('==========================================');
-    console.log('');
+    logger.info('Development Environment Stopped. Session complete. To restart, run: make serve', { category: 'SERVER_DEV' });
 
     process.exit(0);
   } catch (error) {
@@ -764,13 +758,7 @@ async function gracefulShutdown(signal) {
     });
 
     // Print final summary even on error
-    console.log('');
-    console.log('==========================================');
-    console.log('Development Environment Stopped (Error)');
-    console.log('==========================================');
-    console.log('Session ended with error. Check logs above.');
-    console.log('==========================================');
-    console.log('');
+    logger.error('Development Environment Stopped (Error). Session ended with error. Check logs above.', { category: 'SERVER_DEV' });
 
     process.exit(1);
   }
@@ -827,19 +815,19 @@ async function startServer() {
     });
 
     // Print startup summary
-    console.log('');
-    console.log('==========================================');
-    console.log('Development Environment Summary');
-    console.log('==========================================');
-    console.log('✓ LilyPond Service:     http://localhost:8787');
-    console.log('✓ Development Server:   http://localhost:3000');
-    console.log('✓ Hot Reload:           Enabled');
-    console.log('');
-    console.log('Commands:');
-    console.log('  make kill   - Stop all servers');
-    console.log('  make test   - Run tests');
-    console.log('==========================================');
-    console.log('');
+    logger.info(
+      'Development Environment Summary\n' +
+      '==========================================\n' +
+      '✓ LilyPond Service:     http://localhost:8787\n' +
+      '✓ Development Server:   http://localhost:3000\n' +
+      '✓ Hot Reload:           Enabled\n' +
+      '\n' +
+      'Commands:\n' +
+      '  make kill   - Stop all servers\n' +
+      '  make test   - Run tests\n' +
+      '==========================================\n',
+      { category: 'SERVER_DEV' }
+    );
 
     // Setup file watching for hot reload
     setupFileWatcher();

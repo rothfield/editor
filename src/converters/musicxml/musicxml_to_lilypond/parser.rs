@@ -505,6 +505,7 @@ pub fn parse_clef(clef_node: Node) -> Option<(String, Option<u8>)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::converters::musicxml::musicxml_to_lilypond::types::PitchLanguage;
 
     #[test]
     fn test_parse_simple_musicxml() {

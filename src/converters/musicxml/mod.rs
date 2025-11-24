@@ -4,6 +4,7 @@
 
 pub mod musicxml_to_lilypond;
 pub mod musicxml_to_midi;
+pub mod musicxml_to_ir;
 
 // Re-export for convenience
 pub use musicxml_to_lilypond::{
@@ -14,4 +15,10 @@ pub use musicxml_to_lilypond::{
     ParseError,
     PitchLanguage,
     SkippedElement,
+};
+
+pub use musicxml_to_ir::{
+    parse_musicxml_to_ir,
+    MusicXMLParseError,
+    MusicXMLParseResult,
 };

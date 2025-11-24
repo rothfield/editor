@@ -171,7 +171,7 @@ impl<'a> LayoutLineComputer<'a> {
         let mut cumulative_x = config.left_margin;
         let mut last_original_idx = 0;
 
-        let mut beat_idx = 0;
+        let mut _beat_idx = 0;
         let mut beat_start_x = config.left_margin;
 
         for working_idx in 0..working_cells.len() {
@@ -187,7 +187,7 @@ impl<'a> LayoutLineComputer<'a> {
                 // and subsequent beats (where beat_id != beat_idx)
                 if working_idx == beat.start {
                     beat_start_x = cumulative_x;
-                    beat_idx = beat_id;
+                    _beat_idx = beat_id;
                 }
 
                 let total_beat_width = beat_widths[beat_id];
@@ -399,12 +399,22 @@ impl<'a> LayoutLineComputer<'a> {
         let mut arcs = Vec::new();
 
         for beat in beats {
-            // Only create beat loops for beats with 2+ cells
-            // NEW ARCHITECTURE: No continuation cells, so just count all cells in beat
-            let cell_count = (beat.start..=beat.end).count();
+            // Only create beat loops for beats with 2+ RHYTHMIC elements
+            // Count only pitched/unpitched elements - exclude breath marks
+            // Breath marks are phrasing marks, not rhythmic elements
+            let rhythm_element_count = (beat.start..=beat.end)
+                .filter(|&idx| {
+                    if let Some(cell) = _original_cells.get(idx) {
+                        matches!(cell.kind,
+                            ElementKind::PitchedElement | ElementKind::UnpitchedElement)
+                    } else {
+                        false
+                    }
+                })
+                .count();
 
-            if cell_count >= 2 {
-                // Multi-element beat (not counting continuations) - create beat loop
+            if rhythm_element_count >= 2 {
+                // Multi-element beat (2+ rhythmic elements) - create beat loop
                 // Cell indices match render indices (no filtering)
                 if let (Some(start_cell), Some(end_cell)) =
                     (render_cells.get(beat.start), render_cells.get(beat.end)) {

@@ -58,7 +58,7 @@ test.describe('Debug: Sequential typing of sharps', () => {
       const codepoint = textContent.charCodeAt(0);
 
       const expectedBase = pitch.charCodeAt(0);
-      const expectedCodepoint = 0xE1F0 + (expectedBase - '1'.charCodeAt(0));
+      const expectedCodepoint = 0xE019 + (expectedBase - '1'.charCodeAt(0));
 
       console.log(`${pitch}: U+${codepoint.toString(16).toUpperCase().padStart(4, '0')} (expected U+${expectedCodepoint.toString(16).toUpperCase().padStart(4, '0')})`);
 

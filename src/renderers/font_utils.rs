@@ -299,32 +299,34 @@ mod tests {
 
     #[test]
     fn test_glyph_for_pitch_natural_base_octave() {
-        // Octave 0 for N1 → 0xE100 (pua_base + 0)
+        // NEW: 30-variant system with PUA base 0xE000 for Number system
+        // N1 natural octave 0 → 0xE000 + (char_idx=0 × 30) + (variant=0) = 0xE000
         let result = glyph_for_pitch(PitchCode::N1, 0, PitchSystem::Number);
-        assert_eq!(result, Some('\u{E100}'));
+        assert_eq!(result, Some('\u{E000}'));
     }
 
     #[test]
     fn test_glyph_for_pitch_with_octave_plus_1() {
-        // Octave +1 for N1 → 0xE115 (0xE100 + (3 * 7) + 0 = 0xE115)
-        // With octave order [0, -2, -1, +1, +2], octave +1 is at index 3
+        // NEW: Octave +1 for N1 → variant index 3 (octave order: 0, -2, -1, +1, +2)
+        // 0xE000 + (char_idx=0 × 30) + (variant=3) = 0xE003
         let result = glyph_for_pitch(PitchCode::N1, 1, PitchSystem::Number);
-        assert_eq!(result, Some('\u{E115}'));
+        assert_eq!(result, Some('\u{E003}'));
     }
 
     #[test]
     fn test_glyph_for_pitch_sharp_base_octave() {
-        // Natural uses 0 offset, sharp uses 15N offset where N=7
-        // Sharp N1 at octave 0: 0xE100 + (15*7) + 0 + 0 = 0xE100 + 105 = 0xE169
+        // NEW: Sharp N1 at octave 0
+        // 0xE000 + (char_idx=0 × 30) + (accidental_offset=25 + octave_idx=0) = 0xE019
         let result = glyph_for_pitch(PitchCode::N1s, 0, PitchSystem::Number);
-        assert_eq!(result, Some('\u{E169}'));
+        assert_eq!(result, Some('\u{E019}'));
     }
 
     #[test]
     fn test_glyph_for_pitch_sharp_with_octave() {
-        // Sharp N1 at octave +1: 0xE100 + (15*7) + (3*7) + 0 = 0xE169 + 0x15 = 0xE17E
+        // NEW: Sharp N1 at octave +1
+        // 0xE000 + (char_idx=0 × 30) + (accidental_offset=25 + octave_idx=3) = 0xE01C
         let result = glyph_for_pitch(PitchCode::N1s, 1, PitchSystem::Number);
-        assert_eq!(result, Some('\u{E17E}'));
+        assert_eq!(result, Some('\u{E01C}'));
     }
 
     #[test]

@@ -19,7 +19,7 @@ class LilyPondTab {
   initialize() {
     this.setupUI();
     this.attachEventListeners();
-    console.log('[LilyPondTab] Initialized (Source Code Display)');
+    logger.info(LOG_CATEGORIES.UI, 'LilyPondTab: Initialized (Source Code Display)');
   }
 
   /**
@@ -31,7 +31,7 @@ class LilyPondTab {
     this.container = document.getElementById('tab-content-lilypond-src');
 
     if (!this.sourceElement || !this.container) {
-      console.warn('[LilyPondTab] Required DOM elements not found');
+      logger.warn(LOG_CATEGORIES.UI, 'LilyPondTab: Required DOM elements not found');
       return;
     }
 
@@ -65,7 +65,7 @@ class LilyPondTab {
    * Called when tab is shown
    */
   onTabShown() {
-    console.log('[LilyPondTab] Source tab shown');
+    logger.debug(LOG_CATEGORIES.UI, 'LilyPondTab: Source tab shown');
     this.updateLilyPondSource();
   }
 
@@ -108,9 +108,7 @@ class LilyPondTab {
         this.sourceElement.textContent = '// No LilyPond source generated';
       }
     } catch (error) {
-      console.error('[LilyPondTab] Failed to generate source:', error);
-      this.sourceElement.textContent = `// Error: ${error.message}`;
-    }
+      logger.error(LOG_CATEGORIES.UI, 'LilyPondTab: Failed to generate source', { error });
   }
 
   /**

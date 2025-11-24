@@ -1,0 +1,535 @@
+# Notation Atoms - Canonical definition of all supported notation systems
+# This file is the single source of truth for:
+# - Which notation systems are supported
+# - What characters/syllables exist in each system
+# - Character ordering (CRITICAL: must match everywhere)
+# - Noto Music font source configuration
+#
+# The font generator reads this file to determine:
+# - How many base characters to create (notes from Noto Music)
+# - How to assign codepoints in the Private Use Area (PUA)
+# - Which musical glyphs to extract from Noto Music (accidentals, symbols)
+# - The JSON mapping file structure
+#
+# Generated from atoms.yaml by build.rs at compile time for Rust constants
+
+notation_systems:
+  # Number System: 1-7 (default in editor)
+  # Usage: "1" means first scale degree, "2" means second, etc.
+  # NOTE: Accidentals are now fully implemented as pre-composed glyphs in PUA ranges
+  - system_name: number
+    pua_base: 0xE000  # 7 chars × 30 variants = 210 glyphs (0xE000-0xE0D1)
+    display_name: "Number System"
+    description: "Numerical scale degrees (1-7)"
+    characters:
+      - char: "1"
+        label: "1 (first degree)"
+        accidentals: []  # v1.0: DEFERRED - accidentals not yet implemented
+      - char: "2"
+        label: "2 (second degree)"
+        accidentals: []
+      - char: "3"
+        label: "3 (third degree)"
+        accidentals: []
+      - char: "4"
+        label: "4 (fourth degree)"
+        accidentals: []
+      - char: "5"
+        label: "5 (fifth degree)"
+        accidentals: []
+      - char: "6"
+        label: "6 (sixth degree)"
+        accidentals: []
+      - char: "7"
+        label: "7 (seventh degree)"
+        accidentals: []
+
+  # Western System: A-G (uppercase + lowercase)
+  # Usage: "C" = middle C, "c" = lower c, "D" = D above middle C, etc.
+  - system_name: western
+    pua_base: 0xE100  # 14 chars × 30 variants = 420 glyphs (0xE100-0xE2A3)
+    display_name: "Western Letter Names"
+    description: "Standard A-B-C-D-E-F-G notation (uppercase + lowercase)"
+    characters:
+      - char: "C"
+        label: "C (uppercase)"
+        accidentals: []
+      - char: "D"
+        label: "D (uppercase)"
+        accidentals: []
+      - char: "E"
+        label: "E (uppercase)"
+        accidentals: []
+      - char: "F"
+        label: "F (uppercase)"
+        accidentals: []
+      - char: "G"
+        label: "G (uppercase)"
+        accidentals: []
+      - char: "A"
+        label: "A (uppercase)"
+        accidentals: []
+      - char: "B"
+        label: "B (uppercase)"
+        accidentals: []
+      - char: "c"
+        label: "c (lowercase)"
+        accidentals: []
+      - char: "d"
+        label: "d (lowercase)"
+        accidentals: []
+      - char: "e"
+        label: "e (lowercase)"
+        accidentals: []
+      - char: "f"
+        label: "f (lowercase)"
+        accidentals: []
+      - char: "g"
+        label: "g (lowercase)"
+        accidentals: []
+      - char: "a"
+        label: "a (lowercase)"
+        accidentals: []
+      - char: "b"
+        label: "b (lowercase)"
+        accidentals: []
+
+  # Sargam System: Indian classical notation
+  # Usage: S=Sa, r=re(lower), R=Re(upper), g=ga(lower), G=Ga(upper), etc.
+  - system_name: sargam
+    pua_base: 0xE300  # 12 chars × 30 variants = 360 glyphs (0xE300-0xE467)
+    display_name: "Sargam (Indian Classical)"
+    description: "Indian classical music notation (Sa Re Ga Ma Pa Dha Ni)"
+    characters:
+      - char: "S"
+        label: "S (Sa - root)"
+        accidentals: []
+      - char: "r"
+        label: "r (re - lower)"
+        accidentals: []
+      - char: "R"
+        label: "R (Re - upper)"
+        accidentals: []
+      - char: "g"
+        label: "g (ga - lower)"
+        accidentals: []
+      - char: "G"
+        label: "G (Ga - upper)"
+        accidentals: []
+      - char: "m"
+        label: "m (ma - lower)"
+        accidentals: []
+      - char: "M"
+        label: "M (Ma - upper)"
+        accidentals: []
+      - char: "P"
+        label: "P (Pa - perfect fifth)"
+        accidentals: []
+      - char: "d"
+        label: "d (dha - lower)"
+        accidentals: []
+      - char: "D"
+        label: "D (Dha - upper)"
+        accidentals: []
+      - char: "n"
+        label: "n (ni - lower)"
+        accidentals: []
+      - char: "N"
+        label: "N (Ni - upper)"
+        accidentals: []
+
+  # Doremi System: Solfège notation (includes 'f' for Fa)
+  # Usage: d=do, r=re, m=mi, f=fa, s=sol, l=la, t=ti
+  # NOTE: Both lowercase (d-t) and UPPERCASE (D-T) are supported
+  - system_name: doremi
+    pua_base: 0xE500  # 14 chars × 30 variants = 420 glyphs (0xE500-0xE6A3)
+    display_name: "Doremi (Solfège)"
+    description: "Solfège notation (do-re-mi-fa-sol-la-ti), includes 'f' for Fa note"
+    characters:
+      - char: "d"
+        label: "d (do - lowercase)"
+        accidentals: []
+      - char: "r"
+        label: "r (re - lowercase)"
+        accidentals: []
+      - char: "m"
+        label: "m (mi - lowercase)"
+        accidentals: []
+      - char: "f"
+        label: "f (fa - lowercase) ★ Includes 'f' for Fa note"
+        accidentals: []
+      - char: "s"
+        label: "s (sol - lowercase)"
+        accidentals: []
+      - char: "l"
+        label: "l (la - lowercase)"
+        accidentals: []
+      - char: "t"
+        label: "t (ti - lowercase)"
+        accidentals: []
+      - char: "D"
+        label: "D (DO - uppercase)"
+        accidentals: []
+      - char: "R"
+        label: "R (RE - uppercase)"
+        accidentals: []
+      - char: "M"
+        label: "M (MI - uppercase)"
+        accidentals: []
+      - char: "F"
+        label: "F (FA - uppercase) ★ Includes 'F' for Fa note"
+        accidentals: []
+      - char: "S"
+        label: "S (SOL - uppercase)"
+        accidentals: []
+      - char: "L"
+        label: "L (LA - uppercase)"
+        accidentals: []
+      - char: "T"
+        label: "T (TI - uppercase)"
+        accidentals: []
+
+# Source Fonts - Dual-font architecture for optimal typography
+# Noto Sans: High-quality pitch character glyphs (1-7, A-Z, a-z)
+# Noto Music: SMuFL-compliant musical symbols (accidentals, barlines, ornaments)
+source_fonts:
+  base_font:
+    path: "tools/fontgen/sources/NotoSans-Regular.ttf"
+    name: "Noto Sans"
+    version: "2.x"
+    license: "SIL OFL 1.1"
+    url: "https://github.com/notofonts/sans"
+    purpose: "Base glyphs for pitch characters (1-7, A-Z, a-z) and octave variants"
+    expected_size: "~300 KB"
+    notes: |
+      Provides high-quality typography for:
+      - Basic Latin characters (0-9, A-Z, a-z) for pitch notation
+      - Period (U+002E) for octave shift dots
+      - Professional comprehensive sans-serif design
+      - Unicode support for international text
+
+  music_symbols_font:
+    path: "tools/fontgen/sources/NotoMusic.ttf"
+    name: "Noto Music"
+    version: "2.001"
+    license: "SIL OFL 1.1"
+    url: "https://github.com/notofonts/music"
+    purpose: "SMuFL-compliant musical symbols (accidentals, barlines, ornaments)"
+    expected_size: "~292 KB"
+    notes: |
+      Provides professional music notation symbols:
+      - SMuFL musical symbols (accidentals, barlines, ornaments)
+      - Full SMuFL specification compliance
+      - Consistent with industry-standard music fonts
+
+# Glyph Variants - How many dot variants each character gets
+# Each base character can have:
+# - variant 0: 1 dot above
+# - variant 1: 2 dots above
+# - variant 2: 1 dot below
+# - variant 3: 2 dots below
+glyph_variants:
+  count_per_character: 30  # 6 accidentals × 5 octave variants
+  accidental_types: 6      # natural, flat, half-flat, double-flat, sharp, double-sharp
+  octave_variants: 5       # 0, -2, -1, +1, +2 (base + dots above/below)
+  variant_indices:
+    # Natural with octave dots (variants 0-3)
+    0: "natural +1 octave (1 dot above)"
+    1: "natural +2 octave (2 dots above)"
+    2: "natural -1 octave (1 dot below)"
+    3: "natural -2 octave (2 dots below)"
+    # Sharp with octave dots (variants 4-7)
+    4: "sharp +1 octave (1 dot above)"
+    5: "sharp +2 octave (2 dots above)"
+    6: "sharp -1 octave (1 dot below)"
+    7: "sharp -2 octave (2 dots below)"
+    # Flat with octave dots (variants 8-11)
+    8: "flat +1 octave (1 dot above)"
+    9: "flat +2 octave (2 dots above)"
+    10: "flat -1 octave (1 dot below)"
+    11: "flat -2 octave (2 dots below)"
+
+# PUA (Private Use Area) Mapping
+# Where codepoints are assigned in Unicode Private Use Area
+# NOTE: SMuFL standard codepoints use ranges U+E030-U+E042 (barlines), U+E260-U+E264 (accidentals), U+E566-U+E56E (ornaments)
+# To avoid conflicts, custom allocations use ranges that don't collide with SMuFL
+pua:
+  start: 0xE600  # PUA start for octave variants
+
+octave_variants:
+  start: 0xE600
+  range: "0xE600 - 0xE6BB"  # 188 glyphs (47 chars × 4 variants)
+  formula: "codepoint = 0xE600 + (character_index × 4) + variant_index"
+  explanation: |
+    Each base character gets 4 consecutive codepoints in the PUA for octave shifts.
+    Example for character at index 0 (first char in number system):
+      - variant 0 (1 dot above):  0xE600 + (0 × 4) + 0 = 0xE600
+      - variant 1 (2 dots above): 0xE600 + (0 × 4) + 1 = 0xE601
+      - variant 2 (1 dot below):  0xE600 + (0 × 4) + 2 = 0xE602
+      - variant 3 (2 dots below): 0xE600 + (0 × 4) + 3 = 0xE603
+
+accidental_composites:
+  description: "Pre-composed glyph composites combining base character + accidental symbol"
+  formula: "codepoint = pua_start + character_index (sequential)"
+  count_per_type: 47  # One composite glyph per base character
+  types:
+    sharp:
+      range: "0xE1F0 - 0xE21E"
+      count: 47
+      smufl_symbol: 0x1D130  # 𝄰 Musical Symbol Sharp Up (proper notation sharp)
+      examples:
+        "1#": 0xE1F0  # 1 sharp at index 0
+        "7#": 0xE1F6  # 7 sharp at index 6
+        "C#": 0xE1F7  # C sharp at index 7
+
+    flat:
+      range: "0xE220 - 0xE24E"
+      count: 47
+      smufl_symbol: 0x1D12D  # 𝄭 Musical Symbol Flat (Unicode standard position)
+      examples:
+        "1b": 0xE220  # 1 flat at index 0
+        "7b": 0xE226  # 7 flat at index 6
+        "Cb": 0xE227  # C flat at index 7
+
+    half_flat:
+      range: "0xE24F - 0xE27D"
+      count: 47
+      smufl_symbol: 0x266D  # ♭ Unicode Flat Sign (U+266D) with diagonal slash
+      draw_slash: true      # Draw diagonal slash through flat symbol
+      examples:
+        "1b/": 0xE24F  # 1 half-flat at index 0
+        "7b/": 0xE255  # 7 half-flat at index 6
+        "Cb/": 0xE256  # C half-flat at index 7
+
+    double_sharp:
+      range: "0xE27E - 0xE2AC"
+      count: 47
+      smufl_symbol: 0x1D12A  # 𝄪 Musical Symbol Double Sharp
+      examples:
+        "1##": 0xE27E  # 1 double-sharp at index 0
+        "7##": 0xE284  # 7 double-sharp at index 6
+        "C##": 0xE285  # C double-sharp at index 7
+
+    double_flat:
+      range: "0xE2AD - 0xE2DB"
+      count: 47
+      smufl_symbol: 0x1D12B  # 𝄫 Musical Symbol Double Flat (Unicode standard position)
+      examples:
+        "1bb": 0xE2AD  # 1 double-flat at index 0
+        "7bb": 0xE2B3  # 7 double-flat at index 6
+        "Cbb": 0xE2B4  # C double-flat at index 7
+
+accidental_octave_composites:
+  description: "Triple composites combining base character + accidental + octave dots"
+  formula: "codepoint = pua_start + (character_index × 4) + variant_index"
+  count_per_type: 188  # 47 characters × 4 octave variants each
+  total_glyphs: 752    # 4 accidental types × 188 glyphs
+  types:
+    sharp_with_octave:
+      range: "0xE2B0 - 0xE36F"
+      count: 188  # 47 chars × 4 octave variants
+      description: "Sharp accidentals with octave dots"
+      examples:
+        "1# +1oct": 0xE2B0  # 1 sharp with 1 dot above
+        "1# +2oct": 0xE2B1  # 1 sharp with 2 dots above
+        "1# -1oct": 0xE2B2  # 1 sharp with 1 dot below
+        "1# -2oct": 0xE2B3  # 1 sharp with 2 dots below
+
+    flat_with_octave:
+      range: "0xE370 - 0xE42F"
+      count: 188
+      description: "Flat accidentals with octave dots"
+      examples:
+        "1b +1oct": 0xE370  # 1 flat with 1 dot above
+        "1b +2oct": 0xE371  # 1 flat with 2 dots above
+        "1b -1oct": 0xE372  # 1 flat with 1 dot below
+        "1b -2oct": 0xE373  # 1 flat with 2 dots below
+
+    double_sharp_with_octave:
+      range: "0xE430 - 0xE4EF"
+      count: 188
+      description: "Double-sharp accidentals with octave dots"
+      examples:
+        "1## +1oct": 0xE430  # 1 double-sharp with 1 dot above
+        "1## +2oct": 0xE431  # 1 double-sharp with 2 dots above
+        "1## -1oct": 0xE432  # 1 double-sharp with 1 dot below
+        "1## -2oct": 0xE433  # 1 double-sharp with 2 dots below
+
+    double_flat_with_octave:
+      range: "0xE4F0 - 0xE5AF"
+      count: 188
+      description: "Double-flat accidentals with octave dots"
+      examples:
+        "1bb +1oct": 0xE4F0  # 1 double-flat with 1 dot above
+        "1bb +2oct": 0xE4F1  # 1 double-flat with 2 dots above
+        "1bb -1oct": 0xE4F2  # 1 double-flat with 1 dot below
+        "1bb -2oct": 0xE4F3  # 1 double-flat with 2 dots below
+
+# Character Order (CRITICAL!)
+# This exact order must be preserved in:
+# - Font generator output
+# - JSON mapping file
+# - JavaScript/Rust code that looks up characters
+# - Any code that assumes character indices
+character_order: "1234567CDEFGABcdefgabSrRgGmMPdDnNdrmfsltDRMFSLT"
+character_order_by_system:
+  number: "1234567"       # indices 0-6
+  western: "CDEFGABcdefgab"  # indices 7-20
+  sargam: "SrRgGmMPdDnN"  # indices 21-32
+  doremi: "drmfsltDRMFSLT"   # indices 33-46
+
+# Geometry Configuration - Knobs for dot and symbol positioning
+# CRITICAL: All positioning is configurable, not hardcoded in Python
+# Adjust these values to tweak visual appearance without touching generate.py
+geometry:
+  dots:
+    above_gap: 50        # Distance from character bbox top to first dot above
+    below_gap: 50        # Distance from character bbox bottom to first dot below
+    vertical_step: 100   # Spacing between first and second dot (1-dot vs 2-dot)
+    horizontal_center: true  # Always center dots horizontally over character
+
+  symbols:
+    # Future: scaling and positioning for Bravura symbols
+    accidental_scale: 1.0      # Scale factor for # ♭ symbols (when accidentals added)
+    accidental_x_offset: 50    # Horizontal gap between base note ink and accidental ink (font units)
+    accidental_y_offset: 0     # Vertical positioning relative to base note
+    barline_scale: 1.0         # Scale factor for barlines
+    ornament_scale: 1.0        # Scale factor for mordent/trill/turn
+
+# SMuFL Symbols - Musical articulations and symbols from Noto Music
+# These are composited into the final NotationFont.ttf
+# Noto Music provides SMuFL-compliant music glyphs
+# Reference: https://w3c.github.io/smufl/latest/
+#
+# Each symbol has:
+# - glyph_name: SMuFL glyph name (e.g., "ornamentMordent")
+# - label: Human-readable description
+# - smufl_codepoint: Unicode codepoint in SMuFL standard (e.g., U+E56D)
+# - codepoint_offset: Ordinal position in symbol array (symbols start after all notes)
+smufl_symbols:
+  # Accidentals (SMuFL PUA range E260-E264)
+  # CRITICAL: Use SMuFL names + PUA codepoints, NOT Unicode codepoints
+  - glyph_name: "accidentalSharp"
+    label: "Sharp (#)"
+    smufl_codepoint: 0xE262  # SMuFL U+E262 (PUA)
+    codepoint_offset: 0      # First symbol, allocated after 188 notes
+
+  - glyph_name: "accidentalNatural"
+    label: "Natural (♮)"
+    smufl_codepoint: 0xE261  # SMuFL U+E261 (PUA)
+    codepoint_offset: 1
+
+  - glyph_name: "accidentalFlat"
+    label: "Flat (♭)"
+    smufl_codepoint: 0xE260  # SMuFL U+E260 (PUA)
+    codepoint_offset: 2
+
+  - glyph_name: "accidentalDoubleSharp"
+    label: "Double sharp (𝄪)"
+    smufl_codepoint: 0xE263  # SMuFL U+E263 (PUA)
+    codepoint_offset: 3
+
+  - glyph_name: "accidentalDoubleFlat"
+    label: "Double flat (𝄫)"
+    smufl_codepoint: 0xE264  # SMuFL U+E264 (PUA)
+    codepoint_offset: 4
+
+  # Barlines (Unicode Musical Notation)
+  # Use actual Unicode music symbols instead of SMuFL PUA
+  - glyph_name: "barlineSingle"
+    label: "Barline (single)"
+    smufl_codepoint: 0x1D100  # Unicode U+1D100 𝄀
+    codepoint_offset: 5
+
+  - glyph_name: "barlineDouble"
+    label: "Barline (double)"
+    smufl_codepoint: 0x1D101  # Unicode U+1D101 𝄁
+    codepoint_offset: 6
+
+  - glyph_name: "barlineRepeatLeft"
+    label: "Barline (repeat left)"
+    smufl_codepoint: 0x1D106  # Unicode U+1D106 𝄆 (Left Repeat)
+    codepoint_offset: 7
+
+  - glyph_name: "barlineRepeatRight"
+    label: "Barline (repeat right)"
+    smufl_codepoint: 0x1D107  # Unicode U+1D107 𝄇 (Right Repeat)
+    codepoint_offset: 8
+
+  - glyph_name: "barlineRepeatBoth"
+    label: "Barline (repeat both)"
+    smufl_codepoint: 0x1D108  # Unicode U+1D108 𝄈 (Begin and End Repeat)
+    codepoint_offset: 9
+
+  # Ornaments (SMuFL common ornaments range)
+  - glyph_name: "ornamentMordent"
+    label: "Mordent"
+    smufl_codepoint: 0xE56D  # SMuFL U+E56D
+    codepoint_offset: 10
+
+  - glyph_name: "ornamentInvertedMordent"
+    label: "Inverted mordent"
+    smufl_codepoint: 0xE56E  # SMuFL U+E56E
+    codepoint_offset: 11
+
+  - glyph_name: "ornamentTurn"
+    label: "Turn"
+    smufl_codepoint: 0xE567  # SMuFL U+E567
+    codepoint_offset: 12
+
+  - glyph_name: "ornamentTrill"
+    label: "Trill"
+    smufl_codepoint: 0xE566  # SMuFL U+E566
+    codepoint_offset: 13
+
+  # Brackets (SMuFL staff brackets range)
+  # Source: Bravura (not available in Noto Music)
+  - glyph_name: "bracketTop"
+    label: "Bracket top cap"
+    smufl_codepoint: 0xE003  # SMuFL U+E003
+    codepoint_offset: 14
+    source_font: "bravura"
+
+  - glyph_name: "bracketBottom"
+    label: "Bracket bottom cap"
+    smufl_codepoint: 0xE004  # SMuFL U+E004
+    codepoint_offset: 15
+    source_font: "bravura"
+
+  - glyph_name: "reversedBracketTop"
+    label: "Reversed bracket top cap"
+    smufl_codepoint: 0xE005  # SMuFL U+E005
+    codepoint_offset: 16
+    source_font: "bravura"
+
+  - glyph_name: "reversedBracketBottom"
+    label: "Reversed bracket bottom cap"
+    smufl_codepoint: 0xE006  # SMuFL U+E006
+    codepoint_offset: 17
+    source_font: "bravura"
+
+# Summary Statistics
+summary:
+  total_systems: 4
+  total_base_characters: 47
+  total_octave_variant_glyphs: 188  # 47 characters × 4 variants each (1 dot above, 2 above, 1 below, 2 below)
+  total_accidental_composite_glyphs: 188  # 47 characters × 4 accidental types (sharp, flat, double-sharp, double-flat)
+  total_smufl_symbols: 18  # Accidentals, barlines, ornaments, brackets
+  total_font_glyphs: 394  # 188 octave + 188 accidental + 18 symbols
+
+  pua_allocations:
+    octave_variants: "0xE600 - 0xE6BB"    # 188 glyphs (47 chars × 4 octave variants)
+    sharp_accidentals: "0xE1F0 - 0xE21E"  # 47 glyphs (47 chars with # symbol)
+    flat_accidentals: "0xE220 - 0xE24E"   # 47 glyphs (47 chars with ♭ symbol)
+    double_sharp_accidentals: "0xE250 - 0xE27E"  # 47 glyphs (47 chars with 𝄪 symbol)
+    double_flat_accidentals: "0xE280 - 0xE2AE"   # 47 glyphs (47 chars with 𝄫 symbol)
+    smufl_standard: "0xE030-0xE042 (barlines), 0xE260-0xE264 (accidentals), 0xE566-0xE56E (ornaments), 0x1D100-0x1D108 (Unicode Music)"
+
+  notes: |
+    - Dual-font architecture: Noto Sans (pitch chars) + Noto Music (musical symbols)
+    - Accidentals are now fully implemented as pre-composed glyph composites
+    - Each accidental type gets 47 pre-composed glyphs (one per base character)
+    - Accidental composites are generated by combining base character with SMuFL accidental symbol
+    - SMuFL standard codepoints are used directly (no custom allocation)
+    - Font generation from atoms.yaml ensures compile-time consistency (build.rs)
+    - Runtime lookup: JavaScript uses PUA ranges; WASM uses get_accidental_glyph_codepoint()

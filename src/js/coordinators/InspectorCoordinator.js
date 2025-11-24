@@ -28,7 +28,7 @@ export default class InspectorCoordinator {
    * Performance optimization: only updates visible tabs
    */
   updateDocumentDisplay() {
-    console.log(`[Inspector] updateDocumentDisplay() called, activeTab: '${this.editor.ui?.activeTab}'`);
+    logger.debug(LOG_CATEGORIES.INSPECTOR, 'updateDocumentDisplay() called', { activeTab: this.editor.ui?.activeTab });
 
     // PERFORMANCE FIX: Only update inspector tabs if they're actually visible
     // All of these operations process the entire document and should not run on every keystroke
@@ -57,19 +57,19 @@ export default class InspectorCoordinator {
     // These are heavy WASM operations that should not run on every keystroke
     if (this.editor.ui && this.editor.ui.activeTab === 'ir') {
       this.editor.exportManager.updateIRDisplay().catch(err => {
-        console.error('Failed to update IR display:', err);
+        logger.error(LOG_CATEGORIES.INSPECTOR, 'Failed to update IR display', { error: err });
       });
     }
 
     if (this.editor.ui && this.editor.ui.activeTab === 'musicxml') {
       this.editor.exportManager.updateMusicXMLDisplay().catch(err => {
-        console.error('Failed to update MusicXML display:', err);
+        logger.error(LOG_CATEGORIES.INSPECTOR, 'Failed to update MusicXML display', { error: err });
       });
     }
 
     if (this.editor.ui && this.editor.ui.activeTab === 'lilypond-src') {
       this.editor.exportManager.updateLilyPondDisplay().catch(err => {
-        console.error('Failed to update LilyPond display:', err);
+        logger.error(LOG_CATEGORIES.INSPECTOR, 'Failed to update LilyPond display', { error: err });
       });
     }
 
@@ -99,28 +99,28 @@ export default class InspectorCoordinator {
     try {
       // CRITICAL: Clear OSMD cache to force re-render with new key signature
       if (this.editor.osmdRenderer) {
-        console.log('[forceUpdateAllExports] Clearing OSMD cache for key signature change');
+        logger.info(LOG_CATEGORIES.INSPECTOR, 'Clearing OSMD cache for key signature change');
         this.editor.osmdRenderer.lastMusicXmlHash = null; // Force cache miss
         await this.editor.osmdRenderer.clearAllCache(); // Clear IndexedDB cache
       }
 
       await Promise.all([
         this.editor.exportManager.updateIRDisplay().catch(err => {
-          console.error('Failed to update IR display:', err);
+          logger.error(LOG_CATEGORIES.INSPECTOR, 'Failed to update IR display', { error: err });
         }),
         this.editor.exportManager.updateMusicXMLDisplay().catch(err => {
-          console.error('Failed to update MusicXML display:', err);
+          logger.error(LOG_CATEGORIES.INSPECTOR, 'Failed to update MusicXML display', { error: err });
         }),
         this.editor.exportManager.updateLilyPondDisplay().catch(err => {
-          console.error('Failed to update LilyPond display:', err);
+          logger.error(LOG_CATEGORIES.INSPECTOR, 'Failed to update LilyPond display', { error: err });
         }),
         // Also update staff notation (OSMD/VexFlow rendering)
         this.editor.renderStaffNotation().catch(err => {
-          console.error('Failed to update staff notation:', err);
+          logger.error(LOG_CATEGORIES.INSPECTOR, 'Failed to update staff notation', { error: err });
         })
       ]);
     } catch (error) {
-      console.error('Failed to force update exports:', error);
+      logger.error(LOG_CATEGORIES.INSPECTOR, 'Failed to force update exports', { error });
     }
   }
 

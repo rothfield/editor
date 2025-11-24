@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="src/css/gutter.css">
     <link rel="stylesheet" href="src/css/key-signature-selector.css">
     <link rel="stylesheet" href="src/css/constraints-dialog.css">
+    <link rel="stylesheet" href="src/css/new-document-dialog.css">
 
     <!-- Custom UI styles -->
     <style>
@@ -23,9 +24,8 @@
             font-style: normal;
         }
 
-        /* NOTE: System-specific fonts (NotationFont-{Number,Western,Sargam,Doremi}.woff2)
-           are currently NOT USED. The full font contains all glyphs.
-           See editor.js loadNotationFont() for the disabled dynamic loading code. */
+        /* NOTE: Unified NotationFont.ttf contains all notation systems (Number, Western, Sargam, Doremi).
+           No system-specific fonts - single font file with all glyphs for all systems. */
 
         /* Viewport constraints - prevent scrollbars */
         html, body {
@@ -443,11 +443,14 @@
                             </button>
                             <ul id="file-menu" class="absolute top-full left-0 bg-white border border-ui-border rounded shadow-lg hidden z-menu min-w-48">
                                 <li><button id="menu-new" class="menu-item">New</button></li>
+                                <li><button id="menu-open-file" class="menu-item">Open File...</button></li>
+                                <li class="border-t border-ui-border my-1"></li>
                                 <li><button id="menu-save-to-storage" class="menu-item">Save to Storage...</button></li>
                                 <li><button id="menu-load-from-storage" class="menu-item">Load from Storage...</button></li>
                                 <li class="border-t border-ui-border my-1"></li>
                                 <li><button id="menu-export-json" class="menu-item">Export as JSON...</button></li>
                                 <li><button id="menu-import-json" class="menu-item">Import from JSON...</button></li>
+                                <li><button id="menu-import-musicxml" class="menu-item">Import MusicXML...</button></li>
                                 <li class="border-t border-ui-border my-1"></li>
                                 <li><button id="menu-set-title" class="menu-item">Set Title...</button></li>
                                 <li><button id="menu-set-composer" class="menu-item">Set Composer...</button></li>
@@ -580,10 +583,10 @@
                 <div class="bg-white border-b border-ui-border">
                     <div class="tab-buttons flex flex-wrap gap-0">
                         <button id="tab-staff-notation" class="tab tab-icon large-icon active" data-tab="staff-notation" title="Staff Notation">
-                            <img src="/images.png" alt="Staff Notation">
+                            <img src="static/images/staff-notation-icon.png" alt="Staff Notation">
                         </button>
                         <button id="tab-lilypond-png" class="tab tab-icon large-icon" data-tab="lilypond-png" title="LilyPond PNG">
-                            <img src="/document3.png" alt="LilyPond PNG">
+                            <img src="static/images/lilypond-png-icon.png" alt="LilyPond PNG">
                         </button>
                         <button id="tab-lilypond-src" class="tab tab-icon large-icon" data-tab="lilypond-src" data-testid="tab-lilypond" title="LilyPond Source">
                             <svg viewBox="0 0 24 24" fill="currentColor">

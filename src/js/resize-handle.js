@@ -8,6 +8,8 @@
  * - Double-click to reset to default width
  */
 
+import logger, { LOG_CATEGORIES } from './logger.js';
+
 class ResizeHandle {
   constructor() {
     this.resizeHandle = null;
@@ -37,7 +39,7 @@ class ResizeHandle {
     this.mainContainer = document.getElementById('main-container');
 
     if (!this.resizeHandle || !this.tabsPanel || !this.mainContainer) {
-      console.error('Resize handle elements not found');
+      logger.error(LOG_CATEGORIES.UI, 'Resize handle elements not found');
       return false;
     }
 
@@ -65,7 +67,7 @@ class ResizeHandle {
     document.addEventListener('mousemove', this.handleMouseMove);
     document.addEventListener('mouseup', this.handleMouseUp);
 
-    console.log('Resize handle initialized');
+    logger.info(LOG_CATEGORIES.UI, 'Resize handle initialized');
     return true;
   }
 
@@ -95,7 +97,7 @@ class ResizeHandle {
     // Don't start resize if panel is collapsed
     if (this.isCollapsed) return;
 
-    console.log('Resize started');
+    logger.debug(LOG_CATEGORIES.UI, 'Resize started');
     this.isResizing = true;
     this.startX = e.clientX;
     this.startWidth = this.tabsPanel.offsetWidth;
@@ -131,20 +133,20 @@ class ResizeHandle {
    */
   handleMouseUp() {
     if (this.isResizing) {
-      console.log('🔵 [ResizeHandle] Mouse up - resize ended');
+      logger.debug(LOG_CATEGORIES.UI, 'ResizeHandle: Mouse up - resize ended');
       this.isResizing = false;
       document.body.style.userSelect = '';
       document.body.style.cursor = '';
 
       // Get final panel width for logging
       const finalWidth = this.tabsPanel.offsetWidth;
-      console.log('🔵 [ResizeHandle] Final panel width:', finalWidth, 'px');
+      logger.debug(LOG_CATEGORIES.UI, 'ResizeHandle: Final panel width', { width: finalWidth, unit: 'px' });
 
       // Save the new width (debounced)
       this.savePanelWidth();
 
       // Trigger redraw callback
-      console.log('🔵 [ResizeHandle] Triggering redraw callback...');
+      logger.debug(LOG_CATEGORIES.UI, 'ResizeHandle: Triggering redraw callback...');
       this.triggerRedrawCallback();
     }
   }
@@ -184,7 +186,7 @@ class ResizeHandle {
       if (!this.isCollapsed) {
         const width = this.tabsPanel.offsetWidth;
         localStorage.setItem('editor_panel_width', width.toString());
-        console.log('Panel width saved:', width);
+        logger.debug(LOG_CATEGORIES.UI, 'Panel width saved', { width });
       }
     }, 500);
   }
@@ -207,7 +209,7 @@ class ResizeHandle {
 
     // Save collapsed state
     localStorage.setItem('editor_panel_collapsed', 'true');
-    console.log('Panel collapsed');
+    logger.info(LOG_CATEGORIES.UI, 'Panel collapsed');
   }
 
   /**
@@ -225,7 +227,7 @@ class ResizeHandle {
 
     // Save expanded state
     localStorage.setItem('editor_panel_collapsed', 'false');
-    console.log('Panel expanded');
+    logger.info(LOG_CATEGORIES.UI, 'Panel expanded');
   }
 
   /**
@@ -258,20 +260,20 @@ class ResizeHandle {
    * Trigger the redraw callback if set
    */
   triggerRedrawCallback() {
-    console.log('🔵 [ResizeHandle] triggerRedrawCallback called');
-    console.log('🔵 [ResizeHandle] Callback exists?', !!this.onResizeEndCallback);
-    console.log('🔵 [ResizeHandle] Callback type:', typeof this.onResizeEndCallback);
+    logger.debug(LOG_CATEGORIES.UI, 'ResizeHandle: triggerRedrawCallback called');
+    logger.debug(LOG_CATEGORIES.UI, 'ResizeHandle: Callback exists?', { exists: !!this.onResizeEndCallback });
+    logger.debug(LOG_CATEGORIES.UI, 'ResizeHandle: Callback type', { type: typeof this.onResizeEndCallback });
 
     if (this.onResizeEndCallback && typeof this.onResizeEndCallback === 'function') {
-      console.log('🔵 [ResizeHandle] Executing callback NOW');
+      logger.debug(LOG_CATEGORIES.UI, 'ResizeHandle: Executing callback NOW');
       try {
         this.onResizeEndCallback();
-        console.log('🔵 [ResizeHandle] Callback executed successfully');
+        logger.debug(LOG_CATEGORIES.UI, 'ResizeHandle: Callback executed successfully');
       } catch (error) {
-        console.error('🔴 [ResizeHandle] Error in resize redraw callback:', error);
+        logger.error(LOG_CATEGORIES.UI, 'ResizeHandle: Error in resize redraw callback', { error });
       }
     } else {
-      console.warn('🟡 [ResizeHandle] No callback set or callback is not a function');
+      logger.warn(LOG_CATEGORIES.UI, 'ResizeHandle: No callback set or callback is not a function');
     }
   }
 

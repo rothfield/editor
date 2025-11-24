@@ -5,6 +5,8 @@
  * and Export functionality with proper error handling and user feedback.
  */
 
+import logger, { LOG_CATEGORIES } from './logger.js';
+
 class FileOperations {
   constructor(editor) {
     this.editor = editor;
@@ -51,7 +53,7 @@ class FileOperations {
     this.setupFileWatchers();
     this.isInitialized = true;
 
-    console.log('File operations initialized');
+    logger.info(LOG_CATEGORIES.APP, 'File operations initialized');
   }
 
   /**
@@ -84,14 +86,14 @@ class FileOperations {
      * Handle File -> New operation
      */
   async newFile() {
-    console.log('🆕 File -> New called');
+    logger.info(LOG_CATEGORIES.FILE, 'File -> New called');
     try {
       // Check for unsaved changes
       if (this.hasUnsavedChanges) {
-        console.log('⚠️ Unsaved changes detected, prompting user');
+        logger.warn(LOG_CATEGORIES.FILE, 'Unsaved changes detected, prompting user');
         const shouldSave = await this.promptUnsavedChanges();
         if (shouldSave === 'cancel') {
-          console.log('❌ User cancelled due to unsaved changes');
+          logger.info(LOG_CATEGORIES.FILE, 'User cancelled due to unsaved changes');
           return;
         }
         if (shouldSave === 'save') {
@@ -100,17 +102,17 @@ class FileOperations {
       }
 
       // Prompt for pitch system
-      console.log('🎹 Prompting for pitch system');
+      logger.info(LOG_CATEGORIES.FILE, 'Prompting for pitch system');
       const pitchSystem = await this.promptPitchSystem();
-      console.log('📝 User selected pitch system:', pitchSystem);
+      logger.info(LOG_CATEGORIES.FILE, 'User selected pitch system', { pitchSystem });
 
       if (!pitchSystem) {
-        console.log('❌ User cancelled pitch system selection');
+        logger.info(LOG_CATEGORIES.FILE, 'User cancelled pitch system selection');
         return; // User cancelled
       }
 
       // Create new document with selected pitch system
-      console.log('📄 Creating new document with pitch system:', pitchSystem);
+      logger.info(LOG_CATEGORIES.FILE, 'Creating new document with pitch system', { pitchSystem });
       await this.createNewDocument(pitchSystem);
 
       // Reset file state
@@ -118,16 +120,29 @@ class FileOperations {
       this.hasUnsavedChanges = false;
       this.updateWindowModified();
 
+      // Set cursor to start of first line (position 0, stave 0)
+      if (this.editor && this.editor.setCursorPosition) {
+        logger.debug(LOG_CATEGORIES.FILE, 'Setting cursor to start of first line');
+        this.editor.setCursorPosition(0, 0); // column 0, stave 0
+      }
+
       // Show success message
       this.showSuccessMessage('New composition created');
 
-      // Focus editor
-      this.requestFocus();
-      console.log('✅ New file created successfully');
+      // Focus editor - wait for dialog close animation to complete
+      setTimeout(() => {
+        this.requestFocus();
+        // Also directly focus the notation editor if available
+        const notationEditor = document.getElementById('notation-editor');
+        if (notationEditor) {
+          notationEditor.focus();
+        }
+        logger.debug(LOG_CATEGORIES.FILE, 'Editor focused');
+      }, 200); // Wait for dialog close animation (150ms) + buffer
+
+      logger.info(LOG_CATEGORIES.FILE, 'New file created successfully');
     } catch (error) {
-      console.error('❌ Error creating new file:', error);
-      this.showErrorMessage('Failed to create new file', error);
-    }
+      logger.error(LOG_CATEGORIES.FILE, 'Error creating new file', { error });
   }
 
   /**
@@ -149,7 +164,7 @@ class FileOperations {
       // Create file input
       const fileInput = document.createElement('input');
       fileInput.type = 'file';
-      fileInput.accept = '.json,.txt';
+      fileInput.accept = '.json,.txt,.musicxml,.xml';
       fileInput.style.display = 'none';
 
       fileInput.addEventListener('change', async (event) => {
@@ -227,7 +242,7 @@ class FileOperations {
       throw new Error('Editor not available');
     }
 
-    console.log('📄 Creating new document with pitch system:', pitchSystem);
+    logger.info(LOG_CATEGORIES.FILE, 'Creating new document with pitch system', { pitchSystem });
 
     // Convert pitch system name to number FIRST
     const pitchSystemMap = {
@@ -239,11 +254,11 @@ class FileOperations {
     };
     const pitchSystemValue = pitchSystemMap[pitchSystem] || 1;
 
-    console.log('🔢 Pitch system value:', pitchSystemValue, `(${pitchSystem})`);
+    logger.debug(LOG_CATEGORIES.FILE, 'Pitch system value', { pitchSystemValue, pitchSystem });
 
     // Create document using WASM (same as editor.createNewDocument but without rendering)
     if (!this.editor.isInitialized || !this.editor.wasmModule) {
-      console.error('Cannot create document: WASM not initialized');
+      logger.error(LOG_CATEGORIES.WASM, 'Cannot create document: WASM not initialized');
       return;
     }
 
@@ -258,7 +273,7 @@ class FileOperations {
     // SET PITCH SYSTEM BEFORE adding to editor (this is the key fix!)
     document.pitch_system = pitchSystemValue;
 
-    console.log('✅ Set pitch_system to', pitchSystemValue, 'on new document');
+    logger.info(LOG_CATEGORIES.FILE, 'Set pitch_system on new document', { pitchSystemValue });
 
     // NOTE: Document lines are managed by WASM only - JavaScript must NEVER create or mutate lines!
     // The Rust WASM creates the initial document with lines already set up
@@ -273,8 +288,7 @@ class FileOperations {
     // Load document (this will render with correct pitch system)
     await this.editor.loadDocument(document);
 
-    console.log('🔍 After loadDocument, pitch_system is:', this.editor.getDocument()?.pitch_system);
-  }
+    logger.debug(LOG_CATEGORIES.FILE, 'After loadDocument, pitch_system is', { pitchSystem: this.editor.getDocument()?.pitch_system });
 
   /**
      * Load a file into the editor
@@ -282,12 +296,30 @@ class FileOperations {
   async loadFile(file) {
     const text = await this.readFileText(file);
 
+    // Detect file type by extension
+    const fileExtension = file.name.split('.').pop().toLowerCase();
+
     try {
-      // Try to parse as JSON first
-      const data = JSON.parse(text);
-      await this.loadFromJSON(data);
+      if (fileExtension === 'musicxml' || fileExtension === 'xml') {
+        // MusicXML file - check if it looks like MusicXML
+        if (text.includes('<score-partwise') || text.includes('<score-timewise')) {
+          logger.info(LOG_CATEGORIES.FILE, 'Detected MusicXML file, importing');
+          await this.loadFromMusicXML(text, file.name);
+        } else {
+          throw new Error('File does not appear to be valid MusicXML');
+        }
+      } else {
+        // Try to parse as JSON first
+        const data = JSON.parse(text);
+        await this.loadFromJSON(data);
+      }
     } catch (error) {
-      // Fallback to plain text
+      if (fileExtension === 'musicxml' || fileExtension === 'xml') {
+        // Re-throw MusicXML errors
+        throw error;
+      }
+      // Fallback to plain text for other file types
+      logger.warn(LOG_CATEGORIES.FILE, 'JSON parse failed, loading as plain text', { error });
       await this.loadFromText(text);
     }
 
@@ -297,6 +329,38 @@ class FileOperations {
 
     this.showSuccessMessage(`Loaded: ${file.name}`);
     this.requestFocus();
+  }
+
+  /**
+     * Load document from MusicXML data
+     */
+  async loadFromMusicXML(musicxmlString, filename) {
+    if (!this.editor || !this.editor.wasmModule) {
+      throw new Error('Editor or WASM module not available');
+    }
+
+    logger.info(LOG_CATEGORIES.FILE, 'Loading MusicXML file', { filename });
+    logger.debug(LOG_CATEGORIES.FILE, 'MusicXML size', { size: musicxmlString.length, unit: 'bytes' });
+
+    try {
+      // Call WASM importMusicXML function
+      const document = this.editor.wasmModule.importMusicXML(musicxmlString);
+
+      logger.info(LOG_CATEGORIES.FILE, 'MusicXML imported successfully');
+      logger.debug(LOG_CATEGORIES.FILE, 'Imported document', { document });
+
+      // Set metadata from filename
+      if (document && !document.title) {
+        const baseName = filename.replace(/\.(musicxml|xml)$/i, '');
+        document.title = baseName;
+      }
+
+      // Load the imported document
+      await this.editor.loadDocument(document);
+
+      logger.info(LOG_CATEGORIES.FILE, 'MusicXML document loaded into editor');
+    } catch (error) {
+      logger.error(LOG_CATEGORIES.FILE, 'MusicXML import error', { error });
   }
 
   /**
@@ -538,34 +602,62 @@ class FileOperations {
 
   /**
      * Prompt user for pitch system selection
+     * Uses modern dialog with keyboard shortcuts
      */
   async promptPitchSystem() {
-    console.log('🎹 promptPitchSystem() called');
+    logger.info(LOG_CATEGORIES.UI, 'promptPitchSystem() called');
+
+    // Get user's preferred pitch system from current document or default
+    let defaultPitchSystem = 'number';
+    if (this.editor && this.editor.getCurrentPitchSystem) {
+      const currentSystem = this.editor.getCurrentPitchSystem();
+      // Map numeric pitch system to string
+      const systemMap = { 1: 'number', 2: 'western', 3: 'sargam' };
+      defaultPitchSystem = systemMap[currentSystem] || 'number';
+    }
+
+    logger.debug(LOG_CATEGORIES.UI, 'Default pitch system', { defaultPitchSystem });
+
+    // Dynamically import the new document dialog
+    try {
+      const { showNewDocumentDialog } = await import('./NewDocumentDialog.js');
+      const wasmModule = this.editor?.wasmModule || null;
+      const pitchSystem = await showNewDocumentDialog(defaultPitchSystem, wasmModule);
+
+      logger.info(LOG_CATEGORIES.UI, 'User selected pitch system', { pitchSystem });
+
+      if (!pitchSystem) {
+        logger.info(LOG_CATEGORIES.UI, 'User cancelled pitch system selection');
+        return null;
+      }
+
+      logger.info(LOG_CATEGORIES.UI, 'Valid pitch system selected', { pitchSystem });
+      return pitchSystem;
+    } catch (error) {
+      logger.error(LOG_CATEGORIES.UI, 'Error showing new document dialog', { error });
+  }
+
+  /**
+   * Fallback to simple prompt if dialog fails
+   */
+  async promptPitchSystemFallback() {
     return new Promise((resolve) => {
-      console.log('🔔 Showing pitch system prompt dialog');
       const pitchSystem = prompt(
         'Select pitch system (number/western/sargam/bhatkhande/tabla):',
         'number'
       );
 
-      console.log('💬 User input from prompt:', pitchSystem);
-
       if (!pitchSystem) {
-        console.log('🚫 User cancelled or entered empty string');
-        resolve(null); // User cancelled
+        resolve(null);
         return;
       }
 
       const validSystems = ['number', 'western', 'sargam', 'bhatkhande', 'tabla'];
       const normalized = pitchSystem.toLowerCase().trim();
 
-      console.log('🔄 Normalized input:', normalized);
-
       if (validSystems.includes(normalized)) {
-        console.log('✅ Valid pitch system selected:', normalized);
         resolve(normalized);
       } else {
-        console.warn('⚠️ Invalid pitch system entered:', pitchSystem, '- defaulting to number');
         alert(`Invalid pitch system: "${pitchSystem}". Using default: number`);
         resolve('number');
       }
@@ -588,7 +680,7 @@ class FileOperations {
     if (this.editor && this.editor.showUserNotification) {
       this.editor.showUserNotification(message, 'success');
     } else {
-      console.log('File operations:', message);
+      logger.log(LOG_CATEGORIES.FILE, message);
     }
   }
 
@@ -601,7 +693,7 @@ class FileOperations {
     if (this.editor && this.editor.showUserNotification) {
       this.editor.showUserNotification(fullMessage, 'error');
     } else {
-      console.error('File operations error:', fullMessage);
+      logger.error(LOG_CATEGORIES.FILE, 'File operations error', { message: fullMessage });
     }
   }
 

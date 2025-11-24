@@ -10,6 +10,8 @@
  * - Restore from autosaves
  */
 
+import logger, { LOG_CATEGORIES } from './logger.js';
+
 class StorageManager {
   constructor(editor) {
     this.editor = editor;
@@ -56,13 +58,11 @@ class StorageManager {
       // Update index
       this.updateSavedIndex(sanitizedName, saveKey, timestamp);
 
-      console.log(`✅ Document saved: "${name}"`);
+      logger.info(LOG_CATEGORIES.STORAGE, `Document saved: "${name}"`);
       return true;
 
     } catch (error) {
-      console.error('Failed to save document:', error);
-      this.editor.showError(`Failed to save document: ${error.message}`);
-      return false;
+      logger.error(LOG_CATEGORIES.STORAGE, 'Failed to save document', { error });
     }
   }
 
@@ -84,13 +84,11 @@ class StorageManager {
       const document = JSON.parse(documentJson);
       await this.editor.loadDocument(document);
 
-      console.log(`✅ Document loaded: "${sanitizedName}"`);
+      logger.info(LOG_CATEGORIES.STORAGE, `Document loaded: "${sanitizedName}"`);
       return true;
 
     } catch (error) {
-      console.error('Failed to load document:', error);
-      this.editor.showError(`Failed to load document: ${error.message}`);
-      return false;
+      logger.error(LOG_CATEGORIES.STORAGE, 'Failed to load document', { error });
     }
   }
 
@@ -108,12 +106,11 @@ class StorageManager {
       // Update index
       this.removeSavedIndex(sanitizedName);
 
-      console.log(`✅ Document deleted: "${sanitizedName}"`);
+      logger.info(LOG_CATEGORIES.STORAGE, `Document deleted: "${sanitizedName}"`);
       return true;
 
     } catch (error) {
-      console.error('Failed to delete document:', error);
-      return false;
+      logger.error(LOG_CATEGORIES.STORAGE, 'Failed to delete document', { error });
     }
   }
 
@@ -133,8 +130,7 @@ class StorageManager {
       return index;
 
     } catch (error) {
-      console.error('Failed to get saved documents:', error);
-      return [];
+      logger.error(LOG_CATEGORIES.STORAGE, 'Failed to get saved documents', { error });
     }
   }
 
@@ -164,7 +160,7 @@ class StorageManager {
       localStorage.setItem(this.SAVED_INDEX_KEY, JSON.stringify(index));
 
     } catch (error) {
-      console.error('Failed to update saved index:', error);
+      logger.error(LOG_CATEGORIES.STORAGE, 'Failed to update saved index', { error });
     }
   }
 
@@ -180,7 +176,7 @@ class StorageManager {
       localStorage.setItem(this.SAVED_INDEX_KEY, JSON.stringify(filtered));
 
     } catch (error) {
-      console.error('Failed to remove from saved index:', error);
+      logger.error(LOG_CATEGORIES.STORAGE, 'Failed to remove from saved index', { error });
     }
   }
 
@@ -208,11 +204,10 @@ class StorageManager {
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
 
-      console.log(`✅ Document exported: "${name}.json"`);
+      logger.info(LOG_CATEGORIES.STORAGE, `Document exported: "${name}.json"`);
 
     } catch (error) {
-      console.error('Failed to export document:', error);
-      this.editor.showError(`Failed to export document: ${error.message}`);
+      logger.error(LOG_CATEGORIES.STORAGE, 'Failed to export document', { error });
     }
   }
 
@@ -241,11 +236,11 @@ class StorageManager {
 
             await this.editor.loadDocument(document);
 
-            console.log(`✅ Document imported: "${file.name}"`);
+            logger.info(LOG_CATEGORIES.STORAGE, `Document imported: "${file.name}"`);
             resolve(true);
 
           } catch (error) {
-            console.error('Failed to import document:', error);
+            logger.error(LOG_CATEGORIES.STORAGE, 'Failed to import document', { error });
             this.editor.showError(`Failed to import document: ${error.message}`);
             resolve(false);
           }
@@ -254,8 +249,7 @@ class StorageManager {
         input.click();
       });
     } catch (error) {
-      console.error('Failed to open import dialog:', error);
-      return false;
+      logger.error(LOG_CATEGORIES.STORAGE, 'Failed to open import dialog', { error });
     }
   }
 
@@ -272,10 +266,10 @@ class StorageManager {
 
       localStorage.removeItem(this.SAVED_INDEX_KEY);
 
-      console.log(`✅ Cleared ${index.length} saved documents`);
+      logger.info(LOG_CATEGORIES.STORAGE, `Cleared ${index.length} saved documents`);
 
     } catch (error) {
-      console.error('Failed to clear saved documents:', error);
+      logger.error(LOG_CATEGORIES.STORAGE, 'Failed to clear saved documents', { error });
     }
   }
 
@@ -312,7 +306,7 @@ class StorageManager {
       };
 
     } catch (error) {
-      console.error('Failed to get storage info:', error);
+      logger.error(LOG_CATEGORIES.STORAGE, 'Failed to get storage info', { error });
       return null;
     }
   }
@@ -338,12 +332,11 @@ class StorageManager {
       // Update autosave index
       this.updateAutosaveIndex();
 
-      console.log('✓ Autosaved at', new Date().toLocaleTimeString());
+      logger.info(LOG_CATEGORIES.STORAGE, 'Autosaved', { timestamp: new Date().toLocaleTimeString() });
       return true;
 
     } catch (error) {
-      console.error('Failed to autosave:', error);
-      return false;
+      logger.error(LOG_CATEGORIES.STORAGE, 'Failed to autosave', { error });
     }
   }
 
@@ -364,12 +357,11 @@ class StorageManager {
       const document = JSON.parse(documentJson);
       await this.editor.loadDocument(document);
 
-      console.log('✓ Document restored from autosave');
+      logger.info(LOG_CATEGORIES.STORAGE, 'Document restored from autosave');
       return true;
 
     } catch (error) {
-      console.error('Failed to restore from autosave:', error);
-      return false;
+      logger.error(LOG_CATEGORIES.STORAGE, 'Failed to restore from autosave', { error });
     }
   }
 
@@ -399,7 +391,7 @@ class StorageManager {
       };
 
     } catch (error) {
-      console.error('Failed to get autosave info:', error);
+      logger.error(LOG_CATEGORIES.STORAGE, 'Failed to get autosave info', { error });
       return null;
     }
   }
@@ -411,9 +403,9 @@ class StorageManager {
     try {
       localStorage.removeItem('music-editor-autosave-current');
       localStorage.removeItem('music-editor-autosave-timestamp');
-      console.log('✓ Autosave cleared');
+      logger.info(LOG_CATEGORIES.STORAGE, 'Autosave cleared');
     } catch (error) {
-      console.error('Failed to clear autosave:', error);
+      logger.error(LOG_CATEGORIES.STORAGE, 'Failed to clear autosave', { error });
     }
   }
 
@@ -426,7 +418,7 @@ class StorageManager {
       const timestamp = new Date().toISOString();
       localStorage.setItem('music-editor-autosave-timestamp', timestamp);
     } catch (error) {
-      console.error('Failed to update autosave timestamp:', error);
+      logger.error(LOG_CATEGORIES.STORAGE, 'Failed to update autosave timestamp', { error });
     }
   }
 
@@ -446,7 +438,7 @@ class StorageManager {
       this.autoSave();
     }, 10000);
 
-    console.log('✓ Autosave started (every 10 seconds)');
+    logger.info(LOG_CATEGORIES.STORAGE, 'Autosave started (every 10 seconds)');
     return this.autosaveInterval;
   }
 
@@ -457,7 +449,7 @@ class StorageManager {
     if (this.autosaveInterval) {
       clearInterval(this.autosaveInterval);
       this.autosaveInterval = null;
-      console.log('✓ Autosave stopped');
+      logger.info(LOG_CATEGORIES.STORAGE, 'Autosave stopped');
     }
   }
 }

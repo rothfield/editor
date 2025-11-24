@@ -3,6 +3,8 @@
  * Provides a visual interface for selecting key signatures
  */
 
+import logger, { LOG_CATEGORIES } from './logger.js';
+
 export class KeySignatureSelector {
   constructor(ui) {
     this.ui = ui;
@@ -237,20 +239,20 @@ function getKeySVGFilename(keySignature) {
  * @param {Function} onClickCallback - Optional callback when display is clicked
  */
 export function updateKeySignatureDisplay(keySignature, onClickCallback = null) {
-  console.log(`[updateKeySignatureDisplay] Called with keySignature: "${keySignature}"`);
+  logger.debug(LOG_CATEGORIES.UI, `updateKeySignatureDisplay called`, { keySignature });
 
   const displayElement = document.getElementById('key-signature-display');
   const svgElement = document.getElementById('key-sig-display-svg');
 
   if (!displayElement || !svgElement) {
-    console.warn('[updateKeySignatureDisplay] Display elements not found');
+    logger.warn(LOG_CATEGORIES.UI, 'Display elements not found');
     return;
   }
 
   if (keySignature && keySignature.trim() !== '') {
     // Get the SVG filename for this key signature
     const svgFilename = getKeySVGFilename(keySignature);
-    console.log(`[updateKeySignatureDisplay] SVG filename: "${svgFilename}"`);
+    logger.debug(LOG_CATEGORIES.UI, `SVG filename: ${svgFilename}`);
 
     if (svgFilename) {
       // Show the display and set the SVG source
@@ -258,7 +260,7 @@ export function updateKeySignatureDisplay(keySignature, onClickCallback = null) 
       svgElement.alt = keySignature;
       displayElement.title = `${keySignature} (click to change)`;
       displayElement.classList.remove('hidden');
-      console.log(`[updateKeySignatureDisplay] Display shown for "${keySignature}"`);
+      logger.debug(LOG_CATEGORIES.UI, `Display shown for ${keySignature}`);
 
       // Setup click handler if provided
       if (onClickCallback && !displayElement.dataset.hasClickHandler) {
@@ -267,12 +269,12 @@ export function updateKeySignatureDisplay(keySignature, onClickCallback = null) 
       }
     } else {
       // Unknown key signature, hide the display
-      console.warn(`[updateKeySignatureDisplay] No SVG found for key signature: ${keySignature}`);
+      logger.warn(LOG_CATEGORIES.UI, `No SVG found for key signature: ${keySignature}`);
       displayElement.classList.add('hidden');
     }
   } else {
     // Hide the display if no key signature
-    console.log(`[updateKeySignatureDisplay] No key signature provided, hiding display`);
+    logger.debug(LOG_CATEGORIES.UI, `No key signature provided, hiding display`);
     displayElement.classList.add('hidden');
   }
 }

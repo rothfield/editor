@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Western System - Font Test</title>
+    <style>
+        @font-face {
+            font-family: 'NotationFont';
+            src: url('/static/fonts/NotationFont.woff2') format('woff2'),
+                 url('/static/fonts/NotationFont.ttf') format('truetype');
+        }
+
+        body {
+            font-family: sans-serif;
+            padding: 40px;
+            background: #f5f5f5;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: #333;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 10px;
+        }
+
+        .test-section {
+            background: white;
+            padding: 30px;
+            margin: 20px 0;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        h2 {
+            color: #667eea;
+            margin-top: 0;
+        }
+
+        .scale {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin: 20px 0;
+        }
+
+        .note {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            background: #fafafa;
+            min-width: 80px;
+        }
+
+        .glyph {
+            font-family: 'NotationFont', sans-serif;
+            font-size: 60px;
+            line-height: 1.2;
+            margin: 10px 0;
+            color: #333;
+        }
+
+        .label {
+            font-size: 12px;
+            color: #666;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .codepoint {
+            font-size: 10px;
+            color: #999;
+            font-family: monospace;
+            margin-top: 5px;
+        }
+
+        .flat {
+            background: #e3f2fd;
+            border-color: #2196f3;
+        }
+
+        .sharp {
+            background: #fff3e0;
+            border-color: #ff9800;
+        }
+
+        .natural {
+            background: #f1f8e9;
+            border-color: #8bc34a;
+        }
+
+        .info-box {
+            background: #f0f4ff;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            margin: 20px 0;
+        }
+
+        .success {
+            background: #d4edda;
+            border: 1px solid #28a745;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎼 Western System - NotationFont Test</h1>
+
+    <div class="info-box">
+        <strong>Western Music Notation (C-D-E-F-G-A-B)</strong>
+        <p>Testing all chromatic notes with accidentals. This is the standard Western music notation system.</p>
+        <ul>
+            <li><strong>Natural notes:</strong> C, D, E, F, G, A, B</li>
+            <li><strong>Flat notes:</strong> D♭, E♭, G♭, A♭, B♭ (should show flat symbol)</li>
+            <li><strong>Sharp notes:</strong> C#, D#, F#, G#, A# (should show sharp symbol)</li>
+        </ul>
+    </div>
+
+    <div class="test-section">
+        <h2>Complete Chromatic Scale (12 Notes)</h2>
+        <div class="success">
+            <strong>✓ Expected:</strong> Accidentals (♭ and #) should appear as composite glyphs.
+        </div>
+        <div class="scale" id="chromatic-scale"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Natural Notes (C-D-E-F-G-A-B)</h2>
+        <div class="scale" id="natural-notes"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Flat Notes</h2>
+        <div class="scale" id="flat-notes"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Sharp Notes</h2>
+        <div class="scale" id="sharp-notes"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Half-Flat Notes</h2>
+        <div class="success">
+            <strong>✓ Expected:</strong> Half-flat symbol (♭ with slash) should appear.
+        </div>
+        <div class="scale" id="half-flat-notes"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Double Flat Notes</h2>
+        <div class="success">
+            <strong>✓ Expected:</strong> Double-flat symbol (♭♭) should appear.
+        </div>
+        <div class="scale" id="double-flat-notes"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Double Sharp Notes</h2>
+        <div class="success">
+            <strong>✓ Expected:</strong> Double-sharp symbol (𝄪) should appear.
+        </div>
+        <div class="scale" id="double-sharp-notes"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Octave Variants (Example: C)</h2>
+        <div class="success">
+            <strong>✓ Expected:</strong> Dots above/below indicate octave shifts.<br>
+            1 dot above = +1 octave, 2 dots above = +2 octaves<br>
+            1 dot below = -1 octave, 2 dots below = -2 octaves
+        </div>
+        <div class="scale" id="octave-variants"></div>
+    </div>
+
+    <script>
+        // Western system configuration (from atoms.yaml)
+        // Characters: CDEFGAB (uppercase, indices 0-6 in character_order)
+        // PUA base: 0xE100
+        const WESTERN_NOTES = [
+            { char: 'C', label: 'C', desc: 'C natural', pua_base: 0xE100, char_index: 0, acc_type: 0, natural: true },
+            { char: 'C#', label: 'C#', desc: 'C sharp', pua_base: 0xE100, char_index: 0, acc_type: 5, sharp: true },
+            { char: 'D', label: 'D', desc: 'D natural', pua_base: 0xE100, char_index: 1, acc_type: 0, natural: true },
+            { char: 'D♭', label: 'D♭', desc: 'D flat', pua_base: 0xE100, char_index: 1, acc_type: 1, flat: true },
+            { char: 'D#', label: 'D#', desc: 'D sharp', pua_base: 0xE100, char_index: 1, acc_type: 5, sharp: true },
+            { char: 'E', label: 'E', desc: 'E natural', pua_base: 0xE100, char_index: 2, acc_type: 0, natural: true },
+            { char: 'E♭', label: 'E♭', desc: 'E flat', pua_base: 0xE100, char_index: 2, acc_type: 1, flat: true },
+            { char: 'F', label: 'F', desc: 'F natural', pua_base: 0xE100, char_index: 3, acc_type: 0, natural: true },
+            { char: 'F#', label: 'F#', desc: 'F sharp', pua_base: 0xE100, char_index: 3, acc_type: 5, sharp: true },
+            { char: 'G', label: 'G', desc: 'G natural', pua_base: 0xE100, char_index: 4, acc_type: 0, natural: true },
+            { char: 'G♭', label: 'G♭', desc: 'G flat', pua_base: 0xE100, char_index: 4, acc_type: 1, flat: true },
+            { char: 'G#', label: 'G#', desc: 'G sharp', pua_base: 0xE100, char_index: 4, acc_type: 5, sharp: true },
+            { char: 'A', label: 'A', desc: 'A natural', pua_base: 0xE100, char_index: 5, acc_type: 0, natural: true },
+            { char: 'A♭', label: 'A♭', desc: 'A flat', pua_base: 0xE100, char_index: 5, acc_type: 1, flat: true },
+            { char: 'A#', label: 'A#', desc: 'A sharp', pua_base: 0xE100, char_index: 5, acc_type: 5, sharp: true },
+            { char: 'B', label: 'B', desc: 'B natural', pua_base: 0xE100, char_index: 6, acc_type: 0, natural: true },
+            { char: 'B♭', label: 'B♭', desc: 'B flat', pua_base: 0xE100, char_index: 6, acc_type: 1, flat: true },
+        ];
+
+        // Chromatic scale order (12 semitones)
+        const CHROMATIC_ORDER = ['C', 'C#', 'D', 'D♭', 'D#', 'E♭', 'E', 'F', 'F#', 'G♭', 'G', 'G#', 'A♭', 'A', 'A#', 'B♭', 'B'];
+
+        function renderNote(note, containerId) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+
+            const noteDiv = document.createElement('div');
+            noteDiv.className = 'note';
+            if (note.natural) noteDiv.classList.add('natural');
+            if (note.flat) noteDiv.classList.add('flat');
+            if (note.sharp) noteDiv.classList.add('sharp');
+
+            // Calculate codepoint: pua_base + (char_index × 30) + variant_index
+            // variant_index = (acc_type × 5) + octave_idx
+            // octave_idx 0 = base octave
+            // acc_type: 0=natural, 1=flat, 2=half-flat, 3=double-flat, 4=double-sharp, 5=sharp
+            const variant_index = (note.acc_type * 5) + 0;
+            const codepoint = note.pua_base + (note.char_index * 30) + variant_index;
+            const glyph = String.fromCodePoint(codepoint);
+
+            noteDiv.innerHTML = `
+                <div class="label">${note.label}</div>
+                <div class="glyph">${glyph}</div>
+                <div class="codepoint">U+${codepoint.toString(16).toUpperCase()}</div>
+                <div class="codepoint">${note.desc}</div>
+            `;
+
+            container.appendChild(noteDiv);
+        }
+
+        // Render chromatic scale in proper order
+        const chromaticNotes = CHROMATIC_ORDER
+            .map(label => WESTERN_NOTES.find(n => n.label === label))
+            .filter(n => n);
+        chromaticNotes.forEach(note => renderNote(note, 'chromatic-scale'));
+
+        // Render natural notes
+        WESTERN_NOTES.filter(note => note.natural).forEach(note => renderNote(note, 'natural-notes'));
+
+        // Render flat notes
+        WESTERN_NOTES.filter(note => note.flat).forEach(note => renderNote(note, 'flat-notes'));
+
+        // Render sharp notes
+        WESTERN_NOTES.filter(note => note.sharp).forEach(note => renderNote(note, 'sharp-notes'));
+
+        // Generate and render half-flat notes (acc_type: 2)
+        const HALF_FLAT_NOTES = [
+            { char: 'D♭/', label: 'D half-flat', desc: 'D (half-flat)', pua_base: 0xE100, char_index: 1, acc_type: 2, flat: true },
+            { char: 'E♭/', label: 'E half-flat', desc: 'E (half-flat)', pua_base: 0xE100, char_index: 2, acc_type: 2, flat: true },
+            { char: 'G♭/', label: 'G half-flat', desc: 'G (half-flat)', pua_base: 0xE100, char_index: 4, acc_type: 2, flat: true },
+            { char: 'A♭/', label: 'A half-flat', desc: 'A (half-flat)', pua_base: 0xE100, char_index: 5, acc_type: 2, flat: true },
+            { char: 'B♭/', label: 'B half-flat', desc: 'B (half-flat)', pua_base: 0xE100, char_index: 6, acc_type: 2, flat: true },
+        ];
+        HALF_FLAT_NOTES.forEach(note => renderNote(note, 'half-flat-notes'));
+
+        // Generate and render double-flat notes (acc_type: 3)
+        const DOUBLE_FLAT_NOTES = [
+            { char: 'C♭♭', label: 'C double-flat', desc: 'C (double-flat)', pua_base: 0xE100, char_index: 0, acc_type: 3, flat: true },
+            { char: 'D♭♭', label: 'D double-flat', desc: 'D (double-flat)', pua_base: 0xE100, char_index: 1, acc_type: 3, flat: true },
+            { char: 'E♭♭', label: 'E double-flat', desc: 'E (double-flat)', pua_base: 0xE100, char_index: 2, acc_type: 3, flat: true },
+            { char: 'F♭♭', label: 'F double-flat', desc: 'F (double-flat)', pua_base: 0xE100, char_index: 3, acc_type: 3, flat: true },
+            { char: 'G♭♭', label: 'G double-flat', desc: 'G (double-flat)', pua_base: 0xE100, char_index: 4, acc_type: 3, flat: true },
+            { char: 'A♭♭', label: 'A double-flat', desc: 'A (double-flat)', pua_base: 0xE100, char_index: 5, acc_type: 3, flat: true },
+            { char: 'B♭♭', label: 'B double-flat', desc: 'B (double-flat)', pua_base: 0xE100, char_index: 6, acc_type: 3, flat: true },
+        ];
+        DOUBLE_FLAT_NOTES.forEach(note => renderNote(note, 'double-flat-notes'));
+
+        // Generate and render double-sharp notes (acc_type: 4)
+        const DOUBLE_SHARP_NOTES = [
+            { char: 'C𝄪', label: 'C double-sharp', desc: 'C (double-sharp)', pua_base: 0xE100, char_index: 0, acc_type: 4, sharp: true },
+            { char: 'D𝄪', label: 'D double-sharp', desc: 'D (double-sharp)', pua_base: 0xE100, char_index: 1, acc_type: 4, sharp: true },
+            { char: 'E𝄪', label: 'E double-sharp', desc: 'E (double-sharp)', pua_base: 0xE100, char_index: 2, acc_type: 4, sharp: true },
+            { char: 'F𝄪', label: 'F double-sharp', desc: 'F (double-sharp)', pua_base: 0xE100, char_index: 3, acc_type: 4, sharp: true },
+            { char: 'G𝄪', label: 'G double-sharp', desc: 'G (double-sharp)', pua_base: 0xE100, char_index: 4, acc_type: 4, sharp: true },
+            { char: 'A𝄪', label: 'A double-sharp', desc: 'A (double-sharp)', pua_base: 0xE100, char_index: 5, acc_type: 4, sharp: true },
+            { char: 'B𝄪', label: 'B double-sharp', desc: 'B (double-sharp)', pua_base: 0xE100, char_index: 6, acc_type: 4, sharp: true },
+        ];
+        DOUBLE_SHARP_NOTES.forEach(note => renderNote(note, 'double-sharp-notes'));
+
+        // Generate and render octave variants for C
+        // octave_idx: 0=base, 1=+1_dot_above, 2=+2_dots_above, 3=-1_dot_below, 4=-2_dots_below
+        const OCTAVE_VARIANTS = [
+            { char: 'C', label: 'C (base)', desc: 'Base octave', pua_base: 0xE100, char_index: 0, acc_type: 0, octave_idx: 0, natural: true },
+            { char: 'Ċ', label: 'C (+1 octave)', desc: '1 dot above', pua_base: 0xE100, char_index: 0, acc_type: 0, octave_idx: 1, natural: true },
+            { char: 'C̈', label: 'C (+2 octaves)', desc: '2 dots above', pua_base: 0xE100, char_index: 0, acc_type: 0, octave_idx: 2, natural: true },
+            { char: 'Ç', label: 'C (-1 octave)', desc: '1 dot below', pua_base: 0xE100, char_index: 0, acc_type: 0, octave_idx: 3, natural: true },
+            { char: 'C̤', label: 'C (-2 octaves)', desc: '2 dots below', pua_base: 0xE100, char_index: 0, acc_type: 0, octave_idx: 4, natural: true },
+        ];
+
+        function renderNoteWithOctave(note, containerId) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+
+            const noteDiv = document.createElement('div');
+            noteDiv.className = 'note';
+            if (note.natural) noteDiv.classList.add('natural');
+            if (note.flat) noteDiv.classList.add('flat');
+            if (note.sharp) noteDiv.classList.add('sharp');
+
+            // Calculate codepoint: pua_base + (char_index × 30) + variant_index
+            // variant_index = (acc_type × 5) + octave_idx
+            const variant_index = (note.acc_type * 5) + note.octave_idx;
+            const codepoint = note.pua_base + (note.char_index * 30) + variant_index;
+            const glyph = String.fromCodePoint(codepoint);
+
+            noteDiv.innerHTML = `
+                <div class="label">${note.label}</div>
+                <div class="glyph">${glyph}</div>
+                <div class="codepoint">U+${codepoint.toString(16).toUpperCase()}</div>
+                <div class="codepoint">${note.desc}</div>
+            `;
+
+            container.appendChild(noteDiv);
+        }
+
+        OCTAVE_VARIANTS.forEach(note => renderNoteWithOctave(note, 'octave-variants'));
+
+        console.log('✓ Western system font test loaded');
+        console.log('Check that flat notes show ♭ symbol and sharp notes show # symbol');
+        console.log('Check that half-flats, double-flats, and double-sharps render correctly');
+        console.log('Check that octave variants show dots above/below');
+    </script>
+</body>
+</html>

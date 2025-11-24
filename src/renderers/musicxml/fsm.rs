@@ -765,7 +765,7 @@ mod tests {
         }
 
         // End of stave (closes measure 3)
-        state = handle_end_of_stave(state, &mut beat_accum, &mut measure);
+        _ = handle_end_of_stave(state, &mut beat_accum, &mut measure);
         completed_measures.push((3, 16));
 
         // Verify
@@ -849,7 +849,7 @@ mod tests {
         }
 
         // End of input - close last measure
-        state = handle_end_of_stave(state, &mut beat_accum, &mut measure);
+        _ = handle_end_of_stave(state, &mut beat_accum, &mut measure);
         completed_measures.push((measure.measure_number, current_note_count));
 
         // Verify
