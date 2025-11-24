@@ -77,7 +77,28 @@ class Logger {
     let formatted = `[${timestamp}] [${category}] ${message}`;
 
     if (Object.keys(context).length > 0) {
-      formatted += ` ${JSON.stringify(context)}`;
+      try {
+        // Use a replacer to handle circular references and non-serializable objects
+        const seen = new WeakSet();
+        const contextStr = JSON.stringify(context, (key, value) => {
+          // Handle Error objects specially
+          if (value instanceof Error) {
+            return { message: value.message, stack: value.stack };
+          }
+          // Skip circular references
+          if (typeof value === 'object' && value !== null) {
+            if (seen.has(value)) {
+              return '[Circular]';
+            }
+            seen.add(value);
+          }
+          return value;
+        });
+        formatted += ` ${contextStr}`;
+      } catch (e) {
+        // Fallback if stringify still fails
+        formatted += ` [Object with non-serializable content]`;
+      }
     }
 
     return formatted;
