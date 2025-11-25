@@ -55,22 +55,22 @@ test('Number pitch system with tonic D should transpose in IR', async ({ page })
     console.log('Pitch codes in IR:', notes);
 
     // With tonic D and number system:
-    // 1 (tonic) = D
-    // 2 (second) = E
-    // 3 (third) = F#
-    // Expected pitch codes: D1, E1, Fs1 (or similar with octave/accidental info)
+    // Input: 1 2 3 (interpreted as scale degrees in C major context)
+    // Tonic D means we use D major scale: D E F# G A B C#
+    //
+    // Lookup table transposition:
+    // - Degree 1 in D major = "D" → maps to N2 (D is the 2nd note in number system)
+    // - Degree 2 in D major = "E" → maps to N3 (E is the 3rd note in number system)
+    // - Degree 3 in D major = "F#" → maps to N4s (F# is the 4th note sharp)
 
     expect(notes.length).toBe(3, 'Should have 3 notes');
 
-    // Check if notes are transposed from N1 N2 N3 to N2 N3 N4s
-    // When tonic is D:
-    // 1 (tonic) transposed by 2 semitones = N2 (E)
-    // 2 (second) transposed by 2 semitones = N3 (F#) - but as N4s (F#)
-    // 3 (third) transposed by 2 semitones = N4 (G)
+    // With lookup table transposition:
+    // Input degrees 1,2,3 in tonic D become: N2(D), N3(E), N4s(F#)
     expect(irContent).toContain('"pitch_code": "N2"');
     expect(irContent).toContain('"pitch_code": "N3"');
     expect(irContent).toContain('"pitch_code": "N4s"');
 
-    console.log('✅ Number system with tonic D correctly transposes pitches: 1→N2(E), 2→N3(F#), 3→N4(G)');
+    console.log('✅ Lookup table transposition: 1→N2(D), 2→N3(E), 3→N4s(F#) in tonic D');
   }
 });

@@ -26,6 +26,8 @@ use super::types::{
     ExportLine, ExportMeasure, ExportEvent, NoteData, GraceNoteData, PitchInfo,
     LyricData, Syllabic, SlurData, SlurPlacement, SlurType, TupletInfo, Fraction,
 };
+use crate::transposition::normalize_pitch;
+use crate::models::pitch_code::AccidentalType;
 
 /// FSM state for cell-to-event grouping
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -164,7 +166,7 @@ impl BeatAccumulator {
         for cell in &ornament.cells {
             if let Some(pitch_code) = cell.pitch_code {
                 // Transpose by tonic if available
-                let transposed_pitch_code = transpose_pitch_by_tonic(pitch_code, &self.tonic);
+                let transposed_pitch_code = transpose_pitch_code_by_tonic(pitch_code, &self.tonic);
                 let pitch = PitchInfo::new(transposed_pitch_code, cell.octave);
                 let grace = GraceNoteData {
                     pitch,
@@ -270,13 +272,86 @@ impl BeatAccumulator {
 }
 
 /// Helper function to transpose a pitch code by the tonic
-fn transpose_pitch_by_tonic(pitch_code: crate::models::PitchCode, tonic: &str) -> crate::models::PitchCode {
+/// Transpose a pitch using the lookup table based on tonic.
+/// Converts input PitchCode to the normalized pitch name for the given tonic,
+/// then converts back to a PitchCode.
+///
+/// Example: 1# in Gb major → lookup gives "G" → output is pitch G
+fn transpose_pitch_code_by_tonic(pitch_code: crate::models::PitchCode, tonic: &str) -> crate::models::PitchCode {
     if tonic.is_empty() {
-        pitch_code
-    } else {
-        use crate::models::PitchCode;
-        let semitone_offset = PitchCode::semitone_offset_from_c(tonic);
-        pitch_code.transpose_by_semitones(semitone_offset)
+        return pitch_code;
+    }
+
+    // Extract degree (1-7) and accidental from the input PitchCode
+    let degree = pitch_code.degree();
+    let accidental_str = match pitch_code.accidental_type() {
+        AccidentalType::None => "n",
+        AccidentalType::Sharp => "#",
+        AccidentalType::Flat => "b",
+        AccidentalType::DoubleSharp => "##",
+        AccidentalType::DoubleFlat => "bb",
+        AccidentalType::HalfFlat => "hf", // Not in lookup yet, treat as natural
+    };
+
+    // Use lookup table to get normalized pitch name (e.g., "Gb", "Ab", "F#")
+    let normalized_pitch_name = normalize_pitch(degree, accidental_str, tonic);
+
+    // Convert the normalized pitch name back to a PitchCode
+    pitch_name_to_pitch_code(&normalized_pitch_name).unwrap_or(pitch_code)
+}
+
+/// Convert a pitch name string (e.g., "C#", "Bb", "F") to a PitchCode
+/// This is a helper to reverse-map from pitch names back to the number system
+fn pitch_name_to_pitch_code(name: &str) -> Option<crate::models::PitchCode> {
+    use crate::models::PitchCode;
+
+    match name {
+        // Naturals
+        "C" => Some(PitchCode::N1),
+        "D" => Some(PitchCode::N2),
+        "E" => Some(PitchCode::N3),
+        "F" => Some(PitchCode::N4),
+        "G" => Some(PitchCode::N5),
+        "A" => Some(PitchCode::N6),
+        "B" => Some(PitchCode::N7),
+
+        // Sharps
+        "C#" => Some(PitchCode::N1s),
+        "D#" => Some(PitchCode::N2s),
+        "E#" => Some(PitchCode::N3s),
+        "F#" => Some(PitchCode::N4s),
+        "G#" => Some(PitchCode::N5s),
+        "A#" => Some(PitchCode::N6s),
+        "B#" => Some(PitchCode::N7s),
+
+        // Flats
+        "Cb" => Some(PitchCode::N7b),  // Enharmonic to B
+        "Db" => Some(PitchCode::N2b),
+        "Eb" => Some(PitchCode::N3b),
+        "Fb" => Some(PitchCode::N4b),
+        "Gb" => Some(PitchCode::N5b),
+        "Ab" => Some(PitchCode::N6b),
+        "Bb" => Some(PitchCode::N7b),
+
+        // Double-sharps
+        "C##" => Some(PitchCode::N1ss),
+        "D##" => Some(PitchCode::N2ss),
+        "E##" => Some(PitchCode::N3ss),
+        "F##" => Some(PitchCode::N4ss),
+        "G##" => Some(PitchCode::N5ss),
+        "A##" => Some(PitchCode::N6ss),
+        "B##" => Some(PitchCode::N7ss),
+
+        // Double-flats
+        "Cbb" => Some(PitchCode::N1bb),
+        "Dbb" => Some(PitchCode::N2bb),
+        "Ebb" => Some(PitchCode::N3bb),
+        "Fbb" => Some(PitchCode::N4bb),
+        "Gbb" => Some(PitchCode::N5bb),
+        "Abb" => Some(PitchCode::N6bb),
+        "Bbb" => Some(PitchCode::N7bb),
+
+        _ => None,
     }
 }
 
@@ -310,7 +385,7 @@ pub fn beat_transition(
         // PITCH → transition from InBeat or CollectingDashes
         (CellGroupingState::InBeat, ElementKind::PitchedElement) => {
             if let Some(pitch_code) = cell.pitch_code {
-                let transposed_pitch = transpose_pitch_by_tonic(pitch_code, tonic);
+                let transposed_pitch = transpose_pitch_code_by_tonic(pitch_code, tonic);
                 let pitch = PitchInfo::new(transposed_pitch, cell.octave);
                 accum.start_pitch(pitch);
                 // Slur indicator already extracted at top of beat_transition
@@ -332,7 +407,7 @@ pub fn beat_transition(
             // Finish the dash rest, then start the pitch
             accum.finish_dashes();
             if let Some(pitch_code) = cell.pitch_code {
-                let transposed_pitch = transpose_pitch_by_tonic(pitch_code, tonic);
+                let transposed_pitch = transpose_pitch_code_by_tonic(pitch_code, tonic);
                 let pitch = PitchInfo::new(transposed_pitch, cell.octave);
                 accum.start_pitch(pitch);
                 // Slur indicator already extracted at top of beat_transition
@@ -348,7 +423,7 @@ pub fn beat_transition(
             // New pitch → finish previous and start new
             accum.finish_pitch();
             if let Some(pitch_code) = cell.pitch_code {
-                let transposed_pitch = transpose_pitch_by_tonic(pitch_code, tonic);
+                let transposed_pitch = transpose_pitch_code_by_tonic(pitch_code, tonic);
                 let pitch = PitchInfo::new(transposed_pitch, cell.octave);
                 accum.start_pitch(pitch);
                 // Slur indicator already extracted at top of beat_transition

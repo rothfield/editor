@@ -11,9 +11,10 @@ pub mod utils;
 pub mod api;
 pub mod converters;
 pub mod undo;
-pub mod text;      // Layer 0: Text buffer (proof-of-concept for layered architecture)
-pub mod structure; // Layer 2: Musical structure analysis (proof-of-concept)
-pub mod ir;        // Intermediate Representation for format-agnostic export
+pub mod text;           // Layer 0: Text buffer (proof-of-concept for layered architecture)
+pub mod structure;      // Layer 2: Musical structure analysis (proof-of-concept)
+pub mod ir;             // Intermediate Representation for format-agnostic export
+pub mod transposition;  // Degree-based transposition for tonic-aware pitch mapping
 
 // Include generated font constants from build.rs
 include!(concat!(env!("OUT_DIR"), "/font_constants.rs"));
