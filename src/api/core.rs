@@ -5,10 +5,12 @@
 
 use wasm_bindgen::prelude::*;
 use crate::models::{Cell, PitchSystem, Document, Line, Pos, EditorDiff, CaretInfo, SelectionInfo, ElementKind, StaffRole, PitchCode};
+use crate::models::pitch_code::AccidentalType;
 use crate::parse::grammar::parse_single;
 use crate::api::helpers::lock_document;
 use crate::{wasm_log, wasm_info, wasm_warn, wasm_error};
 use crate::undo::Command;
+use crate::renderers::lyrics::{distribute_lyrics, parse_lyrics};
 
 #[cfg(test)]
 use crate::parse::grammar::parse;
@@ -188,7 +190,11 @@ pub fn set_document_tonic(tonic: &str) -> Result<(), JsValue> {
     let doc = doc_guard.as_mut()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
-    doc.tonic = Some(tonic.to_string());
+    // Parse tonic string to Tonic enum
+    let tonic_enum = tonic.parse::<crate::models::Tonic>()
+        .map_err(|e| JsValue::from_str(&format!("Invalid tonic '{}': {}", tonic, e)))?;
+
+    doc.tonic = Some(tonic_enum);
     wasm_info!("  Document tonic set to: '{}'", tonic);
 
     // Compute glyphs after metadata change
@@ -224,8 +230,12 @@ pub fn set_line_tonic(line_idx: usize, tonic: &str) -> Result<(), JsValue> {
         return Err(JsValue::from_str(&err_msg));
     }
 
+    // Parse tonic string to Tonic enum
+    let tonic_enum = tonic.parse::<crate::models::Tonic>()
+        .map_err(|e| JsValue::from_str(&format!("Invalid tonic '{}': {}", tonic, e)))?;
+
     // Set the line tonic
-    doc.lines[line_idx].tonic = tonic.to_string();
+    doc.lines[line_idx].tonic = Some(tonic_enum);
     wasm_info!("  Line {} tonic set to: '{}'", line_idx, tonic);
 
     // Compute glyphs after metadata change
@@ -491,6 +501,73 @@ pub fn set_line_new_system(line_index: usize, new_system: bool) -> Result<(), Js
     Ok(())
 }
 
+/// Split lyrics string at a cell index boundary
+///
+/// Uses the lyrics distribution algorithm to determine which syllables belong
+/// to cells before the split point and which belong to cells after.
+///
+/// # Arguments
+/// * `lyrics` - The full lyrics string for the line
+/// * `cells` - All cells in the line (before splitting)
+/// * `split_cell_index` - The cell index where the line will be split
+///
+/// # Returns
+/// A tuple of (lyrics_before, lyrics_after) where:
+/// - lyrics_before: Syllables assigned to cells 0..split_cell_index
+/// - lyrics_after: Syllables assigned to cells split_cell_index..end
+fn split_lyrics_at_cell_index(lyrics: &str, cells: &[Cell], split_cell_index: usize) -> (String, String) {
+    if lyrics.trim().is_empty() {
+        return (String::new(), String::new());
+    }
+
+    // Get all syllables
+    let syllables = parse_lyrics(lyrics);
+    if syllables.is_empty() {
+        return (String::new(), String::new());
+    }
+
+    // Distribute lyrics to cells to find assignment boundaries
+    let assignments = distribute_lyrics(lyrics, cells);
+
+    // Find which syllables go to each part based on cell assignments
+    // Count how many syllables are assigned to cells before the split point
+    let syllables_before_count = assignments
+        .iter()
+        .filter(|a| a.cell_index < split_cell_index)
+        .count();
+
+    // Split syllables
+    let syllables_before: Vec<&String> = syllables.iter().take(syllables_before_count).collect();
+    let syllables_after: Vec<&String> = syllables.iter().skip(syllables_before_count).collect();
+
+    // Reconstruct lyrics strings, joining syllables appropriately
+    let lyrics_before = reconstruct_lyrics(&syllables_before);
+    let lyrics_after = reconstruct_lyrics(&syllables_after);
+
+    (lyrics_before, lyrics_after)
+}
+
+/// Reconstruct a lyrics string from syllables
+///
+/// Joins syllables with spaces, but avoids double spaces when syllables
+/// already end with hyphens (which indicate continuation).
+fn reconstruct_lyrics(syllables: &[&String]) -> String {
+    if syllables.is_empty() {
+        return String::new();
+    }
+
+    let mut result = String::new();
+    for (i, syllable) in syllables.iter().enumerate() {
+        result.push_str(syllable);
+        // Add space between syllables unless this syllable ends with hyphen
+        // (hyphen indicates it continues to the next syllable)
+        if i < syllables.len() - 1 && !syllable.ends_with('-') {
+            result.push(' ');
+        }
+    }
+    result
+}
+
 /// Split a line at the given character position (Phase 1 API - WASM-First)
 ///
 /// # Parameters
@@ -504,7 +581,9 @@ pub fn set_line_new_system(line_index: usize, new_system: bool) -> Result<(), Js
 /// - Cells before char_pos stay in the current line
 /// - Cells after char_pos move to the new line
 /// - New line inherits: pitch_system, tonic, key_signature, time_signature
-/// - New line gets empty: label, lyrics, tala
+/// - New line gets empty: label, tala
+/// - Lyrics are split: syllables assigned to cells before split stay on original line,
+///   syllables assigned to cells after split move to new line
 #[wasm_bindgen(js_name = splitLineAtPosition)]
 pub fn split_line_at_position(
     stave_index: usize,
@@ -543,21 +622,30 @@ pub fn split_line_at_position(
 
     // Split the cells array
     let mut line = doc.lines.remove(stave_index);
+
+    // Split lyrics: distribute syllables to cells, then split based on cell index
+    let (lyrics_before, lyrics_after) = split_lyrics_at_cell_index(&line.lyrics, &line.cells, split_cell_index);
+    wasm_log!("Lyrics split: before='{}', after='{}'", lyrics_before, lyrics_after);
+
     let cells_after = line.cells.split_off(split_cell_index);
+
+    // Update original line's lyrics to only include syllables for remaining cells
+    line.lyrics = lyrics_before;
 
     // Create new line with cells after split, inheriting musical properties
     let new_line = Line {
         cells: cells_after,
         label: String::new(), // New line starts with no label
         tala: String::new(),  // New line starts with no tala
-        lyrics: String::new(), // New line starts with no lyrics
+        lyrics: lyrics_after, // New line gets remaining lyrics
         tonic: line.tonic.clone(), // Inherit tonic
         pitch_system: line.pitch_system, // Inherit pitch system
         key_signature: line.key_signature.clone(), // Inherit key signature
         tempo: line.tempo.clone(), // Inherit tempo
         time_signature: line.time_signature.clone(), // Inherit time signature
         new_system: false, // New line does not start a new system
-        staff_role: StaffRole::default(), // Default to Melody
+        staff_role: StaffRole::default(), // DEPRECATED: use system_marker
+        system_marker: None, // No marker = standalone or continue group
         system_id: 0, // Will be recalculated
         part_id: String::new(), // Will be recalculated
         beats: Vec::new(),
@@ -767,6 +855,82 @@ pub fn set_line_staff_role(line_index: usize, role: String) -> Result<(), JsValu
 
     wasm_info!("setLineStaffRole completed successfully");
     Ok(())
+}
+
+/// Set the system marker for a line (LilyPond-style << / >> grouping)
+///
+/// # Parameters
+/// * `line_index` - Index of the line to modify
+/// * `marker` - System marker as string ("<<", ">>", "start", "end", or "" to clear)
+///
+/// # Returns
+/// Ok(()) on success, Err with error message on failure
+#[wasm_bindgen(js_name = setSystemMarker)]
+pub fn set_system_marker(line_index: usize, marker: String) -> Result<(), JsValue> {
+    use crate::models::SystemMarker;
+
+    wasm_info!("setSystemMarker called: line_index={}, marker={}", line_index, marker);
+
+    // Access internal WASM document
+    let mut doc_guard = lock_document()?;
+    let document = doc_guard.as_mut()
+        .ok_or_else(|| {
+            wasm_error!("No document loaded");
+            JsValue::from_str("No document loaded")
+        })?;
+
+    // Validate line index
+    if line_index >= document.lines.len() {
+        wasm_error!("Line index {} out of bounds (max: {})", line_index, document.lines.len() - 1);
+        return Err(JsValue::from_str("Line index out of bounds"));
+    }
+
+    // Parse the marker
+    let system_marker = match marker.as_str() {
+        "<<" | "start" => Some(SystemMarker::Start),
+        ">>" | "end" => Some(SystemMarker::End),
+        "" | "clear" | "none" => None,
+        _ => {
+            wasm_error!("Invalid system marker: {}", marker);
+            return Err(JsValue::from_str(&format!("Invalid marker: {}. Use '<<', '>>', or '' to clear.", marker)));
+        }
+    };
+
+    document.lines[line_index].system_marker = system_marker;
+    wasm_info!("  Line {} system_marker set to: {:?}", line_index, document.lines[line_index].system_marker);
+
+    // Recalculate system_id and part_id after marker change
+    document.recalculate_system_and_part_ids();
+    wasm_info!("  System and part IDs recalculated");
+
+    wasm_info!("setSystemMarker completed successfully");
+    Ok(())
+}
+
+/// Get the system marker for a line
+///
+/// # Parameters
+/// * `line_index` - Index of the line to query
+///
+/// # Returns
+/// The marker string ("<<", ">>", or "") on success
+#[wasm_bindgen(js_name = getSystemMarker)]
+pub fn get_system_marker(line_index: usize) -> Result<String, JsValue> {
+    let doc_guard = lock_document()?;
+    let document = doc_guard.as_ref()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    if line_index >= document.lines.len() {
+        return Err(JsValue::from_str("Line index out of bounds"));
+    }
+
+    let marker_str = match document.lines[line_index].system_marker {
+        Some(crate::models::SystemMarker::Start) => "<<",
+        Some(crate::models::SystemMarker::End) => ">>",
+        None => "",
+    };
+
+    Ok(marker_str.to_string())
 }
 
 // ============================================================================
@@ -1238,11 +1402,38 @@ pub fn delete_at_cursor() -> Result<JsValue, JsValue> {
             let cell_idx = cursor_col - 1;
             let cell = &line.cells[cell_idx];
 
-            // TWO-STAGE BACKSPACE: Check if cell has multiple characters
+            // TWO-STAGE BACKSPACE: Check if pitch has accidental (semantic check)
+            let has_accidental = cell.kind == ElementKind::PitchedElement
+                && cell.pitch_code.map_or(false, |pc| pc.accidental_type() != AccidentalType::None);
             let char_count = cell.char.chars().count();
 
-            if char_count > 1 {
-                // STAGE 1: Remove last character from multi-char cell
+            if has_accidental {
+                // STAGE 1a: Remove accidental from pitched element
+                wasm_info!("  Removing accidental from pitch '{}'", cell.char);
+
+                let mut new_char = cell.char.clone();
+                new_char.pop(); // Remove accidental character
+
+                let cell = &mut line.cells[cell_idx];
+                cell.char = new_char.clone();
+
+                // Reparse pitch_code after removing accidental (step-down: ## → #, # → natural)
+                if let Some(pitch_system) = cell.pitch_system {
+                    cell.pitch_code = PitchCode::from_string(&cell.char, pitch_system);
+                    wasm_info!("  Updated pitch_code after accidental removal: {:?}", cell.pitch_code);
+                }
+
+                // Cursor stays at same position
+                new_cursor_col = cursor_col;
+
+                // TODO: Record undo for modification
+
+                dirty_lines.push(DirtyLine {
+                    row: cursor_line,
+                    cells: line.cells.clone(),
+                });
+            } else if char_count > 1 {
+                // STAGE 1b: Remove last character from multi-char cell (barlines, etc.)
                 wasm_info!("  Two-stage backspace: removing last char from '{}'", cell.char);
 
                 let mut new_char = cell.char.clone();
@@ -1251,14 +1442,8 @@ pub fn delete_at_cursor() -> Result<JsValue, JsValue> {
                 let cell = &mut line.cells[cell_idx];
                 cell.char = new_char.clone();
 
-                // Update kind and pitch_code based on remaining content
-                if cell.kind == ElementKind::PitchedElement {
-                    // Reparse pitch_code after removing accidental
-                    if let Some(pitch_system) = cell.pitch_system {
-                        cell.pitch_code = PitchCode::from_string(&cell.char, pitch_system);
-                        wasm_info!("  Updated pitch_code after backspace: {:?}", cell.pitch_code);
-                    }
-                } else if cell.kind == ElementKind::RepeatLeftBarline {
+                // Update kind based on remaining content
+                if cell.kind == ElementKind::RepeatLeftBarline {
                     // |: → | (remove :)
                     cell.kind = ElementKind::SingleBarline;
                     wasm_info!("  Changed RepeatLeftBarline back to SingleBarline");
@@ -1567,7 +1752,8 @@ pub fn insert_newline() -> Result<JsValue, JsValue> {
         new_system: false,
         system_id: 0, // Will be recalculated
         part_id: String::new(), // Will be recalculated
-        staff_role: StaffRole::default(), // Default to Melody
+        staff_role: StaffRole::default(), // DEPRECATED: use system_marker
+        system_marker: None, // No marker = standalone or continue group
         beats: Vec::new(),
         slurs: Vec::new(),
     };
@@ -2014,6 +2200,10 @@ pub fn load_document(document_js: JsValue) -> Result<(), JsValue> {
     // Recalculate system_id and part_id for backward compatibility with old documents
     doc.recalculate_system_and_part_ids();
 
+    // Recompute glyphs after deserialization
+    // combined_char has #[serde(skip)] so it's not serialized - we must recompute it
+    doc.compute_glyphs();
+
     // Acquire lock again to store the document
     *lock_document()? = Some(doc);
     wasm_info!("loadDocument completed successfully");
@@ -2106,11 +2296,15 @@ pub fn compute_layout(
     wasm_info!("computeLayout called");
 
     // Deserialize document from JavaScript
-    let document: Document = serde_wasm_bindgen::from_value(document_js)
+    let mut document: Document = serde_wasm_bindgen::from_value(document_js)
         .map_err(|e| {
             wasm_error!("Document deserialization error: {}", e);
             JsValue::from_str(&format!("Document deserialization error: {}", e))
         })?;
+
+    // Recompute glyphs after deserialization
+    // combined_char has #[serde(skip)] so it's not serialized - we must recompute it
+    document.compute_glyphs();
 
     // Debug: Check if selection survived deserialization
     if let Some(sel) = document.state.selection_manager.get_selection() {
@@ -3937,5 +4131,117 @@ mod tests {
 
         // If we got here, the test failed to demonstrate the bug
         unreachable!("Test should have panicked above");
+    }
+
+    // ============================================================================
+    // Lyrics Split Tests
+    // ============================================================================
+
+    /// Helper to create an unpitched element cell for lyrics testing
+    fn make_unpitched_cell(char: &str, col: usize) -> Cell {
+        Cell::new(char.to_string(), ElementKind::UnpitchedElement, col)
+    }
+
+    #[test]
+    fn test_split_lyrics_empty() {
+        let lyrics = "";
+        let cells = vec![
+            make_pitched_cell("1", 0),
+            make_unpitched_cell(" ", 1),
+            make_pitched_cell("2", 2),
+        ];
+
+        let (before, after) = split_lyrics_at_cell_index(lyrics, &cells, 2);
+        assert_eq!(before, "");
+        assert_eq!(after, "");
+    }
+
+    #[test]
+    fn test_split_lyrics_basic() {
+        // 4 syllables, 4 pitched cells, split after cell 2
+        let lyrics = "one two three four";
+        let cells = vec![
+            make_pitched_cell("1", 0),
+            make_unpitched_cell(" ", 1),
+            make_pitched_cell("2", 2),
+            make_unpitched_cell(" ", 3),
+            make_pitched_cell("3", 4),
+            make_unpitched_cell(" ", 5),
+            make_pitched_cell("4", 6),
+        ];
+
+        // Split after cell index 4 (after "1 2 " cells) - two pitched cells before
+        let (before, after) = split_lyrics_at_cell_index(&lyrics, &cells, 4);
+        assert_eq!(before, "one two");
+        assert_eq!(after, "three four");
+    }
+
+    #[test]
+    fn test_split_lyrics_hyphenated() {
+        // "hel-lo wor-ld" = 4 syllables: "hel-", "lo", "wor-", "ld"
+        let lyrics = "hel-lo wor-ld";
+        let cells = vec![
+            make_pitched_cell("1", 0),
+            make_unpitched_cell(" ", 1),
+            make_pitched_cell("2", 2),
+            make_unpitched_cell(" ", 3),
+            make_pitched_cell("3", 4),
+            make_unpitched_cell(" ", 5),
+            make_pitched_cell("4", 6),
+        ];
+
+        // Split after 2 pitched cells (index 4)
+        let (before, after) = split_lyrics_at_cell_index(&lyrics, &cells, 4);
+        assert_eq!(before, "hel-lo");
+        assert_eq!(after, "wor-ld");
+    }
+
+    #[test]
+    fn test_split_lyrics_at_start() {
+        // Split at cell 0 means all lyrics go to second line
+        let lyrics = "one two";
+        let cells = vec![
+            make_pitched_cell("1", 0),
+            make_unpitched_cell(" ", 1),
+            make_pitched_cell("2", 2),
+        ];
+
+        let (before, after) = split_lyrics_at_cell_index(&lyrics, &cells, 0);
+        assert_eq!(before, "");
+        assert_eq!(after, "one two");
+    }
+
+    #[test]
+    fn test_split_lyrics_at_end() {
+        // Split at the end means all lyrics stay on first line
+        let lyrics = "one two";
+        let cells = vec![
+            make_pitched_cell("1", 0),
+            make_unpitched_cell(" ", 1),
+            make_pitched_cell("2", 2),
+        ];
+
+        let (before, after) = split_lyrics_at_cell_index(&lyrics, &cells, 3);
+        assert_eq!(before, "one two");
+        assert_eq!(after, "");
+    }
+
+    #[test]
+    fn test_split_lyrics_more_syllables_than_notes() {
+        // 4 syllables but only 2 pitched cells
+        // According to distribution, first note gets "one", second gets "two three four" combined
+        // When we split after first note, "one" stays, rest goes to second line
+        let lyrics = "one two three four";
+        let cells = vec![
+            make_pitched_cell("1", 0),
+            make_unpitched_cell(" ", 1),
+            make_pitched_cell("2", 2),
+        ];
+
+        // Split after first pitched cell (index 2)
+        let (before, after) = split_lyrics_at_cell_index(&lyrics, &cells, 2);
+        // First pitched cell gets "one", second gets remaining
+        assert_eq!(before, "one");
+        assert_eq!(after, "two three four");
     }
 }

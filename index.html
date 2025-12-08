@@ -541,6 +541,8 @@
                     <img id="key-sig-display-svg" class="key-sig-display-svg" alt="Key signature" />
                 </div>
                 <div id="editor-container" class="flex-1 relative overflow-auto p-4">
+                    <!-- System Controls (outside notation div, to the left) -->
+                    <div id="system-controls" class="system-controls-container"></div>
                     <!-- Notation Editor -->
                     <div id="notation-editor"
                          data-testid="editor-root"
@@ -598,6 +600,12 @@
                         </button>
                         <button id="tab-musicxml" class="tab" data-tab="musicxml" data-testid="tab-musicxml">
                             MusicXML
+                        </button>
+                        <button id="tab-text" class="tab" data-tab="text" data-testid="tab-text" title="Plain text with combining characters (copy/paste friendly)">
+                            Text
+                        </button>
+                        <button id="tab-text-sample" class="tab" data-tab="text-sample" data-testid="tab-text-sample" title="Sample text with all pitch systems, octaves, beat groups, and slurs">
+                            Text Sample
                         </button>
                         <button id="tab-displaylist" class="tab" data-tab="displaylist" data-testid="tab-displaylist">
                             Display List
@@ -659,6 +667,132 @@
                     <!-- MusicXML Tab -->
                     <div id="tab-content-musicxml" data-tab-content="musicxml" class="tab-content hidden flex-1 flex flex-col p-4">
                         <pre id="musicxml-source" data-testid="pane-musicxml" class="flex-1 text-xs font-mono bg-white p-3 border-2 border-gray-300 rounded overflow-auto"></pre>
+                    </div>
+
+                    <!-- Plain Text Tab -->
+                    <div id="tab-content-text" data-tab-content="text" class="tab-content hidden flex-1 flex flex-col p-4">
+                        <div class="flex items-center gap-4 mb-2">
+                            <div class="flex items-center gap-2">
+                                <label class="text-sm font-medium">Size:</label>
+                                <select id="text-size-toggle" class="text-sm border rounded px-2 py-1">
+                                    <option value="16">16px</option>
+                                    <option value="20">20px</option>
+                                    <option value="24">24px</option>
+                                    <option value="28">28px</option>
+                                    <option value="32" selected>32px</option>
+                                    <option value="36">36px</option>
+                                    <option value="40">40px</option>
+                                    <option value="48">48px</option>
+                                </select>
+                            </div>
+                        </div>
+                        <textarea id="text-display" data-testid="pane-text" class="flex-1 bg-gray-50 p-3 border-2 border-gray-300 rounded overflow-auto resize-none" style="font-family: 'NotationFont', monospace; font-size: 32px; line-height: 1.6;"></textarea>
+                    </div>
+
+                    <!-- Text Sample Tab: All pitch systems, octaves, beat groups, slurs
+                         NOTE: When adding new text export features, add examples for ALL pitch systems here:
+                         - Number (1-7)
+                         - Western (C-B)
+                         - Sargam (S r R g G m M P d D n N)
+                         Each feature should show: octaves, beat groups (underline), slurs (overline), etc.
+                    -->
+                    <div id="tab-content-text-sample" data-tab-content="text-sample" class="tab-content hidden flex-1 flex flex-col p-4">
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-sm font-medium text-gray-600">Sample: All pitch systems, octaves, beat groups, and slurs</span>
+                            <div class="flex items-center gap-2">
+                                <label class="text-sm font-medium">Font:</label>
+                                <select id="text-sample-font-toggle" class="text-sm border rounded px-2 py-1">
+                                    <option value="jetbrains" selected>JetBrains Mono</option>
+                                    <option value="monospace">monospace (generic)</option>
+                                    <option value="liberation">Liberation Mono</option>
+                                    <option value="courier">Courier</option>
+                                    <option value="dejavu">DejaVu Sans Mono</option>
+                                    <option value="fira">Fira Code</option>
+                                    <option value="consolas">Consolas</option>
+                                    <option value="source">Source Code Pro</option>
+                                </select>
+                            </div>
+                        </div>
+                        <textarea id="text-sample" data-testid="pane-text-sample" class="flex-1 bg-gray-50 p-3 border-2 border-gray-300 rounded overflow-auto resize-none" style="font-family: 'JetBrains Mono', monospace; font-size: 32px; line-height: 1.6;">NUMBER SYSTEM:
+Octaves:    1̈ 2̈ 3̈ 4̈ 5̈ 6̈ 7̈ | 1̇ 2̇ 3̇ 4̇ 5̇ 6̇ 7̇ | 1 2 3 4 5 6 7 | 1̣ 2̣ 3̣ 4̣ 5̣ 6̣ 7̣ | 1̤ 2̤ 3̤ 4̤ 5̤ 6̤ 7̤
+Beat group: 1̲2̲3̲4̲ 5̲6̲7̲–̲
+Slur:       1̅2̅3̅4̅5̅
+
+WESTERN SYSTEM:
+Octaves:    C̈ D̈ Ë F̈ G̈ Ä B̈ | Ċ Ḋ Ė Ḟ Ġ Ȧ Ḃ | C D E F G A B | C̣ Ḍ Ẹ F̣ G̣ Ạ Ḅ | C̤ D̤ E̤ F̤ G̤ A̤ B̤
+Beat group: C̲D̲E̲F̲ G̲A̲B̲–̲
+Slur:       C̅D̅E̅F̅G̅
+
+SARGAM SYSTEM:
+Octaves:    S̈ r̈ R̈ g̈ G̈ m̈ M̈ P̈ d̈ D̈ n̈ N̈ | Ṡ ṙ Ṙ ġ Ġ ṁ Ṁ Ṗ ḋ Ḋ ṅ Ṅ | S r R g G m M P d D n N | Ṣ ṛ Ṛ g̣ G̣ ṃ Ṃ P̣ ḍ Ḍ ṇ Ṇ
+Beat group: S̲r̲R̲g̲ G̲m̲M̲P̲–̲
+Slur:       S̅r̅R̅g̅G̅
+
+════════════════════════════════════════════════════════════════
+COMBINING CHARACTER TESTS (U+0332 underline, U+0305 overline)
+════════════════════════════════════════════════════════════════
+
+UNDERLINE (U+0332) - All printable ASCII:
+ ̲!̲"̲#̲$̲%̲&̲'̲(̲)̲*̲+̲,̲-̲.̲/̲0̲1̲2̲3̲4̲5̲6̲7̲8̲9̲:̲;̲<̲=̲>̲?̲
+@̲A̲B̲C̲D̲E̲F̲G̲H̲I̲J̲K̲L̲M̲N̲O̲P̲Q̲R̲S̲T̲U̲V̲W̲X̲Y̲Z̲[̲\̲]̲^̲_̲
+`̲a̲b̲c̲d̲e̲f̲g̲h̲i̲j̲k̲l̲m̲n̲o̲p̲q̲r̲s̲t̲u̲v̲w̲x̲y̲z̲{̲|̲}̲~̲
+
+OVERLINE (U+0305) - All printable ASCII:
+ ̅!̅"̅#̅$̅%̅&̅'̅(̅)̅*̅+̅,̅-̅.̅/̅0̅1̅2̅3̅4̅5̅6̅7̅8̅9̅:̅;̅<̅=̅>̅?̅
+@̅A̅B̅C̅D̅E̅F̅G̅H̅I̅J̅K̅L̅M̅N̅O̅P̅Q̅R̅S̅T̅U̅V̅W̅X̅Y̅Z̅[̅\̅]̅^̅_̅
+`̅a̅b̅c̅d̅e̅f̅g̅h̅i̅j̅k̅l̅m̅n̅o̅p̅q̅r̅s̅t̅u̅v̅w̅x̅y̅z̅{̅|̅}̅~̅
+
+BOTH (underline + overline) - All printable ASCII:
+ ̲̅!̲̅"̲̅#̲̅$̲̅%̲̅&̲̅'̲̅(̲̅)̲̅*̲̅+̲̅,̲̅-̲̅.̲̅/̲̅0̲̅1̲̅2̲̅3̲̅4̲̅5̲̅6̲̅7̲̅8̲̅9̲̅:̲̅;̲̅<̲̅=̲̅>̲̅?̲̅
+@̲̅A̲̅B̲̅C̲̅D̲̅E̲̅F̲̅G̲̅H̲̅I̲̅J̲̅K̲̅L̲̅M̲̅N̲̅O̲̅P̲̅Q̲̅R̲̅S̲̅T̲̅U̲̅V̲̅W̲̅X̲̅Y̲̅Z̲̅[̲̅\̲̅]̲̅^̲̅_̲̅
+`̲̅a̲̅b̲̅c̲̅d̲̅e̲̅f̲̅g̲̅h̲̅i̲̅j̲̅k̲̅l̲̅m̲̅n̲̅o̲̅p̲̅q̲̅r̲̅s̲̅t̲̅u̲̅v̲̅w̲̅x̲̅y̲̅z̲̅{̲̅|̲̅}̲̅~̲̅
+
+CONTINUOUS LINES (should connect seamlessly):
+underline: a̲b̲c̲d̲e̲f̲g̲h̲i̲j̲k̲l̲m̲n̲o̲p̲q̲r̲s̲t̲u̲v̲w̲x̲y̲z̲
+overline:  a̅b̅c̅d̅e̅f̅g̅h̅i̅j̅k̅l̅m̅n̅o̅p̅q̅r̅s̅t̅u̅v̅w̅x̅y̅z̅
+both:      a̲̅b̲̅c̲̅d̲̅e̲̅f̲̅g̲̅h̲̅i̲̅j̲̅k̲̅l̲̅m̲̅n̲̅o̲̅p̲̅q̲̅r̲̅s̲̅t̲̅u̲̅v̲̅w̲̅x̲̅y̲̅z̲̅
+
+════════════════════════════════════════════════════════════════
+OCTAVE COMBINATIONS (U+0307 ̇, U+0308 ̈, U+0323 ̣, U+0324 ̤)
+════════════════════════════════════════════════════════════════
+
+Octave dots alone (1-7):
++2 oct: 1̈ 2̈ 3̈ 4̈ 5̈ 6̈ 7̈
++1 oct: 1̇ 2̇ 3̇ 4̇ 5̇ 6̇ 7̇
+ base:  1 2 3 4 5 6 7
+-1 oct: 1̣ 2̣ 3̣ 4̣ 5̣ 6̣ 7̣
+-2 oct: 1̤ 2̤ 3̤ 4̤ 5̤ 6̤ 7̤
+
+UNDERLINE + OCTAVE (beat group with octave):
++2 oct: 1̲̈2̲̈3̲̈4̲̈5̲̈6̲̈7̲̈
++1 oct: 1̲̇2̲̇3̲̇4̲̇5̲̇6̲̇7̲̇
+ base:  1̲2̲3̲4̲5̲6̲7̲
+-1 oct: 1̲̣2̲̣3̲̣4̲̣5̲̣6̲̣7̲̣
+-2 oct: 1̲̤2̲̤3̲̤4̲̤5̲̤6̲̤7̲̤
+
+OVERLINE + OCTAVE (slur with octave):
++2 oct: 1̅̈2̅̈3̅̈4̅̈5̅̈6̅̈7̅̈
++1 oct: 1̅̇2̅̇3̅̇4̅̇5̅̇6̅̇7̅̇
+ base:  1̅2̅3̅4̅5̅6̅7̅
+-1 oct: 1̣̅2̣̅3̣̅4̣̅5̣̅6̣̅7̣̅
+-2 oct: 1̤̅2̤̅3̤̅4̤̅5̤̅6̤̅7̤̅
+
+UNDERLINE + OVERLINE + OCTAVE (beat group + slur + octave):
++2 oct: 1̲̅̈2̲̅̈3̲̅̈4̲̅̈5̲̅̈6̲̅̈7̲̅̈
++1 oct: 1̲̅̇2̲̅̇3̲̅̇4̲̅̇5̲̅̇6̲̅̇7̲̅̇
+ base:  1̲̅2̲̅3̲̅4̲̅5̲̅6̲̅7̲̅
+-1 oct: 1̲̣̅2̲̣̅3̲̣̅4̲̣̅5̲̣̅6̲̣̅7̲̣̅
+-2 oct: 1̲̤̅2̲̤̅3̲̤̅4̲̤̅5̲̤̅6̲̤̅7̲̤̅
+
+WESTERN with all combinations:
++1 oct: C̲̅̇D̲̅̇E̲̅̇F̲̅̇G̲̅̇A̲̅̇B̲̅̇
+ base:  C̲̅D̲̅E̲̅F̲̅G̲̅A̲̅B̲̅
+-1 oct: C̲̣̅D̲̣̅E̲̣̅F̲̣̅G̲̣̅A̲̣̅B̲̣̅
+
+SARGAM with all combinations:
++1 oct: Ṡ̲̅ṙ̲̅Ṙ̲̅ġ̲̅Ġ̲̅ṁ̲̅Ṁ̲̅Ṗ̲̅
+ base:  S̲̅r̲̅R̲̅g̲̅G̲̅m̲̅M̲̅P̲̅
+-1 oct: Ṣ̲̅ṛ̲̅Ṛ̲̅g̣̲̅G̣̲̅ṃ̲̅Ṃ̲̅P̣̲̅</textarea>
                     </div>
 
                     <!-- LilyPond Source Code Tab -->
@@ -744,22 +878,6 @@
                 </div>
             </aside>
         </main>
-    </div>
-
-    <!-- Context Menu for Line Gutter -->
-    <div class="context-menu" id="line-gutter-menu">
-        <div class="context-menu-item" data-choice="melody">
-            <span class="context-menu-radio" data-radio="melody"></span>
-            Melody (standalone staff)
-        </div>
-        <div class="context-menu-item" data-choice="group-header">
-            <span class="context-menu-radio" data-radio="group-header"></span>
-            Staff group (group header)
-        </div>
-        <div class="context-menu-item" data-choice="group-item">
-            <span class="context-menu-radio" data-radio="group-item"></span>
-            Group item (member of group above)
-        </div>
     </div>
 
     <!-- Key Signature Selector Modal -->

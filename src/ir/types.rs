@@ -277,13 +277,94 @@ pub struct NoteData {
 /// Pitch information
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PitchInfo {
+    /// Normalized pitch code (degree + accidental)
     pub pitch_code: PitchCode,
+    /// Octave offset
     pub octave: i8,
+    /// Western pitch spelling (transposed based on tonic)
+    pub western_pitch: crate::models::WesternPitch,
+    /// Tonic used for transposition (defaults to C)
+    pub tonic: crate::models::Tonic,
 }
 
 impl PitchInfo {
     pub fn new(pitch_code: PitchCode, octave: i8) -> Self {
-        PitchInfo { pitch_code, octave }
+        // Default to C major (no transposition)
+        PitchInfo {
+            pitch_code,
+            octave,
+            western_pitch: Self::default_western_pitch(pitch_code),
+            tonic: crate::models::Tonic::C,
+        }
+    }
+
+    /// Create PitchInfo with explicit tonic (computes western_pitch via transposition)
+    pub fn with_tonic(pitch_code: PitchCode, octave: i8, tonic: crate::models::Tonic) -> Self {
+        use crate::transposition::to_western_pitch;
+        let western_pitch = to_western_pitch(pitch_code, tonic);
+        PitchInfo {
+            pitch_code,
+            octave,
+            western_pitch,
+            tonic,
+        }
+    }
+
+    /// Get the default Western pitch for a PitchCode in C major
+    fn default_western_pitch(pitch_code: PitchCode) -> crate::models::WesternPitch {
+        use crate::models::WesternPitch;
+        use crate::models::pitch_code::PitchCode::*;
+
+        match pitch_code {
+            N1 => WesternPitch::C,
+            N1s => WesternPitch::Cs,
+            N1b => WesternPitch::Cb,
+            N1ss => WesternPitch::Css,
+            N1bb => WesternPitch::Cbb,
+            N1hf => WesternPitch::Chf,
+
+            N2 => WesternPitch::D,
+            N2s => WesternPitch::Ds,
+            N2b => WesternPitch::Db,
+            N2ss => WesternPitch::Dss,
+            N2bb => WesternPitch::Dbb,
+            N2hf => WesternPitch::Dhf,
+
+            N3 => WesternPitch::E,
+            N3s => WesternPitch::Es,
+            N3b => WesternPitch::Eb,
+            N3ss => WesternPitch::Ess,
+            N3bb => WesternPitch::Ebb,
+            N3hf => WesternPitch::Ehf,
+
+            N4 => WesternPitch::F,
+            N4s => WesternPitch::Fs,
+            N4b => WesternPitch::Fb,
+            N4ss => WesternPitch::Fss,
+            N4bb => WesternPitch::Fbb,
+            N4hf => WesternPitch::Fhf,
+
+            N5 => WesternPitch::G,
+            N5s => WesternPitch::Gs,
+            N5b => WesternPitch::Gb,
+            N5ss => WesternPitch::Gss,
+            N5bb => WesternPitch::Gbb,
+            N5hf => WesternPitch::Ghf,
+
+            N6 => WesternPitch::A,
+            N6s => WesternPitch::As,
+            N6b => WesternPitch::Ab,
+            N6ss => WesternPitch::Ass,
+            N6bb => WesternPitch::Abb,
+            N6hf => WesternPitch::Ahf,
+
+            N7 => WesternPitch::B,
+            N7s => WesternPitch::Bs,
+            N7b => WesternPitch::Bb,
+            N7ss => WesternPitch::Bss,
+            N7bb => WesternPitch::Bbb,
+            N7hf => WesternPitch::Bhf,
+        }
     }
 }
 

@@ -193,6 +193,7 @@ fn parse_note(s: &str, pitch_system: PitchSystem, column: usize, constraint: Opt
 fn accidental_to_suffix(acc: AccidentalType) -> &'static str {
     match acc {
         AccidentalType::None => "",
+        AccidentalType::Natural => "nat", // Explicit natural notation
         AccidentalType::Sharp => "#",
         AccidentalType::Flat => "b",
         AccidentalType::DoubleSharp => "##",

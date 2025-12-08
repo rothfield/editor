@@ -60,6 +60,10 @@ pub struct RenderLine {
     /// Staff role for visual grouping ("melody", "group-header", "group-item")
     pub staff_role: String,
 
+    /// System marker for multi-system grouping (None, "start", "end")
+    #[serde(default)]
+    pub system_marker: Option<String>,
+
     /// Positioned lyrics syllables
     pub lyrics: Vec<RenderLyric>,
 

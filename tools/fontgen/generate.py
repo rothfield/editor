@@ -106,6 +106,44 @@ class CodepointLayout:
 
 
 # ============================================================================
+# Lane Constants - Vertical positioning for underlines/overlines
+# ============================================================================
+# These define the Y positions for continuous underlines and overlines.
+# They are positioned to avoid collision with octave dots:
+#   - Dots above: ~700-900 range (varies by character)
+#   - Dots below: ~-40 to -200 range (varies by character)
+#
+# Line thickness is 1/10 of base character height (~723 units average).
+# Lane positions:
+#   - Underline: Below dots, within font descent
+#   - Overline: Above dots, within font ascent
+#
+# IMPORTANT: Update OS/2 metrics if these change to ensure proper rendering.
+
+LINE_THICKNESS = 72        # 1/10 of base char height (~723 units)
+UNDERLINE_Y_BOTTOM = -180  # Below baseline, below any dots
+UNDERLINE_Y_TOP = UNDERLINE_Y_BOTTOM + LINE_THICKNESS  # -108
+OVERLINE_Y_BOTTOM = 880    # Above most characters and dots
+OVERLINE_Y_TOP = OVERLINE_Y_BOTTOM + LINE_THICKNESS    # 952
+
+# Width classes for GPOS mark-based underlines/overlines
+# Characters are grouped by width so marks can have appropriate sizes
+# Mark widths are slightly larger than class max for seamless overlap
+WIDTH_CLASS_NARROW_MAX = 400   # Characters < 400 units
+WIDTH_CLASS_MEDIUM_MAX = 700   # Characters 400-700 units
+# Wide = everything >= 700
+
+MARK_WIDTH_NARROW = 420   # Covers narrow chars with slight overlap
+MARK_WIDTH_MEDIUM = 720   # Covers medium chars with slight overlap
+MARK_WIDTH_WIDE = 980     # Covers widest chars (W, M, m, @)
+
+# Loop arc size (quarter circle corners for loop marks)
+# Arc height = 15% of font height (UPM = 1000)
+ARC_RADIUS = 150  # 15% of 1000 UPM
+ARC_STROKE = LINE_THICKNESS  # Same stroke width as underlines (72 units)
+
+
+# ============================================================================
 # Stage 0: Load FontSpec JSON (from Rust build.rs)
 # ============================================================================
 
@@ -676,9 +714,10 @@ def create_accidental_composites(
                         print(f"    WARNING: Could not draw slash for {accidental_type}: {slash_err}")
 
                 # Set width to include both base character AND accidental symbol
-                # Total width = position of accidental + width of accidental
-                acc_width_scaled = int((acc_max_x - acc_min_x) * scale)
-                composite.width = int(x_offset + acc_width_scaled)
+                # The accidental is positioned at x_offset. Its rightmost ink is at
+                # x_offset + acc_max_x * scale. Use that as the advance width.
+                # (Old formula used acc_width_scaled which incorrectly subtracted acc_min_x)
+                composite.width = int(x_offset + acc_max_x * scale)
 
                 # Correct direction and calculate proper sidebearings
                 # This ensures the "after" (right sidebearing) is set correctly
@@ -889,6 +928,3229 @@ def create_accidental_octave_composites(font: 'fontforge.font', spec: AtomSpec, 
 
 
 # ============================================================================
+# Helper: Add Centered Anchor Points for Combining Marks
+# ============================================================================
+
+def add_centered_anchors(font):
+    """
+    Add centered anchor points for combining mark positioning.
+
+    This enables proper positioning of combining diacritical marks (U+0307, U+0308,
+    U+0323, U+0324) which are used in the Text tab for octave indicators.
+
+    TWO PARTS:
+    1. Add 'base' anchors to ALL ASCII characters (centered) so combining marks attach
+    2. Add 'mark' anchors to combining dots so they match the base anchor names
+
+    CRITICAL: For GPOS mark positioning to work:
+    - Base character needs 'base' anchor with name X
+    - Combining mark needs 'mark' anchor with SAME name X
+    If names don't match, the combining mark won't attach correctly!
+
+    Anchor classes used:
+    - Anchor-3: marks above (like combining dot above U+0307)
+    - Anchor-0: marks below (like combining dot below U+0323)
+    """
+    # ALL ASCII printable characters (0x21-0x7E) should support combining marks
+    # This includes digits 0-9, letters A-Za-z, and punctuation
+    ascii_chars = [chr(c) for c in range(0x21, 0x7F)]  # ! to ~
+
+    anchors_added = 0
+    anchors_replaced = 0
+
+    # PART 1: Add centered 'base' anchors to all ASCII characters
+    for char in ascii_chars:
+        try:
+            glyph = font[ord(char)]
+            if not glyph:
+                continue
+            bbox = glyph.boundingBox()
+            if not bbox:
+                continue
+
+            center_x = (bbox[0] + bbox[2]) / 2
+            top_y = bbox[3] + 50      # Above character
+            bottom_y = bbox[1] - 50   # Below character
+
+            # Check if glyph already has anchors (letters from Noto Sans do)
+            existing_anchors = glyph.anchorPoints if hasattr(glyph, 'anchorPoints') else []
+            has_anchor_3 = any(a[0] == 'Anchor-3' for a in existing_anchors) if existing_anchors else False
+            has_anchor_0 = any(a[0] == 'Anchor-0' for a in existing_anchors) if existing_anchors else False
+
+            # For characters with existing anchors, we need to remove and re-add
+            if has_anchor_3 or has_anchor_0:
+                # Remove Anchor-3 and Anchor-0 if they exist
+                try:
+                    if has_anchor_3:
+                        glyph.removeAnchorPoint('Anchor-3')
+                except:
+                    pass
+                try:
+                    if has_anchor_0:
+                        glyph.removeAnchorPoint('Anchor-0')
+                except:
+                    pass
+
+                anchors_replaced += 1
+
+            # Add centered anchors
+            # Anchor-3 is used for marks above (like diacritics)
+            # Anchor-0 is used for marks below
+            try:
+                glyph.addAnchorPoint('Anchor-3', 'base', center_x, top_y)
+            except Exception as e:
+                print(f"    Warning: Could not add top anchor to '{char}': {e}")
+            try:
+                glyph.addAnchorPoint('Anchor-0', 'base', center_x, bottom_y)
+            except Exception as e:
+                print(f"    Warning: Could not add bottom anchor to '{char}': {e}")
+
+            anchors_added += 1
+        except Exception as e:
+            pass  # Skip characters that fail
+
+    # PART 2: Add 'mark' anchors to combining diacritical marks
+    # These MUST use the SAME anchor names as the base characters!
+    combining_marks = [
+        (0x0307, 'Anchor-3', 'above'),  # COMBINING DOT ABOVE
+        (0x0308, 'Anchor-3', 'above'),  # COMBINING DIAERESIS (two dots above)
+        (0x0323, 'Anchor-0', 'below'),  # COMBINING DOT BELOW
+        (0x0324, 'Anchor-0', 'below'),  # COMBINING DIAERESIS BELOW
+    ]
+
+    marks_fixed = 0
+    for codepoint, anchor_name, position in combining_marks:
+        try:
+            glyph = font[codepoint]
+            if not glyph:
+                continue
+
+            bbox = glyph.boundingBox()
+            if not bbox:
+                continue
+
+            # Combining marks should be centered at x=0 (they position relative to base)
+            # The mark anchor Y should be at the attachment point
+            center_x = 0  # Marks attach at origin
+            if position == 'above':
+                # Mark anchor Y = bottom of the mark (where it attaches to base top)
+                anchor_y = bbox[1]  # Bottom of combining mark
+            else:
+                # Mark anchor Y = top of the mark (where it attaches to base bottom)
+                anchor_y = bbox[3]  # Top of combining mark
+
+            # Remove existing mark anchor with this name if present
+            existing_anchors = glyph.anchorPoints if hasattr(glyph, 'anchorPoints') else []
+            has_anchor = any(a[0] == anchor_name and a[1] == 'mark' for a in existing_anchors)
+            if has_anchor:
+                try:
+                    glyph.removeAnchorPoint(anchor_name)
+                except:
+                    pass
+
+            # Add the mark anchor with the SAME name as base characters use
+            try:
+                glyph.addAnchorPoint(anchor_name, 'mark', center_x, anchor_y)
+                marks_fixed += 1
+            except Exception as e:
+                print(f"    Warning: Could not add mark anchor to U+{codepoint:04X}: {e}")
+
+        except Exception as e:
+            print(f"    Error processing U+{codepoint:04X}: {e}")
+
+    if anchors_replaced > 0:
+        print(f"    Replaced off-center anchors on {anchors_replaced} characters")
+    if marks_fixed > 0:
+        print(f"    Added matching mark anchors to {marks_fixed} combining characters")
+
+    return anchors_added
+
+
+def get_width_class(width):
+    """
+    Classify glyph width into narrow/medium/wide category.
+
+    Returns:
+        str: 'narrow', 'medium', or 'wide'
+    """
+    if width < WIDTH_CLASS_NARROW_MAX:
+        return 'narrow'
+    elif width < WIDTH_CLASS_MEDIUM_MAX:
+        return 'medium'
+    else:
+        return 'wide'
+
+
+def add_line_anchors(font):
+    """
+    Add anchors for underline/overline GPOS mark attachment to ASCII glyphs.
+
+    Adds two anchors to each ASCII printable character:
+    - 'Anchor-underline': at (0, UNDERLINE_Y_TOP) for underline marks
+    - 'Anchor-overline': at (0, OVERLINE_Y_BOTTOM) for overline marks
+
+    The anchor is at x=0 (left edge) so marks align with glyph start.
+    Mark width variants handle the variable character widths.
+
+    Also classifies each glyph by width for later GSUB calt rules.
+
+    Returns:
+        dict: Maps width class ('narrow'/'medium'/'wide') to list of glyph names
+    """
+    print(f"  Adding line anchors for GPOS mark attachment...")
+
+    anchors_added = 0
+    width_classes = {'narrow': [], 'medium': [], 'wide': []}
+
+    # Process ASCII printable characters (0x20-0x7E)
+    for codepoint in range(0x20, 0x7F):
+        try:
+            glyph = font[codepoint]
+            if not glyph:
+                continue
+
+            char = chr(codepoint)
+            width = glyph.width
+
+            # Classify by width
+            width_class = get_width_class(width)
+            width_classes[width_class].append(glyph.glyphname)
+
+            # Add underline anchor at left edge, at top of underline Y position
+            try:
+                glyph.addAnchorPoint('Anchor-underline', 'base', 0, UNDERLINE_Y_TOP)
+            except Exception as e:
+                print(f"    Warning: Could not add underline anchor to '{char}': {e}")
+
+            # Add overline anchor at left edge, at bottom of overline Y position
+            try:
+                glyph.addAnchorPoint('Anchor-overline', 'base', 0, OVERLINE_Y_BOTTOM)
+            except Exception as e:
+                print(f"    Warning: Could not add overline anchor to '{char}': {e}")
+
+            anchors_added += 1
+
+        except Exception as e:
+            pass
+
+    print(f"    ✓ Added line anchors to {anchors_added} ASCII characters")
+    print(f"    Width classes: narrow={len(width_classes['narrow'])}, "
+          f"medium={len(width_classes['medium'])}, wide={len(width_classes['wide'])}")
+
+    return width_classes
+
+
+def create_line_mark_variants(font):
+    """
+    Create width-class variants for underline and overline marks.
+
+    Creates 6 mark glyphs:
+    - U+0332 variants: .narrow, .medium, .wide (combining low line)
+    - U+0305 variants: .narrow, .medium, .wide (combining overline)
+
+    Each variant is a simple rectangle matching its width class.
+    Has zero advance width (combining mark behavior).
+    Has 'mark' anchor matching base glyph anchors for GPOS attachment.
+
+    Returns:
+        tuple: (underline_variants, overline_variants) - dicts mapping class to codepoint
+    """
+    print(f"  Creating line mark variants (narrow/medium/wide)...")
+
+    # Codepoints for variants (in PUA, separate from pre-composed glyphs)
+    # Using 0xE7F0+ range for mark variants
+    UNDERLINE_NARROW = 0xE7F0
+    UNDERLINE_MEDIUM = 0xE7F1
+    UNDERLINE_WIDE = 0xE7F2
+    OVERLINE_NARROW = 0xE7F3
+    OVERLINE_MEDIUM = 0xE7F4
+    OVERLINE_WIDE = 0xE7F5
+
+    mark_widths = {
+        'narrow': MARK_WIDTH_NARROW,
+        'medium': MARK_WIDTH_MEDIUM,
+        'wide': MARK_WIDTH_WIDE,
+    }
+
+    underline_variants = {}
+    overline_variants = {}
+
+    # Create underline mark variants
+    for i, (width_class, mark_width) in enumerate(mark_widths.items()):
+        codepoint = UNDERLINE_NARROW + i
+        glyph_name = f"uni0332.{width_class}"
+
+        try:
+            glyph = font.createChar(codepoint, glyph_name)
+            glyph.clear()
+
+            # Draw rectangle: full mark_width × LINE_THICKNESS
+            pen = glyph.glyphPen()
+            pen.moveTo((0, UNDERLINE_Y_BOTTOM))
+            pen.lineTo((mark_width, UNDERLINE_Y_BOTTOM))
+            pen.lineTo((mark_width, UNDERLINE_Y_TOP))
+            pen.lineTo((0, UNDERLINE_Y_TOP))
+            pen.closePath()
+            pen = None
+
+            # Zero advance width (combining mark)
+            glyph.width = 0
+
+            # Add mark anchor at left edge, matching base anchor Y
+            glyph.addAnchorPoint('Anchor-underline', 'mark', 0, UNDERLINE_Y_TOP)
+
+            glyph.correctDirection()
+            underline_variants[width_class] = codepoint
+
+        except Exception as e:
+            print(f"    Warning: Could not create {glyph_name}: {e}")
+
+    # Create overline mark variants
+    for i, (width_class, mark_width) in enumerate(mark_widths.items()):
+        codepoint = OVERLINE_NARROW + i
+        glyph_name = f"uni0305.{width_class}"
+
+        try:
+            glyph = font.createChar(codepoint, glyph_name)
+            glyph.clear()
+
+            # Draw rectangle: full mark_width × LINE_THICKNESS
+            pen = glyph.glyphPen()
+            pen.moveTo((0, OVERLINE_Y_BOTTOM))
+            pen.lineTo((mark_width, OVERLINE_Y_BOTTOM))
+            pen.lineTo((mark_width, OVERLINE_Y_TOP))
+            pen.lineTo((0, OVERLINE_Y_TOP))
+            pen.closePath()
+            pen = None
+
+            # Zero advance width (combining mark)
+            glyph.width = 0
+
+            # Add mark anchor at left edge, matching base anchor Y
+            glyph.addAnchorPoint('Anchor-overline', 'mark', 0, OVERLINE_Y_BOTTOM)
+
+            glyph.correctDirection()
+            overline_variants[width_class] = codepoint
+
+        except Exception as e:
+            print(f"    Warning: Could not create {glyph_name}: {e}")
+
+    print(f"    ✓ Created {len(underline_variants)} underline + {len(overline_variants)} overline mark variants")
+
+    return underline_variants, overline_variants
+
+
+def add_line_mark_calt_rules(font, width_classes, underline_variants, overline_variants):
+    """
+    Add GSUB calt (contextual alternates) rules to select mark variant by width class.
+
+    NOTE: This is currently a stub. FontForge's contextual substitution API requires
+    complex rule syntax. For now, we rely on the legacy GSUB ligature approach which
+    creates pre-composed underlined/overlined glyphs (char + U+0332 → PUA variant).
+
+    The width-class mark variants (U+E7F0-E7F5) are available for future use when
+    we implement proper GPOS mark attachment or more sophisticated OpenType features.
+
+    Args:
+        font: FontForge font object
+        width_classes: dict mapping 'narrow'/'medium'/'wide' to list of glyph names
+        underline_variants: dict mapping width class to underline variant codepoint
+        overline_variants: dict mapping width class to overline variant codepoint
+    """
+    # Log the width class distribution for reference
+    narrow_count = len(width_classes.get('narrow', []))
+    medium_count = len(width_classes.get('medium', []))
+    wide_count = len(width_classes.get('wide', []))
+
+    print(f"  Width-class mark variants ready (narrow={narrow_count}, medium={medium_count}, wide={wide_count})")
+    print(f"    Using legacy GSUB ligatures for now (pre-composed underlined glyphs)")
+
+    # Future: Implement GPOS mark-to-base positioning or contextual chain substitution
+    # For now, the legacy approach works well and the mark variants are available
+
+    return 0
+
+
+def create_loop_arc_marks(font):
+    """
+    Create 4 loop arc mark glyphs for rounded corners of underline/overline loops.
+
+    These are quarter-ring arcs (outer + inner circle) with stroke thickness
+    equal to LINE_THICKNESS, designed to attach to our underline/overline lanes.
+
+    Codepoints:
+        U+E704: loop_bottom_left   – bottom-left "smiley" cap  (╰)
+        U+E705: loop_bottom_right  – bottom-right "smiley" cap (╯)
+        U+E706: loop_top_left      – top-left "frown" cap      (╭)
+        U+E707: loop_top_right     – top-right "frown" cap     (╮)
+    """
+    import math
+
+    if font is None:
+        return 0
+
+    print("  Creating loop arc mark glyphs...")
+
+    outer_r = ARC_RADIUS
+    inner_r = max(outer_r - ARC_STROKE, 1)
+    STEPS = 8
+
+    def draw_ring_segment(pen, cx, cy, start_deg, end_deg, clockwise=True):
+        start_rad = math.radians(start_deg)
+        end_rad = math.radians(end_deg)
+
+        if clockwise:
+            if end_rad > start_rad:
+                end_rad -= 2 * math.pi
+        else:
+            if end_rad < start_rad:
+                end_rad += 2 * math.pi
+
+        # Outer arc
+        pen.moveTo((
+            cx + outer_r * math.cos(start_rad),
+            cy + outer_r * math.sin(start_rad),
+        ))
+        for i in range(1, STEPS + 1):
+            t = i / STEPS
+            a = start_rad + (end_rad - start_rad) * t
+            pen.lineTo((
+                cx + outer_r * math.cos(a),
+                cy + outer_r * math.sin(a),
+            ))
+
+        # Inner arc back
+        for i in range(STEPS, -1, -1):
+            t = i / STEPS
+            a = start_rad + (end_rad - start_rad) * t
+            pen.lineTo((
+                cx + inner_r * math.cos(a),
+                cy + inner_r * math.sin(a),
+            ))
+
+        pen.closePath()
+
+    # -------------------------
+    # Bottom-left (works today)
+    # -------------------------
+    try:
+        g_bl = font.createChar(0xE704, "loop_bottom_left")
+        g_bl.clear()
+        pen = g_bl.glyphPen()
+
+        cx = int(outer_r * 0.5)
+        cy = UNDERLINE_Y_BOTTOM + outer_r  # center above underline bottom
+        # Quarter from down (270°) to left (180°)
+        draw_ring_segment(pen, cx, cy, 270, 180, clockwise=True)
+
+        g_bl.width = 0
+        # Base glyph uses Anchor-underline at UNDERLINE_Y_TOP,
+        # but we want the cap to attach at the bottom of the lane so it "hangs" below.
+        g_bl.addAnchorPoint("Anchor-underline", "mark", 0, UNDERLINE_Y_BOTTOM)
+        g_bl.correctDirection()
+    except Exception as e:
+        print(f"    Warning: could not create loop_bottom_left: {e}")
+
+    # Bottom-right: horizontal mirror of bottom-left
+    try:
+        g_br = font.createChar(0xE705, "loop_bottom_right")
+        g_br.clear()
+        if font[0xE704]:
+            g_br.addReference(font[0xE704].glyphname, (-1, 0, 0, 1, 0, 0))
+        g_br.width = 0
+        g_br.addAnchorPoint("Anchor-underline", "mark", 0, UNDERLINE_Y_BOTTOM)
+        g_br.correctDirection()
+    except Exception as e:
+        print(f"    Warning: could not create loop_bottom_right: {e}")
+
+    # -------------------------
+    # Top-left: ╭ shape - mirror of bottom-left ╰
+    # -------------------------
+    try:
+        g_tl = font.createChar(0xE706, "loop_top_left")
+        g_tl.clear()
+        pen = g_tl.glyphPen()
+
+        cx = int(outer_r * 0.5)
+        cy = OVERLINE_Y_TOP - outer_r  # center BELOW overline top (inside the bracket)
+        # Arc from 90° (up) to 180° (left), counter-clockwise
+        # At 90°: Y = cy + outer_r = OVERLINE_Y_TOP (join point at top)
+        # At 180°: X = cx - outer_r (extends left)
+        # This creates a ╭ shape
+        draw_ring_segment(pen, cx, cy, 90, 180, clockwise=False)
+
+        g_tl.width = 0
+        g_tl.addAnchorPoint("Anchor-overline", "mark", 0, OVERLINE_Y_TOP)
+        g_tl.correctDirection()
+    except Exception as e:
+        print(f"    Warning: could not create loop_top_left: {e}")
+
+    # Top-right: horizontal mirror of top-left
+    try:
+        g_tr = font.createChar(0xE707, "loop_top_right")
+        g_tr.clear()
+        if font[0xE706]:
+            g_tr.addReference(font[0xE706].glyphname, (-1, 0, 0, 1, 0, 0))
+        g_tr.width = 0
+        g_tr.addAnchorPoint("Anchor-overline", "mark", 0, OVERLINE_Y_TOP)
+        g_tr.correctDirection()
+    except Exception as e:
+        print(f"    Warning: could not create loop_top_right: {e}")
+
+    print("    ✓ Loop arc mark glyphs created (U+E704–U+E707)")
+    return 0
+
+
+def create_lined_variants(font, pua_start, y_bottom, y_top, line_name):
+    """
+    Create pre-composed variants with a horizontal line (underline or overline).
+
+    For ASCII printable characters, create a variant with a line matching the
+    character's bounding box width (not full advance width).
+
+    Only processes ASCII printable characters (0x20-0x7E) to avoid PUA overflow.
+
+    Args:
+        font: FontForge font object
+        pua_start: Starting codepoint in PUA for variants
+        y_bottom: Y coordinate for bottom of line
+        y_top: Y coordinate for top of line
+        line_name: "underline" or "overline" for logging
+
+    Returns:
+        dict: Mapping of original codepoint → variant codepoint
+    """
+    # Only process ASCII printable characters
+    # This keeps the range small enough to not overlap with other PUA allocations
+    glyphs_to_process = []
+    for glyph in font.glyphs():
+        if glyph.unicode < 0x20:
+            continue
+        if glyph.unicode > 0x7E:  # Only ASCII printable
+            continue
+        glyphs_to_process.append(glyph)
+
+    print(f"    Processing {len(glyphs_to_process)} glyphs for {line_name}d variants...")
+
+    variant_map = {}
+    created_count = 0
+
+    for i, base_glyph in enumerate(glyphs_to_process):
+        try:
+            bbox = base_glyph.boundingBox()
+            if not bbox:
+                continue
+
+            variant_codepoint = pua_start + i
+            glyph_name = f"uni{variant_codepoint:04X}"
+
+            try:
+                existing = font[variant_codepoint]
+                if existing and existing.glyphname and existing.glyphname != glyph_name:
+                    continue
+            except:
+                pass
+
+            variant_glyph = font.createChar(variant_codepoint, glyph_name)
+            variant_glyph.clear()
+            variant_glyph.addReference(base_glyph.glyphname)
+            variant_glyph.unlinkRef()
+
+            pen = variant_glyph.glyphPen(replace=False)
+            # Line matches character's visual extent (bbox)
+            x_start = int(bbox[0])
+            x_end = int(bbox[2])
+
+            pen.moveTo((x_start, y_bottom))
+            pen.lineTo((x_end, y_bottom))
+            pen.lineTo((x_end, y_top))
+            pen.lineTo((x_start, y_top))
+            pen.closePath()
+            pen = None
+
+            variant_glyph.width = base_glyph.width
+            variant_glyph.correctDirection()
+
+            variant_map[base_glyph.unicode] = variant_codepoint
+            created_count += 1
+
+        except Exception as e:
+            pass
+
+    print(f"    ✓ Created {created_count} {line_name}d variants (PUA 0x{pua_start:04X}+)")
+    return variant_map
+
+
+def create_lined_variants_fullwidth(font, pua_start, y_bottom, y_top, line_name):
+    """
+    Create pre-composed variants with a FULL-WIDTH horizontal line.
+
+    Unlike create_lined_variants (which uses bbox), this creates lines that span
+    the full advance width (0 to glyph.width) for seamless joining in brackets.
+
+    Only processes ASCII printable characters (0x20-0x7E) to avoid PUA overflow.
+
+    Args:
+        font: FontForge font object
+        pua_start: Starting codepoint in PUA for variants
+        y_bottom: Y coordinate for bottom of line
+        y_top: Y coordinate for top of line
+        line_name: "underline" or "overline" for logging
+
+    Returns:
+        dict: Mapping of original codepoint → variant codepoint
+    """
+    # Only process ASCII printable characters for fullwidth variants
+    # This keeps the range small enough to not overlap with other PUA allocations
+    glyphs_to_process = []
+    for glyph in font.glyphs():
+        if glyph.unicode < 0x20:
+            continue
+        if glyph.unicode > 0x7E:  # Only ASCII printable
+            continue
+        glyphs_to_process.append(glyph)
+
+    print(f"    Processing {len(glyphs_to_process)} glyphs for fullwidth {line_name}d variants...")
+
+    variant_map = {}
+    created_count = 0
+
+    for i, base_glyph in enumerate(glyphs_to_process):
+        try:
+            bbox = base_glyph.boundingBox()
+            if not bbox:
+                continue
+
+            variant_codepoint = pua_start + i
+            glyph_name = f"uni{variant_codepoint:04X}"
+
+            try:
+                existing = font[variant_codepoint]
+                if existing and existing.glyphname and existing.glyphname != glyph_name:
+                    continue
+            except:
+                pass
+
+            variant_glyph = font.createChar(variant_codepoint, glyph_name)
+            variant_glyph.clear()
+            variant_glyph.addReference(base_glyph.glyphname)
+            variant_glyph.unlinkRef()
+
+            pen = variant_glyph.glyphPen(replace=False)
+            # Line spans FULL advance width for seamless joining in brackets
+            x_start = 0
+            x_end = base_glyph.width
+
+            pen.moveTo((x_start, y_bottom))
+            pen.lineTo((x_end, y_bottom))
+            pen.lineTo((x_end, y_top))
+            pen.lineTo((x_start, y_top))
+            pen.closePath()
+            pen = None
+
+            variant_glyph.width = base_glyph.width
+            variant_glyph.correctDirection()
+
+            variant_map[base_glyph.unicode] = variant_codepoint
+            created_count += 1
+
+        except Exception as e:
+            pass
+
+    print(f"    ✓ Created {created_count} fullwidth {line_name}d variants (PUA 0x{pua_start:04X}+)")
+    return variant_map
+
+
+def create_underlined_variants(font):
+    """Create pre-composed underlined glyphs (bbox width). PUA 0xE800+."""
+    return create_lined_variants(font, 0xE800, UNDERLINE_Y_BOTTOM, UNDERLINE_Y_TOP, "underline")
+
+
+def create_underlined_variants_fullwidth(font):
+    """Create pre-composed fullwidth underlined glyphs. PUA 0xE900+."""
+    return create_lined_variants_fullwidth(font, 0xE900, UNDERLINE_Y_BOTTOM, UNDERLINE_Y_TOP, "underline")
+
+
+def create_underlined_note_variants(font, layout):
+    """
+    Create underlined variants for ALL note glyphs (naturals with octaves + accidentals).
+
+    Uses explicit PUA allocation from atoms.yaml (not offset formula).
+    Each system has a parallel underlined range:
+      - Number: 0xE000 → 0x16000
+      - Western: 0xE100 → 0x16100
+      - Sargam: 0xE300 → 0x16300
+      - Doremi: 0xE500 → 0x16500
+
+    Args:
+        font: FontForge font object
+        layout: CodepointLayout with note_atoms
+
+    Returns:
+        dict: Mapping of original PUA codepoint → underlined variant codepoint
+    """
+    # Mapping from system name to (original PUA base, underlined PUA base)
+    # These must match the per-system PUA bases in atoms.yaml
+    # Note: system names are lowercase as used in atoms.yaml
+    SYSTEM_PUA_MAPPING = {
+        "number": (0xE000, 0x16000),
+        "western": (0xE100, 0x16100),
+        "sargam": (0xE300, 0x16300),
+        "doremi": (0xE500, 0x16500),
+    }
+
+    variant_map = {}
+    created_count = 0
+
+    for atom in layout.note_atoms:
+        try:
+            orig_glyph = font[atom.assigned_codepoint]
+            if not orig_glyph:
+                continue
+
+            bbox = orig_glyph.boundingBox()
+            if not bbox:
+                continue
+
+            # Find the PUA bases for this system
+            if atom.system not in SYSTEM_PUA_MAPPING:
+                continue
+
+            system_base, underlined_base = SYSTEM_PUA_MAPPING[atom.system]
+
+            # Compute underlined codepoint using same formula as base
+            # original = system_base + (char_idx × 30) + variant_idx
+            # underlined = underlined_base + (char_idx × 30) + variant_idx
+            offset_from_base = atom.assigned_codepoint - system_base
+            variant_cp = underlined_base + offset_from_base
+
+            glyph_name = f"uni{variant_cp:05X}"
+
+            variant_glyph = font.createChar(variant_cp, glyph_name)
+            variant_glyph.clear()
+
+            # Copy the original glyph
+            variant_glyph.addReference(orig_glyph.glyphname)
+            variant_glyph.unlinkRef()
+
+            # Add underline spanning full advance width (0 to width) for seamless joining
+            x_start = 0
+            x_end = orig_glyph.width
+
+            pen = variant_glyph.glyphPen(replace=False)
+            pen.moveTo((x_start, UNDERLINE_Y_BOTTOM))
+            pen.lineTo((x_end, UNDERLINE_Y_BOTTOM))
+            pen.lineTo((x_end, UNDERLINE_Y_TOP))
+            pen.lineTo((x_start, UNDERLINE_Y_TOP))
+            pen.closePath()
+            pen = None
+
+            variant_glyph.width = orig_glyph.width
+            variant_glyph.correctDirection()
+
+            variant_map[atom.assigned_codepoint] = variant_cp
+            created_count += 1
+
+        except Exception as e:
+            pass
+
+    print(f"    ✓ Created {created_count} underlined note variants (explicit PUA allocation)")
+    return variant_map
+
+
+def create_overlined_note_variants(font, layout):
+    """
+    Create overlined variants for ALL note glyphs (naturals with octaves + accidentals).
+
+    Parallel to create_underlined_note_variants but for overlines (slurs on superscripts).
+    Uses explicit PUA allocation from atoms.yaml (not offset formula).
+    Each system has a parallel overlined range:
+      - Number: 0xE000 → 0x19000
+      - Western: 0xE100 → 0x19100
+      - Sargam: 0xE300 → 0x19300
+      - Doremi: 0xE500 → 0x19500
+
+    Args:
+        font: FontForge font object
+        layout: CodepointLayout with note_atoms
+
+    Returns:
+        dict: Mapping of original PUA codepoint → overlined variant codepoint
+    """
+    # Mapping from system name to (original PUA base, overlined PUA base)
+    # These must match the per-system PUA bases in atoms.yaml
+    # Note: system names are lowercase as used in atoms.yaml
+    SYSTEM_PUA_MAPPING = {
+        "number": (0xE000, 0x19000),
+        "western": (0xE100, 0x19100),
+        "sargam": (0xE300, 0x19300),
+        "doremi": (0xE500, 0x19500),
+    }
+
+    variant_map = {}
+    created_count = 0
+
+    for atom in layout.note_atoms:
+        try:
+            orig_glyph = font[atom.assigned_codepoint]
+            if not orig_glyph:
+                continue
+
+            bbox = orig_glyph.boundingBox()
+            if not bbox:
+                continue
+
+            # Find the PUA bases for this system
+            if atom.system not in SYSTEM_PUA_MAPPING:
+                continue
+
+            system_base, overlined_base = SYSTEM_PUA_MAPPING[atom.system]
+
+            # Compute overlined codepoint using same formula as base
+            # original = system_base + (char_idx × 30) + variant_idx
+            # overlined = overlined_base + (char_idx × 30) + variant_idx
+            offset_from_base = atom.assigned_codepoint - system_base
+            variant_cp = overlined_base + offset_from_base
+
+            glyph_name = f"uni{variant_cp:05X}"
+
+            variant_glyph = font.createChar(variant_cp, glyph_name)
+            variant_glyph.clear()
+
+            # Copy the original glyph
+            variant_glyph.addReference(orig_glyph.glyphname)
+            variant_glyph.unlinkRef()
+
+            # Add overline spanning full advance width (0 to width) for seamless joining
+            x_start = 0
+            x_end = orig_glyph.width
+
+            pen = variant_glyph.glyphPen(replace=False)
+            pen.moveTo((x_start, OVERLINE_Y_BOTTOM))
+            pen.lineTo((x_end, OVERLINE_Y_BOTTOM))
+            pen.lineTo((x_end, OVERLINE_Y_TOP))
+            pen.lineTo((x_start, OVERLINE_Y_TOP))
+            pen.closePath()
+            pen = None
+
+            variant_glyph.width = orig_glyph.width
+            variant_glyph.correctDirection()
+
+            variant_map[atom.assigned_codepoint] = variant_cp
+            created_count += 1
+
+        except Exception as e:
+            pass
+
+    print(f"    ✓ Created {created_count} overlined note variants (explicit PUA allocation)")
+    return variant_map
+
+
+def create_combined_line_note_variants(font, layout):
+    """
+    Create combined underline+overline variants for ALL note glyphs.
+
+    For notes that are both in a beat group (underlined) AND under a slur (overlined).
+    Creates 9 variants per note atom: 3 underline states × 3 overline states.
+
+    Line states:
+        underline: 0=middle, 1=left, 2=right
+        overline:  0=middle, 1=left, 2=right
+        combined = (underline_state × 3) + overline_state
+
+    PUA allocation (from atoms.yaml):
+        Number:  0xF2000+ (7 × 30 × 9 = 1890 glyphs)
+        Western: 0xF3000+ (14 × 30 × 9 = 3780 glyphs)
+        Sargam:  0xF4000+ (12 × 30 × 9 = 3240 glyphs)
+        Doremi:  0xF5000+ (14 × 30 × 9 = 3780 glyphs)
+
+    Args:
+        font: FontForge font object
+        layout: CodepointLayout with note_atoms
+
+    Returns:
+        dict: Mapping of (original_codepoint, line_variant) → combined variant codepoint
+    """
+    # Mapping from system name to (original PUA base, combined PUA base)
+    SYSTEM_PUA_MAPPING = {
+        "number": (0xE000, 0xF2000),
+        "western": (0xE100, 0xF3000),
+        "sargam": (0xE300, 0xF4000),
+        "doremi": (0xE500, 0xF5000),
+    }
+
+    LINE_STATES = 9  # 3 underline × 3 overline
+
+    variant_map = {}
+    created_count = 0
+
+    for atom in layout.note_atoms:
+        try:
+            orig_glyph = font[atom.assigned_codepoint]
+            if not orig_glyph:
+                continue
+
+            bbox = orig_glyph.boundingBox()
+            if not bbox:
+                continue
+
+            # Find the PUA bases for this system
+            if atom.system not in SYSTEM_PUA_MAPPING:
+                continue
+
+            system_base, combined_base = SYSTEM_PUA_MAPPING[atom.system]
+
+            # Compute offset from system base
+            offset_from_base = atom.assigned_codepoint - system_base
+
+            # Create 9 variants for each note atom
+            for line_variant in range(LINE_STATES):
+                underline_state = line_variant // 3  # 0=middle, 1=left, 2=right
+                overline_state = line_variant % 3    # 0=middle, 1=left, 2=right
+
+                # Compute combined codepoint
+                # combined_cp = combined_base + (offset × 9) + line_variant
+                variant_cp = combined_base + (offset_from_base * LINE_STATES) + line_variant
+
+                glyph_name = f"uni{variant_cp:05X}"
+
+                variant_glyph = font.createChar(variant_cp, glyph_name)
+                variant_glyph.clear()
+
+                # Copy the original glyph
+                variant_glyph.addReference(orig_glyph.glyphname)
+                variant_glyph.unlinkRef()
+
+                # Add underline spanning full advance width
+                x_start = 0
+                x_end = orig_glyph.width
+
+                pen = variant_glyph.glyphPen(replace=False)
+
+                # Draw underline
+                pen.moveTo((x_start, UNDERLINE_Y_BOTTOM))
+                pen.lineTo((x_end, UNDERLINE_Y_BOTTOM))
+                pen.lineTo((x_end, UNDERLINE_Y_TOP))
+                pen.lineTo((x_start, UNDERLINE_Y_TOP))
+                pen.closePath()
+
+                # Draw overline
+                pen.moveTo((x_start, OVERLINE_Y_BOTTOM))
+                pen.lineTo((x_end, OVERLINE_Y_BOTTOM))
+                pen.lineTo((x_end, OVERLINE_Y_TOP))
+                pen.lineTo((x_start, OVERLINE_Y_TOP))
+                pen.closePath()
+
+                pen = None
+
+                variant_glyph.width = orig_glyph.width
+                variant_glyph.correctDirection()
+
+                variant_map[(atom.assigned_codepoint, line_variant)] = variant_cp
+                created_count += 1
+
+        except Exception as e:
+            pass
+
+    print(f"    ✓ Created {created_count} combined line note variants (9 per atom)")
+    return variant_map
+
+
+def create_bracketed_variants(font, pua_base, y_bottom, y_top, line_name, is_overline=False):
+    """
+    Create pre-composed bracket variants with arcs sized to character width.
+
+    Creates 2 variant types for ASCII printable characters:
+        pua_base + 0x00: Left arc + line (char starts bracket)
+        pua_base + 0x60: Line + right arc (char ends bracket)
+
+    Args:
+        font: FontForge font object
+        pua_base: Starting codepoint (0xEA00 for underline, 0xEE00 for overline)
+        y_bottom: Y coordinate for bottom of line
+        y_top: Y coordinate for top of line
+        line_name: "underline" or "overline" for logging
+        is_overline: True for overline (arcs curve up), False for underline (arcs curve down)
+
+    Returns:
+        dict: Mapping of (variant_type, base_codepoint) → variant_codepoint
+    """
+    import math
+
+    # Line geometry
+    line_y_center = (y_bottom + y_top) / 2
+    line_thickness = y_top - y_bottom
+
+    def draw_quarter_arc(pen, cx, cy, radius, start_deg, end_deg, clockwise=True):
+        """Draw a quarter-circle arc (ring segment with stroke thickness)."""
+        outer_r = radius
+        inner_r = max(radius - line_thickness, 1)
+        STEPS = 8
+
+        start_rad = math.radians(start_deg)
+        end_rad = math.radians(end_deg)
+
+        if clockwise:
+            if end_rad > start_rad:
+                end_rad -= 2 * math.pi
+        else:
+            if end_rad < start_rad:
+                end_rad += 2 * math.pi
+
+        # Outer arc
+        pen.moveTo((
+            cx + outer_r * math.cos(start_rad),
+            cy + outer_r * math.sin(start_rad),
+        ))
+        for i in range(1, STEPS + 1):
+            t = i / STEPS
+            a = start_rad + (end_rad - start_rad) * t
+            pen.lineTo((
+                cx + outer_r * math.cos(a),
+                cy + outer_r * math.sin(a),
+            ))
+
+        # Inner arc back
+        for i in range(STEPS, -1, -1):
+            t = i / STEPS
+            a = start_rad + (end_rad - start_rad) * t
+            pen.lineTo((
+                cx + inner_r * math.cos(a),
+                cy + inner_r * math.sin(a),
+            ))
+
+        pen.closePath()
+
+    variant_map = {}
+    created_count = 0
+
+    for base_cp in range(0x20, 0x7F):  # ASCII printable
+        try:
+            base_glyph = font[base_cp]
+            if not base_glyph:
+                continue
+
+            offset = base_cp - 0x20
+            char_width = base_glyph.width
+            # Arc radius should be small (like line thickness) so the line spans most of the char
+            # Using line_thickness * 2 gives a visually pleasing small curve at corners
+            arc_radius = min(line_thickness * 2, char_width / 4)  # Cap at 1/4 char width for narrow chars
+
+            # Arc centers and angles depend on line type
+            if is_overline:
+                # Overline: arcs curve upward (like ╭ and ╮)
+                # Left arc: center at (arc_radius, y_top - arc_radius), arc from 90° to 180°
+                # Right arc: center at (width - arc_radius, y_top - arc_radius), arc from 90° to 0°
+                left_cx = arc_radius
+                left_cy = y_top - arc_radius
+                left_start, left_end, left_cw = 90, 180, False
+                right_cx = char_width - arc_radius
+                right_cy = y_top - arc_radius
+                right_start, right_end, right_cw = 90, 0, True
+            else:
+                # Underline: arcs curve downward (like ╰ and ╯)
+                # Left arc: center at (arc_radius, y_bottom + arc_radius), arc from 270° to 180°
+                # Right arc: center at (width - arc_radius, y_bottom + arc_radius), arc from 270° to 360°
+                left_cx = arc_radius
+                left_cy = y_bottom + arc_radius
+                left_start, left_end, left_cw = 270, 180, True
+                right_cx = char_width - arc_radius
+                right_cy = y_bottom + arc_radius
+                right_start, right_end, right_cw = 270, 360, False
+
+            # Create 2 variants for this character (no 'both' - single notes don't get lines)
+            variants = [
+                (pua_base + offset, 'left'),           # Left arc + line
+                (pua_base + 0x60 + offset, 'right'),   # Line + right arc
+            ]
+
+            for variant_cp, variant_type in variants:
+                glyph_name = f"uni{variant_cp:04X}"
+
+                try:
+                    existing = font[variant_cp]
+                    if existing and existing.glyphname and existing.glyphname != glyph_name:
+                        continue
+                except:
+                    pass
+
+                variant_glyph = font.createChar(variant_cp, glyph_name)
+                variant_glyph.clear()
+
+                # Add reference to base character
+                variant_glyph.addReference(base_glyph.glyphname)
+                variant_glyph.unlinkRef()
+
+                pen = variant_glyph.glyphPen(replace=False)
+
+                # Draw line segment(s) and arc(s) based on variant type
+                if variant_type == 'left':
+                    # Left arc + line extending to right edge
+                    # Arc on left
+                    draw_quarter_arc(pen, left_cx, left_cy, arc_radius, left_start, left_end, left_cw)
+                    # Line from arc end to right edge
+                    line_x_start = arc_radius  # Where arc meets line
+                    line_x_end = char_width
+                    pen.moveTo((line_x_start, y_bottom))
+                    pen.lineTo((line_x_end, y_bottom))
+                    pen.lineTo((line_x_end, y_top))
+                    pen.lineTo((line_x_start, y_top))
+                    pen.closePath()
+
+                elif variant_type == 'right':
+                    # Line from left edge + right arc
+                    # Line from left edge to arc start
+                    line_x_start = 0
+                    line_x_end = char_width - arc_radius  # Where line meets arc
+                    pen.moveTo((line_x_start, y_bottom))
+                    pen.lineTo((line_x_end, y_bottom))
+                    pen.lineTo((line_x_end, y_top))
+                    pen.lineTo((line_x_start, y_top))
+                    pen.closePath()
+                    # Arc on right
+                    draw_quarter_arc(pen, right_cx, right_cy, arc_radius, right_start, right_end, right_cw)
+
+                pen = None
+                variant_glyph.width = char_width
+                variant_glyph.correctDirection()
+
+                variant_map[(variant_type, base_cp)] = variant_cp
+                created_count += 1
+
+        except Exception as e:
+            print(f"    Warning: could not create bracket variant for 0x{base_cp:02X}: {e}")
+
+    print(f"    ✓ Created {created_count} {line_name} bracket variants (PUA 0x{pua_base:04X}+)")
+    return variant_map
+
+
+def create_pua_bracketed_variants(font, pua_base, source_range_start, source_range_end, y_bottom, y_top, line_name, is_overline=False):
+    """
+    Create pre-composed bracket variants for PUA note atoms (octave variants, etc.).
+
+    Creates 2 variant types for PUA glyphs in the given range:
+        pua_base + 0x000: Left arc + line (char starts bracket)
+        pua_base + count: Line + right arc (char ends bracket)
+
+    Args:
+        font: FontForge font object
+        pua_base: Starting codepoint for bracket variants (e.g., 0xF000)
+        source_range_start: Start of source PUA range (e.g., 0xE600)
+        source_range_end: End of source PUA range (e.g., 0xE6BC)
+        y_bottom: Y coordinate for bottom of line
+        y_top: Y coordinate for top of line
+        line_name: "underline" or "overline" for logging
+        is_overline: True for overline (arcs curve up), False for underline (arcs curve down)
+
+    Returns:
+        dict: Mapping of (variant_type, source_codepoint) → variant_codepoint
+    """
+    import math
+
+    # Line geometry
+    line_y_center = (y_bottom + y_top) / 2
+    line_thickness = y_top - y_bottom
+
+    def draw_quarter_arc(pen, cx, cy, radius, start_deg, end_deg, clockwise=True):
+        """Draw a quarter-circle arc (ring segment with stroke thickness)."""
+        outer_r = radius
+        inner_r = max(radius - line_thickness, 1)
+        STEPS = 8
+
+        start_rad = math.radians(start_deg)
+        end_rad = math.radians(end_deg)
+
+        if clockwise:
+            if end_rad > start_rad:
+                end_rad -= 2 * math.pi
+        else:
+            if end_rad < start_rad:
+                end_rad += 2 * math.pi
+
+        # Outer arc
+        pen.moveTo((
+            cx + outer_r * math.cos(start_rad),
+            cy + outer_r * math.sin(start_rad),
+        ))
+        for i in range(1, STEPS + 1):
+            t = i / STEPS
+            a = start_rad + (end_rad - start_rad) * t
+            pen.lineTo((
+                cx + outer_r * math.cos(a),
+                cy + outer_r * math.sin(a),
+            ))
+
+        # Inner arc back
+        for i in range(STEPS, -1, -1):
+            t = i / STEPS
+            a = start_rad + (end_rad - start_rad) * t
+            pen.lineTo((
+                cx + inner_r * math.cos(a),
+                cy + inner_r * math.sin(a),
+            ))
+
+        pen.closePath()
+
+    variant_map = {}
+    created_count = 0
+
+    for source_cp in range(source_range_start, source_range_end):
+        try:
+            source_glyph = font[source_cp]
+            if not source_glyph:
+                continue
+
+            offset = source_cp - source_range_start
+            char_width = source_glyph.width
+            if char_width <= 0:
+                continue
+
+            # Arc radius should be small (like line thickness) so the line spans most of the char
+            arc_radius = min(line_thickness * 2, char_width / 4)
+
+            # Arc centers and angles depend on line type
+            if is_overline:
+                left_cx = arc_radius
+                left_cy = y_top - arc_radius
+                left_start, left_end, left_cw = 90, 180, False
+                right_cx = char_width - arc_radius
+                right_cy = y_top - arc_radius
+                right_start, right_end, right_cw = 90, 0, True
+            else:
+                left_cx = arc_radius
+                left_cy = y_bottom + arc_radius
+                left_start, left_end, left_cw = 270, 180, True
+                right_cx = char_width - arc_radius
+                right_cy = y_bottom + arc_radius
+                right_start, right_end, right_cw = 270, 360, False
+
+            # Create 2 variants for this character (no 'both' - single notes don't get lines)
+            # Right variants start at pua_base + count (passed via source_range)
+            count = source_range_end - source_range_start
+            variants = [
+                (pua_base + offset, 'left'),               # Left arc + line
+                (pua_base + count + offset, 'right'),      # Line + right arc
+            ]
+
+            for variant_cp, variant_type in variants:
+                glyph_name = f"uni{variant_cp:04X}"
+
+                try:
+                    existing = font[variant_cp]
+                    if existing and existing.glyphname and existing.glyphname != glyph_name:
+                        continue
+                except:
+                    pass
+
+                variant_glyph = font.createChar(variant_cp, glyph_name)
+                variant_glyph.clear()
+
+                # Get BASE glyph (not underlined) - underlined is base + 0x8000
+                base_cp = source_cp - 0x8000
+                try:
+                    base_glyph = font[base_cp]
+                    variant_glyph.addReference(base_glyph.glyphname)
+                except:
+                    # Fallback to source if base not found
+                    variant_glyph.addReference(source_glyph.glyphname)
+                variant_glyph.unlinkRef()
+
+                pen = variant_glyph.glyphPen(replace=False)
+
+                # Draw underline with rounded end(s) - rounded rectangle style
+                if variant_type == 'left':
+                    # Left rounded, right straight: arc + line to right edge
+                    draw_quarter_arc(pen, left_cx, left_cy, arc_radius, left_start, left_end, left_cw)
+                    # Line from arc end to right edge
+                    pen.moveTo((arc_radius, y_bottom))
+                    pen.lineTo((char_width, y_bottom))
+                    pen.lineTo((char_width, y_top))
+                    pen.lineTo((arc_radius, y_top))
+                    pen.closePath()
+                elif variant_type == 'right':
+                    # Left straight, right rounded: line from left + arc
+                    pen.moveTo((0, y_bottom))
+                    pen.lineTo((char_width - arc_radius, y_bottom))
+                    pen.lineTo((char_width - arc_radius, y_top))
+                    pen.lineTo((0, y_top))
+                    pen.closePath()
+                    draw_quarter_arc(pen, right_cx, right_cy, arc_radius, right_start, right_end, right_cw)
+
+                pen = None
+                variant_glyph.width = char_width
+                variant_glyph.correctDirection()
+
+                variant_map[(variant_type, source_cp)] = variant_cp
+                created_count += 1
+
+        except Exception as e:
+            print(f"    Warning: could not create PUA bracket variant for 0x{source_cp:04X}: {e}")
+
+    print(f"    ✓ Created {created_count} {line_name} PUA bracket variants (PUA 0x{pua_base:04X}+)")
+    return variant_map
+
+
+def add_underline_ligatures(font, underline_map):
+    """
+    Add GSUB ligatures: char + U+0332 → underlined variant.
+
+    When text contains a character followed by COMBINING LOW LINE (U+0332),
+    the ligature feature substitutes the pair with a single pre-composed
+    underlined glyph.
+
+    Args:
+        font: FontForge font object
+        underline_map: Dict mapping original codepoint → underlined variant codepoint
+    """
+    if not underline_map:
+        print(f"    No underline mappings to create ligatures for")
+        return 0
+
+    COMBINING_LOW_LINE = 0x0332
+
+    # Ensure combining low line exists in font
+    try:
+        combining_glyph = font[COMBINING_LOW_LINE]
+        if not combining_glyph:
+            print(f"    Warning: U+0332 COMBINING LOW LINE not found in font")
+            return 0
+        combining_name = combining_glyph.glyphname
+    except:
+        print(f"    Warning: Could not access U+0332 COMBINING LOW LINE")
+        return 0
+
+    # Create ligature lookup table
+    lookup_name = "liga_underline"
+    subtable_name = "liga_underline_sub"
+
+    try:
+        # Add lookup for ligature substitution
+        # ('liga', ...) registers this as a standard ligature feature
+        font.addLookup(lookup_name, 'gsub_ligature', (),
+                       (('liga', (('DFLT', ('dflt',)), ('latn', ('dflt',)))),))
+        font.addLookupSubtable(lookup_name, subtable_name)
+    except Exception as e:
+        print(f"    Warning: Could not create GSUB lookup: {e}")
+        return 0
+
+    # Add ligature for each character
+    ligatures_added = 0
+    for orig_cp, underlined_cp in underline_map.items():
+        try:
+            base_glyph = font[orig_cp]
+            underlined_glyph = font[underlined_cp]
+
+            if not base_glyph or not underlined_glyph:
+                continue
+
+            # Add ligature substitution: base + combining → underlined
+            # The tuple specifies the input sequence (base glyph name, combining mark name)
+            underlined_glyph.addPosSub(subtable_name, (base_glyph.glyphname, combining_name))
+            ligatures_added += 1
+
+        except Exception as e:
+            # Skip failures silently
+            pass
+
+    print(f"    ✓ Added {ligatures_added} GSUB ligatures (char + U+0332 → underlined)")
+    return ligatures_added
+
+
+def create_overlined_variants(font):
+    """Create pre-composed overlined glyphs (bbox width). PUA 0xEC00+."""
+    return create_lined_variants(font, 0xEC00, OVERLINE_Y_BOTTOM, OVERLINE_Y_TOP, "overline")
+
+
+def create_combined_lined_variants(font):
+    """
+    Create pre-composed variants with BOTH underline and overline.
+
+    For ASCII printable characters, create a variant with both lines matching
+    the character's bounding box width (not full advance width).
+
+    Only processes ASCII printable characters (0x20-0x7E) to avoid PUA overflow.
+
+    PUA allocation: 0xEA00+ (95 characters)
+
+    Returns:
+        dict: Mapping of original codepoint → combined variant codepoint
+    """
+    PUA_START = 0xEA00
+
+    # Only process ASCII printable characters
+    glyphs_to_process = []
+    for glyph in font.glyphs():
+        if glyph.unicode < 0x20:
+            continue
+        if glyph.unicode > 0x7E:  # Only ASCII printable
+            continue
+        glyphs_to_process.append(glyph)
+
+    print(f"    Processing {len(glyphs_to_process)} glyphs for combined underline+overline variants...")
+
+    variant_map = {}
+    created_count = 0
+
+    for i, base_glyph in enumerate(glyphs_to_process):
+        try:
+            bbox = base_glyph.boundingBox()
+            if not bbox:
+                continue
+
+            variant_codepoint = PUA_START + i
+            glyph_name = f"uni{variant_codepoint:04X}"
+
+            try:
+                existing = font[variant_codepoint]
+                if existing and existing.glyphname and existing.glyphname != glyph_name:
+                    continue
+            except:
+                pass
+
+            variant_glyph = font.createChar(variant_codepoint, glyph_name)
+            variant_glyph.clear()
+            variant_glyph.addReference(base_glyph.glyphname)
+            variant_glyph.unlinkRef()
+
+            pen = variant_glyph.glyphPen(replace=False)
+            # Line matches character's visual extent (bbox)
+            x_start = int(bbox[0])
+            x_end = int(bbox[2])
+
+            # Draw underline
+            pen.moveTo((x_start, UNDERLINE_Y_BOTTOM))
+            pen.lineTo((x_end, UNDERLINE_Y_BOTTOM))
+            pen.lineTo((x_end, UNDERLINE_Y_TOP))
+            pen.lineTo((x_start, UNDERLINE_Y_TOP))
+            pen.closePath()
+
+            # Draw overline
+            pen.moveTo((x_start, OVERLINE_Y_BOTTOM))
+            pen.lineTo((x_end, OVERLINE_Y_BOTTOM))
+            pen.lineTo((x_end, OVERLINE_Y_TOP))
+            pen.lineTo((x_start, OVERLINE_Y_TOP))
+            pen.closePath()
+
+            pen = None
+
+            variant_glyph.width = base_glyph.width
+            variant_glyph.correctDirection()
+
+            variant_map[base_glyph.unicode] = variant_codepoint
+            created_count += 1
+
+        except Exception as e:
+            pass
+
+    print(f"    ✓ Created {created_count} combined underline+overline variants (PUA 0x{PUA_START:04X}+)")
+    return variant_map
+
+
+def create_combined_lined_variants_fullwidth(font):
+    """
+    Create pre-composed variants with BOTH underline and overline (FULL-WIDTH).
+
+    Unlike create_combined_lined_variants (which uses bbox), this creates lines
+    that span the full advance width (0 to glyph.width) for seamless joining.
+
+    Only processes ASCII printable characters (0x20-0x7E) to avoid PUA overflow.
+
+    PUA allocation: 0xEB00+ (95 characters)
+
+    Returns:
+        dict: Mapping of original codepoint → combined variant codepoint
+    """
+    PUA_START = 0xEB00
+
+    # Only process ASCII printable characters
+    glyphs_to_process = []
+    for glyph in font.glyphs():
+        if glyph.unicode < 0x20:
+            continue
+        if glyph.unicode > 0x7E:  # Only ASCII printable
+            continue
+        glyphs_to_process.append(glyph)
+
+    print(f"    Processing {len(glyphs_to_process)} glyphs for fullwidth combined variants...")
+
+    variant_map = {}
+    created_count = 0
+
+    for i, base_glyph in enumerate(glyphs_to_process):
+        try:
+            bbox = base_glyph.boundingBox()
+            if not bbox:
+                continue
+
+            variant_codepoint = PUA_START + i
+            glyph_name = f"uni{variant_codepoint:04X}"
+
+            try:
+                existing = font[variant_codepoint]
+                if existing and existing.glyphname and existing.glyphname != glyph_name:
+                    continue
+            except:
+                pass
+
+            variant_glyph = font.createChar(variant_codepoint, glyph_name)
+            variant_glyph.clear()
+            variant_glyph.addReference(base_glyph.glyphname)
+            variant_glyph.unlinkRef()
+
+            pen = variant_glyph.glyphPen(replace=False)
+            # Line spans FULL advance width for seamless joining
+            x_start = 0
+            x_end = base_glyph.width
+
+            # Draw underline
+            pen.moveTo((x_start, UNDERLINE_Y_BOTTOM))
+            pen.lineTo((x_end, UNDERLINE_Y_BOTTOM))
+            pen.lineTo((x_end, UNDERLINE_Y_TOP))
+            pen.lineTo((x_start, UNDERLINE_Y_TOP))
+            pen.closePath()
+
+            # Draw overline
+            pen.moveTo((x_start, OVERLINE_Y_BOTTOM))
+            pen.lineTo((x_end, OVERLINE_Y_BOTTOM))
+            pen.lineTo((x_end, OVERLINE_Y_TOP))
+            pen.lineTo((x_start, OVERLINE_Y_TOP))
+            pen.closePath()
+
+            pen = None
+
+            variant_glyph.width = base_glyph.width
+            variant_glyph.correctDirection()
+
+            variant_map[base_glyph.unicode] = variant_codepoint
+            created_count += 1
+
+        except Exception as e:
+            pass
+
+    print(f"    ✓ Created {created_count} fullwidth combined variants (PUA 0x{PUA_START:04X}+)")
+    return variant_map
+
+
+def create_overlined_accidental_variants(font, layout):
+    """
+    Create overlined variants for accidental note glyphs (sharp, flat, etc.).
+
+    Similar to create_underlined_accidental_variants but for overlines (slurs).
+
+    Args:
+        font: FontForge font object
+        layout: CodepointLayout with note_atoms
+
+    Returns:
+        dict: Mapping of original PUA codepoint → overlined variant codepoint
+    """
+    # Use 0xEF80+ range for overlined accidental variants
+    # (after underlined accidental variants at 0xEF00)
+    PUA_BASE = 0xEF80
+    SARGAM_NO_ACCIDENTALS = {'r', 'g', 'm', 'd', 'n', 'M'}
+
+    variant_map = {}
+    created_count = 0
+
+    for atom in layout.note_atoms:
+        # Only process atoms with accidentals
+        acc_type = atom.variant_index // 5
+        if acc_type == 0:  # Natural (no accidental)
+            continue
+
+        # Skip Sargam komal/tivra notes
+        if atom.character in SARGAM_NO_ACCIDENTALS:
+            continue
+
+        try:
+            orig_glyph = font[atom.assigned_codepoint]
+            if not orig_glyph:
+                continue
+
+            bbox = orig_glyph.boundingBox()
+            if not bbox:
+                continue
+
+            # Create overlined variant
+            variant_cp = PUA_BASE + created_count
+            glyph_name = f"uni{variant_cp:04X}"
+
+            variant_glyph = font.createChar(variant_cp, glyph_name)
+            variant_glyph.clear()
+
+            # Reference the original accidental composite
+            variant_glyph.addReference(orig_glyph.glyphname)
+            variant_glyph.unlinkRef()
+
+            # Add overline matching the glyph's bounding box width
+            x_start = int(bbox[0])
+            x_end = int(bbox[2])
+
+            pen = variant_glyph.glyphPen(replace=False)
+            pen.moveTo((x_start, OVERLINE_Y_BOTTOM))
+            pen.lineTo((x_end, OVERLINE_Y_BOTTOM))
+            pen.lineTo((x_end, OVERLINE_Y_TOP))
+            pen.lineTo((x_start, OVERLINE_Y_TOP))
+            pen.closePath()
+            pen = None
+
+            variant_glyph.width = orig_glyph.width
+            variant_glyph.correctDirection()
+
+            variant_map[atom.assigned_codepoint] = variant_cp
+            created_count += 1
+
+        except Exception as e:
+            pass
+
+    print(f"    ✓ Created {created_count} overlined accidental variants (PUA 0x{PUA_BASE:04X}+)")
+    return variant_map
+
+
+def create_overlined_variants_fullwidth(font):
+    """Create pre-composed fullwidth overlined glyphs. PUA 0xED00+."""
+    return create_lined_variants_fullwidth(font, 0xED00, OVERLINE_Y_BOTTOM, OVERLINE_Y_TOP, "overline")
+
+
+def create_fullwidth_combining_marks(font):
+    """
+    Create custom combining marks for fullwidth lines at U+E7E0 and U+E7E1.
+
+    These are used in brackets where seamless joining is required:
+    - U+E7E0: COMBINING FULLWIDTH OVERLINE (triggers advance-width overline)
+    - U+E7E1: COMBINING FULLWIDTH UNDERLINE (triggers advance-width underline)
+
+    Unlike standard U+0305/U+0332, these produce lines that span the full
+    advance width for seamless joining in brackets.
+    """
+    FULLWIDTH_OVERLINE = 0xE7E0
+    FULLWIDTH_UNDERLINE = 0xE7E1
+
+    # Create zero-width combining mark for fullwidth overline
+    glyph = font.createChar(FULLWIDTH_OVERLINE, "combiningFullwidthOverline")
+    glyph.width = 0  # Zero-width combining mark
+    glyph.glyphclass = "mark"  # Must be 'mark' class for GSUB ligatures to fire
+    # The actual overline is drawn by GSUB substitution, not by this glyph
+    print(f"    ✓ Created U+E7E0 COMBINING FULLWIDTH OVERLINE (mark class)")
+
+    # Create zero-width combining mark for fullwidth underline
+    glyph = font.createChar(FULLWIDTH_UNDERLINE, "combiningFullwidthUnderline")
+    glyph.width = 0  # Zero-width combining mark
+    glyph.glyphclass = "mark"  # Must be 'mark' class for GSUB ligatures to fire
+    print(f"    ✓ Created U+E7E1 COMBINING FULLWIDTH UNDERLINE (mark class)")
+
+    return FULLWIDTH_OVERLINE, FULLWIDTH_UNDERLINE
+
+
+def add_fullwidth_underline_ligatures(font, fullwidth_underline_map):
+    """
+    Add GSUB ligatures: char + U+E7E1 → fullwidth underlined variant.
+
+    Similar to add_underline_ligatures but uses custom combining mark U+E7E1
+    for fullwidth (advance-width) underlines used in brackets.
+    """
+    if not fullwidth_underline_map:
+        print(f"    No fullwidth underline mappings to create ligatures for")
+        return 0
+
+    COMBINING_FULLWIDTH_UNDERLINE = 0xE7E1
+
+    # Ensure combining mark exists
+    try:
+        combining_glyph = font[COMBINING_FULLWIDTH_UNDERLINE]
+        if not combining_glyph:
+            print(f"    Warning: U+E7E1 not found in font")
+            return 0
+        combining_name = combining_glyph.glyphname
+    except:
+        print(f"    Warning: Could not access U+E7E1")
+        return 0
+
+    # Create ligature lookup table
+    lookup_name = "liga_fullwidth_underline"
+    subtable_name = "liga_fullwidth_underline_sub"
+
+    try:
+        font.addLookup(lookup_name, 'gsub_ligature', (),
+                       (('liga', (('DFLT', ('dflt',)), ('latn', ('dflt',)))),))
+        font.addLookupSubtable(lookup_name, subtable_name)
+    except Exception as e:
+        print(f"    Warning: Could not create GSUB lookup for fullwidth underline: {e}")
+        return 0
+
+    ligatures_added = 0
+    for orig_cp, underlined_cp in fullwidth_underline_map.items():
+        try:
+            base_glyph = font[orig_cp]
+            underlined_glyph = font[underlined_cp]
+
+            if not base_glyph or not underlined_glyph:
+                continue
+
+            underlined_glyph.addPosSub(subtable_name, (base_glyph.glyphname, combining_name))
+            ligatures_added += 1
+        except Exception as e:
+            pass
+
+    print(f"    ✓ Added {ligatures_added} GSUB ligatures (char + U+E7E1 → fullwidth underlined)")
+    return ligatures_added
+
+
+def add_fullwidth_overline_ligatures(font, fullwidth_overline_map):
+    """
+    Add GSUB ligatures: char + U+E7E0 → fullwidth overlined variant.
+
+    Similar to add_overline_ligatures but uses custom combining mark U+E7E0
+    for fullwidth (advance-width) overlines used in brackets.
+    """
+    if not fullwidth_overline_map:
+        print(f"    No fullwidth overline mappings to create ligatures for")
+        return 0
+
+    COMBINING_FULLWIDTH_OVERLINE = 0xE7E0
+
+    # Ensure combining mark exists
+    try:
+        combining_glyph = font[COMBINING_FULLWIDTH_OVERLINE]
+        if not combining_glyph:
+            print(f"    Warning: U+E7E0 not found in font")
+            return 0
+        combining_name = combining_glyph.glyphname
+    except:
+        print(f"    Warning: Could not access U+E7E0")
+        return 0
+
+    # Create ligature lookup table
+    lookup_name = "liga_fullwidth_overline"
+    subtable_name = "liga_fullwidth_overline_sub"
+
+    try:
+        font.addLookup(lookup_name, 'gsub_ligature', (),
+                       (('liga', (('DFLT', ('dflt',)), ('latn', ('dflt',)))),))
+        font.addLookupSubtable(lookup_name, subtable_name)
+    except Exception as e:
+        print(f"    Warning: Could not create GSUB lookup for fullwidth overline: {e}")
+        return 0
+
+    ligatures_added = 0
+    for orig_cp, overlined_cp in fullwidth_overline_map.items():
+        try:
+            base_glyph = font[orig_cp]
+            overlined_glyph = font[overlined_cp]
+
+            if not base_glyph or not overlined_glyph:
+                continue
+
+            overlined_glyph.addPosSub(subtable_name, (base_glyph.glyphname, combining_name))
+            ligatures_added += 1
+        except Exception as e:
+            pass
+
+    print(f"    ✓ Added {ligatures_added} GSUB ligatures (char + U+E7E0 → fullwidth overlined)")
+    return ligatures_added
+
+
+def reposition_combining_marks(font):
+    """
+    Reposition the combining overline and underline glyphs to match our lane system.
+
+    This ensures that even when GSUB ligatures don't fire (in some renderers),
+    the fallback combining mark positioning will still be at the correct height.
+
+    Uses global lane constants defined at module level:
+      OVERLINE_Y_BOTTOM, OVERLINE_Y_TOP
+      UNDERLINE_Y_BOTTOM, UNDERLINE_Y_TOP
+    """
+    COMBINING_OVERLINE = 0x0305
+    COMBINING_UNDERLINE = 0x0332
+
+    # Uses global lane constants defined at module level
+
+    modified = 0
+
+    # Reposition combining overline
+    try:
+        g = font[COMBINING_OVERLINE]
+        if g:
+            bbox = g.boundingBox()
+            old_y_min, old_y_max = bbox[1], bbox[3]
+
+            # Clear and redraw at new position
+            g.clear()
+            pen = g.glyphPen()
+
+            # Draw a horizontal bar centered at x=0 (combining marks have 0 width)
+            # Use a width that will look good when combined with typical characters
+            half_width = 300  # Will extend from -300 to +300
+
+            pen.moveTo((-half_width, OVERLINE_Y_BOTTOM))
+            pen.lineTo((half_width, OVERLINE_Y_BOTTOM))
+            pen.lineTo((half_width, OVERLINE_Y_TOP))
+            pen.lineTo((-half_width, OVERLINE_Y_TOP))
+            pen.closePath()
+            pen = None
+
+            g.width = 0  # Combining marks have zero advance width
+            g.correctDirection()
+
+            print(f"    Repositioned U+0305 COMBINING OVERLINE: Y {old_y_min:.0f}-{old_y_max:.0f} → {OVERLINE_Y_BOTTOM}-{OVERLINE_Y_TOP}")
+            modified += 1
+    except Exception as e:
+        print(f"    Warning: Could not reposition combining overline: {e}")
+
+    # Reposition combining underline
+    try:
+        g = font[COMBINING_UNDERLINE]
+        if g:
+            bbox = g.boundingBox()
+            old_y_min, old_y_max = bbox[1], bbox[3]
+
+            # Clear and redraw at new position
+            g.clear()
+            pen = g.glyphPen()
+
+            half_width = 300
+
+            pen.moveTo((-half_width, UNDERLINE_Y_BOTTOM))
+            pen.lineTo((half_width, UNDERLINE_Y_BOTTOM))
+            pen.lineTo((half_width, UNDERLINE_Y_TOP))
+            pen.lineTo((-half_width, UNDERLINE_Y_TOP))
+            pen.closePath()
+            pen = None
+
+            g.width = 0
+            g.correctDirection()
+
+            print(f"    Repositioned U+0332 COMBINING UNDERLINE: Y {old_y_min:.0f}-{old_y_max:.0f} → {UNDERLINE_Y_BOTTOM}-{UNDERLINE_Y_TOP}")
+            modified += 1
+    except Exception as e:
+        print(f"    Warning: Could not reposition combining underline: {e}")
+
+    return modified
+
+
+def create_line_endpoint_caps(font):
+    """
+    Create rounded cap glyphs for the start and end of continuous lines.
+
+    These are small semicircle shapes that cap the ends of underlines/overlines.
+
+    Design:
+      - Left caps: Semicircle on the left, drawn at negative X (before the glyph origin)
+                   with zero advance width. This prepends a rounded end.
+      - Right caps: Semicircle on the right, drawn at positive X with the semicircle
+                    as advance width. This appends a rounded end.
+
+    Creates 4 glyphs:
+      U+E700: underline_left_cap  (rounded left end for underline)
+      U+E701: underline_right_cap (rounded right end for underline)
+      U+E702: overline_left_cap   (rounded left end for overline)
+      U+E703: overline_right_cap  (rounded right end for overline)
+
+    Uses global lane constants defined at module level.
+    """
+    import math
+
+    # Cap geometry - uses global LINE_THICKNESS constant
+    CAP_RADIUS = LINE_THICKNESS // 2  # Half the thickness for semicircle
+
+    # Codepoint allocation
+    CAPS = [
+        (0xE700, 'underline_left_cap', UNDERLINE_Y_BOTTOM, UNDERLINE_Y_TOP, 'left'),
+        (0xE701, 'underline_right_cap', UNDERLINE_Y_BOTTOM, UNDERLINE_Y_TOP, 'right'),
+        (0xE702, 'overline_left_cap', OVERLINE_Y_BOTTOM, OVERLINE_Y_TOP, 'left'),
+        (0xE703, 'overline_right_cap', OVERLINE_Y_BOTTOM, OVERLINE_Y_TOP, 'right'),
+    ]
+
+    created = 0
+
+    def semicircle_points(cx, cy, r, start_angle, end_angle, num_points=8):
+        """Generate points along a semicircle arc."""
+        points = []
+        for i in range(num_points + 1):
+            t = i / num_points
+            angle = start_angle + t * (end_angle - start_angle)
+            x = cx + r * math.cos(angle)
+            y = cy + r * math.sin(angle)
+            points.append((x, y))
+        return points
+
+    for codepoint, name, y_bottom, y_top, side in CAPS:
+        try:
+            glyph = font.createChar(codepoint, name)
+            glyph.clear()
+
+            pen = glyph.glyphPen()
+
+            y_center = (y_bottom + y_top) / 2
+
+            if side == 'left':
+                # Left cap: semicircle bulging LEFT from the straight edge at X=0
+                # Zero advance width - this prepends a rounded end
+                #
+                # Shape: Start at top-right (0, y_top), go down the straight edge,
+                # then arc around to the left and back up to close.
+
+                pen.moveTo((0, y_top))
+                pen.lineTo((0, y_bottom))  # Straight edge down
+
+                # Arc from bottom to top, curving left (270° down to 90° up)
+                # This goes: bottom -> left side -> top
+                arc_points = semicircle_points(0, y_center, CAP_RADIUS,
+                                               -math.pi/2, math.pi/2, 8)
+                # Reverse direction: we want to go counterclockwise (left side)
+                # Actually we need 270° to 90° going through 180° (the left side)
+                arc_points = semicircle_points(0, y_center, CAP_RADIUS,
+                                               3*math.pi/2, math.pi/2 + 2*math.pi, 8)
+                # Simpler: just go from -90° to 90° but negate X to flip to left
+                arc_points = []
+                for i in range(9):
+                    t = i / 8
+                    angle = -math.pi/2 + t * math.pi  # -90° to +90°
+                    x = -CAP_RADIUS * math.cos(angle)  # Negate X to go left
+                    y = y_center + CAP_RADIUS * math.sin(angle)
+                    arc_points.append((x, y))
+
+                for px, py in arc_points:
+                    pen.lineTo((px, py))
+
+                pen.closePath()
+                pen = None
+                glyph.width = 0
+
+            else:  # right
+                # Right cap: semicircle bulging RIGHT from the straight edge at X=0
+                # Advance width = CAP_RADIUS
+                #
+                # Shape: Start at bottom-left (0, y_bottom), go up the straight edge,
+                # then arc around to the right and back down to close.
+
+                pen.moveTo((0, y_bottom))
+                pen.lineTo((0, y_top))  # Straight edge up
+
+                # Arc from top to bottom, curving right
+                arc_points = []
+                for i in range(9):
+                    t = i / 8
+                    angle = math.pi/2 - t * math.pi  # +90° to -90°
+                    x = CAP_RADIUS * math.cos(angle)
+                    y = y_center + CAP_RADIUS * math.sin(angle)
+                    arc_points.append((x, y))
+
+                for px, py in arc_points:
+                    pen.lineTo((px, py))
+
+                pen.closePath()
+                pen = None
+                glyph.width = CAP_RADIUS
+
+            glyph.correctDirection()
+            created += 1
+
+        except Exception as e:
+            print(f"    Warning: Could not create {name}: {e}")
+
+    print(f"    ✓ Created {created} line endpoint caps (U+E700-U+E703)")
+    return created
+
+
+def add_overline_ligatures(font, overline_map):
+    """
+    Add GSUB ligatures: char + U+0305 → overlined variant.
+
+    When text contains a character followed by COMBINING OVERLINE (U+0305),
+    the ligature feature substitutes the pair with a single pre-composed
+    overlined glyph.
+
+    Args:
+        font: FontForge font object
+        overline_map: Dict mapping original codepoint → overlined variant codepoint
+    """
+    if not overline_map:
+        print(f"    No overline mappings to create ligatures for")
+        return 0
+
+    COMBINING_OVERLINE = 0x0305
+
+    # Ensure combining overline exists in font
+    try:
+        combining_glyph = font[COMBINING_OVERLINE]
+        if not combining_glyph:
+            print(f"    Warning: U+0305 COMBINING OVERLINE not found in font")
+            return 0
+        combining_name = combining_glyph.glyphname
+    except:
+        print(f"    Warning: Could not access U+0305 COMBINING OVERLINE")
+        return 0
+
+    # Create ligature lookup table
+    lookup_name = "liga_overline"
+    subtable_name = "liga_overline_sub"
+
+    try:
+        # Add lookup for ligature substitution
+        # ('liga', ...) registers this as a standard ligature feature
+        font.addLookup(lookup_name, 'gsub_ligature', (),
+                       (('liga', (('DFLT', ('dflt',)), ('latn', ('dflt',)))),))
+        font.addLookupSubtable(lookup_name, subtable_name)
+    except Exception as e:
+        print(f"    Warning: Could not create GSUB lookup: {e}")
+        return 0
+
+    # Add ligature for each character
+    ligatures_added = 0
+    for orig_cp, overlined_cp in overline_map.items():
+        try:
+            base_glyph = font[orig_cp]
+            overlined_glyph = font[overlined_cp]
+
+            if not base_glyph or not overlined_glyph:
+                continue
+
+            # Add ligature substitution: base + combining → overlined
+            # The tuple specifies the input sequence (base glyph name, combining mark name)
+            overlined_glyph.addPosSub(subtable_name, (base_glyph.glyphname, combining_name))
+            ligatures_added += 1
+
+        except Exception as e:
+            # Skip failures silently
+            pass
+
+    print(f"    ✓ Added {ligatures_added} GSUB ligatures (char + U+0305 → overlined)")
+    return ligatures_added
+
+
+def add_octave_dot_ligatures(font, layout: 'CodepointLayout'):
+    """
+    Add GSUB ligatures for combining octave dots using 'ccmp' feature.
+
+    ccmp (Glyph Composition/Decomposition) is applied BY DEFAULT in browsers,
+    unlike 'mark' which requires explicit CSS font-feature-settings.
+
+    This substitutes:
+    - char + U+0307 (dot above) → precomposed PUA glyph with octave +1
+    - char + U+0308 (diaeresis above) → precomposed PUA glyph with octave +2
+    - char + U+0323 (dot below) → precomposed PUA glyph with octave -1
+    - char + U+0324 (diaeresis below) → precomposed PUA glyph with octave -2
+
+    Args:
+        font: FontForge font object
+        layout: CodepointLayout with note_atoms containing variant info
+    """
+    # Combining marks for octave indicators
+    COMBINING_DOT_ABOVE = 0x0307      # octave +1
+    COMBINING_DIAERESIS_ABOVE = 0x0308  # octave +2
+    COMBINING_DOT_BELOW = 0x0323      # octave -1
+    COMBINING_DIAERESIS_BELOW = 0x0324  # octave -2
+
+    # Map octave_idx to combining character
+    # Layout: variant_index = (accidental_type × 5) + octave_idx
+    # octave_idx: 0=base, 1=-2oct, 2=-1oct, 3=+1oct, 4=+2oct
+    octave_to_combining = {
+        3: COMBINING_DOT_ABOVE,       # +1 octave
+        4: COMBINING_DIAERESIS_ABOVE, # +2 octave
+        2: COMBINING_DOT_BELOW,       # -1 octave
+        1: COMBINING_DIAERESIS_BELOW, # -2 octave
+    }
+
+    # Get combining mark glyph names
+    combining_names = {}
+    for octave_idx, cp in octave_to_combining.items():
+        try:
+            g = font[cp]
+            if g and g.glyphname:
+                combining_names[octave_idx] = g.glyphname
+        except:
+            pass
+
+    if not combining_names:
+        print(f"    Warning: No combining mark glyphs found")
+        return 0
+
+    # Create ccmp lookup for octave dot substitution
+    lookup_name = "ccmp_octave_dots"
+    subtable_name = "ccmp_octave_dots_sub"
+
+    try:
+        # Add to existing ccmp feature (applied by default!)
+        font.addLookup(lookup_name, 'gsub_ligature', (),
+                       (('ccmp', (('DFLT', ('dflt',)), ('latn', ('dflt',)))),))
+        font.addLookupSubtable(lookup_name, subtable_name)
+    except Exception as e:
+        print(f"    Warning: Could not create ccmp lookup: {e}")
+        return 0
+
+    # Build mapping: (base_char, octave_idx) → PUA codepoint
+    # From note_atoms which have character, accidental_type, octave info encoded in variant_index
+    ligatures_added = 0
+
+    # Group atoms by base character and accidental type
+    # We only want natural (accidental_type=0) variants for combining char substitution
+    # because the combining char approach is for plain text (base char + combining mark)
+    for atom in layout.note_atoms:
+        # variant_index = (accidental_type × 5) + octave_idx
+        accidental_type = atom.variant_index // 5
+        octave_idx = atom.variant_index % 5
+
+        # Only process natural (no accidental) variants with octave shifts
+        if accidental_type != 0:
+            continue
+        if octave_idx not in combining_names:
+            continue  # Skip base octave (0)
+
+        base_char = atom.character
+        pua_codepoint = atom.assigned_codepoint
+        combining_name = combining_names[octave_idx]
+
+        try:
+            base_glyph = font[ord(base_char)]
+            pua_glyph = font[pua_codepoint]
+
+            if not base_glyph or not pua_glyph:
+                continue
+
+            # Add ligature: base_char + combining_mark → PUA_glyph
+            pua_glyph.addPosSub(subtable_name, (base_glyph.glyphname, combining_name))
+            ligatures_added += 1
+
+        except Exception as e:
+            pass  # Skip failures silently
+
+    print(f"    ✓ Added {ligatures_added} ccmp ligatures (char + combining dot → precomposed)")
+    return ligatures_added
+
+
+def create_combined_line_variants(font, underline_map, overline_map):
+    """
+    Create pre-composed glyphs combining octave dots with underlines/overlines.
+
+    When text has char + octave_dot + underline (e.g., 1 U+0307 U+0332),
+    we need a single glyph that shows all three: the character, the dot above,
+    AND the underline.
+
+    This creates variants at PUA 0xF000+ for combinations of:
+    - Existing underlined glyphs (0xE800+) + octave dots
+    - Existing overlined glyphs (0xEC00+) + octave dots
+
+    Returns:
+        tuple: (underline_octave_map, overline_octave_map)
+            Maps: (original_codepoint, octave_combining) → combined PUA codepoint
+    """
+    # Uses global lane constants defined at module level
+
+    # Octave combining characters
+    OCTAVE_COMBINING = {
+        0x0307: 'dot_above',       # +1 octave
+        0x0308: 'diaeresis_above', # +2 octave
+        0x0323: 'dot_below',       # -1 octave
+        0x0324: 'diaeresis_below', # -2 octave
+    }
+
+    # Start allocating combined variants at 0xF000
+    PUA_COMBINED_START = 0xF000
+    current_pua = PUA_COMBINED_START
+
+    underline_octave_map = {}  # (orig_cp, octave_cp) → combined_pua
+    overline_octave_map = {}   # (orig_cp, octave_cp) → combined_pua
+
+    # Only create combined variants for pitch characters (to avoid table overflow)
+    # Number: 1-7, Western: A-G a-g, Sargam: S R G M P D N r g m d n, dash
+    PITCH_CHARS = set('1234567ABCDEFGabcdefgSRGMPDNrgmdn-')
+
+    # For each base character that has both underlined variant AND octave variants,
+    # create combined glyphs
+    print(f"    Creating combined underline+octave variants...")
+    combined_underline_count = 0
+
+    for orig_cp, underlined_cp in underline_map.items():
+        # Only process pitch characters
+        if orig_cp > 127 or chr(orig_cp) not in PITCH_CHARS:
+            continue
+
+        # For each octave combining character
+        for octave_cp, octave_name in OCTAVE_COMBINING.items():
+            try:
+                # Get the underlined glyph as base
+                underlined_glyph = font[underlined_cp]
+                if not underlined_glyph:
+                    continue
+
+                # We need to find the PUA glyph that has this base char + octave
+                # Search note_atoms for matching variant
+                # For now, use simpler approach: copy underlined glyph and add dot
+
+                # Get base char to find its octave variant
+                base_glyph = font[orig_cp]
+                if not base_glyph:
+                    continue
+
+                # Create combined glyph
+                glyph_name = f"uni{current_pua:04X}"
+
+                # Check if exists
+                try:
+                    existing = font[current_pua]
+                    if existing and existing.glyphname and existing.glyphname != glyph_name:
+                        current_pua += 1
+                        continue
+                except:
+                    pass
+
+                combined_glyph = font.createChar(current_pua, glyph_name)
+                combined_glyph.clear()
+
+                # Build combined glyph from scratch:
+                # 1. Add base character
+                combined_glyph.addReference(base_glyph.glyphname)
+                combined_glyph.unlinkRef()
+
+                # 2. Draw underline
+                bbox = base_glyph.boundingBox()
+                if bbox:
+                    bx_min, by_min, bx_max, by_max = bbox
+                    center_x = (bx_min + bx_max) / 2
+
+                    pen = combined_glyph.glyphPen(replace=False)
+
+                    # Draw underline - matches character's visual extent (bbox)
+                    x_start = int(bx_min)
+                    x_end = int(bx_max)
+                    pen.moveTo((x_start, UNDERLINE_Y_BOTTOM))
+                    pen.lineTo((x_end, UNDERLINE_Y_BOTTOM))
+                    pen.lineTo((x_end, UNDERLINE_Y_TOP))
+                    pen.lineTo((x_start, UNDERLINE_Y_TOP))
+                    pen.closePath()
+
+                    # 3. Draw octave dot
+                    dot_radius = 40
+
+                    if octave_name == 'dot_above':
+                        dot_y = by_max + 80
+                        _draw_circle(pen, center_x, dot_y, dot_radius)
+                    elif octave_name == 'diaeresis_above':
+                        dot_y = by_max + 80
+                        _draw_circle(pen, center_x, dot_y, dot_radius)
+                        _draw_circle(pen, center_x, dot_y + 80, dot_radius)
+                    elif octave_name == 'dot_below':
+                        dot_y = by_min - 80
+                        _draw_circle(pen, center_x, dot_y, dot_radius)
+                    elif octave_name == 'diaeresis_below':
+                        dot_y = by_min - 80
+                        _draw_circle(pen, center_x, dot_y, dot_radius)
+                        _draw_circle(pen, center_x, dot_y - 80, dot_radius)
+
+                    pen = None
+
+                combined_glyph.width = base_glyph.width
+                combined_glyph.correctDirection()
+
+                underline_octave_map[(orig_cp, octave_cp)] = current_pua
+                combined_underline_count += 1
+                current_pua += 1
+
+            except Exception as e:
+                pass
+
+    print(f"    ✓ Created {combined_underline_count} underline+octave variants")
+
+    # Same for overlines
+    print(f"    Creating combined overline+octave variants...")
+    combined_overline_count = 0
+
+    for orig_cp, overlined_cp in overline_map.items():
+        # Only process pitch characters
+        if orig_cp > 127 or chr(orig_cp) not in PITCH_CHARS:
+            continue
+
+        for octave_cp, octave_name in OCTAVE_COMBINING.items():
+            try:
+                overlined_glyph = font[overlined_cp]
+                if not overlined_glyph:
+                    continue
+
+                base_glyph = font[orig_cp]
+                if not base_glyph:
+                    continue
+
+                glyph_name = f"uni{current_pua:04X}"
+
+                try:
+                    existing = font[current_pua]
+                    if existing and existing.glyphname and existing.glyphname != glyph_name:
+                        current_pua += 1
+                        continue
+                except:
+                    pass
+
+                combined_glyph = font.createChar(current_pua, glyph_name)
+                combined_glyph.clear()
+
+                # Build combined glyph from scratch:
+                # 1. Add base character
+                combined_glyph.addReference(base_glyph.glyphname)
+                combined_glyph.unlinkRef()
+
+                # 2. Draw overline and octave dot
+                bbox = base_glyph.boundingBox()
+                if bbox:
+                    bx_min, by_min, bx_max, by_max = bbox
+                    center_x = (bx_min + bx_max) / 2
+
+                    pen = combined_glyph.glyphPen(replace=False)
+
+                    # Draw overline - matches character's visual extent (bbox)
+                    x_start = int(bx_min)
+                    x_end = int(bx_max)
+                    pen.moveTo((x_start, OVERLINE_Y_BOTTOM))
+                    pen.lineTo((x_end, OVERLINE_Y_BOTTOM))
+                    pen.lineTo((x_end, OVERLINE_Y_TOP))
+                    pen.lineTo((x_start, OVERLINE_Y_TOP))
+                    pen.closePath()
+
+                    # 3. Draw octave dot
+                    dot_radius = 40
+
+                    if octave_name == 'dot_above':
+                        # Dot needs to be BELOW the overline
+                        dot_y = by_max + 80
+                        _draw_circle(pen, center_x, dot_y, dot_radius)
+                    elif octave_name == 'diaeresis_above':
+                        dot_y = by_max + 80
+                        _draw_circle(pen, center_x, dot_y, dot_radius)
+                        _draw_circle(pen, center_x, dot_y + 80, dot_radius)
+                    elif octave_name == 'dot_below':
+                        dot_y = by_min - 80
+                        _draw_circle(pen, center_x, dot_y, dot_radius)
+                    elif octave_name == 'diaeresis_below':
+                        dot_y = by_min - 80
+                        _draw_circle(pen, center_x, dot_y, dot_radius)
+                        _draw_circle(pen, center_x, dot_y - 80, dot_radius)
+
+                    pen = None
+
+                combined_glyph.width = base_glyph.width
+                combined_glyph.correctDirection()
+
+                overline_octave_map[(orig_cp, octave_cp)] = current_pua
+                combined_overline_count += 1
+                current_pua += 1
+
+            except Exception as e:
+                pass
+
+    print(f"    ✓ Created {combined_overline_count} overline+octave variants")
+
+    return underline_octave_map, overline_octave_map
+
+
+def _draw_circle(pen, cx, cy, radius):
+    """Draw a filled dot as an octagon (approximates circle without complex bezier)."""
+    import math
+    # Use octagon to approximate circle
+    points = []
+    for i in range(8):
+        angle = math.pi * 2 * i / 8
+        x = cx + radius * math.cos(angle)
+        y = cy + radius * math.sin(angle)
+        points.append((x, y))
+
+    pen.moveTo(points[0])
+    for p in points[1:]:
+        pen.lineTo(p)
+    pen.closePath()
+
+
+def add_combined_line_ligatures(font, underline_octave_map, overline_octave_map):
+    """
+    Add GSUB ligatures for triple combinations: char + underline + octave (or char + octave + overline).
+
+    Order matches Rust export: char → underline → octave → overline
+
+    These ligatures substitute:
+    - char + U+0332 + U+0307 → combined glyph with underline + dot above
+    - char + U+0307 + U+0305 → combined glyph with dot above + overline
+    - etc. for all octave/line combinations
+    """
+    # Get combining mark glyph names
+    COMBINING_MARKS = {
+        0x0307: None,  # dot above
+        0x0308: None,  # diaeresis above
+        0x0323: None,  # dot below
+        0x0324: None,  # diaeresis below
+        0x0332: None,  # underline
+        0x0305: None,  # overline
+    }
+
+    for cp in COMBINING_MARKS:
+        try:
+            g = font[cp]
+            if g and g.glyphname:
+                COMBINING_MARKS[cp] = g.glyphname
+        except:
+            pass
+
+    # Create ligature lookup for combined underline+octave
+    lookup_name = "liga_combined_underline_octave"
+    subtable_name = "liga_combined_underline_octave_sub"
+
+    try:
+        font.addLookup(lookup_name, 'gsub_ligature', (),
+                       (('liga', (('DFLT', ('dflt',)), ('latn', ('dflt',)))),))
+        font.addLookupSubtable(lookup_name, subtable_name)
+    except Exception as e:
+        print(f"    Warning: Could not create combined underline ligature lookup: {e}")
+        return 0
+
+    ligatures_added = 0
+    underline_name = COMBINING_MARKS.get(0x0332)
+
+    if underline_name:
+        for (orig_cp, octave_cp), combined_cp in underline_octave_map.items():
+            try:
+                base_glyph = font[orig_cp]
+                combined_glyph = font[combined_cp]
+                octave_name = COMBINING_MARKS.get(octave_cp)
+
+                if not base_glyph or not combined_glyph or not octave_name:
+                    continue
+
+                # Add ligature: base + underline + octave → combined
+                # Order: char → U+0332 → U+0307/0308/0323/0324
+                combined_glyph.addPosSub(subtable_name,
+                    (base_glyph.glyphname, underline_name, octave_name))
+                ligatures_added += 1
+
+            except Exception as e:
+                pass
+
+    print(f"    ✓ Added {ligatures_added} ligatures for underline+octave combinations")
+
+    # Create ligature lookup for combined overline+octave
+    lookup_name2 = "liga_combined_overline_octave"
+    subtable_name2 = "liga_combined_overline_octave_sub"
+
+    try:
+        font.addLookup(lookup_name2, 'gsub_ligature', (),
+                       (('liga', (('DFLT', ('dflt',)), ('latn', ('dflt',)))),))
+        font.addLookupSubtable(lookup_name2, subtable_name2)
+    except Exception as e:
+        print(f"    Warning: Could not create combined overline ligature lookup: {e}")
+        return ligatures_added
+
+    overline_ligatures = 0
+    overline_name = COMBINING_MARKS.get(0x0305)
+
+    if overline_name:
+        for (orig_cp, octave_cp), combined_cp in overline_octave_map.items():
+            try:
+                base_glyph = font[orig_cp]
+                combined_glyph = font[combined_cp]
+                octave_name = COMBINING_MARKS.get(octave_cp)
+
+                if not base_glyph or not combined_glyph or not octave_name:
+                    continue
+
+                # Add ligature: base + octave + overline → combined
+                combined_glyph.addPosSub(subtable_name2,
+                    (base_glyph.glyphname, octave_name, overline_name))
+                overline_ligatures += 1
+
+            except Exception as e:
+                pass
+
+    print(f"    ✓ Added {overline_ligatures} ligatures for overline+octave combinations")
+
+    return ligatures_added + overline_ligatures
+
+
+# ============================================================================
+# NEW ARCHITECTURE: GPOS Marks + 19 Line Variants
+# ============================================================================
+# This section implements the new font architecture as defined in the plan:
+# - GPOS marks for octave dots and accidentals (point attachments)
+# - 19 pre-composed line variants per character (spanning geometry)
+# - Anchor points for GPOS mark attachment
+#
+# Key insight: Lines must be pre-composed because they need to span exact
+# character width edge-to-edge. GPOS marks work for dots/accidentals because
+# they attach at single points.
+
+# PUA allocation for new architecture:
+# 0xE7A0-0xE7A3: Octave dot marks (1-dot-above, 2-dots-above, 1-dot-below, 2-dots-below)
+# 0xE7B0-0xE7B5: Accidental marks (sharp, flat, natural, double-sharp, double-flat, half-flat)
+# 0xE800-0xE8FF: Underline-only variants (50 chars × 4 = 200)
+# 0xE900-0xE9FF: Overline-only variants (50 chars × 3 = 150)
+# 0xEA00-0xEFFF: Combined line variants (50 chars × 12 = 600)
+
+# Line-capable glyphs: pitch characters + dash + breath mark
+# This explicit list avoids creating variants for glyphs that don't need lines
+LINE_CAPABLE_CHARS = (
+    # Number system (7 chars)
+    '1', '2', '3', '4', '5', '6', '7',
+    # Western system (14 chars)
+    'A', 'B', 'C', 'D', 'E', 'F', 'G', 'a', 'b', 'c', 'd', 'e', 'f', 'g',
+    # Sargam system (12 chars) - S r R g G m M P d D n N
+    'S', 'r', 'R', 'g', 'G', 'm', 'M', 'P', 'd', 'D', 'n', 'N',
+    # Special characters
+    '-',  # Dash (rest/extension)
+    "'",  # Breath mark
+    ' ',  # Space (can have lines for beat grouping)
+    '\u00A0',  # Non-breaking space (NBSP)
+)
+
+# 19 line variant types (explicitly enumerated from the plan)
+# Format: (variant_index, underline_state, overline_state)
+# underline_state: None, 'middle', 'left', 'right', 'both'
+# overline_state: None, 'middle', 'left', 'right'
+LINE_VARIANT_TYPES = [
+    # Underline-only (4 variants) - indices 0-3
+    (0, 'middle', None),      # Inside beat group, no slur
+    (1, 'left', None),        # Start of beat group
+    (2, 'right', None),       # End of beat group
+    (3, 'both', None),        # Single-note beat
+
+    # Overline-only (3 variants) - indices 4-6
+    (4, None, 'middle'),      # Inside slur, no beat group
+    (5, None, 'left'),        # Start of slur
+    (6, None, 'right'),       # End of slur
+
+    # Combined (12 variants) - indices 7-18
+    (7, 'middle', 'middle'),  # Inside both
+    (8, 'middle', 'left'),    # Inside beat, start of slur
+    (9, 'middle', 'right'),   # Inside beat, end of slur
+    (10, 'left', 'middle'),   # Start of beat, inside slur
+    (11, 'left', 'left'),     # Start of both
+    (12, 'left', 'right'),    # Start of beat, end of slur
+    (13, 'right', 'middle'),  # End of beat, inside slur
+    (14, 'right', 'left'),    # End of beat, start of slur
+    (15, 'right', 'right'),   # End of both
+    (16, 'both', 'middle'),   # Single-note beat inside slur
+    (17, 'both', 'left'),     # Single-note beat, start of slur
+    (18, 'both', 'right'),    # Single-note beat, end of slur
+]
+
+# GPOS mark codepoints
+GPOS_MARK_CODEPOINTS = {
+    '1_dot_above': 0xE7A0,
+    '2_dots_above': 0xE7A1,
+    '1_dot_below': 0xE7A2,
+    '2_dots_below': 0xE7A3,
+    'sharp': 0xE7B0,
+    'flat': 0xE7B1,
+    'natural': 0xE7B2,
+    'double_sharp': 0xE7B3,
+    'double_flat': 0xE7B4,
+    'half_flat': 0xE7B5,
+}
+
+
+def create_gpos_mark_glyphs(font, dot_glyph, spec):
+    """
+    Create GPOS mark glyphs for octave dots and accidentals.
+
+    These are zero-width marks with anchor points that attach to base glyphs
+    via GPOS 'mark' feature. Custom styled to match NotationFont.
+
+    Args:
+        font: FontForge font object
+        dot_glyph: Reference to the period glyph for dot creation
+        spec: AtomSpec with geometry settings
+
+    Returns:
+        dict: Mapping of mark_name -> codepoint
+    """
+    print(f"\n  [GPOS] Creating mark glyphs for octave dots and accidentals...")
+
+    created_marks = {}
+
+    # Get dot dimensions
+    dot_bbox = dot_glyph.boundingBox()
+    dx_min, dy_min, dx_max, dy_max = dot_bbox
+    dot_width = dx_max - dx_min
+    dot_height = dy_max - dy_min
+    dot_name = dot_glyph.glyphname
+
+    # Create octave dot marks
+    # These are zero-width glyphs with the dot positioned at origin
+    # The mark anchor will be placed at the visual center
+
+    # 1-dot-above mark
+    cp = GPOS_MARK_CODEPOINTS['1_dot_above']
+    g = font.createChar(cp, "mark_1dot_above")
+    g.clear()
+    g.addReference(dot_name, (1, 0, 0, 1, -dx_min, 0))
+    g.width = 0  # Zero-width mark
+    # Add mark anchor at center of dot
+    g.addAnchorPoint("mark_above", "mark", dot_width / 2, dot_height / 2)
+    created_marks['1_dot_above'] = cp
+    print(f"    Created mark_1dot_above at U+{cp:04X}")
+
+    # 2-dots-above mark
+    cp = GPOS_MARK_CODEPOINTS['2_dots_above']
+    g = font.createChar(cp, "mark_2dots_above")
+    g.clear()
+    double_dot_scale = 0.6
+    double_dot_spacing = 2 * dot_height * double_dot_scale
+    g.addReference(dot_name, (double_dot_scale, 0, 0, double_dot_scale, -dx_min, 0))
+    g.addReference(dot_name, (double_dot_scale, 0, 0, double_dot_scale, -dx_min, double_dot_spacing))
+    g.width = 0
+    g.addAnchorPoint("mark_above", "mark", dot_width * double_dot_scale / 2, dot_height * double_dot_scale)
+    created_marks['2_dots_above'] = cp
+    print(f"    Created mark_2dots_above at U+{cp:04X}")
+
+    # 1-dot-below mark
+    cp = GPOS_MARK_CODEPOINTS['1_dot_below']
+    g = font.createChar(cp, "mark_1dot_below")
+    g.clear()
+    g.addReference(dot_name, (1, 0, 0, 1, -dx_min, -dot_height))
+    g.width = 0
+    g.addAnchorPoint("mark_below", "mark", dot_width / 2, -dot_height / 2)
+    created_marks['1_dot_below'] = cp
+    print(f"    Created mark_1dot_below at U+{cp:04X}")
+
+    # 2-dots-below mark
+    cp = GPOS_MARK_CODEPOINTS['2_dots_below']
+    g = font.createChar(cp, "mark_2dots_below")
+    g.clear()
+    g.addReference(dot_name, (double_dot_scale, 0, 0, double_dot_scale, -dx_min, 0))
+    g.addReference(dot_name, (double_dot_scale, 0, 0, double_dot_scale, -dx_min, -double_dot_spacing))
+    g.width = 0
+    g.addAnchorPoint("mark_below", "mark", dot_width * double_dot_scale / 2, -dot_height * double_dot_scale)
+    created_marks['2_dots_below'] = cp
+    print(f"    Created mark_2dots_below at U+{cp:04X}")
+
+    # Create accidental marks
+    # These copy existing accidental glyphs but make them zero-width marks
+    accidental_sources = {
+        'flat': 0x266D,
+        'sharp': 0x266F,
+        'double_flat': 0x1D12B,
+        'double_sharp': 0x1D12A,
+    }
+
+    for acc_name, src_cp in accidental_sources.items():
+        try:
+            src_glyph = font[src_cp]
+            if src_glyph and src_glyph.glyphname:
+                cp = GPOS_MARK_CODEPOINTS[acc_name]
+                g = font.createChar(cp, f"mark_{acc_name}")
+                g.clear()
+
+                # Copy accidental glyph
+                pen = g.glyphPen()
+                src_glyph.draw(pen)
+                pen = None
+
+                # Make zero-width
+                g.width = 0
+
+                # Add mark anchor at left edge, vertically centered
+                src_bbox = src_glyph.boundingBox()
+                sx_min, sy_min, sx_max, sy_max = src_bbox
+                g.addAnchorPoint("mark_right", "mark", 0, (sy_min + sy_max) / 2)
+
+                created_marks[acc_name] = cp
+                print(f"    Created mark_{acc_name} at U+{cp:04X}")
+        except Exception as e:
+            print(f"    Warning: Could not create {acc_name} mark: {e}")
+
+    # Create natural mark (♮) - may need to synthesize if not in font
+    try:
+        natural_cp = 0x266E
+        natural_src = font[natural_cp]
+        if natural_src and natural_src.glyphname:
+            cp = GPOS_MARK_CODEPOINTS['natural']
+            g = font.createChar(cp, "mark_natural")
+            g.clear()
+            pen = g.glyphPen()
+            natural_src.draw(pen)
+            pen = None
+            g.width = 0
+            src_bbox = natural_src.boundingBox()
+            g.addAnchorPoint("mark_right", "mark", 0, (src_bbox[1] + src_bbox[3]) / 2)
+            created_marks['natural'] = cp
+            print(f"    Created mark_natural at U+{cp:04X}")
+    except Exception as e:
+        print(f"    Warning: Could not create natural mark: {e}")
+
+    # Create half-flat mark (use existing half-flat if available)
+    try:
+        halfflat_src = font[0xF8FF]  # Our custom half-flat
+        if halfflat_src and halfflat_src.glyphname:
+            cp = GPOS_MARK_CODEPOINTS['half_flat']
+            g = font.createChar(cp, "mark_half_flat")
+            g.clear()
+            pen = g.glyphPen()
+            halfflat_src.draw(pen)
+            pen = None
+            g.width = 0
+            src_bbox = halfflat_src.boundingBox()
+            g.addAnchorPoint("mark_right", "mark", 0, (src_bbox[1] + src_bbox[3]) / 2)
+            created_marks['half_flat'] = cp
+            print(f"    Created mark_half_flat at U+{cp:04X}")
+    except Exception as e:
+        print(f"    Warning: Could not create half-flat mark: {e}")
+
+    print(f"  [GPOS] ✓ Created {len(created_marks)} mark glyphs")
+    return created_marks
+
+
+def add_base_glyph_anchors(font, line_capable_only=False):
+    """
+    Add anchor points to base glyphs for GPOS mark attachment.
+
+    Each base glyph gets three anchor points:
+    - mark_above: (center_x, ascender + gap) for octave dots above
+    - mark_below: (center_x, descender - gap) for octave dots below
+    - mark_right: (advance_width + gap, center_y) for accidentals
+
+    Args:
+        font: FontForge font object
+        line_capable_only: If True, only add to LINE_CAPABLE_CHARS
+
+    Returns:
+        int: Number of glyphs with anchors added
+    """
+    print(f"\n  [GPOS] Adding base anchor points for mark attachment...")
+
+    GAP_ABOVE = 80   # Gap between character top and dot anchor
+    GAP_BELOW = 80   # Gap between character bottom and dot anchor
+    GAP_RIGHT = 20   # Gap between character right edge and accidental anchor
+
+    anchors_added = 0
+    chars_to_process = LINE_CAPABLE_CHARS if line_capable_only else None
+
+    for glyph in font.glyphs():
+        if glyph.unicode <= 0:
+            continue
+
+        # Filter to line-capable chars if specified
+        if chars_to_process:
+            try:
+                char = chr(glyph.unicode)
+                if char not in chars_to_process:
+                    continue
+            except:
+                continue
+
+        try:
+            bbox = glyph.boundingBox()
+            if not bbox:
+                continue
+
+            x_min, y_min, x_max, y_max = bbox
+            center_x = (x_min + x_max) / 2
+            center_y = (y_min + y_max) / 2
+
+            # Add anchor points
+            glyph.addAnchorPoint("mark_above", "base", center_x, y_max + GAP_ABOVE)
+            glyph.addAnchorPoint("mark_below", "base", center_x, y_min - GAP_BELOW)
+            glyph.addAnchorPoint("mark_right", "base", glyph.width + GAP_RIGHT, center_y)
+
+            anchors_added += 1
+        except Exception as e:
+            pass
+
+    print(f"  [GPOS] ✓ Added anchors to {anchors_added} base glyphs")
+    return anchors_added
+
+
+def create_19_line_variants(font, pua_bases):
+    """
+    Create 19 line variants for each line-capable character.
+
+    Uses composite references to keep font size small. Each variant has:
+    - Reference to base glyph
+    - Underline geometry (if applicable)
+    - Overline geometry (if applicable)
+    - Anchor points inherited from base (for GPOS mark attachment)
+
+    Args:
+        font: FontForge font object
+        pua_bases: Dict with 'underline', 'overline', 'combined' PUA start addresses
+
+    Returns:
+        dict: Mapping of (base_char, variant_index) -> variant_codepoint
+    """
+    import math
+
+    print(f"\n  [LINE VARIANTS] Creating 19 line variants per character...")
+
+    # Line geometry (same as existing constants)
+    line_thickness = LINE_THICKNESS  # 72 units
+    underline_y_bottom = UNDERLINE_Y_BOTTOM  # -180
+    underline_y_top = UNDERLINE_Y_TOP  # -108
+    overline_y_bottom = OVERLINE_Y_BOTTOM  # 880
+    overline_y_top = OVERLINE_Y_TOP  # 952
+
+    def draw_quarter_arc(pen, cx, cy, radius, start_deg, end_deg, clockwise=True):
+        """Draw a quarter-circle arc (ring segment with stroke thickness)."""
+        outer_r = radius
+        inner_r = max(radius - line_thickness, 1)
+        STEPS = 8
+
+        start_rad = math.radians(start_deg)
+        end_rad = math.radians(end_deg)
+
+        if clockwise:
+            if end_rad > start_rad:
+                end_rad -= 2 * math.pi
+        else:
+            if end_rad < start_rad:
+                end_rad += 2 * math.pi
+
+        # Outer arc
+        pen.moveTo((cx + outer_r * math.cos(start_rad), cy + outer_r * math.sin(start_rad)))
+        for i in range(1, STEPS + 1):
+            t = i / STEPS
+            a = start_rad + (end_rad - start_rad) * t
+            pen.lineTo((cx + outer_r * math.cos(a), cy + outer_r * math.sin(a)))
+
+        # Inner arc back
+        for i in range(STEPS, -1, -1):
+            t = i / STEPS
+            a = start_rad + (end_rad - start_rad) * t
+            pen.lineTo((cx + inner_r * math.cos(a), cy + inner_r * math.sin(a)))
+
+        pen.closePath()
+
+    def draw_line_with_arcs(pen, char_width, y_bottom, y_top, left_arc, right_arc, is_overline):
+        """Draw a line segment with optional arcs at endpoints."""
+        arc_radius = min(line_thickness * 2, char_width / 4)
+
+        # Determine arc geometry based on line type
+        if is_overline:
+            # Arcs curve upward
+            left_cx, left_cy = arc_radius, y_top - arc_radius
+            left_start, left_end, left_cw = 90, 180, False
+            right_cx, right_cy = char_width - arc_radius, y_top - arc_radius
+            right_start, right_end, right_cw = 90, 0, True
+        else:
+            # Arcs curve downward
+            left_cx, left_cy = arc_radius, y_bottom + arc_radius
+            left_start, left_end, left_cw = 270, 180, True
+            right_cx, right_cy = char_width - arc_radius, y_bottom + arc_radius
+            right_start, right_end, right_cw = 270, 360, False
+
+        # Calculate line segment endpoints
+        line_x_start = arc_radius if left_arc else 0
+        line_x_end = (char_width - arc_radius) if right_arc else char_width
+
+        # Draw arcs if needed
+        if left_arc:
+            draw_quarter_arc(pen, left_cx, left_cy, arc_radius, left_start, left_end, left_cw)
+        if right_arc:
+            draw_quarter_arc(pen, right_cx, right_cy, arc_radius, right_start, right_end, right_cw)
+
+        # Draw line segment (if there's space between arcs)
+        if line_x_start < line_x_end:
+            pen.moveTo((line_x_start, y_bottom))
+            pen.lineTo((line_x_end, y_bottom))
+            pen.lineTo((line_x_end, y_top))
+            pen.lineTo((line_x_start, y_top))
+            pen.closePath()
+
+    variant_map = {}
+    char_index = 0
+
+    for base_char in LINE_CAPABLE_CHARS:
+        try:
+            base_cp = ord(base_char)
+            base_glyph = font[base_cp]
+            if not base_glyph:
+                continue
+
+            char_width = base_glyph.width
+
+            for variant_idx, underline_state, overline_state in LINE_VARIANT_TYPES:
+                # Calculate PUA codepoint based on variant type
+                if overline_state is None:
+                    # Underline-only (indices 0-3)
+                    variant_cp = pua_bases['underline'] + (char_index * 4) + variant_idx
+                elif underline_state is None:
+                    # Overline-only (indices 4-6)
+                    variant_cp = pua_bases['overline'] + (char_index * 3) + (variant_idx - 4)
+                else:
+                    # Combined (indices 7-18)
+                    variant_cp = pua_bases['combined'] + (char_index * 12) + (variant_idx - 7)
+
+                glyph_name = f"line_{base_char}_v{variant_idx}"
+                variant_glyph = font.createChar(variant_cp, glyph_name)
+                variant_glyph.clear()
+
+                # Add reference to base glyph
+                variant_glyph.addReference(base_glyph.glyphname)
+
+                # Draw line geometry
+                pen = variant_glyph.glyphPen(replace=False)
+
+                # Draw underline if specified
+                if underline_state:
+                    left_arc = underline_state in ('left', 'both')
+                    right_arc = underline_state in ('right', 'both')
+                    draw_line_with_arcs(pen, char_width, underline_y_bottom, underline_y_top,
+                                       left_arc, right_arc, is_overline=False)
+
+                # Draw overline if specified
+                if overline_state:
+                    left_arc = overline_state == 'left'
+                    right_arc = overline_state == 'right'
+                    draw_line_with_arcs(pen, char_width, overline_y_bottom, overline_y_top,
+                                       left_arc, right_arc, is_overline=True)
+
+                pen = None
+
+                # Set width to match base
+                variant_glyph.width = char_width
+
+                # Copy anchor points from base glyph for GPOS mark attachment
+                try:
+                    for anchor in base_glyph.anchorPoints:
+                        variant_glyph.addAnchorPoint(*anchor)
+                except:
+                    pass
+
+                variant_glyph.correctDirection()
+                variant_map[(base_char, variant_idx)] = variant_cp
+
+            char_index += 1
+
+        except Exception as e:
+            print(f"    Warning: Could not create variants for '{base_char}': {e}")
+
+    total_variants = len(variant_map)
+    print(f"  [LINE VARIANTS] ✓ Created {total_variants} line variants ({char_index} characters × 19 variants)")
+    return variant_map
+
+
+def add_gpos_mark_feature(font, mark_codepoints):
+    """
+    Add GPOS 'mark' feature for attaching marks to base glyphs.
+
+    This enables automatic positioning of octave dots and accidentals
+    using anchor points defined on base glyphs and marks.
+
+    Args:
+        font: FontForge font object
+        mark_codepoints: Dict of mark_name -> codepoint from create_gpos_mark_glyphs
+
+    Returns:
+        bool: True if feature was added successfully
+    """
+    print(f"\n  [GPOS] Adding mark attachment feature...")
+
+    try:
+        # Create GPOS mark lookup for above marks (octave dots)
+        lookup_above = "gpos_mark_above"
+        font.addLookup(lookup_above, 'gpos_mark2base', (),
+                      (('mark', (('DFLT', ('dflt',)), ('latn', ('dflt',)))),))
+        font.addLookupSubtable(lookup_above, "mark_above_subtable")
+
+        # Create GPOS mark lookup for below marks
+        lookup_below = "gpos_mark_below"
+        font.addLookup(lookup_below, 'gpos_mark2base', (),
+                      (('mark', (('DFLT', ('dflt',)), ('latn', ('dflt',)))),))
+        font.addLookupSubtable(lookup_below, "mark_below_subtable")
+
+        # Create GPOS mark lookup for right marks (accidentals)
+        lookup_right = "gpos_mark_right"
+        font.addLookup(lookup_right, 'gpos_mark2base', (),
+                      (('mark', (('DFLT', ('dflt',)), ('latn', ('dflt',)))),))
+        font.addLookupSubtable(lookup_right, "mark_right_subtable")
+
+        print(f"  [GPOS] ✓ Mark feature lookups created")
+        return True
+
+    except Exception as e:
+        print(f"  [GPOS] Warning: Could not add mark feature: {e}")
+        return False
+
+
+# ============================================================================
+# Superscript Ornament Variants (50% scaled for grace notes)
+# Uses Supplementary PUA-A (0xF0000+) - see atoms.yaml superscript_variants
+# ============================================================================
+
+# Superscript geometry constants
+SUPERSCRIPT_SCALE = 0.5  # 50% size for ornaments
+# Position: 25% below top of font (ascender ~1000, so top at 750)
+# With 50% scale, glyph top ~350, so offset = 750 - 350 = 400
+SUPERSCRIPT_Y_OFFSET = 400  # Position 25% below font top
+# Underline geometry (matches regular character underlines)
+SUPERSCRIPT_UNDERLINE_Y_BOTTOM = -154  # Same as regular underlines
+SUPERSCRIPT_UNDERLINE_Y_TOP = -90  # Same as regular underlines (thickness ~64 units)
+
+
+def create_superscript_variants(font, layout, atoms_config):
+    """
+    Create 50% scaled superscript variants with 16 line options each.
+
+    Creates superscript variants for:
+    - ASCII printable characters (0x20-0x7E)
+    - All PUA pitch variants (Number, Western, Sargam, Doremi systems)
+
+    Each source glyph gets 16 variants:
+    - variant 0: no lines
+    - variants 1-3: underline only (1=left, 2=middle, 3=right)
+    - variants 4-6: overline only (4=left, 5=middle, 6=right)
+    - variants 7-15: combined underline+overline (9 combinations)
+
+    Formula (MUST match build.rs):
+    superscript_cp = system_base + (source_offset × 16) + line_variant
+
+    Args:
+        font: FontForge font object
+        layout: CodepointLayout with note_atoms
+        atoms_config: Parsed atoms.yaml configuration
+
+    Returns:
+        dict: Mapping of (source_codepoint, line_variant) → superscript_codepoint
+    """
+    superscript_config = atoms_config.get('pua_allocation', {}).get('superscript_variants', {})
+    if not superscript_config:
+        print(f"  WARNING: No superscript_variants config in atoms.yaml")
+        return {}
+
+    scale = superscript_config.get('scale_factor', SUPERSCRIPT_SCALE)
+    geometry = superscript_config.get('geometry', {})
+    y_offset = geometry.get('y_offset', SUPERSCRIPT_Y_OFFSET)
+    # Underline positions match regular character underlines
+    # (SUPERSCRIPT_UNDERLINE_Y_BOTTOM/TOP are used directly in _add_superscript_underline)
+
+    variant_map = {}
+    created_count = 0
+
+    # Part 1: ASCII superscripts
+    ascii_config = superscript_config.get('ascii_superscripts', {})
+    if ascii_config:
+        ascii_base = ascii_config.get('pua_base', 0xF0000)
+        source_range = ascii_config.get('source_range', [0x20, 0x7E])
+
+        print(f"    Creating ASCII superscripts (0x{ascii_base:05X}+)...")
+        for source_cp in range(source_range[0], source_range[1] + 1):
+            try:
+                source_glyph = font[source_cp]
+                if not source_glyph or source_glyph.width <= 0:
+                    continue
+
+                source_offset = source_cp - source_range[0]
+                created = _create_superscript_glyph_set(
+                    font, source_glyph, ascii_base, source_offset,
+                    scale, y_offset)
+                created_count += created
+                for lv in range(16):
+                    variant_map[(source_cp, lv)] = ascii_base + (source_offset * 16) + lv
+            except Exception:
+                pass
+
+        print(f"    ✓ Created {created_count} ASCII superscript glyphs")
+
+    # Part 2: PUA pitch superscripts (per system)
+    system_configs = [
+        ('number', 'number_superscripts'),
+        ('western', 'western_superscripts'),
+        ('sargam', 'sargam_superscripts'),
+        ('doremi', 'doremi_superscripts'),
+    ]
+
+    for system_name, config_key in system_configs:
+        sys_config = superscript_config.get(config_key, {})
+        if not sys_config:
+            continue
+
+        super_base = sys_config.get('pua_base')
+        source_base = sys_config.get('source_base')
+        chars = sys_config.get('chars', 0)
+        variants_per_char = sys_config.get('variants_per_char', 30)
+        total_source = chars * variants_per_char
+
+        if not super_base or not source_base:
+            continue
+
+        print(f"    Creating {system_name} superscripts (0x{super_base:05X}+)...")
+        system_count = 0
+
+        for source_offset in range(total_source):
+            source_cp = source_base + source_offset
+            try:
+                source_glyph = font[source_cp]
+                if not source_glyph or source_glyph.width <= 0:
+                    continue
+
+                created = _create_superscript_glyph_set(
+                    font, source_glyph, super_base, source_offset,
+                    scale, y_offset)
+                system_count += created
+                created_count += created
+                for lv in range(16):
+                    variant_map[(source_cp, lv)] = super_base + (source_offset * 16) + lv
+            except Exception:
+                pass
+
+        print(f"    ✓ Created {system_count} {system_name} superscript glyphs")
+
+    print(f"  ✓ Total superscript variants created: {created_count}")
+    return variant_map
+
+
+def _create_superscript_glyph_set(font, source_glyph, pua_base, source_offset,
+                                   scale, y_offset):
+    """
+    Create 16 superscript variants for a single source glyph.
+
+    Variants:
+        0: no lines
+        1-3: underline only (1=left, 2=middle, 3=right)
+        4-6: overline only (4=left, 5=middle, 6=right)
+        7-15: combined underline+overline (9 combinations)
+              7 = under_left + over_left
+              8 = under_left + over_middle
+              9 = under_left + over_right
+              10 = under_middle + over_left
+              11 = under_middle + over_middle
+              12 = under_middle + over_right
+              13 = under_right + over_left
+              14 = under_right + over_middle
+              15 = under_right + over_right
+
+    Formula: variant_cp = pua_base + (source_offset × 16) + line_variant
+
+    Returns number of glyphs created (0-16).
+    """
+    VARIANTS_PER_GLYPH = 16
+    created = 0
+
+    # Get source glyph metrics
+    try:
+        bbox = source_glyph.boundingBox()
+        if not bbox:
+            return 0
+        bx_min, by_min, bx_max, by_max = bbox
+    except:
+        return 0
+
+    # Calculate transformation
+    # Center the scaled glyph horizontally
+    x_offset = bx_min * (1 - scale)
+
+    # Width MUST be scaled to match the glyph size
+    scaled_width = int(source_glyph.width * scale)
+
+    for line_variant in range(VARIANTS_PER_GLYPH):
+        variant_cp = pua_base + (source_offset * VARIANTS_PER_GLYPH) + line_variant
+        glyph_name = f"super_{variant_cp:05X}"
+
+        try:
+            variant_glyph = font.createChar(variant_cp, glyph_name)
+            variant_glyph.clear()
+
+            # Add scaled reference to source glyph
+            # Transformation matrix: (xx, xy, yx, yy, x_offset, y_offset)
+            variant_glyph.addReference(
+                source_glyph.glyphname,
+                (scale, 0, 0, scale, x_offset, y_offset)
+            )
+
+            # Determine what lines to add based on variant
+            if line_variant == 0:
+                # No lines
+                pass
+            elif 1 <= line_variant <= 3:
+                # Underline only (1=left, 2=middle, 3=right)
+                _add_superscript_underline(
+                    variant_glyph, scaled_width, 0,
+                    UNDERLINE_Y_BOTTOM, UNDERLINE_Y_TOP,
+                    line_variant)
+            elif 4 <= line_variant <= 6:
+                # Overline only (4=left, 5=middle, 6=right)
+                overline_style = line_variant - 3  # 1=left, 2=middle, 3=right
+                _add_superscript_overline(
+                    variant_glyph, scaled_width, scale,
+                    OVERLINE_Y_BOTTOM, OVERLINE_Y_TOP,
+                    overline_style)
+            else:
+                # Combined (variants 7-15)
+                # Draw both underline and overline with single pen to avoid issues
+                pen = variant_glyph.glyphPen(replace=False)
+
+                # Draw underline (full width rectangle)
+                pen.moveTo((0, UNDERLINE_Y_BOTTOM))
+                pen.lineTo((scaled_width, UNDERLINE_Y_BOTTOM))
+                pen.lineTo((scaled_width, UNDERLINE_Y_TOP))
+                pen.lineTo((0, UNDERLINE_Y_TOP))
+                pen.closePath()
+
+                # Draw overline (full width rectangle)
+                pen.moveTo((0, OVERLINE_Y_BOTTOM))
+                pen.lineTo((scaled_width, OVERLINE_Y_BOTTOM))
+                pen.lineTo((scaled_width, OVERLINE_Y_TOP))
+                pen.lineTo((0, OVERLINE_Y_TOP))
+                pen.closePath()
+
+                pen = None
+
+            variant_glyph.width = scaled_width
+            variant_glyph.correctDirection()
+            created += 1
+
+        except Exception as e:
+            print(f"    ERROR creating superscript U+{variant_cp:05X}: {e}")
+
+    return created
+
+
+def _add_superscript_overline(glyph, base_width, scale, y_bottom, y_top, variant):
+    """
+    Add overline to superscript glyph (matches regular character overlines).
+
+    base_width: advance width of the scaled glyph
+    scale: scale factor (unused, kept for API compatibility)
+    variant: 1=left-cap, 2=middle, 3=right-cap
+
+    Uses simple rectangles (no curves) for reliability.
+    """
+    x_start = 0
+    x_end = base_width
+
+    pen = glyph.glyphPen(replace=False)
+
+    # All variants use a simple rectangle (no curves for reliability)
+    # The full overline from x_start to x_end
+    pen.moveTo((x_start, y_bottom))
+    pen.lineTo((x_end, y_bottom))
+    pen.lineTo((x_end, y_top))
+    pen.lineTo((x_start, y_top))
+    pen.closePath()
+
+    pen = None
+
+
+def _add_superscript_underline(glyph, width, x_start, y_bottom, y_top, variant):
+    """
+    Add underline to superscript glyph (matches regular character underlines).
+
+    width: actual bounding box width of the scaled glyph
+    x_start: x position where underline starts (left edge of scaled glyph)
+    variant: 1=left-cap, 2=middle, 3=right-cap
+
+    Uses simple rectangles (no curves) for reliability.
+    """
+    x_end = x_start + width
+
+    pen = glyph.glyphPen(replace=False)
+
+    # All variants use a simple rectangle (no curves for reliability)
+    # The full underline from x_start to x_end
+    pen.moveTo((x_start, y_bottom))
+    pen.lineTo((x_end, y_bottom))
+    pen.lineTo((x_end, y_top))
+    pen.lineTo((x_start, y_top))
+    pen.closePath()
+
+    pen = None
+
+
+# ============================================================================
 # Stage 3: Build Font
 # ============================================================================
 
@@ -956,6 +4218,11 @@ def build_font(
                 # Some glyphs might fail, that's okay
                 pass
     print(f"  ✓ Corrected {corrected_count} base glyphs")
+
+    # Add centered anchor points for combining mark positioning
+    print(f"  Adding centered anchor points for combining marks...")
+    anchors_added = add_centered_anchors(font)
+    print(f"  ✓ Added anchor points to {anchors_added} pitch characters")
 
     # Load Noto Sans Bold for pitch characters
     bold_font = None
@@ -1226,6 +4493,46 @@ def build_font(
         print(f"  ✗ Failed to create half-flat accidental: {e}")
         halfflat_glyph = None
 
+    # =========================================================================
+    # NEW ARCHITECTURE: GPOS Marks + 19 Line Variants
+    # =========================================================================
+    # Set USE_NEW_ARCHITECTURE = True to enable the new font architecture
+    # with GPOS marks for octave dots/accidentals and 19 line variants.
+    # The old pre-composed octave/accidental variants will still be created
+    # for backwards compatibility until the Rust export layer is updated.
+    USE_NEW_ARCHITECTURE = True
+
+    if USE_NEW_ARCHITECTURE:
+        print(f"\n  [NEW ARCH] Enabling GPOS marks + 19 line variants architecture")
+
+        # Step 1: Add base anchor points for GPOS mark attachment
+        add_base_glyph_anchors(font, line_capable_only=True)
+
+        # Step 2: Create GPOS mark glyphs (octave dots + accidentals)
+        mark_codepoints = create_gpos_mark_glyphs(font, dot_glyph, spec)
+
+        # Step 3: Create 19 line variants per line-capable character
+        line_variant_pua_bases = {
+            'underline': 0xE800,  # 50 chars × 4 variants = 200
+            'overline': 0xE900,   # 50 chars × 3 variants = 150
+            'combined': 0xEA00,   # 50 chars × 12 variants = 600
+        }
+        line_variant_map = create_19_line_variants(font, line_variant_pua_bases)
+
+        # Step 4: Add GPOS mark feature for attaching marks to bases
+        add_gpos_mark_feature(font, mark_codepoints)
+
+        print(f"  [NEW ARCH] ✓ New architecture setup complete")
+        print(f"             - {len(mark_codepoints)} GPOS marks")
+        print(f"             - {len(line_variant_map)} line variants")
+
+    # =========================================================================
+    # LEGACY: Pre-composed octave/accidental variants
+    # =========================================================================
+    # This creates the old-style pre-composed glyphs for backwards compatibility.
+    # Once the Rust export layer is updated to emit the new encoding, this can
+    # be removed.
+
     # Create note glyphs
     print(f"\n  Creating {len(layout.note_atoms)} note glyphs...")
     # Track target widths for glyphs with accidentals (to be set after unlinkRef())
@@ -1253,28 +4560,8 @@ def build_font(
         base_width = bx_max - bx_min
         base_glyph_name = base_glyph.glyphname
 
-        # Position dot horizontally (shifted left by 1/5 dot width for all variants)
-        dot_x_offset = bx_min + (base_width - dot_width) / 2 - dx_min + (dot_width * 0.8)
-
-        # Special adjustment for "2": shift dots left by 1/10 of character width
-        if atom.character == "2":
-            dot_x_offset -= base_width * 0.1
-
-        # Special adjustment for "3", "5", "6": shift dots left by 17% of character width
-        if atom.character in ["3", "5", "6"]:
-            dot_x_offset -= base_width * 0.17
-
-        # Special adjustment for "4": shift dots right by 4% of character width
-        if atom.character == "4":
-            dot_x_offset += base_width * 0.04
-
-        # Special adjustment for "7": shift dots left by 4% of character width
-        if atom.character == "7":
-            dot_x_offset -= base_width * 0.04
-
-        # Special adjustment for "S" (Sargam Sa): shift dots left by 1/10 of character width
-        if atom.character == "S":
-            dot_x_offset -= base_width * 0.1
+        # Position dot horizontally centered over the character
+        dot_x_offset = bx_min + (base_width - dot_width) / 2 - dx_min
 
         # Create composite glyph
         g = font.createChar(atom.assigned_codepoint, f"{atom.character}_v{atom.variant_index}")
@@ -1404,6 +4691,210 @@ def build_font(
 
     print(f"  ✓ Finalized {len(layout.note_atoms)} custom note variants")
 
+    # =========================================================================
+    # NEW: GPOS-based underline/overline marks with width-class variants
+    # =========================================================================
+    # This approach uses GPOS mark attachment instead of GSUB ligatures
+    # Benefits: fewer glyphs, cleaner composability, supports loop arcs
+
+    # Step 1: Add line anchors to base ASCII glyphs
+    print(f"\n  [GPOS] Setting up mark-based underlines/overlines...")
+    width_classes = add_line_anchors(font)
+
+    # Step 2: Create width-class mark variants (narrow/medium/wide)
+    underline_mark_variants, overline_mark_variants = create_line_mark_variants(font)
+
+    # Step 3: Add GSUB calt rules to select appropriate mark variant
+    add_line_mark_calt_rules(font, width_classes, underline_mark_variants, overline_mark_variants)
+
+    # Step 4: Create loop arc marks (quarter circles for rounded corners)
+    create_loop_arc_marks(font)
+
+    print(f"  [GPOS] ✓ Mark-based line system ready")
+
+    # =========================================================================
+    # LEGACY: GSUB-based pre-composed underlined variants (kept for compatibility)
+    # TODO: Remove once GPOS approach is verified working
+    # =========================================================================
+
+    # Create underlined variants for beat grouping (GSUB ligatures)
+    # This creates pre-composed underlined glyphs for all characters
+    # GSUB ligatures substitute char + U+0332 → underlined variant
+    print(f"\n  [LEGACY] Creating underlined variants for beat grouping...")
+    underline_map = create_underlined_variants(font)
+
+    # Create underlined variants for ALL note atoms (naturals with octaves + accidentals)
+    # Uses explicit PUA allocation at 0x16000+ (from atoms.yaml)
+    print(f"  Creating underlined variants for note atoms...")
+    note_underline_map = create_underlined_note_variants(font, layout)
+    underline_map.update(note_underline_map)
+
+    # Add GSUB ligatures for char + U+0332 substitution
+    print(f"  Adding GSUB ligatures for underline substitution...")
+    add_underline_ligatures(font, underline_map)
+
+    # Create overlined variants for continuous overlines (similar to underlines)
+    # This creates pre-composed overlined glyphs for all characters
+    # GSUB ligatures substitute char + U+0305 → overlined variant
+    print(f"\n  Creating overlined variants for continuous overlines...")
+    overline_map = create_overlined_variants(font)
+
+    # Also create overlined variants for accidental composites (sharp, flat, etc.)
+    print(f"  Creating overlined variants for accidental notes...")
+    accidental_overline_map = create_overlined_accidental_variants(font, layout)
+    overline_map.update(accidental_overline_map)
+
+    # Create overlined variants for ALL note atoms (naturals with octaves + accidentals)
+    # Parallel to underlined note variants but for overlines (slurs on superscripts)
+    # Uses explicit PUA allocation at 0x19000+ (from atoms.yaml)
+    print(f"  Creating overlined variants for note atoms (superscripts)...")
+    note_overline_map = create_overlined_note_variants(font, layout)
+    overline_map.update(note_overline_map)
+
+    # Add GSUB ligatures for char + U+0305 substitution
+    print(f"  Adding GSUB ligatures for overline substitution...")
+    add_overline_ligatures(font, overline_map)
+
+    # Create combined underline+overline variants for ALL note atoms
+    # For notes that are both in a beat group AND under a slur
+    # 9 variants per atom: 3 underline states × 3 overline states
+    # Uses explicit PUA allocation at 0xF2000+ (from atoms.yaml)
+    print(f"\n  Creating combined underline+overline variants for note atoms...")
+    combined_note_map = create_combined_line_note_variants(font, layout)
+
+    # =========================================================================
+    # FULLWIDTH LINE VARIANTS (advance-width, for brackets with seamless joining)
+    # =========================================================================
+
+    # Create custom combining marks for fullwidth lines
+    print(f"\n  Creating fullwidth combining marks (U+E700, U+E701)...")
+    create_fullwidth_combining_marks(font)
+
+    # Create fullwidth underlined variants (advance-width for seamless bracket joining)
+    print(f"  Creating fullwidth underlined variants...")
+    fullwidth_underline_map = create_underlined_variants_fullwidth(font)
+
+    # Add GSUB ligatures for char + U+E701 substitution
+    print(f"  Adding GSUB ligatures for fullwidth underline substitution...")
+    add_fullwidth_underline_ligatures(font, fullwidth_underline_map)
+
+    # Create fullwidth overlined variants (advance-width for seamless bracket joining)
+    print(f"  Creating fullwidth overlined variants...")
+    fullwidth_overline_map = create_overlined_variants_fullwidth(font)
+
+    # Add GSUB ligatures for char + U+E700 substitution
+    print(f"  Adding GSUB ligatures for fullwidth overline substitution...")
+    add_fullwidth_overline_ligatures(font, fullwidth_overline_map)
+
+    # =========================================================================
+    # COMBINED UNDERLINE+OVERLINE VARIANTS (for chars with both lines)
+    # =========================================================================
+
+    # Create combined (underline + overline) variants for ASCII chars (bbox width)
+    print(f"\n  Creating combined underline+overline variants for ASCII chars...")
+    combined_line_map = create_combined_lined_variants(font)
+
+    # Create fullwidth combined variants (advance-width for seamless joining)
+    print(f"  Creating fullwidth combined underline+overline variants...")
+    fullwidth_combined_map = create_combined_lined_variants_fullwidth(font)
+
+    # =========================================================================
+    # BRACKET VARIANTS (pre-composed chars with arcs for bracket endpoints)
+    # =========================================================================
+
+    # Load atoms.yaml for bracket variant PUA bases
+    atoms_yaml_path = os.path.join(os.path.dirname(__file__), "atoms.yaml")
+    with open(atoms_yaml_path, 'r') as f:
+        atoms_config = yaml.safe_load(f)
+
+    # Create underline bracket variants (beat grouping with arcs)
+    # Get PUA base from atoms.yaml
+    underline_bracket_base = atoms_config.get('bracket_variants', {}).get('underline_brackets', {}).get('pua_base', 0xF700)
+    print(f"\n  Creating underline bracket variants (PUA 0x{underline_bracket_base:04X}+)...")
+    underline_bracket_map = create_bracketed_variants(
+        font, underline_bracket_base, UNDERLINE_Y_BOTTOM, UNDERLINE_Y_TOP, "underline", is_overline=False)
+
+    # Create overline bracket variants (slurs with arcs)
+    overline_bracket_base = atoms_config.get('bracket_variants', {}).get('overline_brackets', {}).get('pua_base', 0xFA00)
+    print(f"  Creating overline bracket variants (PUA 0x{overline_bracket_base:04X}+)...")
+    overline_bracket_map = create_bracketed_variants(
+        font, overline_bracket_base, OVERLINE_Y_BOTTOM, OVERLINE_Y_TOP, "overline", is_overline=True)
+
+    # =========================================================================
+    # PUA NOTE ATOM BRACKET VARIANTS (for octave variants 0xE600-0xE6BC)
+    # =========================================================================
+    # PUA allocation for note atom brackets (after combined variants at 0xF000-0xF0FF):
+    #   Underline: 0xF100 (left), 0xF1C0 (right), 0xF280 (both) - 188 glyphs each
+    #   Overline:  0xF400 (left), 0xF4C0 (right), 0xF580 (both) - 188 glyphs each
+
+    # Create underline bracket variants for PUA octave notes
+    print(f"\n  Creating PUA underline bracket variants (0xF100+)...")
+    pua_underline_bracket_map = create_pua_bracketed_variants(
+        font, 0xF100, 0xE600, 0xE6BC, UNDERLINE_Y_BOTTOM, UNDERLINE_Y_TOP, "underline", is_overline=False)
+
+    # Create overline bracket variants for PUA octave notes
+    print(f"  Creating PUA overline bracket variants (0xF400+)...")
+    pua_overline_bracket_map = create_pua_bracketed_variants(
+        font, 0xF400, 0xE600, 0xE6BC, OVERLINE_Y_BOTTOM, OVERLINE_Y_TOP, "overline", is_overline=True)
+
+    # =========================================================================
+    # UNDERLINED NOTE BRACKET VARIANTS (for underlined notes at 0x16000+)
+    # =========================================================================
+    # These add arc endpoints to the already-underlined glyphs
+    # PUA allocation from atoms.yaml: underlined_note_brackets at 0x17000
+    underlined_bracket_base = atoms_config.get('pua_allocation', {}).get('bracket_variants', {}).get('underlined_note_brackets', {}).get('pua_base', 0x17000)
+
+    # Create bracket variants for each underlined system
+    underlined_systems = [
+        ("number", 0x16000, 0x160D2),   # 7 chars × 30 variants = 210
+        ("western", 0x16100, 0x162A4),  # 14 chars × 30 variants = 420
+        ("sargam", 0x16300, 0x16468),   # 12 chars × 30 variants = 360
+        ("doremi", 0x16500, 0x166A4),   # 14 chars × 30 variants = 420
+    ]
+
+    print(f"\n  Creating underlined note bracket variants (0x{underlined_bracket_base:04X}+)...")
+    offset = 0
+    for system_name, src_start, src_end in underlined_systems:
+        count = src_end - src_start
+        dest_base = underlined_bracket_base + offset
+        print(f"    {system_name}: 0x{src_start:05X}-0x{src_end:05X} → brackets at 0x{dest_base:05X}+")
+        create_pua_bracketed_variants(
+            font, dest_base, src_start, src_end,
+            UNDERLINE_Y_BOTTOM, UNDERLINE_Y_TOP, f"underlined-{system_name}", is_overline=False)
+        # Each system needs 2 × count variants (left, right)
+        offset += count * 2
+
+    # Reposition the combining marks to our lane positions
+    # This ensures fallback rendering (when ligatures don't fire) is still correct
+    print(f"  Repositioning combining marks to lane positions...")
+    reposition_combining_marks(font)
+
+    # Create line endpoint caps (rounded ends for underlines/overlines)
+    print(f"  Creating line endpoint caps...")
+    create_line_endpoint_caps(font)
+
+    # Add ccmp ligatures for combining octave dots → precomposed glyphs
+    # This enables octave dots to work WITHOUT CSS font-feature-settings
+    print(f"  Adding ccmp ligatures for octave dots...")
+    add_octave_dot_ligatures(font, layout)
+
+    # Create combined variants: underline/overline + octave dots
+    # These handle triple combinations: char + octave_dot + underline/overline
+    print(f"\n  Creating combined line+octave variants...")
+    underline_octave_map, overline_octave_map = create_combined_line_variants(
+        font, underline_map, overline_map)
+
+    # Add GSUB ligatures for triple combinations
+    print(f"  Adding GSUB ligatures for line+octave combinations...")
+    add_combined_line_ligatures(font, underline_octave_map, overline_octave_map)
+
+    # =========================================================================
+    # SUPERSCRIPT ORNAMENT VARIANTS (50% scaled for grace notes)
+    # =========================================================================
+    print(f"\n  Creating superscript ornament variants (50% scale)...")
+    superscript_map = create_superscript_variants(font, layout, atoms_config)
+    print(f"  ✓ Superscript variant map contains {len(superscript_map)} entries")
+
     # Close bold font if it was opened (and it's not the same as base font)
     if bold_font and bold_font_path != base_font_path:
         try:
@@ -1411,6 +4902,22 @@ def build_font(
             print(f"  ✓ Closed bold font")
         except:
             pass
+
+    # Update font metrics to accommodate underlines and overlines in separate lanes
+    # Lane positions:
+    #   Overline: 1050 to 1114 (above dots)
+    #   Underline: -350 to -286 (below dots)
+    # Add margin for line-height
+    NEW_ASCENT = 1200   # Above overline top (1114) with margin
+    NEW_DESCENT = 450   # Below underline bottom (350) with margin
+
+    font.hhea_ascent = NEW_ASCENT
+    font.hhea_descent = -NEW_DESCENT
+    font.os2_typoascent = NEW_ASCENT
+    font.os2_typodescent = -NEW_DESCENT
+    font.os2_winascent = NEW_ASCENT
+    font.os2_windescent = NEW_DESCENT
+    print(f"  ✓ Updated font metrics: ascent={NEW_ASCENT}, descent={NEW_DESCENT}")
 
     return font
 
@@ -1700,8 +5207,8 @@ def main():
     )
     parser.add_argument(
         "--atoms",
-        default="build/atoms.yaml",
-        help="Path to atoms.yaml (default: build/atoms.yaml)"
+        default="tools/fontgen/atoms.yaml",
+        help="Path to atoms.yaml (default: tools/fontgen/atoms.yaml)"
     )
     parser.add_argument(
         "--fontspec",
@@ -1872,11 +5379,28 @@ def generate_font_for_system(args):
     if args.debug_html:
         print(f"  ✓ {output_html}")
 
+    # Copy to static/fonts for development server
+    static_fonts_dir = os.path.join(repo_root, "static", "fonts")
+    if os.path.exists(static_fonts_dir):
+        import shutil
+        static_ttf = os.path.join(static_fonts_dir, f"{font_basename}.ttf")
+        static_woff2 = os.path.join(static_fonts_dir, f"{font_basename}.woff2")
+        static_json = os.path.join(static_fonts_dir, f"{font_basename}-map.json")
+
+        shutil.copy(output_font, static_ttf)
+        print(f"\n  ✓ Copied to static: {static_ttf}")
+
+        if os.path.exists(output_woff2):
+            shutil.copy(output_woff2, static_woff2)
+            print(f"  ✓ Copied to static: {static_woff2}")
+
+        shutil.copy(output_mapping, static_json)
+        print(f"  ✓ Copied to static: {static_json}")
+
     print(f"\nNext steps:")
-    print(f"  1. Verify font renders in browser")
-    print(f"  2. Check all notation systems work correctly")
-    print(f"  3. Commit JSON mapping to repo")
-    print(f"  4. Deploy to production")
+    print(f"  1. Hard refresh browser (Ctrl+Shift+R) to reload font")
+    print(f"  2. Verify font renders correctly in Text tab")
+    print(f"  3. Check all notation systems work correctly")
 
     return 0
 

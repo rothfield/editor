@@ -208,7 +208,7 @@ impl<'a> LayoutLineComputer<'a> {
 
             // Skip character widths for any cells we skipped
             for skipped_idx in last_original_idx..original_cell_idx {
-                let skipped_char_count = line.cells[skipped_idx].char.chars().count();
+                let skipped_char_count = line.cells[skipped_idx].display_char().chars().count();
                 char_width_offset += skipped_char_count;
             }
             last_original_idx = original_cell_idx + 1;
@@ -317,6 +317,10 @@ impl<'a> LayoutLineComputer<'a> {
                 crate::models::StaffRole::GroupHeader => "group-header",
                 crate::models::StaffRole::GroupItem => "group-item",
             }.to_string(),
+            system_marker: line.system_marker.map(|m| match m {
+                crate::models::SystemMarker::Start => "start".to_string(),
+                crate::models::SystemMarker::End => "end".to_string(),
+            }),
             lyrics,
             tala,
             height,
@@ -646,13 +650,12 @@ impl<'a> LayoutLineComputer<'a> {
         }
     }
 
-    /// Calculate effective widths for cells, using syllable widths
+    /// Calculate effective widths for cells, using collision-based syllable expansion
     ///
-    /// Each cell's effective width is the maximum of:
-    /// - Original cell width
-    /// - Its assigned syllable width + padding
+    /// Only expands cell widths when a syllable would collide with the next syllable.
+    /// Syllables are allowed to extend past their cell boundary if there's no collision.
     ///
-    /// This ensures syllables fit within their cells with no squishing.
+    /// This prevents unnecessary spacing when syllables don't overlap.
     fn calculate_effective_widths(
         &self,
         cell_widths: &[f32],
@@ -662,23 +665,44 @@ impl<'a> LayoutLineComputer<'a> {
     ) -> Vec<f32> {
         let mut effective = cell_widths.to_vec();
 
-        // Ensure we have enough effective widths
         if effective.is_empty() || syllable_assignments.is_empty() {
             return effective;
         }
 
-        // For each syllable assignment, ensure cell is at least as wide as the syllable
-        // Skip whitespace-only syllables (they don't affect cell width)
-        for (syll_idx, assignment) in syllable_assignments.iter().enumerate() {
-            if let Some(syll_width) = syllable_widths.get(syll_idx) {
-                // Skip if syllable is only whitespace
-                if assignment.syllable.trim().is_empty() {
-                    continue;
-                }
-                if let Some(eff) = effective.get_mut(assignment.cell_index) {
-                    *eff = eff.max(*syll_width);
+        // Only expand when syllables would collide with the next syllable
+        for i in 0..syllable_assignments.len() {
+            let assignment = &syllable_assignments[i];
+
+            // Skip whitespace-only syllables
+            if assignment.syllable.trim().is_empty() {
+                continue;
+            }
+
+            let Some(&syll_width) = syllable_widths.get(i) else {
+                continue;
+            };
+
+            // Check if there's a next syllable to potentially collide with
+            let next_assignment = syllable_assignments.get(i + 1);
+
+            if let Some(next) = next_assignment {
+                // Calculate positions based on current effective widths
+                let current_cell_x: f32 = effective[..assignment.cell_index].iter().sum();
+                let current_cell_width = effective.get(assignment.cell_index).copied().unwrap_or(0.0);
+                let syllable_end = current_cell_x + syll_width;
+
+                // Calculate where next syllable's cell starts
+                let next_cell_x: f32 = effective[..next.cell_index].iter().sum();
+
+                // Only expand if syllable would extend past next cell's start
+                if syllable_end > next_cell_x {
+                    let expansion_needed = syllable_end - next_cell_x;
+                    if let Some(eff) = effective.get_mut(assignment.cell_index) {
+                        *eff = current_cell_width + expansion_needed;
+                    }
                 }
             }
+            // If no next syllable, no expansion needed - syllable can extend freely
         }
 
         effective
@@ -887,7 +911,7 @@ impl<'a> LayoutLineComputer<'a> {
     fn has_significant_following_chars(cells: &[Cell], start_idx: usize) -> bool {
         // Look at the next few cells to see if there are significant characters
         for cell in cells.iter().skip(start_idx + 1).take(3) {
-            if Self::char_requires_collision_avoidance(&cell.char) {
+            if Self::char_requires_collision_avoidance(&cell.display_char()) {
                 return true;
             }
         }
@@ -971,8 +995,8 @@ impl<'a> LayoutLineComputer<'a> {
                     // Use default cell width of 12.0
                     let ornament_width = 12.0 * 0.6;
 
-                    // Apply glyph substitution for octave shifts (same as regular cells)
-                    let ornament_char = ornament_cell.char.clone();
+                    // Use display_char() to get the proper glyph (with underlines if set)
+                    let ornament_char = ornament_cell.display_char();
 
                     ornaments.push(RenderOrnament {
                         text: ornament_char,
@@ -1219,5 +1243,121 @@ mod even_spacing_tests {
         assert_eq!(positions.len(), 2);
         assert_eq!(positions[0], 0.0);   // First cell
         assert_eq!(positions[1], 20.0);  // 0 + 10 (width) + 10 (gap)
+    }
+}
+
+#[cfg(test)]
+mod combined_char_tests {
+    use crate::models::core::{Cell, Document, Line};
+    use crate::models::elements::{ElementKind, SlurIndicator};
+    use crate::models::pitch_code::PitchCode;
+    use crate::models::StaffRole;
+
+    fn make_pitched_cell(pitch_code: PitchCode, col: usize) -> Cell {
+        Cell {
+            char: "X".to_string(), // placeholder - will be set by compute_glyphs
+            combined_char: None,
+            kind: ElementKind::PitchedElement,
+            col,
+            flags: 0,
+            pitch_code: Some(pitch_code),
+            pitch_system: None,
+            octave: 0,
+            slur_indicator: SlurIndicator::None,
+            ornament: None,
+            x: 0.0,
+            y: 0.0,
+            w: 0.0,
+            h: 0.0,
+            bbox: (0.0, 0.0, 0.0, 0.0),
+            hit: (0.0, 0.0, 0.0, 0.0),
+        }
+    }
+
+    fn make_test_line(cells: Vec<Cell>) -> Line {
+        Line {
+            cells,
+            label: String::new(),
+            tala: String::new(),
+            lyrics: String::new(),
+            tonic: None,
+            pitch_system: None,
+            key_signature: String::new(),
+            time_signature: String::new(),
+            tempo: String::new(),
+            beats: Vec::new(),
+            slurs: Vec::new(),
+            part_id: "P1".to_string(),
+            system_id: 1,
+            staff_role: StaffRole::Melody,
+            system_marker: None,
+            new_system: false,
+        }
+    }
+
+    /// Test that multi-cell beats get underlined variants in RenderCell.char
+    /// This verifies that combined_char is properly used in HTML layout output
+    #[test]
+    fn test_html_layout_outputs_combined_char_for_underlined_beats() {
+        use crate::html_layout::{LayoutConfig, LayoutEngine};
+        use crate::models::PitchSystem;
+
+        // Create 3 adjacent pitched cells (should form a multi-cell beat with underlines)
+        let cell1 = make_pitched_cell(PitchCode::N1, 0);
+        let cell2 = make_pitched_cell(PitchCode::N2, 1);
+        let cell3 = make_pitched_cell(PitchCode::N3, 2);
+
+        let line = make_test_line(vec![cell1, cell2, cell3]);
+        let mut doc = Document::new();
+        doc.lines = vec![line];
+        doc.pitch_system = Some(PitchSystem::Number);
+
+        // Compute glyphs (sets cell.char to base PUA glyph)
+        doc.compute_glyphs();
+
+        // Compute line variants (should set combined_char to underlined variants)
+        doc.compute_line_variants();
+
+        // Now compute layout and check RenderCell output
+        let config = LayoutConfig {
+            syllable_widths: vec![],
+            font_size: 24.0,
+            line_height: 48.0,
+            left_margin: 0.0,
+            cell_y_offset: 0.0,
+            cell_height: 24.0,
+            min_syllable_padding: 4.0,
+            word_spacing: 10.0,
+            slur_offset_above: 10.0,
+            beat_loop_offset_below: 10.0,
+            beat_loop_height: 20.0,
+        };
+
+        let engine = LayoutEngine::new();
+        let display_list = engine.compute_layout(&doc, &config);
+
+        // Get the render cells from line 0
+        let render_line = &display_list.lines[0];
+        let render_cells = &render_line.cells;
+
+        assert_eq!(render_cells.len(), 3, "Should have 3 render cells");
+
+        // Check that render cells have underlined PUA variants (0xE800+ range)
+        // For multi-cell beat: first=left underline, middle=middle underline, last=right underline
+        for (i, rc) in render_cells.iter().enumerate() {
+            let first_char = rc.char.chars().next().expect("RenderCell should have a char");
+            let codepoint = first_char as u32;
+
+            println!("Cell {}: U+{:04X} '{}'", i, codepoint, first_char);
+
+            // Underlined variants should be in PUA range 0xE800+
+            // Expected: U+E801 (left), U+E804 (middle), U+E80A (right) for Number 1,2,3
+            assert!(
+                codepoint >= 0xE800 && codepoint < 0xF000,
+                "Cell {} should have underlined variant in PUA range 0xE800-0xEFFF (got U+{:04X} '{}'). \
+                 This means combined_char is not being output to RenderCell.",
+                i, codepoint, first_char
+            );
+        }
     }
 }

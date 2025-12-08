@@ -1,6 +1,31 @@
 /* Staff Grouping Gutter Styles */
 /* Based on proto2.html design */
 
+/* ===== SYSTEM CONTROLS CONTAINER ===== */
+/* Positioned outside notation div, to the left */
+
+#editor-container {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+}
+
+.system-controls-container {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 28px;
+  min-width: 28px;
+  flex-shrink: 0;
+  margin-right: 4px;
+}
+
+/* Ensure notation editor takes remaining space */
+#notation-editor {
+  flex: 1;
+  min-width: 0;
+}
+
 /* Line structure with gutter */
 .notation-line {
   display: flex !important;
@@ -8,15 +33,15 @@
   align-items: stretch;
 }
 
-/* Gutter column (left side) */
+/* Gutter column (left side - label only, system marker now in separate container) */
 .line-gutter {
-  /* Default: narrow (icon only) */
-  width: 28px;
-  min-width: 28px;
+  /* Default: no width when no label */
+  width: 0;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 2px 4px;
+  padding: 0;
   flex-shrink: 0;
   position: relative;
   cursor: default;
@@ -25,10 +50,11 @@
   overflow: hidden;
 }
 
-/* Gutter with label: wider to accommodate text */
+/* Gutter with label: show width to accommodate text */
 .line-gutter.has-label {
   width: 80px;
   min-width: 80px;
+  padding: 2px 4px;
 }
 
 /* Gutter collapsed state */
@@ -40,21 +66,8 @@
   pointer-events: none;
 }
 
-.line-gutter:hover {
+.line-gutter.has-label:hover {
   background: #f1f5ff;
-}
-
-/* Gutter icon */
-.gutter-icon {
-  width: 16px;
-  height: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 11px;
-  font-weight: 600;
-  color: #666;
-  flex-shrink: 0;
 }
 
 /* Line label within gutter */
@@ -73,59 +86,6 @@
   flex: 1;
   position: relative;
   min-width: 0;
-}
-
-/* Role-specific styling */
-
-/* Melody (standalone staff) */
-.role-melody .gutter-icon::before {
-  content: "M";
-  color: #666;
-}
-
-.role-melody .line-label {
-  font-weight: 400;
-}
-
-/* Group header */
-.role-group-header .gutter-icon::before {
-  content: "G";
-  color: #0057b8;
-}
-
-.role-group-header .line-label {
-  font-weight: 600;
-}
-
-/* Group item */
-.role-group-item .gutter-icon {
-  padding-left: 12px; /* Indent to show hierarchy */
-}
-
-.role-group-item .gutter-icon::before {
-  content: "•";
-  color: #666;
-  font-size: 14px;
-}
-
-.role-group-item .line-label {
-  font-weight: 400;
-}
-
-/* Add indent for group-item labels when gutter has label */
-.role-group-item .line-gutter.has-label .line-label {
-  padding-left: 12px;
-}
-
-/* Vertical line connecting group items */
-.role-group-item .line-gutter::before {
-  content: "";
-  position: absolute;
-  left: 8px;
-  top: 0;
-  bottom: 0;
-  border-left: 1px solid #ccc;
-  pointer-events: none;
 }
 
 /* Bracket overlay container - positioned outside editor-container */
@@ -201,55 +161,77 @@
   border-color: #0057b8;
 }
 
-/* Gutter toggle button */
-.gutter-toggle-btn {
-  position: absolute;
-  top: 8px;
-  left: 8px;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid rgba(107, 114, 128, 0.3);
+
+/* ===== SYSTEM MARKER INDICATOR ===== */
+/* LilyPond-style << and >> for multi-system grouping */
+
+.system-marker-indicator {
+  min-width: 20px;
+  height: 18px;
   display: flex;
   align-items: center;
   justify-content: center;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: #888;
   cursor: pointer;
-  z-index: 10;
-  transition: all 0.2s ease-in-out;
-  backdrop-filter: blur(4px);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  padding: 0;
+  border-radius: 3px;
+  border: 1px solid #ddd;
+  background-color: #f5f5f5;
+  margin-left: auto;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
 }
 
-.gutter-toggle-btn:hover {
-  background: rgba(0, 102, 204, 0.1);
-  border-color: rgba(0, 102, 204, 0.5);
+.system-marker-indicator:hover {
+  background-color: rgba(0, 87, 184, 0.1);
+  border-color: rgba(0, 87, 184, 0.3);
+  color: #0057b8;
 }
 
-.gutter-toggle-btn:focus {
-  outline: 2px solid rgba(0, 102, 204, 0.5);
-  outline-offset: 2px;
+.system-marker-indicator.marker-active {
+  color: #0057b8;
+  background-color: rgba(0, 87, 184, 0.1);
 }
 
-.gutter-toggle-btn svg {
-  width: 12px;
-  height: 12px;
-  stroke: #6b7280;
-  transition: transform 0.2s ease-in-out, stroke 0.2s;
-  flex-shrink: 0;
+.system-marker-indicator.marker-active:hover {
+  background-color: rgba(0, 87, 184, 0.2);
 }
 
-.gutter-toggle-btn:hover svg {
-  stroke: #0066cc;
+/* System marker popup menu */
+.system-marker-menu {
+  background: #ffffff;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  min-width: 150px;
+  padding: 4px 0;
+  font-size: 13px;
+  font-family: system-ui, -apple-system, sans-serif;
 }
 
-/* Icon rotation when gutter is collapsed */
-body.gutter-collapsed .gutter-toggle-btn svg {
-  transform: scaleX(-1);
+.system-marker-menu-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: background-color 0.1s;
 }
 
-/* Adjust left position when gutter is collapsed */
-body.gutter-collapsed .gutter-toggle-btn {
-  left: 4px;
+.system-marker-menu-item:hover {
+  background-color: #eef6ff;
+}
+
+.system-marker-menu-item.current {
+  background-color: rgba(0, 87, 184, 0.1);
+  font-weight: 500;
+}
+
+.system-marker-menu-item .menu-icon {
+  width: 20px;
+  text-align: center;
+  font-family: monospace;
+  font-weight: 600;
+  color: #0057b8;
 }

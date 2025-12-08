@@ -79,6 +79,13 @@ export default class InspectorCoordinator {
       this.updateHTMLDisplay();
     }
 
+    // Update Text display only if visible
+    if (this.editor.ui && this.editor.ui.activeTab === 'text') {
+      this.editor.exportManager.updateTextDisplay().catch(err => {
+        logger.error(LOG_CATEGORIES.INSPECTOR, 'Failed to update Text display', { error: err });
+      });
+    }
+
     // Update hitboxes display only if visible
     if (this.editor.ui && this.editor.ui.activeTab === 'hitboxes') {
       this.updateHitboxesDisplay();

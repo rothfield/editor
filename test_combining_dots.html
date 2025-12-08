@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+@font-face {
+  font-family: 'NotationFont';
+  src: url('static/fonts/NotationFont.woff2') format('woff2'),
+       url('static/fonts/NotationFont.ttf') format('truetype');
+}
+body { font-family: 'NotationFont', sans-serif; font-size: 48px; padding: 20px; }
+.test { margin: 20px 0; border: 1px solid #ccc; padding: 10px; }
+.label { font-size: 14px; font-family: monospace; color: #666; }
+</style>
+</head>
+<body>
+<h2>Combining Character Dot Centering Test</h2>
+
+<div class="test">
+  <div class="label">Base digits (no dots):</div>
+  <div>1 2 3 4 5 6 7</div>
+</div>
+
+<div class="test">
+  <div class="label">With U+0307 COMBINING DOT ABOVE:</div>
+  <div>1̇ 2̇ 3̇ 4̇ 5̇ 6̇ 7̇</div>
+</div>
+
+<div class="test">
+  <div class="label">With U+0323 COMBINING DOT BELOW:</div>
+  <div>1̣ 2̣ 3̣ 4̣ 5̣ 6̣ 7̣</div>
+</div>
+
+<div class="test">
+  <div class="label">Sharp + combining dot above (1# with dot):</div>
+  <div>1♯̇ 2♯̇ 3♯̇</div>
+</div>
+
+<p style="font-size: 14px; font-family: sans-serif;">
+If dots are NOT centered over the base digit, the test fails.<br>
+The dot should appear directly above/below the CENTER of each digit.
+</p>
+</body>
+</html>

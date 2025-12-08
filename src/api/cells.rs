@@ -536,6 +536,7 @@ pub fn paste_ornament_to_cell(
     let ornament_placement = match placement {
         "before" => crate::models::OrnamentPlacement::Before,
         "after" => crate::models::OrnamentPlacement::After,
+        "ontop" => crate::models::OrnamentPlacement::OnTop,
         _ => return Err(JsValue::from_str(&format!("Invalid placement: {}", placement))),
     };
 
@@ -626,6 +627,7 @@ pub fn paste_ornament_cells(
     let ornament_placement = match placement {
         "before" => crate::models::OrnamentPlacement::Before,
         "after" => crate::models::OrnamentPlacement::After,
+        "ontop" => crate::models::OrnamentPlacement::OnTop,
         _ => return Err(JsValue::from_str(&format!("Invalid placement: {}", placement))),
     };
 
@@ -704,7 +706,7 @@ pub fn clear_ornament_from_cell(
 /// # Parameters
 /// - `cells_js`: JavaScript array of Cell objects
 /// - `cell_index`: Index of the cell to update placement
-/// - `placement`: Placement string ("before" or "after")
+/// - `placement`: Placement string ("before", "after", or "ontop")
 ///
 /// # Returns
 /// Updated JavaScript array of Cell objects with placement updated
@@ -732,6 +734,7 @@ pub fn set_ornament_placement_on_cell(
     let ornament_placement = match placement {
         "before" => crate::models::OrnamentPlacement::Before,
         "after" => crate::models::OrnamentPlacement::After,
+        "ontop" => crate::models::OrnamentPlacement::OnTop,
         _ => return Err(JsValue::from_str(&format!("Invalid placement: {}", placement))),
     };
 

@@ -65,6 +65,23 @@ class ArcRenderer {
   }
 
   /**
+   * Check if text-based line rendering is enabled (font glyphs have arcs baked in)
+   * @returns {boolean} True if text-based rendering is enabled
+   */
+  isTextBasedLineRendering() {
+    try {
+      const stored = localStorage.getItem('musicEditorPreferences');
+      if (stored) {
+        const prefs = JSON.parse(stored);
+        return prefs.lineRenderingMode === 'text';
+      }
+    } catch (e) {
+      // Default to text-based if error reading preferences
+    }
+    return true; // Default: text-based (new architecture)
+  }
+
+  /**
    * Render both slurs and beat loops from cell data
    * Extracts spans and creates SVG paths
    *
@@ -75,13 +92,20 @@ class ArcRenderer {
       return;
     }
 
-    this.renderSlurs(displayList);
+    // When text-based rendering is enabled, font glyphs have arcs baked in
+    // Skip SVG overlay rendering for slurs and beat loops
+    const useTextBased = this.isTextBasedLineRendering();
 
-    // Skip beat loops if configured (e.g., in ornament editor mini canvas)
-    if (!this.options.skipBeatLoops) {
+    if (!useTextBased) {
+      this.renderSlurs(displayList);
+    }
+
+    // Skip beat loops if configured OR if using text-based rendering
+    if (!this.options.skipBeatLoops && !useTextBased) {
       this.renderBeatLoops(displayList);
     }
 
+    // Ornament arcs are always SVG (not part of 19-variant system)
     this.renderOrnamentArcs(displayList);
   }
 

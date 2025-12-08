@@ -325,6 +325,7 @@ mod tests {
     fn create_test_cell(ch: &str) -> Cell {
         Cell {
             char: ch.to_string(),
+            combined_char: None,
             kind: ElementKind::PitchedElement,
             col: 0,
             flags: 0,
@@ -348,7 +349,7 @@ mod tests {
         let line = Line {
             cells: vec![],
             label: String::new(),
-            tonic: String::new(),
+            tonic: None,
             pitch_system: None,
             key_signature: String::new(),
             tempo: String::new(),
@@ -359,6 +360,7 @@ mod tests {
             system_id: 0,
             part_id: String::new(),
             staff_role: StaffRole::default(),
+            system_marker: None,
             beats: vec![],
             slurs: vec![],
         };

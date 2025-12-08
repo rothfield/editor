@@ -46,6 +46,7 @@ fn test_breath_mark_followed_by_dashes_creates_quarter_note_and_quarter_rest() {
             pitch_system: None,
             slur_indicator: editor_wasm::models::SlurIndicator::None,
             ornament: None,
+            combined_char: None,
             x: 0.0,
             y: 0.0,
             w: 1.0,
@@ -64,6 +65,7 @@ fn test_breath_mark_followed_by_dashes_creates_quarter_note_and_quarter_rest() {
             pitch_system: None,
             slur_indicator: editor_wasm::models::SlurIndicator::None,
             ornament: None,
+            combined_char: None,
             x: 1.0,
             y: 0.0,
             w: 1.0,
@@ -82,6 +84,7 @@ fn test_breath_mark_followed_by_dashes_creates_quarter_note_and_quarter_rest() {
             pitch_system: None,
             slur_indicator: editor_wasm::models::SlurIndicator::None,
             ornament: None,
+            combined_char: None,
             x: 2.0,
             y: 0.0,
             w: 1.0,
@@ -100,6 +103,7 @@ fn test_breath_mark_followed_by_dashes_creates_quarter_note_and_quarter_rest() {
             pitch_system: None,
             slur_indicator: editor_wasm::models::SlurIndicator::None,
             ornament: None,
+            combined_char: None,
             x: 3.0,
             y: 0.0,
             w: 1.0,
@@ -118,6 +122,7 @@ fn test_breath_mark_followed_by_dashes_creates_quarter_note_and_quarter_rest() {
             pitch_system: None,
             slur_indicator: editor_wasm::models::SlurIndicator::None,
             ornament: None,
+            combined_char: None,
             x: 4.0,
             y: 0.0,
             w: 1.0,
@@ -133,7 +138,7 @@ fn test_breath_mark_followed_by_dashes_creates_quarter_note_and_quarter_rest() {
         label: String::new(),
         tala: String::new(),
         lyrics: String::new(),
-        tonic: String::new(),
+        tonic: None,
         pitch_system: None,
         key_signature: String::new(),
         time_signature: String::new(),
@@ -142,12 +147,13 @@ fn test_breath_mark_followed_by_dashes_creates_quarter_note_and_quarter_rest() {
         system_id: 0,
         part_id: "P1".to_string(),
         staff_role: editor_wasm::models::core::StaffRole::Melody,
+        system_marker: None,
         beats: Vec::new(),
         slurs: Vec::new(),
     };
 
     // Build IR from the line
-    let measures = build_export_measures_from_line(&line);
+    let measures = build_export_measures_from_line(&line, None);
 
     // Verify we got one measure
     assert_eq!(measures.len(), 1, "Should have one measure");
@@ -239,6 +245,7 @@ fn test_breath_mark_with_rest_and_note() {
             pitch_system: None,
             slur_indicator: editor_wasm::models::SlurIndicator::None,
             ornament: None,
+            combined_char: None,
             x: 0.0,
             y: 0.0,
             w: 1.0,
@@ -257,6 +264,7 @@ fn test_breath_mark_with_rest_and_note() {
             pitch_system: None,
             slur_indicator: editor_wasm::models::SlurIndicator::None,
             ornament: None,
+            combined_char: None,
             x: 1.0,
             y: 0.0,
             w: 1.0,
@@ -275,6 +283,7 @@ fn test_breath_mark_with_rest_and_note() {
             pitch_system: None,
             slur_indicator: editor_wasm::models::SlurIndicator::None,
             ornament: None,
+            combined_char: None,
             x: 2.0,
             y: 0.0,
             w: 1.0,
@@ -293,6 +302,7 @@ fn test_breath_mark_with_rest_and_note() {
             pitch_system: None,
             slur_indicator: editor_wasm::models::SlurIndicator::None,
             ornament: None,
+            combined_char: None,
             x: 3.0,
             y: 0.0,
             w: 1.0,
@@ -311,6 +321,7 @@ fn test_breath_mark_with_rest_and_note() {
             pitch_system: None,
             slur_indicator: editor_wasm::models::SlurIndicator::None,
             ornament: None,
+            combined_char: None,
             x: 4.0,
             y: 0.0,
             w: 1.0,
@@ -329,6 +340,7 @@ fn test_breath_mark_with_rest_and_note() {
             pitch_system: None,
             slur_indicator: editor_wasm::models::SlurIndicator::None,
             ornament: None,
+            combined_char: None,
             x: 5.0,
             y: 0.0,
             w: 1.0,
@@ -344,7 +356,7 @@ fn test_breath_mark_with_rest_and_note() {
         label: String::new(),
         tala: String::new(),
         lyrics: String::new(),
-        tonic: String::new(),
+        tonic: None,
         pitch_system: None,
         key_signature: String::new(),
         time_signature: String::new(),
@@ -353,12 +365,13 @@ fn test_breath_mark_with_rest_and_note() {
         system_id: 0,
         part_id: "P1".to_string(),
         staff_role: editor_wasm::models::core::StaffRole::Melody,
+        system_marker: None,
         beats: Vec::new(),
         slurs: Vec::new(),
     };
 
     // Build IR from the line
-    let measures = build_export_measures_from_line(&line);
+    let measures = build_export_measures_from_line(&line, None);
 
     // Verify we got one measure
     assert_eq!(measures.len(), 1, "Should have one measure");
@@ -448,6 +461,7 @@ fn test_breath_mark_space_dash_creates_two_quarter_notes() {
             pitch_system: None,
             slur_indicator: editor_wasm::models::SlurIndicator::None,
             ornament: None,
+            combined_char: None,
             x: 0.0,
             y: 0.0,
             w: 1.0,
@@ -466,6 +480,7 @@ fn test_breath_mark_space_dash_creates_two_quarter_notes() {
             pitch_system: None,
             slur_indicator: editor_wasm::models::SlurIndicator::None,
             ornament: None,
+            combined_char: None,
             x: 1.0,
             y: 0.0,
             w: 1.0,
@@ -484,6 +499,7 @@ fn test_breath_mark_space_dash_creates_two_quarter_notes() {
             pitch_system: None,
             slur_indicator: editor_wasm::models::SlurIndicator::None,
             ornament: None,
+            combined_char: None,
             x: 2.0,
             y: 0.0,
             w: 1.0,
@@ -502,6 +518,7 @@ fn test_breath_mark_space_dash_creates_two_quarter_notes() {
             pitch_system: None,
             slur_indicator: editor_wasm::models::SlurIndicator::None,
             ornament: None,
+            combined_char: None,
             x: 3.0,
             y: 0.0,
             w: 1.0,
@@ -517,7 +534,7 @@ fn test_breath_mark_space_dash_creates_two_quarter_notes() {
         label: String::new(),
         tala: String::new(),
         lyrics: String::new(),
-        tonic: String::new(),
+        tonic: None,
         pitch_system: None,
         key_signature: String::new(),
         time_signature: String::new(),
@@ -526,12 +543,13 @@ fn test_breath_mark_space_dash_creates_two_quarter_notes() {
         system_id: 0,
         part_id: "P1".to_string(),
         staff_role: editor_wasm::models::core::StaffRole::Melody,
+        system_marker: None,
         beats: Vec::new(),
         slurs: Vec::new(),
     };
 
     // Build IR from the line
-    let measures = build_export_measures_from_line(&line);
+    let measures = build_export_measures_from_line(&line, None);
 
     // Verify we got one measure
     assert_eq!(measures.len(), 1, "Should have one measure");
@@ -603,6 +621,7 @@ fn test_breath_mark_space_nine_dashes() {
             pitch_system: None,
             slur_indicator: editor_wasm::models::SlurIndicator::None,
             ornament: None,
+            combined_char: None,
             x: 0.0,
             y: 0.0,
             w: 1.0,
@@ -621,6 +640,7 @@ fn test_breath_mark_space_nine_dashes() {
             pitch_system: None,
             slur_indicator: editor_wasm::models::SlurIndicator::None,
             ornament: None,
+            combined_char: None,
             x: 1.0,
             y: 0.0,
             w: 1.0,
@@ -639,6 +659,7 @@ fn test_breath_mark_space_nine_dashes() {
             pitch_system: None,
             slur_indicator: editor_wasm::models::SlurIndicator::None,
             ornament: None,
+            combined_char: None,
             x: 2.0,
             y: 0.0,
             w: 1.0,
@@ -660,6 +681,7 @@ fn test_breath_mark_space_nine_dashes() {
             pitch_system: None,
             slur_indicator: editor_wasm::models::SlurIndicator::None,
             ornament: None,
+            combined_char: None,
             x: (3.0 + i as f32),
             y: 0.0,
             w: 1.0,
@@ -674,7 +696,7 @@ fn test_breath_mark_space_nine_dashes() {
         label: String::new(),
         tala: String::new(),
         lyrics: String::new(),
-        tonic: String::new(),
+        tonic: None,
         pitch_system: None,
         key_signature: String::new(),
         time_signature: String::new(),
@@ -683,11 +705,12 @@ fn test_breath_mark_space_nine_dashes() {
         system_id: 0,
         part_id: "P1".to_string(),
         staff_role: editor_wasm::models::core::StaffRole::Melody,
+        system_marker: None,
         beats: Vec::new(),
         slurs: Vec::new(),
     };
 
-    let measures = build_export_measures_from_line(&line);
+    let measures = build_export_measures_from_line(&line, None);
 
     // Verify we got one measure
     assert_eq!(measures.len(), 1, "Should have one measure");
@@ -754,6 +777,7 @@ fn test_breath_mark_space_three_dashes() {
             pitch_system: None,
             slur_indicator: editor_wasm::models::SlurIndicator::None,
             ornament: None,
+            combined_char: None,
             x: 0.0,
             y: 0.0,
             w: 1.0,
@@ -772,6 +796,7 @@ fn test_breath_mark_space_three_dashes() {
             pitch_system: None,
             slur_indicator: editor_wasm::models::SlurIndicator::None,
             ornament: None,
+            combined_char: None,
             x: 1.0,
             y: 0.0,
             w: 1.0,
@@ -790,6 +815,7 @@ fn test_breath_mark_space_three_dashes() {
             pitch_system: None,
             slur_indicator: editor_wasm::models::SlurIndicator::None,
             ornament: None,
+            combined_char: None,
             x: 2.0,
             y: 0.0,
             w: 1.0,
@@ -808,6 +834,7 @@ fn test_breath_mark_space_three_dashes() {
             pitch_system: None,
             slur_indicator: editor_wasm::models::SlurIndicator::None,
             ornament: None,
+            combined_char: None,
             x: 3.0,
             y: 0.0,
             w: 1.0,
@@ -826,6 +853,7 @@ fn test_breath_mark_space_three_dashes() {
             pitch_system: None,
             slur_indicator: editor_wasm::models::SlurIndicator::None,
             ornament: None,
+            combined_char: None,
             x: 4.0,
             y: 0.0,
             w: 1.0,
@@ -844,6 +872,7 @@ fn test_breath_mark_space_three_dashes() {
             pitch_system: None,
             slur_indicator: editor_wasm::models::SlurIndicator::None,
             ornament: None,
+            combined_char: None,
             x: 5.0,
             y: 0.0,
             w: 1.0,
@@ -858,7 +887,7 @@ fn test_breath_mark_space_three_dashes() {
         label: String::new(),
         tala: String::new(),
         lyrics: String::new(),
-        tonic: String::new(),
+        tonic: None,
         pitch_system: None,
         key_signature: String::new(),
         time_signature: String::new(),
@@ -867,11 +896,12 @@ fn test_breath_mark_space_three_dashes() {
         system_id: 0,
         part_id: "P1".to_string(),
         staff_role: editor_wasm::models::core::StaffRole::Melody,
+        system_marker: None,
         beats: Vec::new(),
         slurs: Vec::new(),
     };
 
-    let measures = build_export_measures_from_line(&line);
+    let measures = build_export_measures_from_line(&line, None);
 
     // Verify we got one measure
     assert_eq!(measures.len(), 1, "Should have one measure");
@@ -938,6 +968,7 @@ fn test_note_space_breath_mark_dashes() {
             pitch_system: None,
             slur_indicator: editor_wasm::models::SlurIndicator::None,
             ornament: None,
+            combined_char: None,
             x: 0.0,
             y: 0.0,
             w: 1.0,
@@ -956,6 +987,7 @@ fn test_note_space_breath_mark_dashes() {
             pitch_system: None,
             slur_indicator: editor_wasm::models::SlurIndicator::None,
             ornament: None,
+            combined_char: None,
             x: 1.0,
             y: 0.0,
             w: 1.0,
@@ -974,6 +1006,7 @@ fn test_note_space_breath_mark_dashes() {
             pitch_system: None,
             slur_indicator: editor_wasm::models::SlurIndicator::None,
             ornament: None,
+            combined_char: None,
             x: 2.0,
             y: 0.0,
             w: 1.0,
@@ -992,6 +1025,7 @@ fn test_note_space_breath_mark_dashes() {
             pitch_system: None,
             slur_indicator: editor_wasm::models::SlurIndicator::None,
             ornament: None,
+            combined_char: None,
             x: 3.0,
             y: 0.0,
             w: 1.0,
@@ -1010,6 +1044,7 @@ fn test_note_space_breath_mark_dashes() {
             pitch_system: None,
             slur_indicator: editor_wasm::models::SlurIndicator::None,
             ornament: None,
+            combined_char: None,
             x: 4.0,
             y: 0.0,
             w: 1.0,
@@ -1028,6 +1063,7 @@ fn test_note_space_breath_mark_dashes() {
             pitch_system: None,
             slur_indicator: editor_wasm::models::SlurIndicator::None,
             ornament: None,
+            combined_char: None,
             x: 5.0,
             y: 0.0,
             w: 1.0,
@@ -1042,7 +1078,7 @@ fn test_note_space_breath_mark_dashes() {
         label: String::new(),
         tala: String::new(),
         lyrics: String::new(),
-        tonic: String::new(),
+        tonic: None,
         pitch_system: None,
         key_signature: String::new(),
         time_signature: String::new(),
@@ -1051,11 +1087,12 @@ fn test_note_space_breath_mark_dashes() {
         system_id: 0,
         part_id: "P1".to_string(),
         staff_role: editor_wasm::models::core::StaffRole::Melody,
+        system_marker: None,
         beats: Vec::new(),
         slurs: Vec::new(),
     };
 
-    let measures = build_export_measures_from_line(&line);
+    let measures = build_export_measures_from_line(&line, None);
 
     // Verify we got one measure
     assert_eq!(measures.len(), 1, "Should have one measure");
@@ -1120,6 +1157,7 @@ fn test_note_two_spaces_breath_mark_dashes() {
             pitch_system: None,
             slur_indicator: editor_wasm::models::SlurIndicator::None,
             ornament: None,
+            combined_char: None,
             x: 0.0,
             y: 0.0,
             w: 1.0,
@@ -1138,6 +1176,7 @@ fn test_note_two_spaces_breath_mark_dashes() {
             pitch_system: None,
             slur_indicator: editor_wasm::models::SlurIndicator::None,
             ornament: None,
+            combined_char: None,
             x: 1.0,
             y: 0.0,
             w: 1.0,
@@ -1156,6 +1195,7 @@ fn test_note_two_spaces_breath_mark_dashes() {
             pitch_system: None,
             slur_indicator: editor_wasm::models::SlurIndicator::None,
             ornament: None,
+            combined_char: None,
             x: 2.0,
             y: 0.0,
             w: 1.0,
@@ -1174,6 +1214,7 @@ fn test_note_two_spaces_breath_mark_dashes() {
             pitch_system: None,
             slur_indicator: editor_wasm::models::SlurIndicator::None,
             ornament: None,
+            combined_char: None,
             x: 3.0,
             y: 0.0,
             w: 1.0,
@@ -1192,6 +1233,7 @@ fn test_note_two_spaces_breath_mark_dashes() {
             pitch_system: None,
             slur_indicator: editor_wasm::models::SlurIndicator::None,
             ornament: None,
+            combined_char: None,
             x: 4.0,
             y: 0.0,
             w: 1.0,
@@ -1210,6 +1252,7 @@ fn test_note_two_spaces_breath_mark_dashes() {
             pitch_system: None,
             slur_indicator: editor_wasm::models::SlurIndicator::None,
             ornament: None,
+            combined_char: None,
             x: 5.0,
             y: 0.0,
             w: 1.0,
@@ -1228,6 +1271,7 @@ fn test_note_two_spaces_breath_mark_dashes() {
             pitch_system: None,
             slur_indicator: editor_wasm::models::SlurIndicator::None,
             ornament: None,
+            combined_char: None,
             x: 6.0,
             y: 0.0,
             w: 1.0,
@@ -1242,7 +1286,7 @@ fn test_note_two_spaces_breath_mark_dashes() {
         label: String::new(),
         tala: String::new(),
         lyrics: String::new(),
-        tonic: String::new(),
+        tonic: None,
         pitch_system: None,
         key_signature: String::new(),
         time_signature: String::new(),
@@ -1251,11 +1295,12 @@ fn test_note_two_spaces_breath_mark_dashes() {
         system_id: 0,
         part_id: "P1".to_string(),
         staff_role: editor_wasm::models::core::StaffRole::Melody,
+        system_marker: None,
         beats: Vec::new(),
         slurs: Vec::new(),
     };
 
-    let measures = build_export_measures_from_line(&line);
+    let measures = build_export_measures_from_line(&line, None);
 
     assert_eq!(measures.len(), 1, "Should have one measure");
     let measure = &measures[0];
@@ -1310,18 +1355,27 @@ fn test_note_breath_mark_with_surrounding_spaces() {
             pitch_system: None,
             slur_indicator: editor_wasm::models::SlurIndicator::None,
             ornament: None,
+            combined_char: None,
             x: 0.0, y: 0.0, w: 1.0, h: 1.0,
             bbox: (0.0, 0.0, 1.0, 1.0),
             hit: (0.0, 0.0, 1.0, 1.0),
         },
-        Cell { kind: ElementKind::UnpitchedElement, char: " ".to_string(), pitch_code: None, octave: 4, col: 1, flags: 0, pitch_system: None, slur_indicator: editor_wasm::models::SlurIndicator::None, ornament: None, x: 1.0, y: 0.0, w: 1.0, h: 1.0, bbox: (1.0, 0.0, 2.0, 1.0), hit: (1.0, 0.0, 2.0, 1.0) },
-        Cell { kind: ElementKind::UnpitchedElement, char: " ".to_string(), pitch_code: None, octave: 4, col: 2, flags: 0, pitch_system: None, slur_indicator: editor_wasm::models::SlurIndicator::None, ornament: None, x: 2.0, y: 0.0, w: 1.0, h: 1.0, bbox: (2.0, 0.0, 3.0, 1.0), hit: (2.0, 0.0, 3.0, 1.0) },
-        Cell { kind: ElementKind::BreathMark, char: "'".to_string(), pitch_code: None, octave: 4, col: 3, flags: 0, pitch_system: None, slur_indicator: editor_wasm::models::SlurIndicator::None, ornament: None, x: 3.0, y: 0.0, w: 1.0, h: 1.0, bbox: (3.0, 0.0, 4.0, 1.0), hit: (3.0, 0.0, 4.0, 1.0) },
-        Cell { kind: ElementKind::UnpitchedElement, char: " ".to_string(), pitch_code: None, octave: 4, col: 4, flags: 0, pitch_system: None, slur_indicator: editor_wasm::models::SlurIndicator::None, ornament: None, x: 4.0, y: 0.0, w: 1.0, h: 1.0, bbox: (4.0, 0.0, 5.0, 1.0), hit: (4.0, 0.0, 5.0, 1.0) },
-        Cell { kind: ElementKind::UnpitchedElement, char: " ".to_string(), pitch_code: None, octave: 4, col: 5, flags: 0, pitch_system: None, slur_indicator: editor_wasm::models::SlurIndicator::None, ornament: None, x: 5.0, y: 0.0, w: 1.0, h: 1.0, bbox: (5.0, 0.0, 6.0, 1.0), hit: (5.0, 0.0, 6.0, 1.0) },
-        Cell { kind: ElementKind::UnpitchedElement, char: "-".to_string(), pitch_code: None, octave: 4, col: 6, flags: 0, pitch_system: None, slur_indicator: editor_wasm::models::SlurIndicator::None, ornament: None, x: 6.0, y: 0.0, w: 1.0, h: 1.0, bbox: (6.0, 0.0, 7.0, 1.0), hit: (6.0, 0.0, 7.0, 1.0) },
-        Cell { kind: ElementKind::UnpitchedElement, char: "-".to_string(), pitch_code: None, octave: 4, col: 7, flags: 0, pitch_system: None, slur_indicator: editor_wasm::models::SlurIndicator::None, ornament: None, x: 7.0, y: 0.0, w: 1.0, h: 1.0, bbox: (7.0, 0.0, 8.0, 1.0), hit: (7.0, 0.0, 8.0, 1.0) },
-        Cell { kind: ElementKind::UnpitchedElement, char: "-".to_string(), pitch_code: None, octave: 4, col: 8, flags: 0, pitch_system: None, slur_indicator: editor_wasm::models::SlurIndicator::None, ornament: None, x: 8.0, y: 0.0, w: 1.0, h: 1.0, bbox: (8.0, 0.0, 9.0, 1.0), hit: (8.0, 0.0, 9.0, 1.0) },
+        Cell { kind: ElementKind::UnpitchedElement, char: " ".to_string(), pitch_code: None, octave: 4, col: 1, flags: 0, pitch_system: None, slur_indicator: editor_wasm::models::SlurIndicator::None, ornament: None,
+            combined_char: None, x: 1.0, y: 0.0, w: 1.0, h: 1.0, bbox: (1.0, 0.0, 2.0, 1.0), hit: (1.0, 0.0, 2.0, 1.0) },
+        Cell { kind: ElementKind::UnpitchedElement, char: " ".to_string(), pitch_code: None, octave: 4, col: 2, flags: 0, pitch_system: None, slur_indicator: editor_wasm::models::SlurIndicator::None, ornament: None,
+            combined_char: None, x: 2.0, y: 0.0, w: 1.0, h: 1.0, bbox: (2.0, 0.0, 3.0, 1.0), hit: (2.0, 0.0, 3.0, 1.0) },
+        Cell { kind: ElementKind::BreathMark, char: "'".to_string(), pitch_code: None, octave: 4, col: 3, flags: 0, pitch_system: None, slur_indicator: editor_wasm::models::SlurIndicator::None, ornament: None,
+            combined_char: None, x: 3.0, y: 0.0, w: 1.0, h: 1.0, bbox: (3.0, 0.0, 4.0, 1.0), hit: (3.0, 0.0, 4.0, 1.0) },
+        Cell { kind: ElementKind::UnpitchedElement, char: " ".to_string(), pitch_code: None, octave: 4, col: 4, flags: 0, pitch_system: None, slur_indicator: editor_wasm::models::SlurIndicator::None, ornament: None,
+            combined_char: None, x: 4.0, y: 0.0, w: 1.0, h: 1.0, bbox: (4.0, 0.0, 5.0, 1.0), hit: (4.0, 0.0, 5.0, 1.0) },
+        Cell { kind: ElementKind::UnpitchedElement, char: " ".to_string(), pitch_code: None, octave: 4, col: 5, flags: 0, pitch_system: None, slur_indicator: editor_wasm::models::SlurIndicator::None, ornament: None,
+            combined_char: None, x: 5.0, y: 0.0, w: 1.0, h: 1.0, bbox: (5.0, 0.0, 6.0, 1.0), hit: (5.0, 0.0, 6.0, 1.0) },
+        Cell { kind: ElementKind::UnpitchedElement, char: "-".to_string(), pitch_code: None, octave: 4, col: 6, flags: 0, pitch_system: None, slur_indicator: editor_wasm::models::SlurIndicator::None, ornament: None,
+            combined_char: None, x: 6.0, y: 0.0, w: 1.0, h: 1.0, bbox: (6.0, 0.0, 7.0, 1.0), hit: (6.0, 0.0, 7.0, 1.0) },
+        Cell { kind: ElementKind::UnpitchedElement, char: "-".to_string(), pitch_code: None, octave: 4, col: 7, flags: 0, pitch_system: None, slur_indicator: editor_wasm::models::SlurIndicator::None, ornament: None,
+            combined_char: None, x: 7.0, y: 0.0, w: 1.0, h: 1.0, bbox: (7.0, 0.0, 8.0, 1.0), hit: (7.0, 0.0, 8.0, 1.0) },
+        Cell { kind: ElementKind::UnpitchedElement, char: "-".to_string(), pitch_code: None, octave: 4, col: 8, flags: 0, pitch_system: None, slur_indicator: editor_wasm::models::SlurIndicator::None, ornament: None,
+            combined_char: None, x: 8.0, y: 0.0, w: 1.0, h: 1.0, bbox: (8.0, 0.0, 9.0, 1.0), hit: (8.0, 0.0, 9.0, 1.0) },
     ];
 
     let line = Line {
@@ -1329,7 +1383,7 @@ fn test_note_breath_mark_with_surrounding_spaces() {
         label: String::new(),
         tala: String::new(),
         lyrics: String::new(),
-        tonic: String::new(),
+        tonic: None,
         pitch_system: None,
         key_signature: String::new(),
         time_signature: String::new(),
@@ -1338,11 +1392,12 @@ fn test_note_breath_mark_with_surrounding_spaces() {
         system_id: 0,
         part_id: "P1".to_string(),
         staff_role: editor_wasm::models::core::StaffRole::Melody,
+        system_marker: None,
         beats: Vec::new(),
         slurs: Vec::new(),
     };
 
-    let measures = build_export_measures_from_line(&line);
+    let measures = build_export_measures_from_line(&line, None);
 
     println!("\n=== ACTUAL OUTPUT for '1  '  ---' ===");
     println!("Measures: {}", measures.len());

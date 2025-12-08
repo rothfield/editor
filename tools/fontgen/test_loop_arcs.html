@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Loop Arc Test - NotationFont</title>
+    <style>
+        @font-face {
+            font-family: 'NotationFont';
+            src: url('../../static/fonts/NotationFont.woff2') format('woff2'),
+                 url('../../static/fonts/NotationFont.ttf') format('truetype');
+        }
+
+        body {
+            font-family: system-ui, sans-serif;
+            padding: 40px;
+            background: #1a1a2e;
+            color: #eee;
+        }
+
+        h1, h2 { color: #00d4ff; }
+
+        .test-container {
+            background: #0f0f23;
+            border-radius: 12px;
+            padding: 30px;
+            margin: 20px 0;
+        }
+
+        .notation {
+            font-family: 'NotationFont', monospace;
+            font-size: 48px;
+            line-height: 2;
+            color: #fff;
+            background: #222;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 10px 0;
+        }
+
+        .glyph-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            margin: 20px 0;
+        }
+
+        .glyph-item {
+            background: #222;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .glyph-char {
+            font-family: 'NotationFont', monospace;
+            font-size: 72px;
+            line-height: 1.5;
+            color: #fff;
+            display: block;
+            min-height: 120px;
+        }
+
+        .glyph-label {
+            color: #888;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+
+        .glyph-code {
+            color: #00d4ff;
+            font-family: monospace;
+            font-size: 12px;
+        }
+
+        .underline-test {
+            font-family: 'NotationFont', monospace;
+            font-size: 48px;
+            line-height: 2.5;
+        }
+
+        .note { color: #888; font-size: 14px; margin: 10px 0; }
+
+        .composition-demo {
+            font-family: 'NotationFont', monospace;
+            font-size: 64px;
+            line-height: 2.5;
+            color: #fff;
+            background: #333;
+            padding: 30px;
+            border-radius: 8px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <h1>Loop Arc Mark Test</h1>
+    <p>Testing the new loop arc glyphs (U+E704-E707) in NotationFont</p>
+
+    <div class="test-container">
+        <h2>Individual Arc Glyphs</h2>
+        <div class="glyph-grid">
+            <div class="glyph-item">
+                <span class="glyph-char">&#xE704;</span>
+                <div class="glyph-label">Bottom-Left Arc</div>
+                <div class="glyph-code">U+E704</div>
+            </div>
+            <div class="glyph-item">
+                <span class="glyph-char">&#xE705;</span>
+                <div class="glyph-label">Bottom-Right Arc</div>
+                <div class="glyph-code">U+E705</div>
+            </div>
+            <div class="glyph-item">
+                <span class="glyph-char">&#xE706;</span>
+                <div class="glyph-label">Top-Left Arc</div>
+                <div class="glyph-code">U+E706</div>
+            </div>
+            <div class="glyph-item">
+                <span class="glyph-char">&#xE707;</span>
+                <div class="glyph-label">Top-Right Arc</div>
+                <div class="glyph-code">U+E707</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="test-container">
+        <h2>Underlined Characters (Legacy GSUB)</h2>
+        <p class="note">These use char + U+0332 → pre-composed underlined glyph</p>
+        <div class="notation">
+            1&#x0332;2&#x0332;3&#x0332;4&#x0332;
+        </div>
+    </div>
+
+    <div class="test-container">
+        <h2>Loop Composition Test</h2>
+        <p class="note">Bottom arcs + underlined text: &#xE704; + 1̲2̲3̲4̲ + &#xE705;</p>
+        <div class="composition-demo">
+            &#xE704;1&#x0332;2&#x0332;3&#x0332;4&#x0332;&#xE705;
+        </div>
+        <p class="note">Expected: arcs should form a curved bracket around underlined "1234"</p>
+    </div>
+
+    <div class="test-container">
+        <h2>Top Loop (Overlined)</h2>
+        <p class="note">Top arcs + overlined text: &#xE706; + 1̅2̅3̅4̅ + &#xE707;</p>
+        <div class="composition-demo">
+            &#xE706;1&#x0305;2&#x0305;3&#x0305;4&#x0305;&#xE707;
+        </div>
+    </div>
+
+    <div class="test-container">
+        <h2>Full Ellipse Loop</h2>
+        <p class="note">All 4 arcs + underlined + overlined: should form rounded rectangle</p>
+        <div class="composition-demo" style="line-height: 3;">
+            &#xE706;1&#x0305;2&#x0305;3&#x0305;4&#x0305;&#xE707;<br>
+            &#xE704;1&#x0332;2&#x0332;3&#x0332;4&#x0332;&#xE705;
+        </div>
+    </div>
+
+    <div class="test-container">
+        <h2>Width-Class Mark Variants (U+E7F0-E7F5)</h2>
+        <p class="note">These are prepared for future GPOS mark attachment</p>
+        <div class="glyph-grid">
+            <div class="glyph-item">
+                <span class="glyph-char">&#xE7F0;</span>
+                <div class="glyph-label">Underline Narrow</div>
+                <div class="glyph-code">U+E7F0</div>
+            </div>
+            <div class="glyph-item">
+                <span class="glyph-char">&#xE7F1;</span>
+                <div class="glyph-label">Underline Medium</div>
+                <div class="glyph-code">U+E7F1</div>
+            </div>
+            <div class="glyph-item">
+                <span class="glyph-char">&#xE7F2;</span>
+                <div class="glyph-label">Underline Wide</div>
+                <div class="glyph-code">U+E7F2</div>
+            </div>
+            <div class="glyph-item">
+                <span class="glyph-char">&#xE7F3;</span>
+                <div class="glyph-label">Overline Narrow</div>
+                <div class="glyph-code">U+E7F3</div>
+            </div>
+            <div class="glyph-item">
+                <span class="glyph-char">&#xE7F4;</span>
+                <div class="glyph-label">Overline Medium</div>
+                <div class="glyph-code">U+E7F4</div>
+            </div>
+            <div class="glyph-item">
+                <span class="glyph-char">&#xE7F5;</span>
+                <div class="glyph-label">Overline Wide</div>
+                <div class="glyph-code">U+E7F5</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Log font loading status
+        document.fonts.ready.then(() => {
+            console.log('NotationFont loaded:', document.fonts.check('48px NotationFont'));
+        });
+    </script>
+</body>
+</html>

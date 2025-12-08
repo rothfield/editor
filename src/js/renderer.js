@@ -68,17 +68,10 @@ class DOMRenderer {
   }
 
   /**
-   * Get gutter collapsed state (delegate to GutterManager)
+   * Get gutter collapsed state (always false - gutter collapse removed)
    */
   get gutterCollapsed() {
-    return this.gutterManager.gutterCollapsed;
-  }
-
-  /**
-   * Get gutter toggle button (delegate to GutterManager)
-   */
-  get gutterToggleBtn() {
-    return this.gutterManager.gutterToggleBtn;
+    return false;
   }
 
   /**
@@ -237,9 +230,8 @@ class DOMRenderer {
 
     // FULL RENDERING: Destroy and rebuild everything
     // Clear previous render to avoid duplicate event handlers
-    // IMPORTANT: Preserve the arc overlay SVG and gutter toggle button when clearing
+    // IMPORTANT: Preserve the arc overlay SVG when clearing
     const arcOverlaySvg = this.arcRenderer?.svgOverlay;
-    const gutterToggleBtn = this.gutterToggleBtn;
     this.element.innerHTML = '';
 
     // Re-append the arc overlay SVG after clearing
@@ -247,15 +239,13 @@ class DOMRenderer {
       this.element.appendChild(arcOverlaySvg);
     }
 
-    // Re-append the gutter toggle button after clearing
-    if (gutterToggleBtn && gutterToggleBtn.parentNode !== this.element) {
-      this.element.appendChild(gutterToggleBtn);
-    }
-
     // Render header if present
     if (displayList.header) {
       this.renderHeaderFromDisplayList(displayList.header);
     }
+
+    // Render system controls (outside notation div, to the left)
+    this.renderSystemControls(displayList);
 
     // Render each line from DisplayList
     displayList.lines.forEach((renderLine, lineIdx) => {
@@ -318,23 +308,63 @@ class DOMRenderer {
     return this.cellRenderer.renderLine(renderLine, currentLineIndex, this.gutterCollapsed);
   }
 
+  /**
+   * Render system controls (system marker indicators) in the separate container
+   * @param {Object} displayList - DisplayList from WASM
+   */
+  renderSystemControls(displayList) {
+    const container = document.getElementById('system-controls');
+    if (!container) {
+      logger.warn(LOG_CATEGORIES.RENDERER, 'System controls container not found');
+      return;
+    }
+
+    // Clear existing controls
+    container.innerHTML = '';
+
+    // Render a system marker indicator for each line
+    displayList.lines.forEach((renderLine) => {
+      const control = document.createElement('div');
+      control.className = 'system-control-row';
+      control.style.cssText = `height: ${renderLine.height}px; display: flex; align-items: center; justify-content: center;`;
+
+      const markerIndicator = document.createElement('span');
+      markerIndicator.className = 'system-marker-indicator';
+      markerIndicator.dataset.lineIndex = renderLine.line_index;
+
+      // Display marker text
+      const marker = renderLine.system_marker;
+      if (marker === 'start') {
+        markerIndicator.textContent = '«';
+        markerIndicator.title = 'System start - click to change';
+        markerIndicator.classList.add('marker-active');
+      } else if (marker === 'end') {
+        markerIndicator.textContent = '»';
+        markerIndicator.title = 'System end - click to change';
+        markerIndicator.classList.add('marker-active');
+      } else {
+        markerIndicator.textContent = '·';
+        markerIndicator.title = 'Click to set system grouping';
+      }
+
+      control.appendChild(markerIndicator);
+      container.appendChild(control);
+    });
+  }
+
 
   /**
    * Show empty state when no content
    */
   showEmptyState() {
-    // Preserve arc overlay and gutter toggle button
+    // Preserve arc overlay
     const arcOverlaySvg = this.arcRenderer?.svgOverlay;
-    const gutterToggleBtn = this.gutterToggleBtn;
 
     this.element.innerHTML = '';
 
     // Re-append preserved elements
     if (arcOverlaySvg) {
       this.element.appendChild(arcOverlaySvg);
-    }
-    if (gutterToggleBtn) {
-      this.element.appendChild(gutterToggleBtn);
     }
   }
 

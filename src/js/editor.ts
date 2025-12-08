@@ -308,6 +308,14 @@ class MusicNotationEditor {
 
         await this.renderAndUpdate();
 
+        // Update cursor display based on WASM state (cursor position from document.state.cursor)
+        this.updateCursorPositionDisplay();
+        this.updateCursorVisualPosition();
+        this.showCursor();
+
+        // Focus editor so user can type immediately
+        this.requestFocus();
+
         // Update UI displays
         if (this.ui) {
           const doc = this.getDocument();
@@ -1318,6 +1326,14 @@ class MusicNotationEditor {
   // Additional delegates needed for visibility
   showCursor(): void { return this.cursorCoordinator.showCursor(); }
   hideCursor(): void { return this.cursorCoordinator.hideCursor(); }
+
+  // Focus management
+  requestFocus(): void {
+    const editorElement = document.getElementById('notation-editor');
+    if (editorElement) {
+      editorElement.focus();
+    }
+  }
 }
 
 export default MusicNotationEditor;

@@ -15,6 +15,7 @@ fn make_cell(kind: ElementKind, char: &str, pitch_code: Option<PitchCode>) -> Ce
         octave: 4,
         slur_indicator: Default::default(),
         ornament: None,
+        combined_char: None,
         x: 0.0,
         y: 0.0,
         w: 0.0,
@@ -378,4 +379,32 @@ fn test_equal_notes_and_syllables() {
     // Should have syllabic markers (not combined)
     assert!(musicxml.contains("<syllabic>begin</syllabic>"), "Should have begin marker");
     assert!(musicxml.contains("<syllabic>end</syllabic>"), "Should have end marker");
+}
+
+#[test]
+fn test_single_word_lyric_only_on_first_note() {
+    // Bug: "1 1" with lyrics "hello" was showing "hello" on BOTH notes
+    // Expected: "hello" should only appear on the FIRST note
+    let mut doc = Document::new();
+
+    let mut line = Line::new();
+    line.lyrics = "hello".to_string();
+
+    // Two identical pitches: "1 1"
+    line.cells.push(make_cell(ElementKind::PitchedElement, "1", Some(PitchCode::N1)));
+    line.cells.push(make_cell(ElementKind::UnpitchedElement, " ", None));
+    line.cells.push(make_cell(ElementKind::PitchedElement, "1", Some(PitchCode::N1)));
+
+    doc.lines.push(line);
+
+    // Export to MusicXML
+    let musicxml = to_musicxml(&doc).expect("MusicXML export should succeed");
+
+    // Count how many times "hello" appears in lyrics
+    let hello_count = musicxml.matches("<text>hello</text>").count();
+
+    assert_eq!(hello_count, 1,
+        "Single-word lyric 'hello' should appear exactly ONCE, not on every note. \
+         Found {} occurrences.\n\nMusicXML output:\n{}",
+        hello_count, musicxml);
 }

@@ -56,11 +56,49 @@ class UI {
       this.updateModeToggleDisplay();
     }, 500);
 
+    // Set up text mode toggle listener
+    this.setupTextModeToggle();
+
     // Mark UI as initialized - this prevents staff notation timer scheduling during init
     // (prevents double-render: one from autosave timer, one from switchTab)
     this.isInitialized = true;
 
     logger.info(LOG_CATEGORIES.UI, 'UI components initialized');
+  }
+
+  /**
+   * Set up the text tab controls (size only)
+   */
+  setupTextModeToggle() {
+    // Text tab font size toggle
+    const sizeToggle = document.getElementById('text-size-toggle');
+    const textDisplay = document.getElementById('text-display');
+    if (sizeToggle && textDisplay) {
+      sizeToggle.addEventListener('change', (e) => {
+        textDisplay.style.fontSize = `${e.target.value}px`;
+      });
+    }
+
+    // Text Sample tab font toggle
+    const fontMap = {
+      'jetbrains': "'JetBrains Mono', monospace",
+      'monospace': "monospace",
+      'liberation': "'Liberation Mono', monospace",
+      'courier': "Courier, monospace",
+      'dejavu': "'DejaVu Sans Mono', monospace",
+      'fira': "'Fira Code', monospace",
+      'consolas': "Consolas, monospace",
+      'source': "'Source Code Pro', monospace"
+    };
+
+    const sampleFontToggle = document.getElementById('text-sample-font-toggle');
+    const textSample = document.getElementById('text-sample');
+    if (sampleFontToggle && textSample) {
+      sampleFontToggle.addEventListener('change', (e) => {
+        const fontKey = e.target.value;
+        textSample.style.fontFamily = fontMap[fontKey] || fontMap['jetbrains'];
+      });
+    }
   }
 
   /**
@@ -361,7 +399,7 @@ class UI {
     const beforeLabel = currentOrnament?.placement === 'before'
       ? `Before - ${currentOrnament.notation}`
       : 'Before';
-    const ontopLabel = currentOrnament?.placement === 'on-top'
+    const ontopLabel = currentOrnament?.placement === 'ontop'
       ? `On top - ${currentOrnament.notation}`
       : 'On top';
     const afterLabel = currentOrnament?.placement === 'after'
@@ -369,9 +407,9 @@ class UI {
       : 'After';
 
     const menuItems = [
-      { id: 'menu-ornament-before', label: beforeLabel, action: 'ornament-position-before', checkable: true, checked: currentOrnament?.placement === 'before' || !currentOrnament, hasOrnationNotation: !!currentOrnament?.placement === 'before' && currentOrnament },
-      { id: 'menu-ornament-ontop', label: ontopLabel, action: 'ornament-position-ontop', checkable: true, checked: currentOrnament?.placement === 'on-top', hasOrnationNotation: currentOrnament?.placement === 'on-top' && currentOrnament },
-      { id: 'menu-ornament-after', label: afterLabel, action: 'ornament-position-after', checkable: true, checked: currentOrnament?.placement === 'after', hasOrnationNotation: currentOrnament?.placement === 'after' && currentOrnament },
+      { id: 'menu-ornament-before', label: beforeLabel, action: 'ornament-position-before', checkable: true, checked: currentOrnament?.placement === 'before' || !currentOrnament, hasOrnamentNotation: currentOrnament?.placement === 'before' && currentOrnament },
+      { id: 'menu-ornament-ontop', label: ontopLabel, action: 'ornament-position-ontop', checkable: true, checked: currentOrnament?.placement === 'ontop', hasOrnamentNotation: currentOrnament?.placement === 'ontop' && currentOrnament },
+      { id: 'menu-ornament-after', label: afterLabel, action: 'ornament-position-after', checkable: true, checked: currentOrnament?.placement === 'after', hasOrnamentNotation: currentOrnament?.placement === 'after' && currentOrnament },
       { id: 'menu-separator-0', label: null, separator: true },
       { id: 'menu-ornament-selection-to-ornament', label: 'Selection to Ornament', action: 'ornament-selection-to-ornament', testid: 'menu-ornament-selection-to-ornament' },
       { id: 'menu-separator-1', label: null, separator: true },
@@ -410,7 +448,7 @@ class UI {
           const label = document.createElement('span');
           label.textContent = item.label;
           // Apply NotationFont if label contains ornament notation
-          if (item.hasOrnationNotation) {
+          if (item.hasOrnamentNotation) {
             label.style.fontFamily = "'NotationFont', monospace";
           }
           menuItem.appendChild(label);
@@ -1970,61 +2008,39 @@ class UI {
     // Store pending position for next paste
     this.pendingOrnamentPosition = position;
 
-    // Update menu checkmarks (radio-style)
-    const beforeItem = document.getElementById('menu-ornament-before');
-    const ontopItem = document.getElementById('menu-ornament-ontop');
-    const afterItem = document.getElementById('menu-ornament-after');
-
-    if (beforeItem && ontopItem && afterItem) {
-      const beforeCheck = beforeItem.querySelector('.menu-checkbox');
-      const ontopCheck = ontopItem.querySelector('.menu-checkbox');
-      const afterCheck = afterItem.querySelector('.menu-checkbox');
-
-      // Clear all checkmarks
-      if (beforeCheck) beforeCheck.textContent = '  ';
-      if (ontopCheck) ontopCheck.textContent = '  ';
-      if (afterCheck) afterCheck.textContent = '  ';
-
-      // Set checkmark on selected position
-      if (position === 'before' && beforeCheck) {
-        beforeCheck.textContent = '✓ ';
-      } else if (position === 'ontop' && ontopCheck) {
-        ontopCheck.textContent = '✓ ';
-      } else if (position === 'after' && afterCheck) {
-        afterCheck.textContent = '✓ ';
-      }
-    }
-
-    // If there's a selected cell with an ornament, update its placement
-    // Cells-array pattern (like octave operations)
+    // If there's a selected cell with an ornament, update its placement via layered API
     if (this.editor) {
       try {
         const cursor = this.editor.getDocument().state.cursor;
-        const line = this.editor.getDocument().lines[cursor.line];
 
         // Effective selection logic: cursor.col - 1
-        if (cursor.col > 0 && cursor.col - 1 < line.cells.length) {
+        if (cursor.col > 0) {
           const cellIndex = cursor.col - 1;
 
-          // Call WASM with cells array + cell_index + placement (cells-array pattern)
-          const updatedCells = this.editor.wasmModule.setOrnamentPlacementOnCell(
-            line.cells,
+          // Call WASM layered API to update placement in annotation layer
+          const result = this.editor.wasmModule.setOrnamentPlacementLayered(
+            cursor.line,
             cellIndex,
             position
           );
 
-          // Update line.cells with modified array (same as octave operations)
-          line.cells = updatedCells;
-
-          // Render
-          this.editor.renderAndUpdate();
-          logger.info(LOG_CATEGORIES.UI, `Ornament position set to: ${position}`);
+          if (result && result.success) {
+            // Render to sync annotation layer to cells
+            this.editor.renderAndUpdate();
+            logger.info(LOG_CATEGORIES.UI, `Ornament position set to: ${position}`);
+          } else {
+            // Ornament doesn't exist yet, that's okay - position will be used for next paste
+            logger.debug(LOG_CATEGORIES.UI, 'No ornament to update position', { error: result?.error });
+          }
         }
       } catch (error) {
         // Ornament doesn't exist yet, that's okay - position will be used for next paste
         logger.debug(LOG_CATEGORIES.UI, 'No ornament to update position', { message: error.message });
       }
     }
+
+    // Rebuild menu to show updated checkmarks and labels
+    this.setupOrnamentMenu();
   }
 
   /**
@@ -2301,8 +2317,8 @@ class UI {
         return;
       }
 
-      // Delete the selected text
-      await this.editor.deleteSelection();
+      // Note: Selection is NOT deleted - the ornament references the selected notes
+      // which remain in the document as the source of the grace notes
 
       // Render (will call applyAnnotationOrnamentsToCells() to sync)
       await this.editor.renderAndUpdate();

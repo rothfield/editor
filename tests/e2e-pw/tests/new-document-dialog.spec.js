@@ -147,6 +147,10 @@ test.describe('New Document Dialog - Professional UI', () => {
 
     await page.waitForSelector('.new-document-overlay', { state: 'visible' });
 
+    // Verify default selection has .selected class (Number)
+    const numberOption = page.locator('.pitch-system-option[data-value="number"]');
+    await expect(numberOption).toHaveClass(/selected/);
+
     // Click on Western option
     const westernOption = page.locator('.pitch-system-option[data-value="western"]');
     await westernOption.click();
@@ -158,6 +162,10 @@ test.describe('New Document Dialog - Professional UI', () => {
     await expect(selectedRadio).toBeVisible();
     const selectedValue = await selectedRadio.getAttribute('value');
     expect(selectedValue).toBe('western');
+
+    // Verify Western option has .selected class and Number doesn't
+    await expect(westernOption).toHaveClass(/selected/);
+    await expect(numberOption).not.toHaveClass(/selected/);
   });
 
   test('should show footer buttons', async ({ editorPage: page }) => {

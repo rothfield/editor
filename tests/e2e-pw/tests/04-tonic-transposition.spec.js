@@ -55,22 +55,29 @@ test('Number pitch system with tonic D should transpose in IR', async ({ page })
     console.log('Pitch codes in IR:', notes);
 
     // With tonic D and number system:
-    // Input: 1 2 3 (interpreted as scale degrees in C major context)
+    // Input: 1 2 3 (scale degrees in user input)
     // Tonic D means we use D major scale: D E F# G A B C#
     //
-    // Lookup table transposition:
-    // - Degree 1 in D major = "D" → maps to N2 (D is the 2nd note in number system)
-    // - Degree 2 in D major = "E" → maps to N3 (E is the 3rd note in number system)
-    // - Degree 3 in D major = "F#" → maps to N4s (F# is the 4th note sharp)
+    // Transposition preserves pitch_code (user input) but adds western_pitch (transposed spelling):
+    // - Degree 1 + tonic D = western_pitch "D"
+    // - Degree 2 + tonic D = western_pitch "E"
+    // - Degree 3 + tonic D = western_pitch "Fs" (F#)
 
     expect(notes.length).toBe(3, 'Should have 3 notes');
 
-    // With lookup table transposition:
-    // Input degrees 1,2,3 in tonic D become: N2(D), N3(E), N4s(F#)
+    // pitch_code stays as user input (N1, N2, N3)
+    expect(irContent).toContain('"pitch_code": "N1"');
     expect(irContent).toContain('"pitch_code": "N2"');
     expect(irContent).toContain('"pitch_code": "N3"');
-    expect(irContent).toContain('"pitch_code": "N4s"');
 
-    console.log('✅ Lookup table transposition: 1→N2(D), 2→N3(E), 3→N4s(F#) in tonic D');
+    // western_pitch shows transposed spelling in D major
+    expect(irContent).toContain('"western_pitch": "D"');
+    expect(irContent).toContain('"western_pitch": "E"');
+    expect(irContent).toContain('"western_pitch": "Fs"');
+
+    // tonic field is preserved
+    expect(irContent).toContain('"tonic": "D"');
+
+    console.log('✅ Tonic-aware transposition: pitch_code=N1,N2,N3 → western_pitch=D,E,F# in tonic D');
   }
 });

@@ -46,6 +46,7 @@ fn degree_to_pitch_class(degree: u8, accidental: AccidentalType) -> u8 {
         AccidentalType::DoubleFlat => -2,
         AccidentalType::Flat => -1,
         AccidentalType::HalfFlat => 0, // Approximate as natural for now
+        AccidentalType::Natural => 0, // Explicit natural
         AccidentalType::None => 0,
         AccidentalType::Sharp => 1,
         AccidentalType::DoubleSharp => 2,

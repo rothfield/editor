@@ -6,7 +6,6 @@
 
 use super::cursor::{TextPos, TextRange};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
 
 /// Ornament placement relative to parent note
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -29,6 +28,9 @@ impl Default for OrnamentPlacement {
 /// not as Cell objects. Cells are generated from this text during export/render.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OrnamentData {
+    /// Position in text (line, col)
+    pub pos: TextPos,
+
     /// Text notation for ornament (e.g., "2 3" or "2̇ 3̇" with octave dots)
     pub notation: String,
 
@@ -67,9 +69,11 @@ impl SlurSpan {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AnnotationLayer {
     /// Point annotations: ornaments at specific positions (text-based)
-    pub ornaments: BTreeMap<TextPos, OrnamentData>,
+    #[serde(default)]
+    pub ornaments: Vec<OrnamentData>,
 
     /// Range annotations: slurs connecting positions
+    #[serde(default)]
     pub slurs: Vec<SlurSpan>,
 
     // Future: dynamics, articulations, etc.
@@ -79,32 +83,35 @@ impl AnnotationLayer {
     /// Create a new empty annotation layer
     pub fn new() -> Self {
         Self {
-            ornaments: BTreeMap::new(),
+            ornaments: Vec::new(),
             slurs: Vec::new(),
         }
     }
 
     /// Add an ornament at a position with text notation and placement
     pub fn add_ornament(&mut self, pos: TextPos, notation: String, placement: OrnamentPlacement) {
-        self.ornaments.insert(pos, OrnamentData { notation, placement });
+        // Remove existing ornament at this position first
+        self.ornaments.retain(|o| o.pos != pos);
+        self.ornaments.push(OrnamentData { pos, notation, placement });
     }
 
     /// Remove an ornament at a position, returns true if an ornament was removed
     pub fn remove_ornament(&mut self, pos: TextPos) -> bool {
-        self.ornaments.remove(&pos).is_some()
+        let len_before = self.ornaments.len();
+        self.ornaments.retain(|o| o.pos != pos);
+        self.ornaments.len() < len_before
     }
 
     /// Get an ornament at a position
     pub fn get_ornament(&self, pos: TextPos) -> Option<&OrnamentData> {
-        self.ornaments.get(&pos)
+        self.ornaments.iter().find(|o| o.pos == pos)
     }
 
     /// Get all ornaments on a specific line
-    pub fn get_ornaments_for_line(&self, line: usize) -> Vec<(TextPos, &OrnamentData)> {
+    pub fn get_ornaments_for_line(&self, line: usize) -> Vec<&OrnamentData> {
         self.ornaments
             .iter()
-            .filter(|(pos, _)| pos.line == line)
-            .map(|(pos, data)| (*pos, data))
+            .filter(|o| o.pos.line == line)
             .collect()
     }
 
@@ -140,7 +147,7 @@ impl AnnotationLayer {
     /// Removes annotation at the position and shifts remaining left by 1
     pub fn on_delete(&mut self, pos: TextPos) {
         // Remove annotation at deleted position
-        self.ornaments.remove(&pos);
+        self.ornaments.retain(|o| o.pos != pos);
 
         // Shift remaining annotations
         self.shift_after(pos, -1);
@@ -155,7 +162,7 @@ impl AnnotationLayer {
 
         // Remove annotations in the replaced range
         self.ornaments
-            .retain(|pos, _| !range.contains(*pos) && *pos < range.start);
+            .retain(|o| !range.contains(o.pos) && o.pos < range.start);
 
         // Shift annotations after the range
         if delta != 0 {
@@ -168,26 +175,21 @@ impl AnnotationLayer {
     /// Positive delta shifts right, negative shifts left
     fn shift_after(&mut self, pos: TextPos, delta: i32) {
         // Shift point annotations (ornaments)
-        let to_shift: Vec<_> = self
-            .ornaments
-            .iter()
-            .filter(|(p, _)| p.line == pos.line && p.col >= pos.col)
-            .map(|(p, o)| (*p, o.clone()))
-            .collect();
-
-        for (old_pos, ornament) in to_shift {
-            self.ornaments.remove(&old_pos);
-            let new_col = (old_pos.col as i32 + delta).max(0) as usize;
-            let new_pos = TextPos::new(old_pos.line, new_col);
-            self.ornaments.insert(new_pos, ornament);
+        for ornament in &mut self.ornaments {
+            if ornament.pos.line == pos.line && ornament.pos.col >= pos.col {
+                ornament.pos.col = (ornament.pos.col as i32 + delta).max(0) as usize;
+            }
         }
 
         // Shift range annotations (slurs)
         for slur in &mut self.slurs {
+            // Start shifts if insert is at or before start
             if slur.start.line == pos.line && slur.start.col >= pos.col {
                 slur.start.col = (slur.start.col as i32 + delta).max(0) as usize;
             }
-            if slur.end.line == pos.line && slur.end.col >= pos.col {
+            // End only shifts if insert is BEFORE end (inside the slur)
+            // End is exclusive, so inserting AT the end should not shift it
+            if slur.end.line == pos.line && slur.end.col > pos.col {
                 slur.end.col = (slur.end.col as i32 + delta).max(0) as usize;
             }
         }
@@ -274,15 +276,30 @@ mod tests {
     fn test_slur_invalidation() {
         let mut annotations = AnnotationLayer::new();
 
-        // Add slur from 2 to 5
-        annotations.add_slur(SlurSpan::new(TextPos::new(0, 2), TextPos::new(0, 5)));
+        // Add slur from 0 to 2 (covers positions 0 and 1)
+        annotations.add_slur(SlurSpan::new(TextPos::new(0, 0), TextPos::new(0, 2)));
 
-        // Delete characters, making slur invalid (start >= end)
-        annotations.on_delete(TextPos::new(0, 3));
-        annotations.on_delete(TextPos::new(0, 3));
-        annotations.on_delete(TextPos::new(0, 3));
+        // Delete at start position repeatedly to shrink slur
+        // After each delete at pos 0: start stays 0, end shrinks
+        annotations.on_delete(TextPos::new(0, 0)); // end: 2 > 0 → 1. Slur: 0-1
+        annotations.on_delete(TextPos::new(0, 0)); // end: 1 > 0 → 0. Slur: 0-0 (invalid!)
 
-        // Slur should be removed (invalid)
+        // Slur should be removed (start >= end)
         assert_eq!(annotations.slurs.len(), 0);
+    }
+
+    #[test]
+    fn test_slur_end_not_shifted_when_deleting_at_end() {
+        let mut annotations = AnnotationLayer::new();
+
+        // Add slur from 0 to 2 (covers positions 0 and 1)
+        annotations.add_slur(SlurSpan::new(TextPos::new(0, 0), TextPos::new(0, 2)));
+
+        // Delete at end position (outside slur) - end should NOT shift
+        annotations.on_delete(TextPos::new(0, 2));
+
+        // Slur should be unchanged (end=2 is exclusive, deleting there is outside)
+        assert_eq!(annotations.slurs.len(), 1);
+        assert_eq!(annotations.slurs[0].end, TextPos::new(0, 2));
     }
 }

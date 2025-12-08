@@ -958,6 +958,10 @@ pub fn apply_annotation_slurs_to_cells() -> JsValue {
         slurs_applied, total_slurs
     ).into());
 
+    // Recompute line variants now that slur indicators are set
+    // This encodes overlines into cell.char for font-based rendering
+    doc.compute_line_variants();
+
     serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL)
 }
 
@@ -1157,6 +1161,109 @@ pub fn remove_ornament_layered(line: usize, col: usize) -> JsValue {
     serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL)
 }
 
+/// Set ornament placement at a position (update existing ornament)
+///
+/// JavaScript: setOrnamentPlacementLayered(line, col, placement)
+///
+/// Updates the placement of an existing ornament in the annotation layer.
+/// Returns success/error status.
+#[wasm_bindgen(js_name = setOrnamentPlacementLayered)]
+pub fn set_ornament_placement_layered(line: usize, col: usize, placement: String) -> JsValue {
+    #[cfg(target_arch = "wasm32")]
+    web_sys::console::log_1(&format!(
+        "[WASM] setOrnamentPlacementLayered: line={}, col={}, placement='{}'",
+        line, col, placement
+    ).into());
+
+    // Parse placement string
+    let ornament_placement = match placement.to_lowercase().as_str() {
+        "before" => OrnamentPlacement::Before,
+        "after" => OrnamentPlacement::After,
+        "ontop" | "on-top" | "on_top" => OrnamentPlacement::OnTop,
+        _ => {
+            let result = OrnamentResult {
+                line,
+                col,
+                notation: None,
+                placement: None,
+                success: false,
+                error: Some(format!("Invalid placement: '{}'. Must be 'before', 'after', or 'ontop'", placement)),
+            };
+            return serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL);
+        }
+    };
+
+    // Lock document
+    let mut doc_guard = match lock_document() {
+        Ok(guard) => guard,
+        Err(e) => {
+            let result = OrnamentResult {
+                line,
+                col,
+                notation: None,
+                placement: None,
+                success: false,
+                error: Some(format!("Failed to lock document: {:?}", e)),
+            };
+            return serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL);
+        }
+    };
+
+    let document = match doc_guard.as_mut() {
+        Some(doc) => doc,
+        None => {
+            let result = OrnamentResult {
+                line,
+                col,
+                notation: None,
+                placement: None,
+                success: false,
+                error: Some("No document loaded".to_string()),
+            };
+            return serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL);
+        }
+    };
+
+    // Get existing ornament and update its placement
+    let pos = TextPos::new(line, col);
+    if let Some(ornament_data) = document.annotation_layer.ornaments.iter_mut().find(|o| o.pos == pos) {
+        let notation = ornament_data.notation.clone();
+        ornament_data.placement = ornament_placement.clone();
+
+        #[cfg(target_arch = "wasm32")]
+        web_sys::console::log_1(&format!(
+            "[WASM] ✅ Ornament placement updated: line={}, col={}, placement='{:?}'",
+            line, col, ornament_placement
+        ).into());
+
+        let result = OrnamentResult {
+            line,
+            col,
+            notation: Some(notation),
+            placement: Some(format!("{:?}", ornament_placement).to_lowercase()),
+            success: true,
+            error: None,
+        };
+        serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL)
+    } else {
+        #[cfg(target_arch = "wasm32")]
+        web_sys::console::log_1(&format!(
+            "[WASM] ⚠️ No ornament found at line={}, col={}",
+            line, col
+        ).into());
+
+        let result = OrnamentResult {
+            line,
+            col,
+            notation: None,
+            placement: None,
+            success: false,
+            error: Some("No ornament found at position".to_string()),
+        };
+        serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL)
+    }
+}
+
 /// Get ornament at a position
 ///
 /// JavaScript: getOrnamentAt(line, col)
@@ -1225,10 +1332,10 @@ pub fn get_ornaments_for_line(line: usize) -> JsValue {
 
     let results: Vec<OrnamentPositionResult> = ornaments
         .iter()
-        .map(|(pos, data)| OrnamentPositionResult {
-            col: pos.col,
-            notation: data.notation.clone(),
-            placement: format!("{:?}", data.placement).to_lowercase(),
+        .map(|ornament_data| OrnamentPositionResult {
+            col: ornament_data.pos.col,
+            notation: ornament_data.notation.clone(),
+            placement: format!("{:?}", ornament_data.placement).to_lowercase(),
         })
         .collect();
 
@@ -1305,66 +1412,104 @@ pub fn apply_annotation_ornaments_to_cells() -> JsValue {
         }
     }
 
-    // Iterate through ornaments and attach to cells
-    for (pos, ornament_data) in doc.annotation_layer.ornaments.iter() {
-        // Check if line exists
-        if pos.line >= doc.lines.len() {
-            #[cfg(target_arch = "wasm32")]
-            web_sys::console::log_1(&format!(
-                "[applyAnnotationOrnamentsToCells] Ornament at line {} out of bounds (doc has {} lines)",
-                pos.line, doc.lines.len()
-            ).into());
-            continue;
-        }
+    // Collect ornament data first to avoid borrow issues
+    let ornaments_to_apply: Vec<_> = doc.annotation_layer.ornaments.iter()
+        .filter_map(|ornament_data| {
+            let pos = &ornament_data.pos;
 
-        let line = &mut doc.lines[pos.line];
+            // Check if line exists
+            if pos.line >= doc.lines.len() {
+                #[cfg(target_arch = "wasm32")]
+                web_sys::console::log_1(&format!(
+                    "[applyAnnotationOrnamentsToCells] Ornament at line {} out of bounds (doc has {} lines)",
+                    pos.line, doc.lines.len()
+                ).into());
+                return None;
+            }
 
-        // Check if column exists
-        if pos.col >= line.cells.len() {
-            #[cfg(target_arch = "wasm32")]
-            web_sys::console::log_1(&format!(
-                "[applyAnnotationOrnamentsToCells] Ornament at col {} out of bounds (line has {} cells)",
-                pos.col, line.cells.len()
-            ).into());
-            continue;
-        }
+            // Get pitch system for this line
+            let pitch_system = doc.lines.get(pos.line)
+                .and_then(|line| line.pitch_system)
+                .unwrap_or(crate::models::PitchSystem::Number);
 
-        // Parse notation text into cells
-        // Simple character-by-character conversion (same as paste_ornament in core.rs)
-        let parsed_cells: Vec<Cell> = ornament_data.notation.chars()
-            .enumerate()
-            .map(|(idx, ch)| Cell::new(ch.to_string(), ElementKind::PitchedElement, idx))
-            .collect();
+            // Check if column exists
+            if pos.col >= doc.lines[pos.line].cells.len() {
+                #[cfg(target_arch = "wasm32")]
+                web_sys::console::log_1(&format!(
+                    "[applyAnnotationOrnamentsToCells] Ornament at col {} out of bounds (line has {} cells)",
+                    pos.col, doc.lines[pos.line].cells.len()
+                ).into());
+                return None;
+            }
 
-        if parsed_cells.is_empty() {
-            #[cfg(target_arch = "wasm32")]
-            web_sys::console::log_1(&format!(
-                "[applyAnnotationOrnamentsToCells] Empty notation text for ornament at line={}, col={}",
-                pos.line, pos.col
-            ).into());
-            continue;
-        }
+            // Parse notation text into cells with proper pitch_code
+            // Use pitch_from_glyph to decode each character
+            // IMPORTANT: Strip slurs and recalculate glyphs for ornament cells
+            let parsed_cells: Vec<Cell> = ornament_data.notation.chars()
+                .enumerate()
+                .filter_map(|(idx, ch)| {
+                    // Try to decode as pitch glyph
+                    if let Some((pitch_code, octave)) = crate::renderers::font_utils::pitch_from_glyph(ch, pitch_system) {
+                        // Recalculate the proper glyph for this pitch/octave/system
+                        let recalc_glyph = crate::renderers::font_utils::glyph_for_pitch(
+                            pitch_code, octave, pitch_system
+                        ).map(|g| g.to_string())
+                         .unwrap_or_else(|| ch.to_string());
 
-        // Convert placement
-        let model_placement = match ornament_data.placement {
-            OrnamentPlacement::Before => ModelOrnamentPlacement::Before,
-            OrnamentPlacement::After => ModelOrnamentPlacement::After,
-            OrnamentPlacement::OnTop => ModelOrnamentPlacement::After, // OnTop maps to After for now
-        };
+                        let mut cell = Cell::new(recalc_glyph, ElementKind::PitchedElement, idx);
+                        cell.pitch_code = Some(pitch_code);
+                        cell.octave = octave;
+                        // Explicitly strip slur indicator (ornaments should not have slurs)
+                        cell.slur_indicator = crate::models::SlurIndicator::None;
+                        Some(cell)
+                    } else if ch.is_whitespace() {
+                        // Skip whitespace
+                        None
+                    } else {
+                        // Keep non-pitch characters as unpitched (spaces, etc.)
+                        let mut cell = Cell::new(ch.to_string(), ElementKind::UnpitchedElement, idx);
+                        // Explicitly strip slur indicator
+                        cell.slur_indicator = crate::models::SlurIndicator::None;
+                        Some(cell)
+                    }
+                })
+                .collect();
 
+            if parsed_cells.is_empty() {
+                #[cfg(target_arch = "wasm32")]
+                web_sys::console::log_1(&format!(
+                    "[applyAnnotationOrnamentsToCells] Empty parsed cells for ornament at line={}, col={}, notation='{}'",
+                    pos.line, pos.col, ornament_data.notation
+                ).into());
+                return None;
+            }
+
+            // Convert placement
+            let model_placement = match ornament_data.placement {
+                OrnamentPlacement::Before => ModelOrnamentPlacement::Before,
+                OrnamentPlacement::After => ModelOrnamentPlacement::After,
+                OrnamentPlacement::OnTop => ModelOrnamentPlacement::OnTop,
+            };
+
+            Some((pos.line, pos.col, parsed_cells, model_placement, ornament_data.notation.clone()))
+        })
+        .collect();
+
+    // Now apply to cells
+    for (line_idx, col, parsed_cells, model_placement, notation) in ornaments_to_apply {
         // Create ornament and attach to cell
         let ornament = Ornament {
             cells: parsed_cells,
             placement: model_placement,
         };
 
-        line.cells[pos.col].ornament = Some(ornament);
+        doc.lines[line_idx].cells[col].ornament = Some(ornament);
         ornaments_applied += 1;
 
         #[cfg(target_arch = "wasm32")]
         web_sys::console::log_1(&format!(
             "[applyAnnotationOrnamentsToCells] Applied ornament at line={}, col={}, notation='{}'",
-            pos.line, pos.col, ornament_data.notation
+            line_idx, col, notation
         ).into());
     }
 

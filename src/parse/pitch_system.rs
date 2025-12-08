@@ -51,20 +51,35 @@ pub struct WesternPitchSystem;
 impl PitchSystemHandler for WesternPitchSystem {
     fn lookup(&self, symbol: &str) -> bool {
         matches!(symbol,
+            // Lowercase naturals
             "c" | "d" | "e" | "f" | "g" | "a" | "b" |
-            "c#" | "cb" | "d#" | "db" | "e#" | "eb" |
-            "f#" | "fb" | "g#" | "gb" | "a#" | "ab" | "b#" | "bb" |
-            "c##" | "cbb" | "d##" | "dbb" | "e##" | "ebb" |
-            "f##" | "fbb" | "g##" | "gbb" | "a##" | "abb" | "b##" | "bbb"
+            // Uppercase naturals (atoms.yaml defines both cases for Western)
+            "C" | "D" | "E" | "F" | "G" | "A" |
+            // Lowercase sharps
+            "c#" | "d#" | "e#" | "f#" | "g#" | "a#" | "b#" |
+            // Uppercase sharps
+            "C#" | "D#" | "E#" | "F#" | "G#" | "A#" |
+            // Lowercase flats
+            "cb" | "db" | "eb" | "fb" | "gb" | "ab" | "bb" |
+            // Uppercase flats
+            "Cb" | "Db" | "Eb" | "Fb" | "Gb" | "Ab" |
+            // Lowercase double sharps
+            "c##" | "d##" | "e##" | "f##" | "g##" | "a##" | "b##" |
+            // Uppercase double sharps
+            "C##" | "D##" | "E##" | "F##" | "G##" | "A##" |
+            // Lowercase double flats
+            "cbb" | "dbb" | "ebb" | "fbb" | "gbb" | "abb" | "bbb" |
+            // Uppercase double flats
+            "Cbb" | "Dbb" | "Ebb" | "Fbb" | "Gbb" | "Abb"
         )
     }
 
     fn get_valid_chars(&self) -> Vec<char> {
-        vec!['a', 'b', 'c', 'd', 'e', 'f', 'g', '#']
+        vec!['a', 'b', 'c', 'd', 'e', 'f', 'g', 'A', 'C', 'D', 'E', 'F', 'G', '#']
     }
 
     fn get_pitch_chars(&self) -> Vec<char> {
-        vec!['a', 'b', 'c', 'd', 'e', 'f', 'g']
+        vec!['a', 'b', 'c', 'd', 'e', 'f', 'g', 'A', 'C', 'D', 'E', 'F', 'G']
     }
 }
 
@@ -174,6 +189,31 @@ mod tests {
         assert!(system.lookup("d##"));
         assert!(!system.lookup("X"));
         assert!(!system.lookup("h"));
+    }
+
+    #[test]
+    fn test_western_pitch_system_uppercase() {
+        // atoms.yaml defines both uppercase (C-G) and lowercase (c-g) for Western system
+        // Both should be recognized as valid pitches
+        let system = WesternPitchSystem;
+
+        // Uppercase naturals
+        assert!(system.lookup("C"), "Uppercase C should be a valid Western pitch");
+        assert!(system.lookup("D"), "Uppercase D should be a valid Western pitch");
+        assert!(system.lookup("E"), "Uppercase E should be a valid Western pitch");
+        assert!(system.lookup("F"), "Uppercase F should be a valid Western pitch");
+        assert!(system.lookup("G"), "Uppercase G should be a valid Western pitch");
+        assert!(system.lookup("A"), "Uppercase A should be a valid Western pitch");
+        // Note: B is lowercase only to avoid confusion with flat symbol 'b'
+
+        // Uppercase with sharps - THIS IS THE REPORTED BUG
+        assert!(system.lookup("F#"), "Uppercase F# should be a valid Western pitch");
+        assert!(system.lookup("G#"), "Uppercase G# should be a valid Western pitch - THIS WAS REPORTED AS NOT WORKING");
+        assert!(system.lookup("C#"), "Uppercase C# should be a valid Western pitch");
+
+        // Uppercase with flats
+        assert!(system.lookup("Db"), "Uppercase Db should be a valid Western pitch");
+        assert!(system.lookup("Gb"), "Uppercase Gb should be a valid Western pitch");
     }
 
     #[test]

@@ -29,12 +29,6 @@ export class MouseHandler {
    * @param {MouseEvent} event - Browser mouse event
    */
   async handleMouseDown(event) {
-    // Ignore clicks on the gutter toggle button
-    const gutterToggle = event.target.closest('.gutter-toggle-btn');
-    if (gutterToggle) {
-      return;
-    }
-
     this.editor.element.focus({ preventScroll: true });
 
     // Close any open menus when clicking in editor
@@ -427,9 +421,16 @@ export class MouseHandler {
       return 0;
     }
 
-    // Use ALL rendered cells for click detection - no filtering
-    // Mouse clicks should work on any visible cell (notes, spaces, barlines, etc.)
-    const navigableCellElements = Array.from(allCellElements);
+    // Filter to cells with valid data-cell-index (excludes ornamental/floating cells)
+    // Ornamental cells are zero-width floating elements that shouldn't participate in click detection
+    const navigableCellElements = Array.from(allCellElements).filter(cell => {
+      const index = cell.getAttribute('data-cell-index');
+      return index !== null && !isNaN(parseInt(index, 10));
+    });
+
+    if (navigableCellElements.length === 0) {
+      return 0;
+    }
 
     // Measure actual rendered cell positions from DOM
     const editorRect = this.editor.element.getBoundingClientRect();

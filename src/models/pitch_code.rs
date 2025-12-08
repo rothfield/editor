@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AccidentalType {
     None,
+    Natural, // Explicit natural sign (cancels previous accidentals)
     Sharp,
     Flat,
     HalfFlat,
@@ -84,6 +85,49 @@ impl PitchCode {
         }
     }
 
+    /// Get the base ASCII character for this pitch in a given pitch system
+    /// Used for line variant lookup (underline/overline glyphs)
+    pub fn base_char(&self, system: super::elements::PitchSystem) -> Option<char> {
+        use super::elements::PitchSystem;
+        let degree = self.degree();
+        match system {
+            PitchSystem::Number => {
+                // Number system: 1-7
+                Some(char::from_digit(degree as u32, 10)?)
+            }
+            PitchSystem::Western => {
+                // Western: C D E F G A B (uppercase)
+                match degree {
+                    1 => Some('C'),
+                    2 => Some('D'),
+                    3 => Some('E'),
+                    4 => Some('F'),
+                    5 => Some('G'),
+                    6 => Some('A'),
+                    7 => Some('B'),
+                    _ => None,
+                }
+            }
+            PitchSystem::Sargam => {
+                // Sargam: S R G M P D N
+                match degree {
+                    1 => Some('S'),
+                    2 => Some('R'),
+                    3 => Some('G'),
+                    4 => Some('M'),
+                    5 => Some('P'),
+                    6 => Some('D'),
+                    7 => Some('N'),
+                    _ => None,
+                }
+            }
+            PitchSystem::Bhatkhande | PitchSystem::Tabla | PitchSystem::Unknown => {
+                // Fallback to number system for these
+                Some(char::from_digit(degree as u32, 10)?)
+            }
+        }
+    }
+
     /// Convert this pitch to its natural form (remove accidentals)
     pub fn to_natural(&self) -> PitchCode {
         match self.degree() {
@@ -124,6 +168,25 @@ impl PitchCode {
             // Naturals
             _ => AccidentalType::None,
         }
+    }
+
+    /// Get degree (1-7) and accidental type
+    ///
+    /// Used for transposition logic. Returns the scale degree and optional accidental.
+    ///
+    /// # Examples
+    /// - N1 → (1, None)
+    /// - N4s → (4, Some(Sharp))
+    /// - N3b → (3, Some(Flat))
+    pub fn to_degree_accidental(&self) -> (u8, Option<AccidentalType>) {
+        let degree = self.degree();
+        let acc = self.accidental_type();
+        let acc_opt = if acc == AccidentalType::None {
+            None
+        } else {
+            Some(acc)
+        };
+        (degree, acc_opt)
     }
 
     /// Add a sharp to this pitch
@@ -211,6 +274,7 @@ impl PitchCode {
             AccidentalType::DoubleFlat => -2,
             AccidentalType::Flat => -1,
             AccidentalType::HalfFlat => 0, // Approximate as natural
+            AccidentalType::Natural => 0, // Explicit natural (same as implicit)
             AccidentalType::Sharp => 1,
             AccidentalType::DoubleSharp => 2,
             AccidentalType::None => 0,
@@ -314,7 +378,7 @@ impl PitchCode {
 
     /// Convert PitchCode to string based on pitch system
     /// For Number system: N4s -> "4#", N4b -> "4b"
-    /// For Western system: N4s -> "f#", N4b -> "fb"
+    /// For Western system: N4s -> "F#", N4b -> "Fb" (uppercase for text export)
     /// For Sargam system: N4s -> "M", N4b -> "mb"
     pub fn to_string(&self, pitch_system: super::elements::PitchSystem) -> String {
         use super::elements::PitchSystem;
@@ -435,57 +499,58 @@ impl PitchCode {
         }.to_string()
     }
 
-    /// Convert to western notation string (a-g with #/b, lowercase)
+    /// Convert to western notation string (C-G, A-B with #/b, uppercase)
+    /// Uses uppercase as this is conventional Western notation for text export
     fn to_western_string(&self) -> String {
         match self {
-            // Natural notes (lowercase to match parser input)
-            PitchCode::N1 => "c",
-            PitchCode::N2 => "d",
-            PitchCode::N3 => "e",
-            PitchCode::N4 => "f",
-            PitchCode::N5 => "g",
-            PitchCode::N6 => "a",
-            PitchCode::N7 => "b",
+            // Natural notes (uppercase is conventional Western notation)
+            PitchCode::N1 => "C",
+            PitchCode::N2 => "D",
+            PitchCode::N3 => "E",
+            PitchCode::N4 => "F",
+            PitchCode::N5 => "G",
+            PitchCode::N6 => "A",
+            PitchCode::N7 => "B",
             // Sharps
-            PitchCode::N1s => "c#",
-            PitchCode::N2s => "d#",
-            PitchCode::N3s => "e#",
-            PitchCode::N4s => "f#",
-            PitchCode::N5s => "g#",
-            PitchCode::N6s => "a#",
-            PitchCode::N7s => "b#",
+            PitchCode::N1s => "C#",
+            PitchCode::N2s => "D#",
+            PitchCode::N3s => "E#",
+            PitchCode::N4s => "F#",
+            PitchCode::N5s => "G#",
+            PitchCode::N6s => "A#",
+            PitchCode::N7s => "B#",
             // Flats
-            PitchCode::N1b => "cb",
-            PitchCode::N2b => "db",
-            PitchCode::N3b => "eb",
-            PitchCode::N4b => "fb",
-            PitchCode::N5b => "gb",
-            PitchCode::N6b => "ab",
-            PitchCode::N7b => "bb",
+            PitchCode::N1b => "Cb",
+            PitchCode::N2b => "Db",
+            PitchCode::N3b => "Eb",
+            PitchCode::N4b => "Fb",
+            PitchCode::N5b => "Gb",
+            PitchCode::N6b => "Ab",
+            PitchCode::N7b => "Bb",
             // Half-flats
-            PitchCode::N1hf => "cb/",
-            PitchCode::N2hf => "db/",
-            PitchCode::N3hf => "eb/",
-            PitchCode::N4hf => "fb/",
-            PitchCode::N5hf => "gb/",
-            PitchCode::N6hf => "ab/",
-            PitchCode::N7hf => "bb/",
+            PitchCode::N1hf => "Cb/",
+            PitchCode::N2hf => "Db/",
+            PitchCode::N3hf => "Eb/",
+            PitchCode::N4hf => "Fb/",
+            PitchCode::N5hf => "Gb/",
+            PitchCode::N6hf => "Ab/",
+            PitchCode::N7hf => "Bb/",
             // Double sharps
-            PitchCode::N1ss => "c##",
-            PitchCode::N2ss => "d##",
-            PitchCode::N3ss => "e##",
-            PitchCode::N4ss => "f##",
-            PitchCode::N5ss => "g##",
-            PitchCode::N6ss => "a##",
-            PitchCode::N7ss => "b##",
+            PitchCode::N1ss => "C##",
+            PitchCode::N2ss => "D##",
+            PitchCode::N3ss => "E##",
+            PitchCode::N4ss => "F##",
+            PitchCode::N5ss => "G##",
+            PitchCode::N6ss => "A##",
+            PitchCode::N7ss => "B##",
             // Double flats
-            PitchCode::N1bb => "cbb",
-            PitchCode::N2bb => "dbb",
-            PitchCode::N3bb => "ebb",
-            PitchCode::N4bb => "fbb",
-            PitchCode::N5bb => "gbb",
-            PitchCode::N6bb => "abb",
-            PitchCode::N7bb => "bbb",
+            PitchCode::N1bb => "Cbb",
+            PitchCode::N2bb => "Dbb",
+            PitchCode::N3bb => "Ebb",
+            PitchCode::N4bb => "Fbb",
+            PitchCode::N5bb => "Gbb",
+            PitchCode::N6bb => "Abb",
+            PitchCode::N7bb => "Bbb",
         }.to_string()
     }
 }
@@ -585,9 +650,11 @@ impl PitchCode {
         }
     }
 
-    /// Parse western notation string (a-g with #/b)
+    /// Parse western notation string (a-g/A-G with #/b)
+    /// Supports both lowercase and uppercase letters (atoms.yaml defines both)
     fn from_western(input: &str) -> Option<Self> {
         match input {
+            // Lowercase naturals
             "c" => Some(PitchCode::N1),
             "d" => Some(PitchCode::N2),
             "e" => Some(PitchCode::N3),
@@ -595,6 +662,14 @@ impl PitchCode {
             "g" => Some(PitchCode::N5),
             "a" => Some(PitchCode::N6),
             "b" => Some(PitchCode::N7),
+            // Uppercase naturals
+            "C" => Some(PitchCode::N1),
+            "D" => Some(PitchCode::N2),
+            "E" => Some(PitchCode::N3),
+            "F" => Some(PitchCode::N4),
+            "G" => Some(PitchCode::N5),
+            "A" => Some(PitchCode::N6),
+            // Lowercase sharps and flats
             "c#" => Some(PitchCode::N1s), "cb" => Some(PitchCode::N1b),
             "d#" => Some(PitchCode::N2s), "db" => Some(PitchCode::N2b),
             "e#" => Some(PitchCode::N3s), "eb" => Some(PitchCode::N3b),
@@ -602,6 +677,14 @@ impl PitchCode {
             "g#" => Some(PitchCode::N5s), "gb" => Some(PitchCode::N5b),
             "a#" => Some(PitchCode::N6s), "ab" => Some(PitchCode::N6b),
             "b#" => Some(PitchCode::N7s), "bb" => Some(PitchCode::N7b),
+            // Uppercase sharps and flats
+            "C#" => Some(PitchCode::N1s), "Cb" => Some(PitchCode::N1b),
+            "D#" => Some(PitchCode::N2s), "Db" => Some(PitchCode::N2b),
+            "E#" => Some(PitchCode::N3s), "Eb" => Some(PitchCode::N3b),
+            "F#" => Some(PitchCode::N4s), "Fb" => Some(PitchCode::N4b),
+            "G#" => Some(PitchCode::N5s), "Gb" => Some(PitchCode::N5b),
+            "A#" => Some(PitchCode::N6s), "Ab" => Some(PitchCode::N6b),
+            // Lowercase double sharps and double flats
             "c##" => Some(PitchCode::N1ss), "cbb" => Some(PitchCode::N1bb),
             "d##" => Some(PitchCode::N2ss), "dbb" => Some(PitchCode::N2bb),
             "e##" => Some(PitchCode::N3ss), "ebb" => Some(PitchCode::N3bb),
@@ -609,6 +692,13 @@ impl PitchCode {
             "g##" => Some(PitchCode::N5ss), "gbb" => Some(PitchCode::N5bb),
             "a##" => Some(PitchCode::N6ss), "abb" => Some(PitchCode::N6bb),
             "b##" => Some(PitchCode::N7ss), "bbb" => Some(PitchCode::N7bb),
+            // Uppercase double sharps and double flats
+            "C##" => Some(PitchCode::N1ss), "Cbb" => Some(PitchCode::N1bb),
+            "D##" => Some(PitchCode::N2ss), "Dbb" => Some(PitchCode::N2bb),
+            "E##" => Some(PitchCode::N3ss), "Ebb" => Some(PitchCode::N3bb),
+            "F##" => Some(PitchCode::N4ss), "Fbb" => Some(PitchCode::N4bb),
+            "G##" => Some(PitchCode::N5ss), "Gbb" => Some(PitchCode::N5bb),
+            "A##" => Some(PitchCode::N6ss), "Abb" => Some(PitchCode::N6bb),
             _ => None,
         }
     }
@@ -783,12 +873,13 @@ mod tests {
         let pitch = PitchCode::N4s; // F#
 
         assert_eq!(pitch.to_string(PitchSystem::Number), "4#");
-        assert_eq!(pitch.to_string(PitchSystem::Western), "f#");
+        assert_eq!(pitch.to_string(PitchSystem::Western), "F#"); // uppercase for text export
         assert_eq!(pitch.to_string(PitchSystem::Sargam), "M"); // tivra Ma
 
-        // Parse back from each system
+        // Parse back from each system (parser accepts both cases)
         assert_eq!(PitchCode::from_string("4#", PitchSystem::Number), Some(pitch));
-        assert_eq!(PitchCode::from_string("f#", PitchSystem::Western), Some(pitch));
+        assert_eq!(PitchCode::from_string("f#", PitchSystem::Western), Some(pitch)); // lowercase input
+        assert_eq!(PitchCode::from_string("F#", PitchSystem::Western), Some(pitch)); // uppercase input
         assert_eq!(PitchCode::from_string("M", PitchSystem::Sargam), Some(pitch));
     }
 

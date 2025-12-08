@@ -48,11 +48,12 @@ export function toYAML(obj, indent = 0) {
     let keys = Object.keys(obj);
     if (keys.length === 0) return '{}';
 
-    // Special ordering for root document: alphabetical with 'lines' at the end
-    if (indent === 0 && keys.includes('lines')) {
-      const linesKey = 'lines';
-      const otherKeys = keys.filter(k => k !== 'lines').sort();
-      keys = [...otherKeys, linesKey];
+    // Special ordering for root document: alphabetical with lines first, then verbose fields last
+    if (indent === 0) {
+      const verboseFields = ['lines', 'annotation_layer', 'state'];
+      const mainKeys = keys.filter(k => !verboseFields.includes(k)).sort();
+      const endKeys = verboseFields.filter(k => keys.includes(k));
+      keys = [...mainKeys, ...endKeys];
     }
 
     return `\n${keys.map(key => {

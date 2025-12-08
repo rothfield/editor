@@ -10,6 +10,7 @@ pub mod display_list;
 pub mod lyrics;
 pub mod curves;
 pub mod font_utils;
+pub mod line_variants;
 
 // Re-export commonly used types
 pub use musicxml::*;
@@ -24,3 +25,10 @@ pub use layout_engine::{
 };
 // Lookup table API (lookup-based, handles accidentals and octaves in one call)
 pub use font_utils::{glyph_for_pitch, pitch_from_glyph};
+// Line variant API
+pub use line_variants::{
+    get_line_variant_codepoint,
+    UnderlineState,
+    OverlineState,
+    is_line_capable,
+};

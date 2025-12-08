@@ -101,11 +101,17 @@ export class KeyboardHandler {
       case 't':
         await this.editor.showTalaDialog();
         break;
+      case '0':
+        // Convert selection to ornament (Alt+0)
+        if (this.editor.ui && this.editor.ui.selectionToOrnament) {
+          await this.editor.ui.selectionToOrnament();
+        }
+        break;
       default:
         logger.warn(LOG_CATEGORIES.KEYBOARD, 'Unknown Alt command', { key });
         this.editor.showWarning(`Unknown musical command: Alt+${key}`, {
           important: false,
-          details: `Available commands: Alt+N (new), Alt+S (slur), Alt+U (upper octave), Alt+M (middle octave), Alt+L (lower octave), Alt+T (tala)`
+          details: `Available commands: Alt+N (new), Alt+S (slur), Alt+U (upper octave), Alt+M (middle octave), Alt+L (lower octave), Alt+T (tala), Alt+0 (selection to ornament)`
         });
         return;
     }

@@ -106,36 +106,17 @@ pub fn get_font_config() -> JsValue {
         symbols: Vec<SymbolInfo>,
     }
 
-    let systems = vec![
-        SystemConfig {
-            system_name: "number",
-            pua_base: crate::NUMBER_PUA_BASE,
-            char_count: crate::NUMBER_CHAR_COUNT,
-            variants_per_character: crate::VARIANTS_PER_CHARACTER,
-            total_glyphs: crate::NUMBER_TOTAL_GLYPHS,
-        },
-        SystemConfig {
-            system_name: "western",
-            pua_base: crate::WESTERN_PUA_BASE,
-            char_count: crate::WESTERN_CHAR_COUNT,
-            variants_per_character: crate::VARIANTS_PER_CHARACTER,
-            total_glyphs: crate::WESTERN_TOTAL_GLYPHS,
-        },
-        SystemConfig {
-            system_name: "sargam",
-            pua_base: crate::SARGAM_PUA_BASE,
-            char_count: crate::SARGAM_CHAR_COUNT,
-            variants_per_character: crate::VARIANTS_PER_CHARACTER,
-            total_glyphs: crate::SARGAM_TOTAL_GLYPHS,
-        },
-        SystemConfig {
-            system_name: "doremi",
-            pua_base: crate::DOREMI_PUA_BASE,
-            char_count: crate::DOREMI_CHAR_COUNT,
-            variants_per_character: crate::VARIANTS_PER_CHARACTER,
-            total_glyphs: crate::DOREMI_TOTAL_GLYPHS,
-        },
-    ];
+    // Build systems from generated MEASUREMENT_SYSTEMS (from atoms.yaml via build.rs)
+    let systems: Vec<SystemConfig> = MEASUREMENT_SYSTEMS
+        .iter()
+        .map(|ms| SystemConfig {
+            system_name: ms.name,
+            pua_base: ms.pua_base,
+            char_count: ms.char_count,
+            variants_per_character: ms.variants_per_char,
+            total_glyphs: ms.char_count * ms.variants_per_char,
+        })
+        .collect();
 
     // Musical symbols (barlines and ornaments) with their Unicode codepoints
     let symbols = vec![
@@ -199,6 +180,8 @@ pub fn get_font_config() -> JsValue {
 
 // Include generated lookup tables from build.rs
 include!(concat!(env!("OUT_DIR"), "/font_lookup_tables.rs"));
+include!(concat!(env!("OUT_DIR"), "/font_measurement_systems.rs"));
+include!(concat!(env!("OUT_DIR"), "/superscript_tables.rs"));
 
 /// Get the glyph character for a pitch with octave shift
 ///
@@ -285,6 +268,60 @@ pub fn pitch_from_glyph(
         // Fallback to Number for unimplemented systems
         _ => pitch_from_glyph_number(ch),
     }
+}
+
+// ============================================================================
+// SUPERSCRIPT GLYPH API FOR ORNAMENT RENDERING
+// ============================================================================
+
+/// Get superscript glyph for ornament rendering (WASM export)
+///
+/// Returns the 75% scaled superscript version of a source glyph with optional overline.
+/// Used for rendering grace notes and ornaments in the editor.
+///
+/// # Arguments
+/// * `source_cp` - Source codepoint (ASCII 0x20-0x7E or PUA pitch glyph)
+/// * `overline_variant` - 0=none, 1=left-cap, 2=middle, 3=right-cap
+///
+/// # Returns
+/// The superscript codepoint in Supplementary PUA-A (0xF0000+), or 0 if not found
+///
+/// # Formula
+/// `superscript_cp = system_base + (source_offset × 4) + overline_variant`
+///
+/// # Example (JavaScript)
+/// ```javascript
+/// const superscriptCp = wasmModule.getSuperscriptGlyph(0x31, 0); // '1' no overline
+/// const withOverline = wasmModule.getSuperscriptGlyph(0x31, 2); // '1' middle overline
+/// ```
+#[wasm_bindgen(js_name = getSuperscriptGlyph)]
+pub fn get_superscript_glyph(source_cp: u32, overline_variant: u8) -> u32 {
+    let overline = match SuperscriptOverline::from_index(overline_variant) {
+        Some(o) => o,
+        None => return 0, // Invalid overline variant
+    };
+
+    superscript_glyph(source_cp, overline)
+        .map(|c| c as u32)
+        .unwrap_or(0)
+}
+
+/// Check if a codepoint is a superscript glyph (WASM export)
+///
+/// Returns true if the codepoint is in the Supplementary PUA-A superscript range.
+#[wasm_bindgen(js_name = isSuperscriptGlyph)]
+pub fn is_superscript_glyph(cp: u32) -> bool {
+    is_superscript(cp)
+}
+
+/// Get the overline variant from a superscript glyph codepoint (WASM export)
+///
+/// Returns the overline variant (0-3) or 255 if not a superscript glyph.
+#[wasm_bindgen(js_name = getSuperscriptOverline)]
+pub fn get_superscript_overline(cp: u32) -> u8 {
+    superscript_overline(cp)
+        .map(|o| o as u8)
+        .unwrap_or(255)
 }
 
 #[cfg(test)]
@@ -378,5 +415,103 @@ mod tests {
         }
     }
 
+    // ============================================================================
+    // SUPERSCRIPT GLYPH TESTS
+    // ============================================================================
 
+    #[test]
+    fn test_superscript_ascii_basic() {
+        // ASCII '1' (0x31) with no line variant
+        let result = superscript_ascii('1', SuperscriptOverline::None);
+        // source_offset = 0x31 - 0x20 = 0x11 = 17
+        // superscript_cp = 0xF8000 + (17 × 16) + 0 = 0xF8110
+        assert_eq!(result, Some('\u{F8110}'));
+    }
+
+    #[test]
+    fn test_superscript_ascii_with_overline() {
+        // ASCII '1' (0x31) with middle overline (variant 5)
+        let result = superscript_ascii('1', SuperscriptOverline::OverlineMiddle);
+        // source_offset = 17, line_variant = 5
+        // superscript_cp = 0xF8000 + (17 × 16) + 5 = 0xF8115
+        assert_eq!(result, Some('\u{F8115}'));
+    }
+
+    #[test]
+    fn test_superscript_ascii_out_of_range() {
+        // Control character (0x19) should return None
+        let result = superscript_ascii('\x19', SuperscriptOverline::None);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_superscript_number_pitch() {
+        // Number system pitch at 0xE000 with no line variant
+        let result = superscript_number(0xE000, SuperscriptOverline::None);
+        // source_offset = 0xE000 - 0xE000 = 0
+        // superscript_cp = 0xF8600 + (0 × 16) + 0 = 0xF8600
+        assert_eq!(result, Some('\u{F8600}'));
+    }
+
+    #[test]
+    fn test_superscript_number_with_underline() {
+        // Number system pitch at 0xE000 with right-cap underline (variant 3)
+        let result = superscript_number(0xE000, SuperscriptOverline::UnderlineRight);
+        // superscript_cp = 0xF8600 + (0 × 16) + 3 = 0xF8603
+        assert_eq!(result, Some('\u{F8603}'));
+    }
+
+    #[test]
+    fn test_superscript_glyph_auto_detect_ascii() {
+        // Should auto-detect ASCII and route to superscript_ascii
+        let result = superscript_glyph(0x31, SuperscriptOverline::None); // '1'
+        assert!(result.is_some());
+        let cp = result.unwrap() as u32;
+        assert!(cp >= 0xF8000 && cp < 0xF8600, "ASCII should be in 0xF8000-0xF85FF");
+    }
+
+    #[test]
+    fn test_superscript_glyph_auto_detect_number() {
+        // Should auto-detect Number PUA and route to superscript_number
+        let result = superscript_glyph(0xE000, SuperscriptOverline::None);
+        assert!(result.is_some());
+        let cp = result.unwrap() as u32;
+        assert!(cp >= 0xF8600 && cp < 0xF9400, "Number should be in 0xF8600-0xF93FF");
+    }
+
+    #[test]
+    fn test_is_superscript() {
+        // Superscript glyphs are in Supplementary PUA-A (0xF8000+)
+        assert!(is_superscript(0xF8000));
+        assert!(is_superscript(0xF8600));
+        assert!(is_superscript(0xF9400));
+        assert!(!is_superscript(0xE000)); // Regular PUA
+        assert!(!is_superscript(0x31));   // ASCII
+    }
+
+    #[test]
+    fn test_superscript_line_variant_extraction() {
+        // Line variant is always cp % 16
+        assert_eq!(superscript_overline(0xF8600), Some(SuperscriptOverline::None));
+        assert_eq!(superscript_overline(0xF8601), Some(SuperscriptOverline::UnderlineLeft));
+        assert_eq!(superscript_overline(0xF8602), Some(SuperscriptOverline::UnderlineMiddle));
+        assert_eq!(superscript_overline(0xF8603), Some(SuperscriptOverline::UnderlineRight));
+        assert_eq!(superscript_overline(0xF8604), Some(SuperscriptOverline::OverlineLeft));
+        assert_eq!(superscript_overline(0xF8605), Some(SuperscriptOverline::OverlineMiddle));
+        assert_eq!(superscript_overline(0xF8606), Some(SuperscriptOverline::OverlineRight));
+        assert_eq!(superscript_overline(0xE000), None); // Not a superscript
+    }
+
+    #[test]
+    fn test_wasm_get_superscript_glyph() {
+        // Test the WASM export function
+        let result = get_superscript_glyph(0x31, 0); // '1' no line
+        assert!(result >= 0xF8000);
+
+        let result_with_underline = get_superscript_glyph(0x31, 1); // '1' underline left
+        assert_eq!(result_with_underline, result + 1);
+
+        let invalid = get_superscript_glyph(0x31, 20); // Invalid line variant (max is 15)
+        assert_eq!(invalid, 0);
+    }
 }

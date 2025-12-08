@@ -5,10 +5,11 @@ use std::collections::HashMap;
 
 fn main() {
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
-    let atoms_path = PathBuf::from("build/atoms.yaml");
+    // Single source of truth: tools/fontgen/atoms.yaml
+    let atoms_path = PathBuf::from("tools/fontgen/atoms.yaml");
 
     // Tell Cargo to rebuild if atoms.yaml changes
-    println!("cargo:rerun-if-changed=build/atoms.yaml");
+    println!("cargo:rerun-if-changed=tools/fontgen/atoms.yaml");
 
     // Read and parse atoms.yaml
     let atoms_content = fs::read_to_string(&atoms_path)
@@ -23,8 +24,14 @@ fn main() {
     // Generate per-system lookup tables
     generate_lookup_tables(&atoms, &out_dir);
 
-    // NEW: Generate fontspec.json for Python consumption
+    // Generate fontspec.json for Python consumption
     generate_fontspec_json(&atoms, &out_dir);
+
+    // Generate measurement system configs for getFontConfig()
+    generate_measurement_systems(&atoms, &out_dir);
+
+    // Generate superscript lookup tables for ornament rendering
+    generate_superscript_tables(&atoms, &out_dir);
 }
 
 /// Generate font constants from per-system notation systems
@@ -246,6 +253,167 @@ pub fn octave_index(o: i8) -> Option<usize> {
         );
     }
 
+    // Generate underlined lookup tables (parallel to base tables)
+    // Underlined PUA bases from atoms.yaml underlined_notes section
+    let underlined_bases: HashMap<u32, u32> = [
+        (0xE000, 0x16000), // Number
+        (0xE100, 0x16100), // Western
+        (0xE300, 0x16300), // Sargam
+        (0xE500, 0x16500), // Doremi
+    ].iter().cloned().collect();
+
+    code.push_str("// =============================================================================\n");
+    code.push_str("// UNDERLINED LOOKUP TABLES (for beat grouping display)\n");
+    code.push_str("// Same structure as base tables, just with underlined PUA range\n");
+    code.push_str("// =============================================================================\n\n");
+
+    for system in systems {
+        let system_name = system
+            .get("system_name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
+
+        let system_name_upper = system_name.to_uppercase();
+        let pua_base = system
+            .get("pua_base")
+            .and_then(|v| parse_hex(v))
+            .unwrap_or(0xE000);
+
+        let characters = system
+            .get("characters")
+            .and_then(|v| v.as_sequence())
+            .expect(&format!("No characters in {} system", system_name));
+
+        // Build character-to-index map for this system
+        let mut char_to_index: HashMap<char, usize> = HashMap::new();
+        for (idx, char_entry) in characters.iter().enumerate() {
+            if let Some(ch) = char_entry.get("char").and_then(|v| v.as_str()) {
+                if let Some(c) = ch.chars().next() {
+                    char_to_index.insert(c, idx);
+                }
+            }
+        }
+
+        // Get underlined base for this system
+        if let Some(&underlined_base) = underlined_bases.get(&pua_base) {
+            generate_underlined_lookup_table(
+                &mut code,
+                &system_name_upper,
+                underlined_base,
+                &char_to_index,
+                &characters,
+            );
+        }
+    }
+
+    // Add underlined glyph lookup function
+    code.push_str(r#"
+/// Get underlined glyph for a pitch code and octave
+/// Returns the glyph from the appropriate underlined system table
+pub fn underlined_glyph_for_pitch(
+    pitch: PitchCode,
+    octave: i8,
+    system: crate::models::elements::PitchSystem,
+) -> Option<char> {
+    let pi = pitch_code_index(pitch);
+    let oi = octave_index(octave)?;
+
+    Some(match system {
+        crate::models::elements::PitchSystem::Number => NUMBER_UNDERLINED_TABLE[pi][oi],
+        crate::models::elements::PitchSystem::Western => WESTERN_UNDERLINED_TABLE[pi][oi],
+        crate::models::elements::PitchSystem::Sargam => SARGAM_UNDERLINED_TABLE[pi][oi],
+        // Doremi, Bhatkhande, Tabla not yet implemented - use Number as fallback
+        _ => NUMBER_UNDERLINED_TABLE[pi][oi],
+    })
+}
+
+/// Bracket position for underlined note groups
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum BracketPosition {
+    Middle,  // Inside group (no arc endpoints)
+    Left,    // Start of group (left arc)
+    Right,   // End of group (right arc)
+}
+
+/// Underlined note bracket system configuration
+/// Maps underlined glyph ranges to bracket variant ranges
+struct UnderlinedBracketSystem {
+    underlined_start: u32,  // Start of underlined range (e.g., 0x16000)
+    underlined_end: u32,    // End of underlined range (exclusive)
+    bracket_base: u32,      // Base of bracket variants for this system
+    count: u32,             // Number of underlined glyphs in this system
+}
+
+/// All underlined bracket systems (generated from atoms.yaml)
+/// Layout: left = bracket_base + offset, right = bracket_base + count + offset
+const UNDERLINED_BRACKET_SYSTEMS: &[UnderlinedBracketSystem] = &[
+    UnderlinedBracketSystem { underlined_start: 0x16000, underlined_end: 0x160D2, bracket_base: 0x17000, count: 210 },  // number
+    UnderlinedBracketSystem { underlined_start: 0x16100, underlined_end: 0x162A4, bracket_base: 0x171A4, count: 420 },  // western
+    UnderlinedBracketSystem { underlined_start: 0x16300, underlined_end: 0x16468, bracket_base: 0x174EC, count: 360 },  // sargam
+    UnderlinedBracketSystem { underlined_start: 0x16500, underlined_end: 0x166A4, bracket_base: 0x177BC, count: 420 },  // doremi
+];
+
+/// Get bracket variant for an underlined glyph
+///
+/// Given an underlined glyph (0x16000+) and bracket position, returns the
+/// appropriate bracket variant (0x17000+) with arc endpoints.
+///
+/// # Arguments
+/// * `underlined_glyph` - The underlined glyph character (from underlined_glyph_for_pitch)
+/// * `position` - Where this note appears in the beat group
+///
+/// # Returns
+/// * `Some(char)` - The bracket variant glyph
+/// * `None` - If position is Middle (use underlined_glyph directly) or glyph not found
+pub fn bracket_variant_for_underlined(
+    underlined_glyph: char,
+    position: BracketPosition,
+) -> Option<char> {
+    // Middle position = no bracket needed, use underlined glyph as-is
+    if position == BracketPosition::Middle {
+        return None;
+    }
+
+    let cp = underlined_glyph as u32;
+
+    // Find which system this underlined glyph belongs to
+    for sys in UNDERLINED_BRACKET_SYSTEMS {
+        if cp >= sys.underlined_start && cp < sys.underlined_end {
+            let offset = cp - sys.underlined_start;
+
+            // Calculate bracket variant codepoint
+            // Layout: left=base+0, right=base+count
+            let bracket_cp = match position {
+                BracketPosition::Left => sys.bracket_base + offset,
+                BracketPosition::Right => sys.bracket_base + sys.count + offset,
+                BracketPosition::Middle => return None,  // Already handled above
+            };
+
+            return char::from_u32(bracket_cp);
+        }
+    }
+
+    None  // Glyph not in any known underlined range
+}
+
+/// Convenience function: get underlined glyph with bracket position
+///
+/// Combines underlined_glyph_for_pitch and bracket_variant_for_underlined
+pub fn underlined_bracket_glyph_for_pitch(
+    pitch: PitchCode,
+    octave: i8,
+    system: crate::models::elements::PitchSystem,
+    position: BracketPosition,
+) -> Option<char> {
+    let underlined = underlined_glyph_for_pitch(pitch, octave, system)?;
+
+    match position {
+        BracketPosition::Middle => Some(underlined),
+        _ => bracket_variant_for_underlined(underlined, position),
+    }
+}
+"#);
+
     let dest_file = out_dir.join("font_lookup_tables.rs");
     fs::write(&dest_file, code).expect("Failed to write font_lookup_tables.rs");
 }
@@ -403,6 +571,79 @@ fn generate_system_lookup_table(
     code.push_str("        _ => None,\n");
     code.push_str("    }\n");
     code.push_str("}\n\n");
+}
+
+/// Generate underlined lookup table for a notation system
+/// Same structure as base table but with _UNDERLINED_TABLE suffix
+fn generate_underlined_lookup_table(
+    code: &mut String,
+    system_name_upper: &str,
+    underlined_pua_base: u32,
+    char_to_index: &HashMap<char, usize>,
+    characters: &[serde_yaml::Value],
+) {
+    let is_sargam = system_name_upper == "SARGAM";
+    let pitch_codes = vec![
+        "N1", "N1s", "N1b", "N1hf", "N1ss", "N1bb",
+        "N2", "N2s", "N2b", "N2hf", "N2ss", "N2bb",
+        "N3", "N3s", "N3b", "N3hf", "N3ss", "N3bb",
+        "N4", "N4s", "N4b", "N4hf", "N4ss", "N4bb",
+        "N5", "N5s", "N5b", "N5hf", "N5ss", "N5bb",
+        "N6", "N6s", "N6b", "N6hf", "N6ss", "N6bb",
+        "N7", "N7s", "N7b", "N7hf", "N7ss", "N7bb",
+    ];
+
+    code.push_str(&format!(
+        "/// {} UNDERLINED system: [42 pitch codes][5 octaves]\n",
+        system_name_upper
+    ));
+    code.push_str(&format!(
+        "/// PUA base: 0x{:X} (underlined variants for beat grouping)\n",
+        underlined_pua_base
+    ));
+    code.push_str(&format!(
+        "pub static {}_UNDERLINED_TABLE: [[char; OCTAVE_COUNT]; PITCH_CODE_COUNT] = [\n",
+        system_name_upper
+    ));
+
+    for (pitch_idx, pitch_code) in pitch_codes.iter().enumerate() {
+        let degree = (pitch_idx / 6) as usize;
+
+        let base_char = if is_sargam {
+            get_sargam_char(pitch_code)
+        } else {
+            if let Some(char_entry) = characters.get(degree) {
+                if let Some(ch_str) = char_entry.get("char").and_then(|v| v.as_str()) {
+                    ch_str.chars().next().unwrap_or('?')
+                } else {
+                    '?'
+                }
+            } else {
+                '?'
+            }
+        };
+
+        code.push_str(&format!("    // {} underlined (degree {}, char '{}')\n", pitch_code, degree, base_char));
+        code.push_str("    [");
+
+        // Same octave order: 0, -2, -1, +1, +2
+        for octave in [0, -2, -1, 1, 2].iter().copied() {
+            let codepoint = calculate_system_codepoint(
+                pitch_code,
+                base_char,
+                octave,
+                char_to_index,
+                underlined_pua_base,
+                characters.len() as u32,
+            );
+            // Use 5 digits for supplementary plane codepoints
+            code.push_str(&format!("'\\u{{{:05X}}}', ", codepoint));
+        }
+
+        code.push_str("],\n");
+    }
+
+    code.push_str("];\n\n");
 }
 
 /// Map PitchCode to Sargam character (case-sensitive for komal/shuddha)
@@ -598,4 +839,417 @@ fn generate_fontspec_json(atoms: &serde_yaml::Value, out_dir: &PathBuf) {
     let python_fontspec_path = PathBuf::from("tools/fontgen/fontspec.json");
     fs::write(&python_fontspec_path, &json_str)
         .expect("Failed to write tools/fontgen/fontspec.json");
+}
+
+/// Generate measurement system configurations from atoms.yaml
+/// This creates the data that getFontConfig() returns to JavaScript for glyph measurement
+fn generate_measurement_systems(atoms: &serde_yaml::Value, out_dir: &PathBuf) {
+    let mut systems = Vec::new();
+
+    // 1. Add pitch systems from notation_systems
+    if let Some(notation_systems) = atoms.get("notation_systems").and_then(|v| v.as_sequence()) {
+        for system in notation_systems {
+            let name = system.get("system_name").and_then(|v| v.as_str()).unwrap_or("unknown");
+            let pua_base = system.get("pua_base").and_then(|v| parse_hex(v)).unwrap_or(0);
+            let char_count = system.get("characters").and_then(|v| v.as_sequence()).map(|s| s.len()).unwrap_or(0);
+            let variants_per_char = 30; // 6 accidentals × 5 octaves
+            systems.push((name.to_string(), pua_base, char_count, variants_per_char));
+        }
+    }
+
+    // 2. Add line_variants from pua_allocation
+    if let Some(pua_alloc) = atoms.get("pua_allocation") {
+        if let Some(line_variants) = pua_alloc.get("line_variants") {
+            let line_capable = line_variants.get("line_capable_chars").and_then(|v| v.as_u64()).unwrap_or(37) as usize;
+
+            if let Some(underline) = line_variants.get("underline_only") {
+                let pua_base = underline.get("pua_base").and_then(|v| parse_hex(v)).unwrap_or(0xE800);
+                let variants = underline.get("variants").and_then(|v| v.as_u64()).unwrap_or(4) as usize;
+                systems.push(("underline".to_string(), pua_base, line_capable, variants));
+            }
+            if let Some(overline) = line_variants.get("overline_only") {
+                let pua_base = overline.get("pua_base").and_then(|v| parse_hex(v)).unwrap_or(0xE900);
+                let variants = overline.get("variants").and_then(|v| v.as_u64()).unwrap_or(3) as usize;
+                systems.push(("overline".to_string(), pua_base, line_capable, variants));
+            }
+            if let Some(combined) = line_variants.get("combined") {
+                let pua_base = combined.get("pua_base").and_then(|v| parse_hex(v)).unwrap_or(0xEA00);
+                let variants = combined.get("variants").and_then(|v| v.as_u64()).unwrap_or(12) as usize;
+                systems.push(("combined".to_string(), pua_base, line_capable, variants));
+            }
+        }
+
+        // 3. Add underlined_notes
+        if let Some(underlined) = pua_alloc.get("underlined_notes") {
+            for (key, value) in [
+                ("number_underlined", underlined.get("number_underlined")),
+                ("western_underlined", underlined.get("western_underlined")),
+                ("sargam_underlined", underlined.get("sargam_underlined")),
+                ("doremi_underlined", underlined.get("doremi_underlined")),
+            ] {
+                if let Some(sys) = value {
+                    let pua_base = sys.get("pua_base").and_then(|v| parse_hex(v)).unwrap_or(0);
+                    let char_count = sys.get("chars_count").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+                    let variants = sys.get("variants_per_char").and_then(|v| v.as_u64()).unwrap_or(30) as usize;
+                    systems.push((key.to_string(), pua_base, char_count, variants));
+                }
+            }
+        }
+
+        // 4. Add bracket_variants
+        if let Some(brackets) = pua_alloc.get("bracket_variants") {
+            if let Some(underline_brackets) = brackets.get("underline_brackets") {
+                let pua_base = underline_brackets.get("pua_base").and_then(|v| parse_hex(v)).unwrap_or(0xF700);
+                // 95 ASCII printable chars × 2 variants (left, right)
+                systems.push(("underline_brackets".to_string(), pua_base, 95, 2));
+            }
+            if let Some(overline_brackets) = brackets.get("overline_brackets") {
+                let pua_base = overline_brackets.get("pua_base").and_then(|v| parse_hex(v)).unwrap_or(0xFA00);
+                systems.push(("overline_brackets".to_string(), pua_base, 95, 3));
+            }
+            // 5. Add underlined_note_brackets (bracket endpoints for underlined note variants)
+            if let Some(underlined_note_brackets) = brackets.get("underlined_note_brackets") {
+                let pua_base = underlined_note_brackets.get("pua_base").and_then(|v| parse_hex(v)).unwrap_or(0x17000);
+                // 1410 underlined notes × 2 variants (left, right)
+                systems.push(("underlined_note_brackets".to_string(), pua_base, 1410, 2));
+            }
+        }
+    }
+
+    // Generate Rust code
+    let mut code = String::from(r#"/// Auto-generated measurement system configurations from atoms.yaml
+/// DO NOT EDIT - This file is generated by build.rs
+///
+/// These configurations are used by getFontConfig() to tell JavaScript
+/// which glyph ranges to measure at startup.
+
+/// A measurement system configuration
+#[derive(Debug, Clone)]
+pub struct MeasurementSystem {
+    pub name: &'static str,
+    pub pua_base: u32,
+    pub char_count: usize,
+    pub variants_per_char: usize,
+}
+
+/// All measurement systems from atoms.yaml
+pub static MEASUREMENT_SYSTEMS: &[MeasurementSystem] = &[
+"#);
+
+    for (name, pua_base, char_count, variants) in &systems {
+        code.push_str(&format!(
+            r#"    MeasurementSystem {{ name: "{}", pua_base: 0x{:X}, char_count: {}, variants_per_char: {} }},
+"#,
+            name, pua_base, char_count, variants
+        ));
+    }
+
+    code.push_str("];\n");
+
+    let dest_file = out_dir.join("font_measurement_systems.rs");
+    fs::write(&dest_file, code).expect("Failed to write font_measurement_systems.rs");
+}
+
+/// Generate superscript lookup tables for ornament rendering
+///
+/// Creates tables for 75% scaled superscript glyphs with overline variants.
+/// Formula: superscript_cp = system_base + (source_offset × 4) + overline_variant
+///
+/// Where:
+///   system_base     = PUA base for that pitch system (e.g., 0xF0200 for Number)
+///   source_offset   = source_codepoint - source_system_base
+///   overline_variant = 0 (none), 1 (left-cap), 2 (middle), 3 (right-cap)
+fn generate_superscript_tables(atoms: &serde_yaml::Value, out_dir: &PathBuf) {
+    let mut code = String::from(r#"/// Auto-generated superscript lookup tables from atoms.yaml at compile time
+/// DO NOT EDIT - This file is generated by build.rs
+///
+/// These tables provide 75% scaled superscript glyphs for ornament rendering.
+/// Each source glyph has 4 variants: none, left-cap overline, middle overline, right-cap overline.
+///
+/// Formula: superscript_cp = system_base + (source_offset × 4) + overline_variant
+///
+/// Location: Supplementary Private Use Area-A (0xF0000-0xFFFFD)
+
+/// Overline variant for superscript glyphs
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum SuperscriptLineVariant {
+    /// No lines
+    None = 0,
+    /// Underline only - left cap
+    UnderlineLeft = 1,
+    /// Underline only - middle
+    UnderlineMiddle = 2,
+    /// Underline only - right cap
+    UnderlineRight = 3,
+    /// Overline only - left cap
+    OverlineLeft = 4,
+    /// Overline only - middle
+    OverlineMiddle = 5,
+    /// Overline only - right cap
+    OverlineRight = 6,
+    /// Combined: underline left + overline left
+    CombinedLeftLeft = 7,
+    /// Combined: underline left + overline middle
+    CombinedLeftMiddle = 8,
+    /// Combined: underline left + overline right
+    CombinedLeftRight = 9,
+    /// Combined: underline middle + overline left
+    CombinedMiddleLeft = 10,
+    /// Combined: underline middle + overline middle
+    CombinedMiddleMiddle = 11,
+    /// Combined: underline middle + overline right
+    CombinedMiddleRight = 12,
+    /// Combined: underline right + overline left
+    CombinedRightLeft = 13,
+    /// Combined: underline right + overline middle
+    CombinedRightMiddle = 14,
+    /// Combined: underline right + overline right
+    CombinedRightRight = 15,
+}
+
+impl SuperscriptLineVariant {
+    /// Convert to variant index (0-15)
+    pub fn as_index(self) -> u32 {
+        self as u32
+    }
+
+    /// Create from variant index (0-15)
+    pub fn from_index(idx: u8) -> Option<Self> {
+        match idx {
+            0 => Some(Self::None),
+            1 => Some(Self::UnderlineLeft),
+            2 => Some(Self::UnderlineMiddle),
+            3 => Some(Self::UnderlineRight),
+            4 => Some(Self::OverlineLeft),
+            5 => Some(Self::OverlineMiddle),
+            6 => Some(Self::OverlineRight),
+            7 => Some(Self::CombinedLeftLeft),
+            8 => Some(Self::CombinedLeftMiddle),
+            9 => Some(Self::CombinedLeftRight),
+            10 => Some(Self::CombinedMiddleLeft),
+            11 => Some(Self::CombinedMiddleMiddle),
+            12 => Some(Self::CombinedMiddleRight),
+            13 => Some(Self::CombinedRightLeft),
+            14 => Some(Self::CombinedRightMiddle),
+            15 => Some(Self::CombinedRightRight),
+            _ => None,
+        }
+    }
+}
+
+/// Legacy alias for backwards compatibility
+pub type SuperscriptOverline = SuperscriptLineVariant;
+
+// =============================================================================
+// SUPERSCRIPT PUA BASES (Supplementary PUA-A: 0xF8000+)
+// =============================================================================
+// Each source glyph has 16 line variants (see SuperscriptLineVariant enum)
+
+/// ASCII superscripts PUA base (95 chars × 16 variants = 1,520 codepoints)
+pub const SUPERSCRIPT_ASCII_BASE: u32 = 0xF8000;
+
+/// Number system superscripts PUA base (7 chars × 30 variants × 16 = 3,360 codepoints)
+pub const SUPERSCRIPT_NUMBER_BASE: u32 = 0xF8600;
+
+/// Western system superscripts PUA base (14 chars × 30 variants × 16 = 6,720 codepoints)
+pub const SUPERSCRIPT_WESTERN_BASE: u32 = 0xF9400;
+
+/// Sargam system superscripts PUA base (12 chars × 30 variants × 16 = 5,760 codepoints)
+pub const SUPERSCRIPT_SARGAM_BASE: u32 = 0xFAF00;
+
+/// Doremi system superscripts PUA base (14 chars × 30 variants × 16 = 6,720 codepoints)
+pub const SUPERSCRIPT_DOREMI_BASE: u32 = 0xFC600;
+
+/// Number of line variants per superscript glyph
+pub const SUPERSCRIPT_LINE_VARIANTS: u32 = 16;
+
+// =============================================================================
+// SUPERSCRIPT LOOKUP FUNCTIONS
+// =============================================================================
+
+/// Get superscript ASCII glyph
+///
+/// # Arguments
+/// * `ascii_char` - ASCII character (0x20-0x7E)
+/// * `line_variant` - Line variant (underline/overline/combined)
+///
+/// # Returns
+/// * `Some(char)` - Superscript glyph in Supplementary PUA-A
+/// * `None` - If character is outside ASCII printable range
+pub fn superscript_ascii(ascii_char: char, line_variant: SuperscriptLineVariant) -> Option<char> {
+    let cp = ascii_char as u32;
+    if cp < 0x20 || cp > 0x7E {
+        return None;
+    }
+    let source_offset = cp - 0x20;
+    let superscript_cp = SUPERSCRIPT_ASCII_BASE + (source_offset * SUPERSCRIPT_LINE_VARIANTS) + line_variant.as_index();
+    char::from_u32(superscript_cp)
+}
+
+/// Get superscript Number system glyph
+///
+/// # Arguments
+/// * `source_cp` - Source codepoint in Number PUA range (0xE000+)
+/// * `line_variant` - Line variant (underline/overline/combined)
+///
+/// # Returns
+/// * `Some(char)` - Superscript glyph in Supplementary PUA-A
+/// * `None` - If codepoint is outside Number system range
+pub fn superscript_number(source_cp: u32, line_variant: SuperscriptLineVariant) -> Option<char> {
+    const SOURCE_BASE: u32 = 0xE000;
+    const MAX_OFFSET: u32 = 7 * 30; // 7 chars × 30 variants = 210
+
+    if source_cp < SOURCE_BASE || source_cp >= SOURCE_BASE + MAX_OFFSET {
+        return None;
+    }
+    let source_offset = source_cp - SOURCE_BASE;
+    let superscript_cp = SUPERSCRIPT_NUMBER_BASE + (source_offset * SUPERSCRIPT_LINE_VARIANTS) + line_variant.as_index();
+    char::from_u32(superscript_cp)
+}
+
+/// Get superscript Western system glyph
+///
+/// # Arguments
+/// * `source_cp` - Source codepoint in Western PUA range (0xE100+)
+/// * `line_variant` - Line variant (underline/overline/combined)
+///
+/// # Returns
+/// * `Some(char)` - Superscript glyph in Supplementary PUA-A
+/// * `None` - If codepoint is outside Western system range
+pub fn superscript_western(source_cp: u32, line_variant: SuperscriptLineVariant) -> Option<char> {
+    const SOURCE_BASE: u32 = 0xE100;
+    const MAX_OFFSET: u32 = 14 * 30; // 14 chars × 30 variants = 420
+
+    if source_cp < SOURCE_BASE || source_cp >= SOURCE_BASE + MAX_OFFSET {
+        return None;
+    }
+    let source_offset = source_cp - SOURCE_BASE;
+    let superscript_cp = SUPERSCRIPT_WESTERN_BASE + (source_offset * SUPERSCRIPT_LINE_VARIANTS) + line_variant.as_index();
+    char::from_u32(superscript_cp)
+}
+
+/// Get superscript Sargam system glyph
+///
+/// # Arguments
+/// * `source_cp` - Source codepoint in Sargam PUA range (0xE300+)
+/// * `line_variant` - Line variant (underline/overline/combined)
+///
+/// # Returns
+/// * `Some(char)` - Superscript glyph in Supplementary PUA-A
+/// * `None` - If codepoint is outside Sargam system range
+pub fn superscript_sargam(source_cp: u32, line_variant: SuperscriptLineVariant) -> Option<char> {
+    const SOURCE_BASE: u32 = 0xE300;
+    const MAX_OFFSET: u32 = 12 * 30; // 12 chars × 30 variants = 360
+
+    if source_cp < SOURCE_BASE || source_cp >= SOURCE_BASE + MAX_OFFSET {
+        return None;
+    }
+    let source_offset = source_cp - SOURCE_BASE;
+    let superscript_cp = SUPERSCRIPT_SARGAM_BASE + (source_offset * SUPERSCRIPT_LINE_VARIANTS) + line_variant.as_index();
+    char::from_u32(superscript_cp)
+}
+
+/// Get superscript Doremi system glyph
+///
+/// # Arguments
+/// * `source_cp` - Source codepoint in Doremi PUA range (0xE500+)
+/// * `line_variant` - Line variant (underline/overline/combined)
+///
+/// # Returns
+/// * `Some(char)` - Superscript glyph in Supplementary PUA-A
+/// * `None` - If codepoint is outside Doremi system range
+pub fn superscript_doremi(source_cp: u32, line_variant: SuperscriptLineVariant) -> Option<char> {
+    const SOURCE_BASE: u32 = 0xE500;
+    const MAX_OFFSET: u32 = 14 * 30; // 14 chars × 30 variants = 420
+
+    if source_cp < SOURCE_BASE || source_cp >= SOURCE_BASE + MAX_OFFSET {
+        return None;
+    }
+    let source_offset = source_cp - SOURCE_BASE;
+    let superscript_cp = SUPERSCRIPT_DOREMI_BASE + (source_offset * SUPERSCRIPT_LINE_VARIANTS) + line_variant.as_index();
+    char::from_u32(superscript_cp)
+}
+
+/// Get superscript glyph for any source codepoint
+///
+/// Automatically detects the source system and returns the appropriate superscript.
+///
+/// # Arguments
+/// * `source_cp` - Source codepoint (ASCII or PUA pitch glyph)
+/// * `line_variant` - Line variant (underline/overline/combined)
+///
+/// # Returns
+/// * `Some(char)` - Superscript glyph
+/// * `None` - If codepoint is not in a supported range
+pub fn superscript_glyph(source_cp: u32, line_variant: SuperscriptLineVariant) -> Option<char> {
+    // Try ASCII first (0x20-0x7E)
+    if source_cp >= 0x20 && source_cp <= 0x7E {
+        if let Some(ch) = char::from_u32(source_cp) {
+            return superscript_ascii(ch, line_variant);
+        }
+    }
+
+    // Try pitch systems in order of PUA base
+    if source_cp >= 0xE000 && source_cp < 0xE000 + 7 * 30 {
+        return superscript_number(source_cp, line_variant);
+    }
+    if source_cp >= 0xE100 && source_cp < 0xE100 + 14 * 30 {
+        return superscript_western(source_cp, line_variant);
+    }
+    if source_cp >= 0xE300 && source_cp < 0xE300 + 12 * 30 {
+        return superscript_sargam(source_cp, line_variant);
+    }
+    if source_cp >= 0xE500 && source_cp < 0xE500 + 14 * 30 {
+        return superscript_doremi(source_cp, line_variant);
+    }
+
+    None
+}
+
+/// Check if a codepoint is a superscript glyph
+pub fn is_superscript(cp: u32) -> bool {
+    // All superscript glyphs are in Supplementary PUA-A (0xF8000+)
+    // Range: 0xF8000 (ASCII) to 0xFE03F (end of Doremi)
+    cp >= 0xF8000 && cp < 0xFE040
+}
+
+/// Get the line variant from a superscript codepoint
+pub fn superscript_line_variant(cp: u32) -> Option<SuperscriptLineVariant> {
+    if !is_superscript(cp) {
+        return None;
+    }
+    // Line variant is always the last 4 bits (cp % 16)
+    SuperscriptLineVariant::from_index((cp % 16) as u8)
+}
+
+/// Legacy alias
+pub fn superscript_overline(cp: u32) -> Option<SuperscriptOverline> {
+    superscript_line_variant(cp)
+}
+"#);
+
+    // Read superscript config from atoms.yaml to verify our constants match
+    if let Some(pua_alloc) = atoms.get("pua_allocation") {
+        if let Some(superscript_variants) = pua_alloc.get("superscript_variants") {
+            // Log for verification (shows in cargo build output with -vv)
+            if let Some(ascii) = superscript_variants.get("ascii_superscripts") {
+                if let Some(base) = ascii.get("pua_base").and_then(|v| parse_hex(v)) {
+                    if base != 0xF8000 {
+                        panic!("SUPERSCRIPT_ASCII_BASE mismatch: expected 0x{:X}, got 0x{:X}", 0xF8000, base);
+                    }
+                }
+            }
+            if let Some(number) = superscript_variants.get("number_superscripts") {
+                if let Some(base) = number.get("pua_base").and_then(|v| parse_hex(v)) {
+                    if base != 0xF8600 {
+                        panic!("SUPERSCRIPT_NUMBER_BASE mismatch: expected 0x{:X}, got 0x{:X}", 0xF8600, base);
+                    }
+                }
+            }
+        }
+    }
+
+    let dest_file = out_dir.join("superscript_tables.rs");
+    fs::write(&dest_file, code).expect("Failed to write superscript_tables.rs");
 }

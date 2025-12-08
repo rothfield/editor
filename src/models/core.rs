@@ -20,10 +20,17 @@ pub use super::pitch_code::PitchCode;
 #[repr(C)]
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Cell {
-    /// The visible character from NotationFont (e.g., U+E100 for "1")
-    /// This is the actual glyph that gets rendered
-    /// Stored alongside semantics for fast rendering
+    /// The semantic character for parsing (e.g., "-" for dash, "'" for breath mark)
+    /// For pitched elements: base PUA glyph without line variants
+    /// For unpitched: ASCII char like "-", "'", " "
+    /// Used by IR builder for rhythm parsing (cell.char == "-")
     pub char: String,
+
+    /// Combined display character with line variants (underline, overline)
+    /// When set, this is rendered instead of `char`
+    /// None means use `char` for display
+    #[serde(skip)]
+    pub combined_char: Option<String>,
 
     /// Type of musical element this cell represents
     pub kind: ElementKind,
@@ -76,6 +83,7 @@ impl Cell {
     pub fn new(char: String, kind: ElementKind, col: usize) -> Self {
         Self {
             char,
+            combined_char: None,
             kind,
             col,
             flags: 0,
@@ -213,14 +221,15 @@ impl Cell {
     }
 
     /// Get the display character for this cell
-    /// Simply returns the stored character (already computed during cell creation)
+    /// Returns combined_char (with line variants) if set, otherwise base char
     pub fn display_char(&self) -> String {
-        self.char.clone()
+        self.combined_char.as_ref().unwrap_or(&self.char).clone()
     }
 
 }
 
 /// Staff role for grouping and bracketing in multi-staff systems
+/// DEPRECATED: Use SystemMarker instead. Kept for backward compatibility.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub enum StaffRole {
@@ -235,6 +244,36 @@ pub enum StaffRole {
 impl Default for StaffRole {
     fn default() -> Self {
         StaffRole::Melody
+    }
+}
+
+/// System marker for grouping lines into bracketed systems
+/// Uses LilyPond-style `<<` and `>>` notation
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub enum SystemMarker {
+    /// `<<` - Start a new bracketed system group
+    Start,
+    /// `>>` - End the current bracketed system group
+    End,
+}
+
+impl SystemMarker {
+    /// Get the display string for this marker
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            SystemMarker::Start => "<<",
+            SystemMarker::End => ">>",
+        }
+    }
+
+    /// Parse from string
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "<<" | "start" => Some(SystemMarker::Start),
+            ">>" | "end" => Some(SystemMarker::End),
+            _ => None,
+        }
     }
 }
 
@@ -256,9 +295,9 @@ pub struct Line {
     #[serde(default)]
     pub lyrics: String,
 
-    /// Musical tonic for this line (overrides composition tonic, empty if not set)
+    /// Musical tonic for this line (overrides composition tonic)
     #[serde(default)]
-    pub tonic: String,
+    pub tonic: Option<crate::models::Tonic>,
 
     /// Pitch system for this line (overrides composition pitch system)
     #[serde(default)]
@@ -297,9 +336,16 @@ pub struct Line {
     pub part_id: String,
 
     /// Staff role for visual grouping and bracketing
-    /// Determines if this line is a standalone staff, group header, or group member
+    /// DEPRECATED: Use system_marker instead. Kept for backward compatibility.
     #[serde(default)]
     pub staff_role: StaffRole,
+
+    /// System marker for grouping lines into bracketed systems
+    /// - `Some(Start)` = `<<` - this line starts a new bracketed group
+    /// - `Some(End)` = `>>` - this line ends the current bracketed group
+    /// - `None` = no marker (standalone line, or continues current group)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub system_marker: Option<SystemMarker>,
 
     /// Derived beat spans (calculated, not stored)
     #[serde(skip)]
@@ -318,7 +364,7 @@ impl Line {
             label: String::new(),
             tala: String::new(),
             lyrics: String::new(),
-            tonic: String::new(),
+            tonic: None,
             pitch_system: None,
             key_signature: String::new(), // Empty means inherit from document-level key signature
             tempo: String::new(),
@@ -326,7 +372,8 @@ impl Line {
             new_system: false,
             system_id: 0, // Will be recalculated
             part_id: String::new(), // Will be recalculated
-            staff_role: StaffRole::default(), // Default to Melody
+            staff_role: StaffRole::default(), // DEPRECATED: use system_marker
+            system_marker: None, // No marker = standalone or continue group
             beats: Vec::new(),
             slurs: Vec::new(),
         }
@@ -388,7 +435,7 @@ pub struct Document {
     pub composer: Option<String>,
 
     /// Musical tonic for the entire composition
-    pub tonic: Option<String>,
+    pub tonic: Option<crate::models::Tonic>,
 
     /// Default pitch system for the composition
     pub pitch_system: Option<PitchSystem>,
@@ -403,20 +450,22 @@ pub struct Document {
     /// Document version
     pub version: Option<String>,
 
-    /// Array of musical lines
-    pub lines: Vec<Line>,
-
     /// Ornament edit mode flag
     #[serde(default)]
     pub ornament_edit_mode: bool,
 
-    /// Annotation layer for slurs, ornaments, etc.
-    #[serde(default)]
-    pub annotation_layer: crate::text::annotations::AnnotationLayer,
-
     /// Active scale constraint (mode/maqam/raga filter)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub active_constraint: Option<crate::models::constraints::ScaleConstraint>,
+
+    /// Array of musical lines
+    pub lines: Vec<Line>,
+
+    // === Verbose/debug fields below - displayed last in inspector ===
+
+    /// Annotation layer for slurs, ornaments, etc.
+    #[serde(default)]
+    pub annotation_layer: crate::text::annotations::AnnotationLayer,
 
     /// Application state (cursor position, selection, etc.)
     pub state: DocumentState,
@@ -434,10 +483,11 @@ impl Document {
             created_at: None,  // Timestamps set by JavaScript layer
             modified_at: None,  // Timestamps set by JavaScript layer
             version: None,
-            lines: Vec::new(),
             ornament_edit_mode: false,
-            annotation_layer: crate::text::annotations::AnnotationLayer::new(),
             active_constraint: None,
+            lines: Vec::new(),
+            // Verbose/debug fields last
+            annotation_layer: crate::text::annotations::AnnotationLayer::new(),
             state: DocumentState::new(),
         }
     }
@@ -515,9 +565,9 @@ impl Document {
     }
 
     /// Get the effective tonic for a line
-    pub fn effective_tonic<'a>(&'a self, line: &'a Line) -> Option<&'a String> {
-        if !line.tonic.is_empty() {
-            Some(&line.tonic)
+    pub fn effective_tonic<'a>(&'a self, line: &'a Line) -> Option<&'a crate::models::Tonic> {
+        if line.tonic.is_some() {
+            line.tonic.as_ref()
         } else {
             self.tonic.as_ref()
         }
@@ -543,13 +593,7 @@ impl Document {
                         cell.octave,
                         effective_system
                     ) {
-                        let char_str = glyph.to_string();
-                        #[cfg(target_arch = "wasm32")]
-                        {
-                            web_sys::console::log_1(&format!("[compute_glyphs] Setting char to U+{:04X} (len={})",
-                                glyph as u32, char_str.len()).into());
-                        }
-                        cell.char = char_str;
+                        cell.char = glyph.to_string();
                         // CRITICAL: Update cell.pitch_system to match the effective system
                         // This ensures CSS classes and metadata stay in sync with the glyph
                         cell.pitch_system = Some(effective_system);
@@ -565,31 +609,208 @@ impl Document {
                 }
             }
         }
+
+        // Apply line variants (underline/overline) based on beat grouping and slurs
+        self.compute_line_variants();
     }
 
-    /// Recalculate system_id and part_id for all lines based on staff_role
+    /// Compute line variants for all cells based on beat grouping and slur indicators
+    /// Updates cell.char to use line variant PUA codepoints where applicable
+    /// Called automatically at the end of compute_glyphs()
+    pub fn compute_line_variants(&mut self) {
+        use crate::parse::beats::BeatDeriver;
+        use crate::renderers::line_variants::{
+            get_line_variant_codepoint, UnderlineState, OverlineState
+        };
+
+        // Helper function to convert PitchCode to display character for a pitch system
+        fn pitch_to_display_char(pitch_code: PitchCode, system: PitchSystem) -> Option<char> {
+            let degree = pitch_code.degree();
+            match system {
+                PitchSystem::Number => {
+                    // Number system: degree 1-7 → chars '1'-'7'
+                    Some(char::from_digit(degree as u32, 10)?)
+                }
+                PitchSystem::Western => {
+                    // Western system: degree 1-7 → C D E F G A B (uppercase)
+                    match degree {
+                        1 => Some('C'),
+                        2 => Some('D'),
+                        3 => Some('E'),
+                        4 => Some('F'),
+                        5 => Some('G'),
+                        6 => Some('A'),
+                        7 => Some('B'),
+                        _ => None,
+                    }
+                }
+                PitchSystem::Sargam => {
+                    // Sargam system: degree 1-7 → S R G M P D N
+                    match degree {
+                        1 => Some('S'),
+                        2 => Some('R'),
+                        3 => Some('G'),
+                        4 => Some('M'),
+                        5 => Some('P'),
+                        6 => Some('D'),
+                        7 => Some('N'),
+                        _ => None,
+                    }
+                }
+                _ => {
+                    // Fallback to Number system for other systems
+                    Some(char::from_digit(degree as u32, 10)?)
+                }
+            }
+        }
+
+        let beat_deriver = BeatDeriver::new();
+
+        for line in &mut self.lines {
+            let cells = &line.cells;
+
+            // Extract beats for this line
+            let beats = beat_deriver.extract_implicit_beats(cells);
+
+            // Build underline state map from beats
+            // Only apply underlines to beats with multiple cells (subdivided beats)
+            let mut underline_states: Vec<UnderlineState> = vec![UnderlineState::None; cells.len()];
+            for beat in &beats {
+                let start = beat.start;
+                let end = beat.end;
+
+                if start == end {
+                    // Single-cell beat - NO underline needed
+                    // Underlines are only for subdivided beats (multiple notes per beat)
+                    continue;
+                } else {
+                    // Multi-cell beat - apply underlines
+                    underline_states[start] = UnderlineState::Left;
+                    underline_states[end] = UnderlineState::Right;
+                    for i in (start + 1)..end {
+                        underline_states[i] = UnderlineState::Middle;
+                    }
+                }
+            }
+
+            // Build overline state map from slur indicators
+            let mut overline_states: Vec<OverlineState> = vec![OverlineState::None; cells.len()];
+            let mut in_slur = false;
+            let mut slur_start_idx: Option<usize> = None;
+
+            for (idx, cell) in cells.iter().enumerate() {
+                if cell.slur_indicator.is_start() {
+                    in_slur = true;
+                    slur_start_idx = Some(idx);
+                    overline_states[idx] = OverlineState::Left;
+                } else if cell.slur_indicator.is_end() {
+                    overline_states[idx] = OverlineState::Right;
+                    // Fill middle states
+                    if let Some(start) = slur_start_idx {
+                        for i in (start + 1)..idx {
+                            overline_states[i] = OverlineState::Middle;
+                        }
+                    }
+                    in_slur = false;
+                    slur_start_idx = None;
+                } else if in_slur {
+                    overline_states[idx] = OverlineState::Middle;
+                }
+            }
+
+            // Now compute combined_char with line variant codepoints
+            // cell.char remains unchanged for semantic parsing (e.g., "-" for dashes)
+            for (idx, cell) in line.cells.iter_mut().enumerate() {
+                let underline = underline_states[idx];
+                let overline = overline_states[idx];
+
+                // For pitched cells, compute display glyph with underline variants
+                // Use line_variants system (0xE800) for simple text underlines
+                if let Some(pitch_code) = cell.pitch_code {
+                    // Derive base char from pitch_code.degree() and pitch_system
+                    // cell.char may already be a PUA glyph, so we use the semantic pitch info
+                    let system = cell.pitch_system.unwrap_or(PitchSystem::Number);
+                    let base_char = pitch_to_display_char(pitch_code, system);
+
+                    if let Some(base_char) = base_char {
+                        if underline == UnderlineState::None && overline == OverlineState::None {
+                            // No lines - no combined_char needed
+                            cell.combined_char = None;
+                        } else if let Some(variant_char) = get_line_variant_codepoint(base_char, underline, overline) {
+                            // Apply line variant to combined_char
+                            cell.combined_char = Some(variant_char.to_string());
+                        } else {
+                            cell.combined_char = None;
+                        }
+                    } else {
+                        cell.combined_char = None;
+                    }
+                    continue;
+                }
+
+                // For non-pitched cells, derive base char from ElementKind
+                let base_char = match cell.kind {
+                    ElementKind::UnpitchedElement => Some('-'),
+                    ElementKind::BreathMark => Some('\''),
+                    ElementKind::Whitespace => Some(' '),
+                    ElementKind::Nbsp => Some('\u{00A0}'),
+                    _ => None, // Other kinds don't have line variants
+                };
+
+                let Some(base_char) = base_char else {
+                    cell.combined_char = None;
+                    continue;
+                };
+
+                // Compute combined_char for display with line variants
+                if underline == UnderlineState::None && overline == OverlineState::None {
+                    // No lines - no combined_char needed, use base char
+                    cell.combined_char = None;
+                } else if let Some(variant_char) = get_line_variant_codepoint(base_char, underline, overline) {
+                    // Apply line variant to combined_char
+                    let mut combined = variant_char.to_string();
+
+                    // Add octave combining characters if needed
+                    match cell.octave {
+                        1 => combined.push('\u{0307}'),   // combining dot above
+                        2 => combined.push('\u{0308}'),   // combining diaeresis above
+                        -1 => combined.push('\u{0323}'),  // combining dot below
+                        -2 => combined.push('\u{0324}'),  // combining diaeresis below
+                        _ => {}
+                    }
+
+                    cell.combined_char = Some(combined);
+                } else {
+                    cell.combined_char = None;
+                }
+            }
+        }
+    }
+
+    /// Recalculate system_id and part_id for all lines based on system_marker
     ///
-    /// Algorithm (Solo-Style Single Part for Melody):
-    ///
-    /// **Part ID Assignment:**
-    /// - All `Melody` lines → part_id = "P1" (ONE part with multiple measures)
-    /// - `GroupHeader` lines → unique part_id starting from P2
-    /// - `GroupItem` lines → unique part_id continuing sequence
+    /// Uses LilyPond-style `<<`/`>>` markers:
+    /// - `<<` (Start) - begins a bracketed system group
+    /// - `>>` (End) - ends the bracketed system group
+    /// - No marker after `>>` or at start - standalone system
+    /// - No marker after `<<` - continues the bracketed group
     ///
     /// **System ID Assignment:**
-    /// - `Melody` lines → each gets unique system_id (1, 2, 3...) for `<print new-system/>`
-    /// - `GroupHeader` lines → start new system_id (begins bracket group)
-    /// - `GroupItem` lines → continue current system_id (joins bracket group)
+    /// - Lines with `Start` marker → start new system_id (begin bracket group)
+    /// - Lines without marker after `Start` → same system_id (continue group)
+    /// - Lines with `End` marker → same system_id (end of group)
+    /// - Lines without marker after `End` or at start → new system_id (standalone)
+    ///
+    /// **Part ID Assignment:**
+    /// - Standalone lines (no marker, not in group) → part_id = "P1"
+    /// - Lines in bracketed group → unique part_id (P2, P3, P4...)
     ///
     /// Examples:
-    /// - "M M M" → part_id: P1, P1, P1; system_id: 1, 2, 3 → ONE part, measures with new-system
-    /// - "G GI GI" → part_id: P2, P3, P4; system_id: 1, 1, 1 → THREE parts bracketed
-    /// - "G M M" → part_id: P2, P1, P1; system_id: 1, 2, 3 → Group part P2, then Melody part P1 with 2 measures
+    /// - `[None, None, None]` → system_id: 1, 2, 3 (three standalone systems)
+    /// - `[Start, None, End]` → system_id: 1, 1, 1 (one bracketed group)
+    /// - `[Start, None, End, None]` → system_id: 1, 1, 1, 2 (bracketed group + standalone)
     ///
-    /// Call this whenever:
-    /// - staff_role changes on any line
-    /// - Lines are added or removed
-    /// - Document is loaded
+    /// Also syncs deprecated `staff_role` field for backward compatibility.
     pub fn recalculate_system_and_part_ids(&mut self) {
         #[cfg(target_arch = "wasm32")]
         {
@@ -597,18 +818,30 @@ impl Document {
                 self.lines.len()).into());
         }
 
-        // First pass: collect staff_roles to detect patterns
-        let _staff_roles: Vec<StaffRole> = self.lines.iter().map(|line| line.staff_role).collect();
-
         let mut system_id = 0;
-        let mut next_group_part_id = 2; // Group parts start from P2 (P1 reserved for Melody)
+        let mut in_group = false; // Track if we're inside a << >> group
+        let mut next_group_part_id = 2; // Group parts start from P2 (P1 reserved for standalone)
 
         for (i, line) in self.lines.iter_mut().enumerate() {
             // Determine if this line should start a new system
-            let start_new_system = match line.staff_role {
-                StaffRole::Melody => true,         // Melody ALWAYS starts new system
-                StaffRole::GroupHeader => true,    // GroupHeader starts new system (begins bracket group)
-                StaffRole::GroupItem => false,     // GroupItem continues current system (joins bracket group)
+            let start_new_system = match line.system_marker {
+                Some(SystemMarker::Start) => {
+                    in_group = true;
+                    true // << always starts new system
+                }
+                Some(SystemMarker::End) => {
+                    // >> ends the group but stays in same system_id
+                    let was_in_group = in_group;
+                    in_group = false;
+                    !was_in_group // Only start new if we weren't in a group (edge case)
+                }
+                None => {
+                    if in_group {
+                        false // Continue current system (inside group)
+                    } else {
+                        true // Start new system (standalone)
+                    }
+                }
             };
 
             if i == 0 || start_new_system {
@@ -617,26 +850,36 @@ impl Document {
 
             line.system_id = system_id;
 
-            // Assign part_id based on staff_role and context
-            match line.staff_role {
-                StaffRole::Melody => {
-                    line.part_id = "P1".to_string(); // All Melody lines share P1
-                }
-                StaffRole::GroupHeader => {
-                    // GroupHeader always gets unique part_id starting from P2
+            // Assign part_id and sync staff_role based on system_marker
+            match line.system_marker {
+                Some(SystemMarker::Start) => {
                     line.part_id = format!("P{}", next_group_part_id);
                     next_group_part_id += 1;
+                    line.staff_role = StaffRole::GroupHeader; // Sync deprecated field
                 }
-                StaffRole::GroupItem => {
+                Some(SystemMarker::End) => {
                     line.part_id = format!("P{}", next_group_part_id);
                     next_group_part_id += 1;
+                    line.staff_role = StaffRole::GroupItem; // Sync deprecated field
+                }
+                None => {
+                    if in_group {
+                        // Inside a group (after << but before >>)
+                        line.part_id = format!("P{}", next_group_part_id);
+                        next_group_part_id += 1;
+                        line.staff_role = StaffRole::GroupItem; // Sync deprecated field
+                    } else {
+                        // Standalone line
+                        line.part_id = "P1".to_string();
+                        line.staff_role = StaffRole::Melody; // Sync deprecated field
+                    }
                 }
             }
 
             #[cfg(target_arch = "wasm32")]
             {
-                web_sys::console::log_1(&format!("  Line {}: staff_role={:?}, system_id={}, part_id={}",
-                    i, line.staff_role, line.system_id, line.part_id).into());
+                web_sys::console::log_1(&format!("  Line {}: system_marker={:?}, system_id={}, part_id={}, staff_role={:?}",
+                    i, line.system_marker, line.system_id, line.part_id, line.staff_role).into());
             }
         }
     }
@@ -1353,99 +1596,113 @@ mod tests {
     }
 
     #[test]
-    fn test_staff_role_system_id_assignment_g_m_m() {
-        // Test "G M M" pattern: GroupHeader + Melody + Melody → THREE SEPARATE SYSTEMS (no brackets)
+    fn test_system_marker_start_then_standalone() {
+        // Test "<< line" followed by standalone lines → bracketed single + standalone systems
+        // Using new SystemMarker approach
         let mut doc = Document::new();
 
-        // Add three lines with different roles
+        // Line 1: << (start group) - but no end marker, so just this line is grouped
         let mut line1 = Line::new();
         line1.label = "Strings".to_string();
-        line1.staff_role = StaffRole::GroupHeader;
+        line1.system_marker = Some(SystemMarker::Start);
         doc.lines.push(line1);
 
+        // Line 2: standalone (no marker, but group was never ended so it continues)
         let mut line2 = Line::new();
         line2.label = "Violin I".to_string();
-        line2.staff_role = StaffRole::Melody;
+        // system_marker = None (but since no >> was seen, it continues the group)
         doc.lines.push(line2);
 
+        // Line 3: >> (end group)
         let mut line3 = Line::new();
         line3.label = "Violin II".to_string();
-        line3.staff_role = StaffRole::Melody;
+        line3.system_marker = Some(SystemMarker::End);
         doc.lines.push(line3);
 
-        // Recalculate system IDs based on staff roles
-        doc.recalculate_system_and_part_ids();
-
-        // VERIFY: Each line should have a different system_id (separate systems, NO brackets)
-        assert_eq!(doc.lines[0].system_id, 1, "GroupHeader should be system 1");
-        assert_eq!(doc.lines[1].system_id, 2, "First Melody should be system 2 (separate)");
-        assert_eq!(doc.lines[2].system_id, 3, "Second Melody should be system 3 (separate)");
-
-        // VERIFY: Part IDs - GroupHeader gets P2, Melody lines share P1
-        assert_eq!(doc.lines[0].part_id, "P2", "GroupHeader should be P2");
-        assert_eq!(doc.lines[1].part_id, "P1", "First Melody should be P1");
-        assert_eq!(doc.lines[2].part_id, "P1", "Second Melody should be P1");
-    }
-
-    #[test]
-    fn test_staff_role_system_id_assignment_g_gi_gi() {
-        // Test "G GI GI" pattern: GroupHeader + GroupItem + GroupItem → ONE BRACKETED SYSTEM
-        let mut doc = Document::new();
-
-        // Add three lines: GroupHeader followed by two GroupItems
-        let mut line1 = Line::new();
-        line1.label = "Strings".to_string();
-        line1.staff_role = StaffRole::GroupHeader;
-        doc.lines.push(line1);
-
-        let mut line2 = Line::new();
-        line2.label = "Violin I".to_string();
-        line2.staff_role = StaffRole::GroupItem;
-        doc.lines.push(line2);
-
-        let mut line3 = Line::new();
-        line3.label = "Violin II".to_string();
-        line3.staff_role = StaffRole::GroupItem;
-        doc.lines.push(line3);
-
-        // Recalculate system IDs based on staff roles
+        // Recalculate system IDs based on system_marker
         doc.recalculate_system_and_part_ids();
 
         // VERIFY: All three lines should have the SAME system_id (bracketed group)
-        assert_eq!(doc.lines[0].system_id, 1, "GroupHeader should be system 1");
-        assert_eq!(doc.lines[1].system_id, 1, "First GroupItem should be system 1 (same as header)");
-        assert_eq!(doc.lines[2].system_id, 1, "Second GroupItem should be system 1 (same as header)");
+        assert_eq!(doc.lines[0].system_id, 1, "<< should be system 1");
+        assert_eq!(doc.lines[1].system_id, 1, "Middle line should be system 1 (in group)");
+        assert_eq!(doc.lines[2].system_id, 1, ">> should be system 1 (ends group)");
 
         // VERIFY: Part IDs - Group lines get unique IDs starting from P2
-        assert_eq!(doc.lines[0].part_id, "P2", "GroupHeader should be P2");
-        assert_eq!(doc.lines[1].part_id, "P3", "First GroupItem should be P3");
-        assert_eq!(doc.lines[2].part_id, "P4", "Second GroupItem should be P4");
+        assert_eq!(doc.lines[0].part_id, "P2", "<< line should be P2");
+        assert_eq!(doc.lines[1].part_id, "P3", "Middle line should be P3");
+        assert_eq!(doc.lines[2].part_id, "P4", ">> line should be P4");
+
+        // VERIFY: staff_role is synced for backward compatibility
+        assert_eq!(doc.lines[0].staff_role, StaffRole::GroupHeader);
+        assert_eq!(doc.lines[1].staff_role, StaffRole::GroupItem);
+        assert_eq!(doc.lines[2].staff_role, StaffRole::GroupItem);
     }
 
     #[test]
-    fn test_staff_role_system_id_assignment_m_m_m() {
-        // Test "M M M" pattern: Three Melody lines → THREE SEPARATE SYSTEMS
+    fn test_system_marker_bracketed_group() {
+        // Test "<< line1 line2 >>" pattern: ONE BRACKETED SYSTEM
         let mut doc = Document::new();
 
-        // Add three Melody lines
+        // Line 1: << (start group)
+        let mut line1 = Line::new();
+        line1.label = "Strings".to_string();
+        line1.system_marker = Some(SystemMarker::Start);
+        doc.lines.push(line1);
+
+        // Line 2: inside group (no marker)
+        let mut line2 = Line::new();
+        line2.label = "Violin I".to_string();
+        doc.lines.push(line2);
+
+        // Line 3: >> (end group)
+        let mut line3 = Line::new();
+        line3.label = "Violin II".to_string();
+        line3.system_marker = Some(SystemMarker::End);
+        doc.lines.push(line3);
+
+        // Recalculate system IDs based on system_marker
+        doc.recalculate_system_and_part_ids();
+
+        // VERIFY: All three lines should have the SAME system_id (bracketed group)
+        assert_eq!(doc.lines[0].system_id, 1, "<< should be system 1");
+        assert_eq!(doc.lines[1].system_id, 1, "Middle should be system 1 (same as <<)");
+        assert_eq!(doc.lines[2].system_id, 1, ">> should be system 1 (same as <<)");
+
+        // VERIFY: Part IDs - Group lines get unique IDs starting from P2
+        assert_eq!(doc.lines[0].part_id, "P2", "<< should be P2");
+        assert_eq!(doc.lines[1].part_id, "P3", "Middle should be P3");
+        assert_eq!(doc.lines[2].part_id, "P4", ">> should be P4");
+    }
+
+    #[test]
+    fn test_system_marker_standalone_lines() {
+        // Test three lines with no markers → THREE SEPARATE SYSTEMS (standalone)
+        let mut doc = Document::new();
+
+        // Add three lines with no system_marker (standalone)
         for i in 0..3 {
             let mut line = Line::new();
             line.label = format!("Staff {}", i + 1);
-            line.staff_role = StaffRole::Melody;
+            // system_marker = None (default)
             doc.lines.push(line);
         }
 
-        // Recalculate system IDs based on staff roles
+        // Recalculate system IDs based on system_marker
         doc.recalculate_system_and_part_ids();
 
-        // VERIFY: Each Melody line should have a different system_id
-        assert_eq!(doc.lines[0].system_id, 1, "First Melody should be system 1");
-        assert_eq!(doc.lines[1].system_id, 2, "Second Melody should be system 2");
-        assert_eq!(doc.lines[2].system_id, 3, "Third Melody should be system 3");
+        // VERIFY: Each line should have a different system_id (standalone)
+        assert_eq!(doc.lines[0].system_id, 1, "First should be system 1");
+        assert_eq!(doc.lines[1].system_id, 2, "Second should be system 2");
+        assert_eq!(doc.lines[2].system_id, 3, "Third should be system 3");
 
-        // VERIFY: Part IDs - All Melody lines share P1 (solo-style)
-        assert_eq!(doc.lines[0].part_id, "P1", "First Melody should be P1");
-        assert_eq!(doc.lines[1].part_id, "P1", "Second Melody should be P1");
-        assert_eq!(doc.lines[2].part_id, "P1", "Third Melody should be P1");
+        // VERIFY: Part IDs - All standalone lines share P1
+        assert_eq!(doc.lines[0].part_id, "P1", "First should be P1");
+        assert_eq!(doc.lines[1].part_id, "P1", "Second should be P1");
+        assert_eq!(doc.lines[2].part_id, "P1", "Third should be P1");
+
+        // VERIFY: staff_role is synced to Melody for backward compatibility
+        assert_eq!(doc.lines[0].staff_role, StaffRole::Melody);
+        assert_eq!(doc.lines[1].staff_role, StaffRole::Melody);
+        assert_eq!(doc.lines[2].staff_role, StaffRole::Melody);
     }
 }

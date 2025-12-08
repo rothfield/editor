@@ -597,6 +597,7 @@ impl Default for SlurIndicator {
 pub enum OrnamentPlacement {
     Before,
     After,
+    OnTop,
 }
 
 impl Default for OrnamentPlacement {

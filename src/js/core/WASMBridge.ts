@@ -128,7 +128,7 @@ export class WASMBridge implements WASMModule {
     const documentMutatingFunctions = [
       'setTitle', 'setComposer', 'setDocumentPitchSystem', 'setDocumentTonic', 'setDocumentKeySignature',
       'setLineLabel', 'setLineLyrics', 'setLineTala', 'setLinePitchSystem', 'setLineTonic', 'setLineKeySignature',
-      'setLineNewSystem', 'setLineStaffRole', 'setActiveConstraint'
+      'setLineNewSystem', 'setLineStaffRole', 'setSystemMarker', 'setActiveConstraint'
     ];
 
     // List of all WASM functions to map with automatic error handling
@@ -139,7 +139,7 @@ export class WASMBridge implements WASMModule {
       // Layered Architecture API
       'selectWholeBeat', 'shiftOctave', 'setOctave',
       'toggleSlur', 'applySlurLayered', 'removeSlurLayered', 'getSlursForLine', 'applyAnnotationSlursToCells',
-      'applyOrnamentLayered', 'removeOrnamentLayered', 'getOrnamentAt', 'getOrnamentsForLine', 'applyAnnotationOrnamentsToCells',
+      'applyOrnamentLayered', 'removeOrnamentLayered', 'setOrnamentPlacementLayered', 'getOrnamentAt', 'getOrnamentsForLine', 'applyAnnotationOrnamentsToCells',
       'setLineTalaModern',
 
       // Ornament Copy/Paste API
@@ -167,7 +167,7 @@ export class WASMBridge implements WASMModule {
       // Document API (metadata)
       'setTitle', 'setComposer', 'setDocumentPitchSystem', 'setDocumentTonic', 'setDocumentKeySignature',
       'setLineLabel', 'setLineLyrics', 'setLineTala', 'setLinePitchSystem', 'setLineTonic', 'setLineKeySignature',
-      'setLineNewSystem', 'setLineStaffRole',
+      'setLineNewSystem', 'setLineStaffRole', 'setSystemMarker', 'getSystemMarker',
 
       // Line manipulation API
       'splitLineAtPosition',
@@ -176,7 +176,7 @@ export class WASMBridge implements WASMModule {
       'computeLayout',
 
       // Export/Import APIs
-      'exportMusicXML', 'importMusicXML', 'convertMusicXMLToLilyPond', 'exportMIDI', 'exportMIDIDirect', 'generateIRJson',
+      'exportMusicXML', 'importMusicXML', 'convertMusicXMLToLilyPond', 'exportMIDI', 'exportMIDIDirect', 'generateIRJson', 'exportAsText',
 
       // Font Configuration API
       'getFontConfig', 'setGlyphWidthCache',
@@ -201,7 +201,10 @@ export class WASMBridge implements WASMModule {
 
       // Position Conversion API
       'getMaxCharPosition', 'charPosToCellIndex', 'cellIndexToCharPos', 'charPosToPixel',
-      'cellColToPixel'
+      'cellColToPixel',
+
+      // Superscript Glyph API (for ornament rendering)
+      'getSuperscriptGlyph', 'isSuperscriptGlyph', 'getSuperscriptOverline'
     ];
 
     // Automatically wrap all functions with error handling
@@ -335,6 +338,8 @@ export class WASMBridge implements WASMModule {
   setLineKeySignature!: WASMModule['setLineKeySignature'];
   setLineNewSystem!: WASMModule['setLineNewSystem'];
   setLineStaffRole!: WASMModule['setLineStaffRole'];
+  setSystemMarker!: WASMModule['setSystemMarker'];
+  getSystemMarker!: WASMModule['getSystemMarker'];
   insertText!: WASMModule['insertText'];
   deleteAtCursor!: WASMModule['deleteAtCursor'];
   deleteForward!: WASMModule['deleteForward'];
@@ -354,6 +359,7 @@ export class WASMBridge implements WASMModule {
   applyAnnotationSlursToCells!: WASMModule['applyAnnotationSlursToCells'];
   applyOrnamentLayered!: WASMModule['applyOrnamentLayered'];
   removeOrnamentLayered!: WASMModule['removeOrnamentLayered'];
+  setOrnamentPlacementLayered!: WASMModule['setOrnamentPlacementLayered'];
   getOrnamentAt!: WASMModule['getOrnamentAt'];
   getOrnamentsForLine!: WASMModule['getOrnamentsForLine'];
   applyAnnotationOrnamentsToCells!: WASMModule['applyAnnotationOrnamentsToCells'];
@@ -407,7 +413,13 @@ export class WASMBridge implements WASMModule {
   exportMIDI!: WASMModule['exportMIDI'];
   exportMIDIDirect!: WASMModule['exportMIDIDirect'];
   generateIRJson!: WASMModule['generateIRJson'];
+  exportAsText!: WASMModule['exportAsText'];
   toggleOrnamentEditMode!: WASMModule['toggleOrnamentEditMode'];
+
+  // Superscript Glyph API (for ornament rendering)
+  getSuperscriptGlyph!: WASMModule['getSuperscriptGlyph'];
+  isSuperscriptGlyph!: WASMModule['isSuperscriptGlyph'];
+  getSuperscriptOverline!: WASMModule['getSuperscriptOverline'];
 }
 
 export default WASMBridge;

@@ -1,97 +1,85 @@
 import { test, expect } from '@playwright/test';
 
-test.describe('Set Tonic Should Affect MusicXML Export', () => {
-  test('VERIFY: Setting tonic via WASM affects MusicXML key signature', async ({ page }) => {
+test.describe('Tonic Should Affect MusicXML Pitch Transposition', () => {
+  test('VERIFY: Setting tonic via WASM transposes pitches in MusicXML', async ({ page }) => {
     await page.goto('/');
     const editor = page.locator('#notation-editor');
     await expect(editor).toBeVisible();
 
     // Type some musical content
     await editor.click();
-    await page.keyboard.type('1 2 3 4 5');
+    await page.keyboard.type('1 2 3');
     await page.waitForTimeout(500);
 
     console.log('\n╔═══════════════════════════════════════════════════════╗');
-    console.log('║   TONIC → MUSICXML EXPORT TEST                       ║');
+    console.log('║   TONIC → MUSICXML PITCH TRANSPOSITION TEST          ║');
     console.log('╚═══════════════════════════════════════════════════════╝\n');
 
-    // Check MusicXML BEFORE setting tonic
+    // Check MusicXML BEFORE setting tonic (default C major)
     await page.click('[data-testid="tab-musicxml"]');
     await page.waitForTimeout(300);
     let musicXMLBefore = await page.locator('[data-testid="pane-musicxml"]').innerText();
 
-    console.log('🎼 BEFORE setting tonic:');
-    console.log('   MusicXML contains <key>:', musicXMLBefore.includes('<key>') ? 'YES' : 'NO');
+    console.log('🎼 BEFORE setting tonic (default C major):');
+    console.log('   Input: 1 2 3');
+    console.log('   Expected pitches: C D E');
 
-    // Extract key signature info if present
-    const keyMatchBefore = musicXMLBefore.match(/<key>[\s\S]*?<\/key>/);
-    if (keyMatchBefore) {
-      console.log('   Key signature block:', keyMatchBefore[0].replace(/\s+/g, ' ').trim());
-    } else {
-      console.log('   Key signature block: NOT FOUND');
-    }
+    // In C major: 1=C, 2=D, 3=E
+    const hasC = musicXMLBefore.includes('<step>C</step>');
+    const hasD = musicXMLBefore.includes('<step>D</step>');
+    const hasE = musicXMLBefore.includes('<step>E</step>');
+    console.log('   Contains <step>C</step>:', hasC ? '✓' : '✗');
+    console.log('   Contains <step>D</step>:', hasD ? '✓' : '✗');
+    console.log('   Contains <step>E</step>:', hasE ? '✓' : '✗');
     console.log('');
 
-    // Set tonic via WASM
+    // Set tonic to D via WASM
     await page.evaluate(() => {
       window.editor.wasmModule.setDocumentTonic('D');
+      window.editor.renderAndUpdate();
     });
     await page.waitForTimeout(300);
 
-    // Check MusicXML AFTER setting tonic
+    // Check MusicXML AFTER setting tonic to D
     await page.click('[data-testid="tab-musicxml"]');
     await page.waitForTimeout(300);
     let musicXMLAfter = await page.locator('[data-testid="pane-musicxml"]').innerText();
 
     console.log('🎼 AFTER setting tonic to "D":');
-    console.log('   MusicXML contains <key>:', musicXMLAfter.includes('<key>') ? 'YES' : 'NO');
-
-    const keyMatchAfter = musicXMLAfter.match(/<key>[\s\S]*?<\/key>/);
-    if (keyMatchAfter) {
-      console.log('   Key signature block:', keyMatchAfter[0].replace(/\s+/g, ' ').trim());
-    } else {
-      console.log('   Key signature block: NOT FOUND');
-    }
+    console.log('   Input: 1 2 3');
+    console.log('   Expected pitches: D E F#');
+    console.log('   (D major scale: degrees 1,2,3 = D,E,F#)');
     console.log('');
 
-    console.log('📊 COMPARISON:');
-    console.log('   Key signature changed:', keyMatchBefore?.[0] !== keyMatchAfter?.[0] ? 'YES' : 'NO');
+    // In D major: 1=D, 2=E, 3=F#
+    const hasDAfter = musicXMLAfter.includes('<step>D</step>');
+    const hasEAfter = musicXMLAfter.includes('<step>E</step>');
+    const hasFAfter = musicXMLAfter.includes('<step>F</step>');
+
+    // Check for F# (F with alter=1)
+    const fSharpPattern = /<step>F<\/step>[\s\S]*?<alter>1<\/alter>/;
+    const hasFSharp = fSharpPattern.test(musicXMLAfter);
+
+    console.log('   Contains <step>D</step>:', hasDAfter ? '✓' : '✗');
+    console.log('   Contains <step>E</step>:', hasEAfter ? '✓' : '✗');
+    console.log('   Contains <step>F</step> with <alter>1</alter> (F#):', hasFSharp ? '✓' : '✗');
     console.log('');
 
     console.log('🎯 EXPECTED BEHAVIOR:');
-    console.log('   • Tonic "D" should set key signature to D major (2 sharps)');
-    console.log('   • MusicXML should contain <fifths>2</fifths> for D major');
-    console.log('   • Or contain appropriate <step> and <alter> elements');
+    console.log('   • Tonic controls pitch transposition (NOT key signature)');
+    console.log('   • Input degrees 1,2,3 in tonic D → pitches D,E,F#');
+    console.log('   • Key signature remains independent (set via setDocumentKeySignature)');
     console.log('');
 
-    // Check if MusicXML has changed and contains key info related to D
-    if (keyMatchAfter) {
-      console.log('✅ MusicXML contains key signature information');
+    // Verify transposed pitches
+    expect(hasDAfter).toBeTruthy();
+    expect(hasEAfter).toBeTruthy();
+    expect(hasFSharp).toBeTruthy();
 
-      // Check for D major indicators
-      const hasFifths2 = musicXMLAfter.includes('<fifths>2</fifths>');
-      const hasDMajorInfo = musicXMLAfter.match(/<key>[\s\S]*?D[\s\S]*?<\/key>/i);
-
-      console.log('   Contains <fifths>2</fifths> (D major):', hasFifths2 ? 'YES' : 'NO');
-      console.log('   Contains D-related key info:', hasDMajorInfo ? 'YES' : 'NO');
-
-      // This test will FAIL if tonic doesn't affect the export
-      expect(hasFifths2 || hasDMajorInfo).toBeTruthy();
-    } else {
-      console.log('❌ MusicXML does NOT contain key signature information');
-      console.log('');
-      console.log('🐛 POSSIBLE ROOT CAUSES:');
-      console.log('   1. Export code does not read document.tonic field');
-      console.log('   2. Export code reads tonic but does not generate <key> element');
-      console.log('   3. Tonic needs to be converted to key signature format first');
-      console.log('');
-
-      // Fail the test - tonic should affect MusicXML
-      throw new Error('Setting tonic had no effect on MusicXML export - key signature missing');
-    }
+    console.log('✅ Tonic-based transposition working correctly in MusicXML!');
   });
 
-  test('VERIFY: Setting tonic via UI menu affects MusicXML export', async ({ page }) => {
+  test('VERIFY: Setting tonic via UI menu transposes pitches in MusicXML', async ({ page }) => {
     await page.goto('/');
     const editor = page.locator('#notation-editor');
     await expect(editor).toBeVisible();
@@ -102,10 +90,10 @@ test.describe('Set Tonic Should Affect MusicXML Export', () => {
     await page.waitForTimeout(500);
 
     console.log('\n╔═══════════════════════════════════════════════════════╗');
-    console.log('║   UI MENU: TONIC → MUSICXML EXPORT TEST              ║');
+    console.log('║   UI MENU: TONIC → MUSICXML TRANSPOSITION TEST       ║');
     console.log('╚═══════════════════════════════════════════════════════╝\n');
 
-    // Set tonic via UI menu
+    // Set tonic to G via UI menu
     page.on('dialog', async dialog => {
       await dialog.accept('G');
     });
@@ -124,22 +112,37 @@ test.describe('Set Tonic Should Affect MusicXML Export', () => {
     const musicXML = await page.locator('[data-testid="pane-musicxml"]').innerText();
 
     console.log('🎼 After setting tonic to "G" via UI menu:');
+    console.log('   Input: 1 2 3 4 5');
+    console.log('   Expected pitches: G A B C D');
+    console.log('   (G major scale: degrees 1-5 = G,A,B,C,D)');
+    console.log('');
 
-    const keyMatch = musicXML.match(/<key>[\s\S]*?<\/key>/);
-    if (keyMatch) {
-      console.log('   Key signature block:', keyMatch[0].replace(/\s+/g, ' ').trim());
+    // In G major: 1=G, 2=A, 3=B, 4=C, 5=D
+    const hasG = musicXML.includes('<step>G</step>');
+    const hasA = musicXML.includes('<step>A</step>');
+    const hasB = musicXML.includes('<step>B</step>');
+    const hasC = musicXML.includes('<step>C</step>');
+    const hasD = musicXML.includes('<step>D</step>');
 
-      // G major = 1 sharp
-      const hasFifths1 = musicXML.includes('<fifths>1</fifths>');
-      console.log('   Contains <fifths>1</fifths> (G major):', hasFifths1 ? 'YES' : 'NO');
+    console.log('   Contains <step>G</step>:', hasG ? '✓' : '✗');
+    console.log('   Contains <step>A</step>:', hasA ? '✓' : '✗');
+    console.log('   Contains <step>B</step>:', hasB ? '✓' : '✗');
+    console.log('   Contains <step>C</step>:', hasC ? '✓' : '✗');
+    console.log('   Contains <step>D</step>:', hasD ? '✓' : '✗');
+    console.log('');
 
-      console.log('');
-      console.log('🎯 EXPECTED: <fifths>1</fifths> for G major (1 sharp)');
+    console.log('🎯 EXPECTED BEHAVIOR:');
+    console.log('   • Tonic "G" transposes pitch spellings to G major');
+    console.log('   • Key signature is independent (not automatically set)');
+    console.log('');
 
-      expect(hasFifths1).toBeTruthy();
-    } else {
-      console.log('   ❌ NO key signature in MusicXML');
-      throw new Error('Setting tonic via UI menu had no effect on MusicXML export');
-    }
+    // Verify all expected pitches are present
+    expect(hasG).toBeTruthy();
+    expect(hasA).toBeTruthy();
+    expect(hasB).toBeTruthy();
+    expect(hasC).toBeTruthy();
+    expect(hasD).toBeTruthy();
+
+    console.log('✅ UI menu tonic setting working correctly!');
   });
 });

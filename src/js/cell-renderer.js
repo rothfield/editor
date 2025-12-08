@@ -168,27 +168,13 @@ class CellRenderer {
     const lineStartY = renderLine.y;
     line.dataset.lineStartY = lineStartY;
 
-    // Create gutter column (icon + label)
+    // Create gutter column (label only - system marker now in separate container)
     const gutter = document.createElement('div');
     const hasLabel = !!renderLine.label;
     const gutterClass = gutterCollapsed
       ? 'line-gutter gutter-collapsed'
       : hasLabel ? 'line-gutter has-label' : 'line-gutter';
     gutter.className = gutterClass;
-
-    // Gutter icon (role indicator)
-    const gutterIcon = document.createElement('span');
-    gutterIcon.className = 'gutter-icon';
-
-    // Add tooltip based on role
-    const roleTooltips = {
-      'melody': 'Melody - Independent staff line',
-      'group-header': 'Group Header - Groups multiple staves',
-      'group-item': 'Group Member - Part of a staff group'
-    };
-    gutterIcon.title = roleTooltips[lineRole] || 'Staff line';
-
-    gutter.appendChild(gutterIcon);
 
     // Label in gutter (if present)
     if (renderLine.label) {
@@ -197,6 +183,9 @@ class CellRenderer {
       labelElement.textContent = renderLine.label;
       gutter.appendChild(labelElement);
     }
+
+    // NOTE: System marker indicator now rendered in #system-controls container
+    // (see renderer.js renderSystemControls method)
 
     line.appendChild(gutter);
 

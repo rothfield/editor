@@ -18,6 +18,7 @@ notation_systems:
   # Usage: "1" means first scale degree, "2" means second, etc.
   # NOTE: Accidentals are now fully implemented as pre-composed glyphs in PUA ranges
   - system_name: number
+    pua_base: 0xE000  # 7 chars × 30 variants = 210 glyphs (0xE000-0xE0D1)
     display_name: "Number System"
     description: "Numerical scale degrees (1-7)"
     characters:
@@ -46,6 +47,7 @@ notation_systems:
   # Western System: A-G (uppercase + lowercase)
   # Usage: "C" = middle C, "c" = lower c, "D" = D above middle C, etc.
   - system_name: western
+    pua_base: 0xE100  # 14 chars × 30 variants = 420 glyphs (0xE100-0xE2A3)
     display_name: "Western Letter Names"
     description: "Standard A-B-C-D-E-F-G notation (uppercase + lowercase)"
     characters:
@@ -95,6 +97,7 @@ notation_systems:
   # Sargam System: Indian classical notation
   # Usage: S=Sa, r=re(lower), R=Re(upper), g=ga(lower), G=Ga(upper), etc.
   - system_name: sargam
+    pua_base: 0xE300  # 12 chars × 30 variants = 360 glyphs (0xE300-0xE467)
     display_name: "Sargam (Indian Classical)"
     description: "Indian classical music notation (Sa Re Ga Ma Pa Dha Ni)"
     characters:
@@ -139,6 +142,7 @@ notation_systems:
   # Usage: d=do, r=re, m=mi, f=fa, s=sol, l=la, t=ti
   # NOTE: Both lowercase (d-t) and UPPERCASE (D-T) are supported
   - system_name: doremi
+    pua_base: 0xE500  # 14 chars × 30 variants = 420 glyphs (0xE500-0xE6A3)
     display_name: "Doremi (Solfège)"
     description: "Solfège notation (do-re-mi-fa-sol-la-ti), includes 'f' for Fa note"
     characters:
@@ -245,121 +249,312 @@ glyph_variants:
     10: "flat -1 octave (1 dot below)"
     11: "flat -2 octave (2 dots below)"
 
-# PUA (Private Use Area) Mapping
-# Where codepoints are assigned in Unicode Private Use Area
-# NOTE: SMuFL standard codepoints use ranges U+E030-U+E042 (barlines), U+E260-U+E264 (accidentals), U+E566-U+E56E (ornaments)
-# To avoid conflicts, custom allocations use ranges that don't collide with SMuFL
-pua:
-  start: 0xE600  # PUA start for octave variants
+# =============================================================================
+# PUA (Private Use Area) Allocation - CANONICAL SOURCE OF TRUTH
+# =============================================================================
+# All PUA codepoint assignments are defined here. Both Rust (via build.rs)
+# and Python (via fontspec.json) consume this configuration.
+#
+# ARCHITECTURE: Per-system PUA blocks with 30 variants per character
+# Formula: codepoint = system_pua_base + (char_index × 30) + variant_index
+# Where variant_index = (accidental_type × 5) + octave_idx
+#   accidental_type: 0=natural, 1=flat, 2=half-flat, 3=double-flat, 4=double-sharp, 5=sharp
+#   octave_idx: 0=base, 1=-2, 2=-1, 3=+1, 4=+2
+# =============================================================================
 
-octave_variants:
-  start: 0xE600
-  range: "0xE600 - 0xE6BB"  # 188 glyphs (47 chars × 4 variants)
-  formula: "codepoint = 0xE600 + (character_index × 4) + variant_index"
-  explanation: |
-    Each base character gets 4 consecutive codepoints in the PUA for octave shifts.
-    Example for character at index 0 (first char in number system):
-      - variant 0 (1 dot above):  0xE600 + (0 × 4) + 0 = 0xE600
-      - variant 1 (2 dots above): 0xE600 + (0 × 4) + 1 = 0xE601
-      - variant 2 (1 dot below):  0xE600 + (0 × 4) + 2 = 0xE602
-      - variant 3 (2 dots below): 0xE600 + (0 × 4) + 3 = 0xE603
+pua_allocation:
+  # -------------------------------------------------------------------------
+  # SECTION 1: Per-system note glyphs (pitch + accidental + octave)
+  # Each character gets 30 consecutive codepoints (6 accidentals × 5 octaves)
+  # -------------------------------------------------------------------------
+  note_glyphs:
+    number:
+      pua_base: 0xE000
+      chars: 7
+      variants_per_char: 30
+      range: "0xE000 - 0xE0D1"  # 7 × 30 = 210 glyphs
+      example:
+        "1 natural oct0": 0xE000  # char_idx=0, variant=0
+        "1 sharp oct0": 0xE019    # char_idx=0, variant=25 (sharp=5, oct=0)
+        "1 sharp oct+1": 0xE01C   # char_idx=0, variant=28 (sharp=5, oct=3)
 
-accidental_composites:
-  description: "Pre-composed glyph composites combining base character + accidental symbol"
-  formula: "codepoint = pua_start + character_index (sequential)"
-  count_per_type: 47  # One composite glyph per base character
-  types:
-    sharp:
-      range: "0xE1F0 - 0xE21E"
-      count: 47
-      smufl_symbol: 0x1D130  # 𝄰 Musical Symbol Sharp Up (proper notation sharp)
-      examples:
-        "1#": 0xE1F0  # 1 sharp at index 0
-        "7#": 0xE1F6  # 7 sharp at index 6
-        "C#": 0xE1F7  # C sharp at index 7
+    western:
+      pua_base: 0xE100
+      chars: 14
+      variants_per_char: 30
+      range: "0xE100 - 0xE2A3"  # 14 × 30 = 420 glyphs
 
-    flat:
-      range: "0xE220 - 0xE24E"
-      count: 47
-      smufl_symbol: 0x1D12D  # 𝄭 Musical Symbol Flat (Unicode standard position)
-      examples:
-        "1b": 0xE220  # 1 flat at index 0
-        "7b": 0xE226  # 7 flat at index 6
-        "Cb": 0xE227  # C flat at index 7
+    sargam:
+      pua_base: 0xE300
+      chars: 12
+      variants_per_char: 30
+      range: "0xE300 - 0xE467"  # 12 × 30 = 360 glyphs
 
-    half_flat:
-      range: "0xE24F - 0xE27D"
-      count: 47
-      smufl_symbol: 0x266D  # ♭ Unicode Flat Sign (U+266D) with diagonal slash
-      draw_slash: true      # Draw diagonal slash through flat symbol
-      examples:
-        "1b/": 0xE24F  # 1 half-flat at index 0
-        "7b/": 0xE255  # 7 half-flat at index 6
-        "Cb/": 0xE256  # C half-flat at index 7
+    doremi:
+      pua_base: 0xE500
+      chars: 14
+      variants_per_char: 30
+      range: "0xE500 - 0xE6A3"  # 14 × 30 = 420 glyphs
 
-    double_sharp:
-      range: "0xE27E - 0xE2AC"
-      count: 47
-      smufl_symbol: 0x1D12A  # 𝄪 Musical Symbol Double Sharp
-      examples:
-        "1##": 0xE27E  # 1 double-sharp at index 0
-        "7##": 0xE284  # 7 double-sharp at index 6
-        "C##": 0xE285  # C double-sharp at index 7
+  # -------------------------------------------------------------------------
+  # SECTION 2: Line variants for beat grouping (15 variants per character)
+  # Used for underlines, overlines, and combinations
+  # Only for LINE_CAPABLE_CHARS (37 pitch chars + dash + breath mark)
+  # -------------------------------------------------------------------------
+  line_variants:
+    description: "Pre-composed glyphs with underline/overline for beat grouping and slurs"
+    line_capable_chars: 37  # 7 number + 14 western + 12 sargam + 4 special
+    variants_per_char: 15   # 3 underline states × 3 overline states + 6 single states
 
-    double_flat:
-      range: "0xE2AD - 0xE2DB"
-      count: 47
-      smufl_symbol: 0x1D12B  # 𝄫 Musical Symbol Double Flat (Unicode standard position)
-      examples:
-        "1bb": 0xE2AD  # 1 double-flat at index 0
-        "7bb": 0xE2B3  # 7 double-flat at index 6
-        "Cbb": 0xE2B4  # C double-flat at index 7
+    underline_only:
+      pua_base: 0xE800
+      variants: 3   # middle, left, right
+      range: "0xE800 - 0xE86E"  # 37 × 3 = 111 glyphs
 
-accidental_octave_composites:
-  description: "Triple composites combining base character + accidental + octave dots"
-  formula: "codepoint = pua_start + (character_index × 4) + variant_index"
-  count_per_type: 188  # 47 characters × 4 octave variants each
-  total_glyphs: 752    # 4 accidental types × 188 glyphs
-  types:
-    sharp_with_octave:
-      range: "0xE2B0 - 0xE36F"
-      count: 188  # 47 chars × 4 octave variants
-      description: "Sharp accidentals with octave dots"
-      examples:
-        "1# +1oct": 0xE2B0  # 1 sharp with 1 dot above
-        "1# +2oct": 0xE2B1  # 1 sharp with 2 dots above
-        "1# -1oct": 0xE2B2  # 1 sharp with 1 dot below
-        "1# -2oct": 0xE2B3  # 1 sharp with 2 dots below
+    overline_only:
+      pua_base: 0xE900
+      variants: 3   # middle, left, right
+      range: "0xE900 - 0xE96E"  # 37 × 3 = 111 glyphs
 
-    flat_with_octave:
-      range: "0xE370 - 0xE42F"
-      count: 188
-      description: "Flat accidentals with octave dots"
-      examples:
-        "1b +1oct": 0xE370  # 1 flat with 1 dot above
-        "1b +2oct": 0xE371  # 1 flat with 2 dots above
-        "1b -1oct": 0xE372  # 1 flat with 1 dot below
-        "1b -2oct": 0xE373  # 1 flat with 2 dots below
+    combined:
+      pua_base: 0xEA00
+      variants: 9   # 3 underline × 3 overline
+      range: "0xEA00 - 0xEB4C"  # 37 × 9 = 333 glyphs
 
-    double_sharp_with_octave:
-      range: "0xE430 - 0xE4EF"
-      count: 188
-      description: "Double-sharp accidentals with octave dots"
-      examples:
-        "1## +1oct": 0xE430  # 1 double-sharp with 1 dot above
-        "1## +2oct": 0xE431  # 1 double-sharp with 2 dots above
-        "1## -1oct": 0xE432  # 1 double-sharp with 1 dot below
-        "1## -2oct": 0xE433  # 1 double-sharp with 2 dots below
+  # -------------------------------------------------------------------------
+  # SECTION 3: Underlined note variants (for beat grouping)
+  # Each note atom needs an underlined version for multi-note beats
+  # Uses explicit PUA allocation (not offset formula) for reliability
+  # -------------------------------------------------------------------------
+  underlined_notes:
+    description: "Underlined variants of all note atoms for beat grouping display"
 
-    double_flat_with_octave:
-      range: "0xE4F0 - 0xE5AF"
-      count: 188
-      description: "Double-flat accidentals with octave dots"
-      examples:
-        "1bb +1oct": 0xE4F0  # 1 double-flat with 1 dot above
-        "1bb +2oct": 0xE4F1  # 1 double-flat with 2 dots above
-        "1bb -1oct": 0xE4F2  # 1 double-flat with 1 dot below
-        "1bb -2oct": 0xE4F3  # 1 double-flat with 2 dots below
+    # Explicit PUA ranges for each system (mirrors base note atoms)
+    # Formula: underlined_cp = underlined_pua_base + (char_index × 30) + variant_index
+    number_underlined:
+      pua_base: 0x16000  # Supplementary plane, mirrors 0xE000
+      chars_count: 7
+      variants_per_char: 30
+      range: "0x16000 - 0x160D1"  # 7 × 30 = 210 glyphs
+
+    western_underlined:
+      pua_base: 0x16100  # Mirrors 0xE100
+      chars_count: 14
+      variants_per_char: 30
+      range: "0x16100 - 0x162A3"  # 14 × 30 = 420 glyphs
+
+    sargam_underlined:
+      pua_base: 0x16300  # Mirrors 0xE300
+      chars_count: 12
+      variants_per_char: 30
+      range: "0x16300 - 0x16467"  # 12 × 30 = 360 glyphs
+
+    doremi_underlined:
+      pua_base: 0x16500  # Mirrors 0xE500
+      chars_count: 14
+      variants_per_char: 30
+      range: "0x16500 - 0x166A3"  # 14 × 30 = 420 glyphs
+
+    # Mapping formula (same structure as base notes):
+    # underlined_codepoint = system_underlined_base + (char_index × 30) + variant_index
+    # This allows build.rs to generate parallel lookup tables
+
+  # -------------------------------------------------------------------------
+  # SECTION 3b: Overlined note variants (for slurs on superscripts)
+  # Each note atom needs an overlined version for slur indication
+  # Parallel structure to underlined_notes, uses 0x19000+ range
+  # -------------------------------------------------------------------------
+  overlined_notes:
+    description: "Overlined variants of all note atoms for slur indication on superscripts"
+
+    # Explicit PUA ranges for each system (mirrors underlined_notes structure)
+    # Formula: overlined_cp = overlined_pua_base + (char_index × 30) + variant_index
+    number_overlined:
+      pua_base: 0x19000  # Mirrors 0xE000 (base) and 0x16000 (underlined)
+      chars_count: 7
+      variants_per_char: 30
+      range: "0x19000 - 0x190D1"  # 7 × 30 = 210 glyphs
+
+    western_overlined:
+      pua_base: 0x19100  # Mirrors 0xE100 (base) and 0x16100 (underlined)
+      chars_count: 14
+      variants_per_char: 30
+      range: "0x19100 - 0x192A3"  # 14 × 30 = 420 glyphs
+
+    sargam_overlined:
+      pua_base: 0x19300  # Mirrors 0xE300 (base) and 0x16300 (underlined)
+      chars_count: 12
+      variants_per_char: 30
+      range: "0x19300 - 0x19467"  # 12 × 30 = 360 glyphs
+
+    doremi_overlined:
+      pua_base: 0x19500  # Mirrors 0xE500 (base) and 0x16500 (underlined)
+      chars_count: 14
+      variants_per_char: 30
+      range: "0x19500 - 0x196A3"  # 14 × 30 = 420 glyphs
+
+    # Mapping formula (same structure as underlined notes):
+    # overlined_codepoint = system_overlined_base + (char_index × 30) + variant_index
+    # This allows build.rs to generate parallel lookup tables
+
+  # -------------------------------------------------------------------------
+  # SECTION 3c: Combined underline+overline note variants
+  # Each note atom needs combined variants for notes that are both
+  # in a beat group (underlined) AND under a slur (overlined)
+  # 9 variants per note: 3 underline states × 3 overline states
+  # -------------------------------------------------------------------------
+  combined_line_notes:
+    description: "Combined underline+overline variants for note atoms"
+    line_states: 9  # 3 underline (middle, left, right) × 3 overline (middle, left, right)
+
+    # Formula: combined_cp = system_combined_base + (note_offset × 9) + line_variant
+    # where note_offset = original_codepoint - system_base
+    # and line_variant = (underline_state × 3) + overline_state
+    # underline_state: 0=middle, 1=left, 2=right
+    # overline_state: 0=middle, 1=left, 2=right
+
+    number_combined:
+      pua_base: 0xF2000  # PUA-A for large allocation
+      source_base: 0xE000
+      chars_count: 7
+      variants_per_char: 30
+      line_states: 9
+      range: "0xF2000 - 0xF276D"  # 7 × 30 × 9 = 1890 glyphs
+
+    western_combined:
+      pua_base: 0xF3000
+      source_base: 0xE100
+      chars_count: 14
+      variants_per_char: 30
+      line_states: 9
+      range: "0xF3000 - 0xF3EDB"  # 14 × 30 × 9 = 3780 glyphs
+
+    sargam_combined:
+      pua_base: 0xF4000
+      source_base: 0xE300
+      chars_count: 12
+      variants_per_char: 30
+      line_states: 9
+      range: "0xF4000 - 0xF4C9F"  # 12 × 30 × 9 = 3240 glyphs
+
+    doremi_combined:
+      pua_base: 0xF5000
+      source_base: 0xE500
+      chars_count: 14
+      variants_per_char: 30
+      line_states: 9
+      range: "0xF5000 - 0xF5EDB"  # 14 × 30 × 9 = 3780 glyphs
+
+    # Total: (7+14+12+14) × 30 × 9 = 47 × 30 × 9 = 12,690 glyphs
+
+  # -------------------------------------------------------------------------
+  # SECTION 4: Utility glyphs (marks, arcs, combining characters)
+  # -------------------------------------------------------------------------
+  utility_glyphs:
+    loop_arcs:
+      description: "Quarter-circle arcs for loop brackets"
+      codepoints:
+        loop_bottom_left: 0xE704
+        loop_bottom_right: 0xE705
+        loop_top_left: 0xE706
+        loop_top_right: 0xE707
+
+    line_mark_variants:
+      description: "Width-class variants for combining underline/overline marks"
+      codepoints:
+        underline_narrow: 0xE7F0
+        underline_medium: 0xE7F1
+        underline_wide: 0xE7F2
+        overline_narrow: 0xE7F3
+        overline_medium: 0xE7F4
+        overline_wide: 0xE7F5
+
+    fullwidth_combining:
+      description: "Combining marks for fullwidth lines (bracket joining)"
+      codepoints:
+        combining_fullwidth_overline: 0xE7E0
+        combining_fullwidth_underline: 0xE7E1
+
+  # -------------------------------------------------------------------------
+  # SECTION 5: Bracket variants (fullwidth lines for seamless joining)
+  # NOTE: Moved to 0xF700+ to avoid collision with accidental_line_variants
+  # -------------------------------------------------------------------------
+  bracket_variants:
+    underline_brackets:
+      pua_base: 0xF700
+      description: "Underline brackets for beat grouping (basic chars)"
+      max_glyphs: 512
+
+    overline_brackets:
+      pua_base: 0xFA00
+      description: "Overline brackets for slur indication (basic chars)"
+      max_glyphs: 512
+
+    # Bracket variants for underlined note atoms (0x16000+)
+    # These add left/right arc endpoints to already-underlined glyphs
+    underlined_note_brackets:
+      pua_base: 0x17000
+      description: "Bracket endpoints for underlined note variants"
+      # Layout: left=0x17000, right=0x17600
+      max_glyphs: 2820  # 1410 underlined notes × 2 variants
+
+  # -------------------------------------------------------------------------
+  # SECTION 6: Superscript ornament variants (50% scaled for grace notes)
+  # Uses Supplementary PUA-A (0xF0000+) - NOT 0x18000 which is Tangut!
+  # -------------------------------------------------------------------------
+  superscript_variants:
+    description: "50% scaled superscript glyphs for ornament rendering"
+    scale_factor: 0.5
+    line_variants: 16  # 0=none, 1-3=underline, 4-6=overline, 7-15=combined
+
+    geometry:
+      y_offset: 400              # Position 25% below top of font (font units)
+      # Lines use same positions as regular underlines/overlines
+
+    # Line variant encoding (16 variants per source glyph):
+    #   0: no lines
+    #   1-3: underline only (1=left, 2=middle, 3=right)
+    #   4-6: overline only (4=left, 5=middle, 6=right)
+    #   7-15: combined (underline_style-1)*3 + (overline_style-1) + 7
+    #         7=UL+OL, 8=UL+OM, 9=UL+OR, 10=UM+OL, 11=UM+OM, 12=UM+OR, 13=UR+OL, 14=UR+OM, 15=UR+OR
+
+    # Formula (MUST match generate.py and build.rs):
+    # superscript_cp = system_base + (source_offset × 16) + line_variant
+    # where source_offset = source_codepoint - source_system_base
+
+    ascii_superscripts:
+      pua_base: 0xF8000
+      source_range: [0x20, 0x7E]  # ASCII printable
+      char_count: 95
+      range: "0xF8000 - 0xF85EF"  # 95 × 16 = 1,520 glyphs
+
+    number_superscripts:
+      pua_base: 0xF8600
+      source_base: 0xE000
+      chars: 7
+      variants_per_char: 30
+      range: "0xF8600 - 0xF931F"  # 7 × 30 × 16 = 3,360 glyphs
+
+    western_superscripts:
+      pua_base: 0xF9400
+      source_base: 0xE100
+      chars: 14
+      variants_per_char: 30
+      range: "0xF9400 - 0xFAE3F"  # 14 × 30 × 16 = 6,720 glyphs
+
+    sargam_superscripts:
+      pua_base: 0xFAF00
+      source_base: 0xE300
+      chars: 12
+      variants_per_char: 30
+      range: "0xFAF00 - 0xFC57F"  # 12 × 30 × 16 = 5,760 glyphs
+
+    doremi_superscripts:
+      pua_base: 0xFC600
+      source_base: 0xE500
+      chars: 14
+      variants_per_char: 30
+      range: "0xFC600 - 0xFE03F"  # 14 × 30 × 16 = 6,720 glyphs
 
 # Character Order (CRITICAL!)
 # This exact order must be preserved in:

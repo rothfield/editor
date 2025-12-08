@@ -33,6 +33,9 @@ class PreferencesUI {
           showDeveloperTabs: true,
           defaultNotationSystem: 'western', // or 'number', 'sargam', 'bhatkhande', 'tabla'
           showDebugInfo: false,
+          // Line rendering mode: 'text' uses font glyphs with baked-in arcs (new architecture)
+          // 'svg' uses SVG overlay for beat loops and slurs (legacy fallback)
+          lineRenderingMode: 'text',
         };
   }
 
@@ -134,6 +137,10 @@ class PreferencesUI {
       this.preferences.showDebugInfo
     );
     body.appendChild(debugGroup);
+
+    // Line Rendering Mode preference
+    const lineRenderingGroup = this.createLineRenderingGroup();
+    body.appendChild(lineRenderingGroup);
 
     // Footer with buttons
     const footer = document.createElement('div');
@@ -258,6 +265,53 @@ class PreferencesUI {
   }
 
   /**
+   * Create line rendering mode preference group
+   * @private
+   */
+  createLineRenderingGroup() {
+    const id = 'lineRenderingMode';
+    const group = document.createElement('div');
+    group.className = 'flex flex-col gap-1';
+
+    const labelText = document.createElement('label');
+    labelText.htmlFor = id;
+    labelText.className = 'text-sm font-medium text-gray-900';
+    labelText.textContent = 'Beat/Slur Line Rendering';
+
+    const select = document.createElement('select');
+    select.id = id;
+    select.className =
+      'px-2 py-1 text-sm border border-gray-300 rounded bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer';
+
+    const options = [
+      { value: 'text', label: 'Text-based (font glyphs)' },
+      { value: 'svg', label: 'SVG overlay (legacy)' },
+    ];
+
+    options.forEach((opt) => {
+      const option = document.createElement('option');
+      option.value = opt.value;
+      option.textContent = opt.label;
+      option.selected = opt.value === this.preferences.lineRenderingMode;
+      select.appendChild(option);
+    });
+
+    select.addEventListener('change', (e) => {
+      this.preferences[id] = e.target.value;
+    });
+
+    const descText = document.createElement('div');
+    descText.className = 'text-xs text-gray-600';
+    descText.textContent = 'How beat grouping and slur lines are rendered. Text-based uses font glyphs with arcs. SVG uses overlay paths.';
+
+    group.appendChild(labelText);
+    group.appendChild(select);
+    group.appendChild(descText);
+
+    return group;
+  }
+
+  /**
    * Reset preferences to defaults
    * @private
    */
@@ -266,6 +320,7 @@ class PreferencesUI {
       showDeveloperTabs: true,
       defaultNotationSystem: 'western',
       showDebugInfo: false,
+      lineRenderingMode: 'text',
     };
 
     // Update form
@@ -278,6 +333,9 @@ class PreferencesUI {
 
     const showDebug = form.querySelector('#showDebugInfo');
     if (showDebug) showDebug.checked = false;
+
+    const lineRendering = form.querySelector('#lineRenderingMode');
+    if (lineRendering) lineRendering.value = 'text';
 
     this.showNotification('Preferences reset to defaults', 'info');
   }

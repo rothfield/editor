@@ -393,7 +393,7 @@ mod tests {
     fn test_pitch_to_char_western_system() {
         let pitch = PitchInfo::new(PitchCode::N5, 0); // G natural
         let char_str = pitch_to_char(&pitch, PitchSystem::Western).unwrap();
-        assert_eq!(char_str, "g");
+        assert_eq!(char_str, "G"); // uppercase for Western text export
     }
 
     #[test]

@@ -178,6 +178,36 @@ export class ExportManager {
   }
 
   /**
+   * Update plain text display in inspector panel
+   * Uses NotationFont PUA glyphs with pre-computed line variants
+   */
+  async updateTextDisplay() {
+    const textDisplay = document.getElementById('text-display');
+    if (!textDisplay || !this.editor.wasmModule) {
+      return;
+    }
+
+    try {
+      // Apply annotation layer slurs to cells before export (must be before ornaments)
+      // This sets slur_indicator on cells so ornaments know if they're inside a slur
+      if (typeof this.editor.wasmModule.applyAnnotationSlursToCells === 'function') {
+        this.editor.wasmModule.applyAnnotationSlursToCells();
+      }
+
+      // Apply annotation layer ornaments to cells before export
+      if (typeof this.editor.wasmModule.applyAnnotationOrnamentsToCells === 'function') {
+        this.editor.wasmModule.applyAnnotationOrnamentsToCells();
+      }
+
+      const text = this.editor.wasmModule.exportAsText();
+      textDisplay.value = text;
+    } catch (error) {
+      console.error('[Text] Error:', error);
+      textDisplay.value = `Error: ${error.message}`;
+    }
+  }
+
+  /**
    * Render staff notation using OSMD
    */
   async renderStaffNotation() {

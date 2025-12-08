@@ -504,6 +504,11 @@ fn emit_note(
     });
 
     let lyric: Option<LyricData> = if let Some(lyric_data) = note.lyrics.clone() {
+        // Note already has lyrics assigned (from IR builder)
+        // Increment lyric_index to stay synchronized with syllable consumption
+        if *lyric_index < syllables.len() {
+            *lyric_index += 1;
+        }
         Some(lyric_data)
     } else if !is_melisma_note && *lyric_index < syllables.len() {
         // Only assign syllables to non-melisma notes
@@ -557,10 +562,9 @@ fn emit_note(
         )?;
     }
 
-    // Use write_note_with_beam_from_pitch_code_and_lyric which supports lyric inside note
-    builder.write_note_with_beam_from_pitch_code_and_lyric(
-        &note.pitch.pitch_code,
-        note.pitch.octave,
+    // Use write_note_with_beam_from_pitch_info_and_lyric (NEW: tonic-aware)
+    builder.write_note_with_beam_from_pitch_info_and_lyric(
+        &note.pitch,
         duration_divs,
         musical_duration,
         None, // beam

@@ -193,6 +193,20 @@ export interface WASMModule {
    */
   setLineStaffRole(lineIndex: number, role: string): void;
 
+  /**
+   * Set system marker for multi-system grouping (LilyPond-style << and >>)
+   * @param lineIndex - Line to set marker on
+   * @param marker - "start" (<<), "end" (>>), or "" (clear)
+   */
+  setSystemMarker(lineIndex: number, marker: string): void;
+
+  /**
+   * Get system marker for a line
+   * @param lineIndex - Line to check
+   * @returns "start", "end", or null
+   */
+  getSystemMarker(lineIndex: number): string | null;
+
   // ========== Text Editing Operations (WASM-First) ==========
 
   /**
@@ -349,6 +363,15 @@ export interface WASMModule {
   ): DocumentOperationResult;
 
   /**
+   * Set ornament placement at a position (update existing ornament)
+   */
+  setOrnamentPlacementLayered(
+    line: number,
+    col: number,
+    placement: string
+  ): DocumentOperationResult;
+
+  /**
    * Get ornament at a position
    */
   getOrnamentAt(
@@ -403,7 +426,7 @@ export interface WASMModule {
   clearOrnamentFromCell(cellsJs: Cell[], cellIndex: number): Cell[];
 
   /**
-   * Set ornament placement on a cell ('before' or 'after')
+   * Set ornament placement on a cell ('before', 'after', or 'ontop')
    */
   setOrnamentPlacementOnCell(
     cellsJs: Cell[],
@@ -701,12 +724,47 @@ export interface WASMModule {
    */
   generateIRJson(): string;
 
+  /**
+   * Export document as plain text using NotationFont PUA glyphs
+   */
+  exportAsText(): string;
+
   // ========== Ornament Edit Mode ==========
 
   /**
    * Toggle ornament edit mode on/off
    */
   toggleOrnamentEditMode(): void;
+
+  // ========== Superscript Glyph API (for ornament rendering) ==========
+
+  /**
+   * Get superscript glyph for ornament rendering
+   *
+   * Returns the 75% scaled superscript version of a source glyph with optional overline.
+   * Used for rendering grace notes and ornaments in the editor.
+   *
+   * @param sourceCp - Source codepoint (ASCII 0x20-0x7E or PUA pitch glyph)
+   * @param overlineVariant - 0=none, 1=left-cap, 2=middle, 3=right-cap
+   * @returns Superscript codepoint in Supplementary PUA-A (0xF0000+), or 0 if not found
+   */
+  getSuperscriptGlyph(sourceCp: number, overlineVariant: number): number;
+
+  /**
+   * Check if a codepoint is a superscript glyph
+   *
+   * @param cp - Codepoint to check
+   * @returns true if in Supplementary PUA-A superscript range
+   */
+  isSuperscriptGlyph(cp: number): boolean;
+
+  /**
+   * Get the overline variant from a superscript glyph codepoint
+   *
+   * @param cp - Superscript codepoint
+   * @returns Overline variant (0-3) or 255 if not a superscript glyph
+   */
+  getSuperscriptOverline(cp: number): number;
 }
 
 /**

@@ -210,11 +210,12 @@ export class NewDocumentDialog {
         if (index !== -1) {
           this.currentFocusIndex = index;
         }
-        // Update ARIA
+        // Update ARIA and selected class (fallback for browsers without :has() support)
         const options = this.dialog.querySelectorAll('.pitch-system-option');
         options.forEach((option) => {
           const isSelected = option.getAttribute('data-value') === e.target.value;
           option.setAttribute('aria-checked', isSelected ? 'true' : 'false');
+          option.classList.toggle('selected', isSelected);
         });
       });
     });
@@ -315,12 +316,13 @@ export class NewDocumentDialog {
       radio.checked = true;
     }
 
-    // Update ARIA attributes
+    // Update ARIA attributes and selected class (fallback for browsers without :has() support)
     const options = this.dialog.querySelectorAll('.pitch-system-option');
     options.forEach((option) => {
       const optionValue = option.getAttribute('data-value');
       const isSelected = optionValue === value;
       option.setAttribute('aria-checked', isSelected ? 'true' : 'false');
+      option.classList.toggle('selected', isSelected);
     });
   }
 

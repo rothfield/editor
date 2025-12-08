@@ -66,7 +66,7 @@ pub struct BeatAccumulator {
     /// When true, following dashes become rests instead of extending the previous note
     pub pitch_context_reset: bool,
     /// Tonic for this beat (for transposing pitches)
-    pub tonic: String,
+    pub tonic: crate::models::Tonic,
 }
 
 impl BeatAccumulator {
@@ -82,7 +82,7 @@ impl BeatAccumulator {
             pending_slur_indicator: SlurIndicator::None,
             inside_slur: false,
             pitch_context_reset: false,
-            tonic: String::new(),
+            tonic: crate::models::Tonic::C, // Default to C major
         }
     }
 
@@ -98,7 +98,7 @@ impl BeatAccumulator {
             pending_slur_indicator: SlurIndicator::None,
             inside_slur: false,
             pitch_context_reset: false,
-            tonic: String::new(),
+            tonic: crate::models::Tonic::C, // Default to C major
         }
     }
 
@@ -160,14 +160,14 @@ impl BeatAccumulator {
         let position = match ornament.placement {
             OrnamentPlacement::Before => crate::models::OrnamentPositionType::Before,
             OrnamentPlacement::After => crate::models::OrnamentPositionType::After,
+            OrnamentPlacement::OnTop => crate::models::OrnamentPositionType::OnTop,
         };
 
         // Extract pitches from ornament cells
         for cell in &ornament.cells {
             if let Some(pitch_code) = cell.pitch_code {
-                // Transpose by tonic if available
-                let transposed_pitch_code = transpose_pitch_code_by_tonic(pitch_code, &self.tonic);
-                let pitch = PitchInfo::new(transposed_pitch_code, cell.octave);
+                // Use PitchInfo::with_tonic to compute western_pitch
+                let pitch = PitchInfo::with_tonic(pitch_code, cell.octave, self.tonic);
                 let grace = GraceNoteData {
                     pitch,
                     position,
@@ -233,6 +233,7 @@ impl BeatAccumulator {
             let temp_cell = Cell {
                 kind: ElementKind::PitchedElement,
                 char: "".to_string(),
+                combined_char: None,
                 col: 0,
                 flags: 0,
                 pitch_code: Some(pitch.pitch_code),
@@ -286,11 +287,12 @@ fn transpose_pitch_code_by_tonic(pitch_code: crate::models::PitchCode, tonic: &s
     let degree = pitch_code.degree();
     let accidental_str = match pitch_code.accidental_type() {
         AccidentalType::None => "n",
+        AccidentalType::Natural => "n", // Explicit natural, same as implicit
         AccidentalType::Sharp => "#",
         AccidentalType::Flat => "b",
         AccidentalType::DoubleSharp => "##",
         AccidentalType::DoubleFlat => "bb",
-        AccidentalType::HalfFlat => "hf", // Not in lookup yet, treat as natural
+        AccidentalType::HalfFlat => "hf",
     };
 
     // Use lookup table to get normalized pitch name (e.g., "Gb", "Ab", "F#")
@@ -361,13 +363,12 @@ pub fn beat_transition(
     state: CellGroupingState,
     cell: &Cell,
     accum: &mut BeatAccumulator,
-    tonic: &str,
+    tonic: crate::models::Tonic,
 ) -> CellGroupingState {
-    // Extract slur indicator from ANY cell, even unpitched elements
-    // This allows slur markers on spaces or other elements to be transferred to the next pitched element
-    if cell.slur_indicator != SlurIndicator::None {
-        accum.set_slur_indicator(cell.slur_indicator);
-    }
+    // NOTE: Slur indicator extraction moved to AFTER finish_pitch() calls
+    // to ensure the slur indicator is associated with the correct note.
+    // Previously, extracting at the top caused the current cell's slur indicator
+    // to be consumed by the PREVIOUS note's finish_pitch() call.
 
     match (state, cell.kind) {
         // DASHES
@@ -385,10 +386,12 @@ pub fn beat_transition(
         // PITCH → transition from InBeat or CollectingDashes
         (CellGroupingState::InBeat, ElementKind::PitchedElement) => {
             if let Some(pitch_code) = cell.pitch_code {
-                let transposed_pitch = transpose_pitch_code_by_tonic(pitch_code, tonic);
-                let pitch = PitchInfo::new(transposed_pitch, cell.octave);
+                let pitch = PitchInfo::with_tonic(pitch_code, cell.octave, tonic);
                 accum.start_pitch(pitch);
-                // Slur indicator already extracted at top of beat_transition
+                // Set slur indicator for THIS note (from current cell)
+                if cell.slur_indicator != SlurIndicator::None {
+                    accum.set_slur_indicator(cell.slur_indicator);
+                }
                 accum.has_main_element = true;
                 // New pitch clears the breath mark context reset flag
                 accum.pitch_context_reset = false;
@@ -407,10 +410,12 @@ pub fn beat_transition(
             // Finish the dash rest, then start the pitch
             accum.finish_dashes();
             if let Some(pitch_code) = cell.pitch_code {
-                let transposed_pitch = transpose_pitch_code_by_tonic(pitch_code, tonic);
-                let pitch = PitchInfo::new(transposed_pitch, cell.octave);
+                let pitch = PitchInfo::with_tonic(pitch_code, cell.octave, tonic);
                 accum.start_pitch(pitch);
-                // Slur indicator already extracted at top of beat_transition
+                // Set slur indicator for THIS note (from current cell)
+                if cell.slur_indicator != SlurIndicator::None {
+                    accum.set_slur_indicator(cell.slur_indicator);
+                }
                 accum.has_main_element = true;
                 // New pitch clears the breath mark context reset flag
                 accum.pitch_context_reset = false;
@@ -421,12 +426,15 @@ pub fn beat_transition(
         }
         (CellGroupingState::CollectingPitchInBeat, ElementKind::PitchedElement) => {
             // New pitch → finish previous and start new
+            // IMPORTANT: finish_pitch() FIRST, so it uses the PREVIOUS note's slur indicator
             accum.finish_pitch();
             if let Some(pitch_code) = cell.pitch_code {
-                let transposed_pitch = transpose_pitch_code_by_tonic(pitch_code, tonic);
-                let pitch = PitchInfo::new(transposed_pitch, cell.octave);
+                let pitch = PitchInfo::with_tonic(pitch_code, cell.octave, tonic);
                 accum.start_pitch(pitch);
-                // Slur indicator already extracted at top of beat_transition
+                // Set slur indicator for THIS note AFTER finishing previous
+                if cell.slur_indicator != SlurIndicator::None {
+                    accum.set_slur_indicator(cell.slur_indicator);
+                }
                 // New pitch clears the breath mark context reset flag
                 accum.pitch_context_reset = false;
 
@@ -483,7 +491,7 @@ pub fn beat_transition(
 /// The pitch_context_reset flag tracks whether we've seen a breath mark since the last pitch.
 /// This flag must be carried forward across beats to correctly handle patterns like "1  '  ---"
 /// where the breath mark appears in a separate beat from both the note and the dashes.
-pub fn group_cells_into_events(beat_cells: &[&Cell], initial_pitch_context_reset: bool, tonic: &str) -> (Vec<ExportEvent>, bool) {
+pub fn group_cells_into_events(beat_cells: &[&Cell], initial_pitch_context_reset: bool, tonic: crate::models::Tonic) -> (Vec<ExportEvent>, bool) {
     if beat_cells.is_empty() {
         return (Vec::new(), initial_pitch_context_reset);
     }
@@ -493,7 +501,7 @@ pub fn group_cells_into_events(beat_cells: &[&Cell], initial_pitch_context_reset
 
     let mut accum = BeatAccumulator::new_with_subdivisions(beat_subdivisions);
     accum.pitch_context_reset = initial_pitch_context_reset;  // Initialize from previous beat
-    accum.tonic = tonic.to_string();  // Set tonic for transposition
+    accum.tonic = tonic;  // Set tonic for transposition
     let mut state = CellGroupingState::InBeat;
 
     // Process each cell through the FSM
@@ -733,6 +741,96 @@ pub fn attach_first_lyric(note: &mut NoteData, syllables: &[(String, Syllabic)],
             syllabic: *syllabic,
             number: 1, // TODO: support multiple verse numbers
         });
+    }
+}
+
+/// Attach lyrics to notes in measures using LilyPond-style algorithm
+///
+/// The algorithm assigns syllables to notes sequentially, following these rules:
+/// 1. Rests are skipped (no lyric on a rest)
+/// 2. Tied notes: only the first note of a tie gets a syllable
+/// 3. Slurred notes (melisma): syllable extends through slurred notes without consuming new syllables
+///
+/// # Arguments
+/// * `measures` - Mutable reference to measures containing notes
+/// * `lyrics` - The lyrics string to parse and attach
+pub fn attach_lyrics_to_measures(measures: &mut [ExportMeasure], lyrics: &str) {
+    if lyrics.trim().is_empty() {
+        return;
+    }
+
+    let syllables = parse_lyrics_to_syllables(lyrics);
+    if syllables.is_empty() {
+        return;
+    }
+
+    // Count total notes that can receive lyrics (excluding tied continuation notes)
+    let mut note_count = 0;
+    for measure in measures.iter() {
+        for event in &measure.events {
+            if let ExportEvent::Note(ref note) = event {
+                // Skip tied continuation notes
+                if let Some(ref tie) = note.tie {
+                    use crate::ir::types::TieType;
+                    if matches!(tie.type_, TieType::Continue | TieType::Stop) {
+                        continue;
+                    }
+                }
+                note_count += 1;
+            }
+        }
+    }
+
+    let mut syllable_index = 0;
+    let mut current_note_index = 0;
+
+    for measure in measures.iter_mut() {
+        for event in measure.events.iter_mut() {
+            if syllable_index >= syllables.len() {
+                return; // No more syllables to attach
+            }
+
+            if let ExportEvent::Note(ref mut note) = event {
+                // Skip tied continuation notes (Continue or Stop)
+                // Only the first note of a tie gets the syllable
+                if let Some(ref tie) = note.tie {
+                    use crate::ir::types::TieType;
+                    if matches!(tie.type_, TieType::Continue | TieType::Stop) {
+                        continue;
+                    }
+                }
+
+                current_note_index += 1;
+                let is_last_note = current_note_index == note_count;
+                let remaining_syllables = syllables.len() - syllable_index;
+
+                // If this is the last note and there are multiple remaining syllables,
+                // combine them all onto this note
+                if is_last_note && remaining_syllables > 1 {
+                    let combined_text: String = syllables[syllable_index..]
+                        .iter()
+                        .map(|(text, _)| text.clone())
+                        .collect::<Vec<_>>()
+                        .join("-");
+                    note.lyrics = Some(LyricData {
+                        syllable: combined_text,
+                        syllabic: Syllabic::Single,
+                        number: 1,
+                    });
+                    return; // All syllables consumed
+                }
+
+                // Attach single syllable to this note
+                let (text, syllabic) = &syllables[syllable_index];
+                note.lyrics = Some(LyricData {
+                    syllable: text.clone(),
+                    syllabic: *syllabic,
+                    number: 1,
+                });
+                syllable_index += 1;
+            }
+            // Rests and Chords without individual note handling are skipped
+        }
     }
 }
 
@@ -1099,18 +1197,12 @@ pub fn build_export_measures_from_line(line: &Line, document: Option<&Document>)
         return Vec::new();
     }
 
-    // Determine effective tonic (line tonic overrides document tonic)
-    let effective_tonic = if !line.tonic.is_empty() {
-        &line.tonic
-    } else if let Some(doc) = document {
-        if let Some(tonic) = &doc.tonic {
-            tonic
-        } else {
-            ""
-        }
-    } else {
-        ""
-    };
+    // Determine effective tonic (line tonic overrides document tonic, defaults to C)
+    let effective_tonic: crate::models::Tonic = line.tonic
+        .or_else(|| document.and_then(|doc| doc.tonic))
+        .unwrap_or(crate::models::Tonic::C);
+
+    // Use the Tonic enum directly
 
     let mut measures = Vec::new();
     let mut state = MusicXMLState::MeasureReady;
@@ -1322,6 +1414,9 @@ pub fn build_export_measures_from_line(line: &Line, document: Option<&Document>)
         });
     }
 
+    // Attach lyrics to notes using LilyPond-style algorithm
+    attach_lyrics_to_measures(&mut measures, &line.lyrics);
+
     measures
 }
 
@@ -1372,6 +1467,7 @@ mod tests {
         Cell {
             kind,
             char: char.to_string(),
+            combined_char: None,
             col: 0,
             flags: 0,
             pitch_code,
@@ -1392,7 +1488,7 @@ mod tests {
     fn test_single_dash_is_rest() {
         let cells = vec![make_cell(ElementKind::UnpitchedElement, "-", None)];
         let cell_refs: Vec<&Cell> = cells.iter().collect();
-        let (events, _) = group_cells_into_events(&cell_refs, false, "");
+        let (events, _) = group_cells_into_events(&cell_refs, false, crate::models::Tonic::C);
 
         assert_eq!(events.len(), 1);
         match &events[0] {
@@ -1408,7 +1504,7 @@ mod tests {
             make_cell(ElementKind::UnpitchedElement, "-", None),
         ];
         let cell_refs: Vec<&Cell> = cells.iter().collect();
-        let (events, _) = group_cells_into_events(&cell_refs, false, "");
+        let (events, _) = group_cells_into_events(&cell_refs, false, crate::models::Tonic::C);
 
         // Two consecutive dashes should be ONE rest with 2 divisions
         assert_eq!(events.len(), 1);
@@ -1427,7 +1523,7 @@ mod tests {
             make_cell(ElementKind::UnpitchedElement, "-", None),
         ];
         let cell_refs: Vec<&Cell> = cells.iter().collect();
-        let (events, _) = group_cells_into_events(&cell_refs, false, "");
+        let (events, _) = group_cells_into_events(&cell_refs, false, crate::models::Tonic::C);
 
         // -- bug: four dashes should be ONE rest with 4 divisions, not 1
         assert_eq!(events.len(), 1);
@@ -1449,7 +1545,7 @@ mod tests {
             make_cell(ElementKind::UnpitchedElement, "-", None),
         ];
         let cell_refs: Vec<&Cell> = cells.iter().collect();
-        let (events, _) = group_cells_into_events(&cell_refs, false, "");
+        let (events, _) = group_cells_into_events(&cell_refs, false, crate::models::Tonic::C);
 
         assert_eq!(events.len(), 1, "Two dashes should create one rest element");
         match &events[0] {
@@ -1462,7 +1558,7 @@ mod tests {
 
     #[test]
     fn test_empty_beat() {
-        let (events, _) = group_cells_into_events(&[], false, "");
+        let (events, _) = group_cells_into_events(&[], false, crate::models::Tonic::C);
         assert_eq!(events.len(), 0);
     }
 
@@ -1480,7 +1576,7 @@ mod tests {
         ];
 
         let cell_refs: Vec<&Cell> = cells.iter().collect();
-        let (beat_events, _) = group_cells_into_events(&cell_refs, false, "");
+        let (beat_events, _) = group_cells_into_events(&cell_refs, false, crate::models::Tonic::C);
 
         // At beat level (before scaling):
         // - Rest should have divisions=1 (1 subdivision out of 3)
@@ -1587,6 +1683,66 @@ mod tests {
     fn test_parse_lyrics_whitespace_only() {
         let lyrics = parse_lyrics_to_syllables("   ");
         assert_eq!(lyrics.len(), 0);
+    }
+
+    #[test]
+    fn test_attach_lyrics_single_syllable_to_multiple_notes() {
+        // Bug: "1 1" with lyrics "hello" was assigning "hello" to BOTH notes
+        // Expected: "hello" should only be attached to the FIRST note
+        use crate::ir::{ExportEvent, ExportMeasure};
+
+        let mut measures = vec![
+            ExportMeasure {
+                divisions: 4,
+                events: vec![
+                    ExportEvent::Note(NoteData {
+                        pitch: PitchInfo::new(PitchCode::N1, 4),
+                        divisions: 1,
+                        fraction: Fraction::new(1, 4),
+                        grace_notes_before: Vec::new(),
+                        grace_notes_after: Vec::new(),
+                        lyrics: None,
+                        slur: None,
+                        articulations: Vec::new(),
+                        beam: None,
+                        tie: None,
+                        tuplet: None,
+                        breath_mark_after: false,
+                    }),
+                    ExportEvent::Note(NoteData {
+                        pitch: PitchInfo::new(PitchCode::N1, 4),
+                        divisions: 1,
+                        fraction: Fraction::new(1, 4),
+                        grace_notes_before: Vec::new(),
+                        grace_notes_after: Vec::new(),
+                        lyrics: None,
+                        slur: None,
+                        articulations: Vec::new(),
+                        beam: None,
+                        tie: None,
+                        tuplet: None,
+                        breath_mark_after: false,
+                    }),
+                ],
+            },
+        ];
+
+        // Attach single-syllable lyrics
+        attach_lyrics_to_measures(&mut measures, "hello");
+
+        // Check that ONLY the first note has lyrics
+        if let ExportEvent::Note(note1) = &measures[0].events[0] {
+            assert!(note1.lyrics.is_some(), "First note should have lyrics");
+            assert_eq!(note1.lyrics.as_ref().unwrap().syllable, "hello");
+        } else {
+            panic!("Expected Note event");
+        }
+
+        if let ExportEvent::Note(note2) = &measures[0].events[1] {
+            assert!(note2.lyrics.is_none(), "Second note should NOT have lyrics (only 1 syllable for 2 notes)");
+        } else {
+            panic!("Expected Note event");
+        }
     }
 
     #[test]

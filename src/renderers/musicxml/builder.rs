@@ -175,10 +175,27 @@ impl MusicXmlBuilder {
         self.write_note_with_beam_from_pitch_code_and_lyric(pitch_code, octave, duration_divs, musical_duration, beam, time_modification, tuplet_bracket, tie, slur, articulations, ornament_type, None)
     }
 
-    /// Write note with all options including lyric
+    /// Write note using PitchInfo (NEW: tonic-aware using western_pitch)
+    /// This is the preferred method for tonic-aware export
+    pub fn write_note_with_beam_from_pitch_info_and_lyric(&mut self, pitch_info: &crate::ir::PitchInfo, duration_divs: usize, musical_duration: f64, beam: Option<&str>, time_modification: Option<(usize, usize)>, tuplet_bracket: Option<&str>, tie: Option<&str>, slur: Option<&str>, articulations: Option<Vec<ArticulationType>>, ornament_type: Option<&str>, lyric_data: Option<(String, Syllabic, u32)>) -> Result<(), String> {
+        use crate::renderers::musicxml::pitch::{western_pitch_to_step_alter, western_pitch_to_accidental};
+        let (step, alter) = western_pitch_to_step_alter(pitch_info.western_pitch);
+        let accidental = western_pitch_to_accidental(pitch_info.western_pitch);
+
+        // Pass pitch_code for last_note tracking
+        self.write_note_with_beam_internal(step, alter, pitch_info.octave, duration_divs, musical_duration, beam, time_modification, tuplet_bracket, tie, slur, articulations, ornament_type, lyric_data, accidental, Some(&pitch_info.pitch_code))
+    }
+
+    /// Write note with all options including lyric (OLD: pitch_code-based, kept for compatibility)
     /// lyric_data: Optional tuple of (syllable text, syllabic type, verse number)
     pub fn write_note_with_beam_from_pitch_code_and_lyric(&mut self, pitch_code: &PitchCode, octave: i8, duration_divs: usize, musical_duration: f64, beam: Option<&str>, time_modification: Option<(usize, usize)>, tuplet_bracket: Option<&str>, tie: Option<&str>, slur: Option<&str>, articulations: Option<Vec<ArticulationType>>, ornament_type: Option<&str>, lyric_data: Option<(String, Syllabic, u32)>) -> Result<(), String> {
         let (step, alter) = pitch_code_to_step_alter(pitch_code);
+        let accidental = pitch_code_to_accidental(pitch_code);
+        self.write_note_with_beam_internal(step, alter, octave, duration_divs, musical_duration, beam, time_modification, tuplet_bracket, tie, slur, articulations, ornament_type, lyric_data, accidental, Some(pitch_code))
+    }
+
+    /// Internal method shared by both PitchInfo and PitchCode-based note writing
+    fn write_note_with_beam_internal(&mut self, step: &str, alter: f32, octave: i8, duration_divs: usize, musical_duration: f64, beam: Option<&str>, time_modification: Option<(usize, usize)>, tuplet_bracket: Option<&str>, tie: Option<&str>, slur: Option<&str>, articulations: Option<Vec<ArticulationType>>, ornament_type: Option<&str>, lyric_data: Option<(String, Syllabic, u32)>, accidental: Option<&'static str>, pitch_code_for_tracking: Option<&PitchCode>) -> Result<(), String> {
         let xml_octave = octave + 4; // music-text octave 0 = MIDI octave 4 (middle C)
 
         self.buffer.push_str("<note>\n");
@@ -192,7 +209,7 @@ impl MusicXmlBuilder {
         self.buffer.push_str(&format!("  <duration>{}</duration>\n", duration_divs));
 
         // Add accidental element if note has an accidental
-        if let Some(accidental_name) = pitch_code_to_accidental(pitch_code) {
+        if let Some(accidental_name) = accidental {
             self.buffer.push_str(&format!("  <accidental>{}</accidental>\n", accidental_name));
         }
 
@@ -307,8 +324,10 @@ impl MusicXmlBuilder {
 
         self.buffer.push_str("</note>\n");
 
-        // Update last_note for next division/tie
-        self.last_note = Some((*pitch_code, octave));
+        // Update last_note for next division/tie (only if pitch_code is available)
+        if let Some(pc) = pitch_code_for_tracking {
+            self.last_note = Some((*pc, octave));
+        }
         Ok(())
     }
 

@@ -188,7 +188,7 @@ Text-based music notation (main notation line, ornaments) uses **NotationFont**,
 
 **Font Architecture:**
 - **Single source of truth:** `tools/fontgen/atoms.yaml` defines all characters, code points, and allocations
-- **Build-time generation:** `build.rs` generates Rust constants from atoms.yaml at compile time
+- **Build-time generation:** `build.rs` generates Rust constants from atoms.yaml at compile time (including `MEASUREMENT_SYSTEMS` used by `getFontConfig()` for JavaScript glyph width measurement)
 - **Runtime integration:** JavaScript loads code points from WASM via `getFontConfig()`
 - **Font location:** `dist/fonts/NotationFont.ttf` (473 KB)
 
@@ -204,12 +204,66 @@ Text-based music notation (main notation line, ornaments) uses **NotationFont**,
 
 **Code Point Allocation (Private Use Area):**
 ```
-0xE000 - 0xE0BB: 188 octave variants (47 chars × 4 variants)
-0xE1F0 - 0xE21E: 47 sharp accidentals
-0xE220+:         Musical symbols (barlines, ornaments, etc.)
+0xE000 - 0xE6FF: Note variants (pitch + octave + accidental combinations)
+0xE800+:         Underlined variants (for beat grouping, see below)
 ```
 
 **Formula:** `codepoint = PUA_START + (character_index × CHARS_PER_VARIANT) + variant_index`
+
+### Underlined Variants for Beat Grouping
+
+When notes are subdivisions of a single beat, they are shown with a continuous underline in text export. The font implements this using **GSUB ligatures**:
+
+**How it works:**
+1. Each character in the font has a pre-composed underlined variant in PUA (starting at 0xE800)
+2. GSUB ligatures substitute `char + U+0332` → underlined variant
+3. Each underlined glyph has an underline matching the exact character width (with 2-unit overlap)
+4. Adjacent underlined characters have seamlessly connected underlines
+
+**Example:** For beat grouping `1̲1̲` (two notes in same beat):
+- Text export produces: `1` + `U+0332` + `1` + `U+0332`
+- Font GSUB substitutes each pair to underlined variants
+- Visual result: continuous underline under both characters
+
+**Underline geometry:**
+```
+y_bottom: -154 (below baseline)
+y_top: -90 (underline thickness ~64 units)
+x: matches character bounding box + 2 units overlap on each side
+```
+
+**Related files:**
+- `tools/fontgen/generate.py`: `create_underlined_variants()` and `add_underline_ligatures()`
+- `tools/fontgen/test_continuous_underline.py`: Visual test for underline continuity
+- `tests/e2e-pw/tests/text-tab-underline.spec.js`: E2E test for text export with underlines
+
+### PUA Glyphs vs Combining Characters
+
+**IMPORTANT:** There are two approaches for encoding visual features:
+
+| Approach | Method | Use Case |
+|----------|--------|----------|
+| **PUA Glyphs** | Single pre-composed codepoint (e.g., `U+E801` = "1 with underline") | NotationFont rendering, current `export_as_text()` |
+| **Combining Characters** | Base char + combining mark (e.g., `1` + `U+0332`) | Font-agnostic export (future) |
+
+**Current implementation (`src/api/export.rs`):**
+- `export_as_text()` uses **PUA glyphs** via `get_line_variant_codepoint()` and `glyph_for_pitch()`
+- Output requires NotationFont to render correctly
+- Each visual feature is ONE character (cursor moves by whole glyph)
+
+**PUA ranges used:**
+```
+0xE000-0xE6FF: Pitch + octave + accidental variants
+0xE800-0xE8FF: Underline variants (beat grouping)
+0xE900-0xE9FF: Overline variants (slurs)
+0xEA00-0xEBFF: Combined underline + overline
+0xF0000+:      Superscript variants (ornaments)
+```
+
+**Future option:** Font-agnostic export using combining characters:
+- Would work with any Unicode font
+- Less reliable rendering (platform-dependent combining mark positioning)
+- Existing code in `src/models/core.rs` uses combining chars (`U+0307`, `U+0323`, etc.) as fallback
 
 ### Verifying Font Changes
 
@@ -886,11 +940,47 @@ docker run --rm -v $(pwd):/work -w /work -e CI=1 \
 When adding a new WASM function that needs to be called from JavaScript:
 
 ### The Pattern
-1. ✅ Add `#[wasm_bindgen]` to Rust function
+1. ✅ Add `#[wasm_bindgen]` to Rust function in `src/api/`
 2. ✅ Rebuild WASM: `npm run build-wasm` (generates new `.wasm` + `.js` exports)
-3. ⚠️ **CRITICAL: Add the function to the JavaScript wrapper object in `src/js/editor.js`** (lines ~64-101)
+3. ⚠️ **CRITICAL: Add the function to `WASMBridge.ts`** (see below)
 
-### Example - DO NOT SKIP STEP 3
+### Where to Add Functions: `src/js/core/WASMBridge.ts`
+
+The `WASMBridge` class wraps all WASM functions with error handling and optional auto-redraw.
+
+**Step 3a: Add to `functionNames` array (lines ~135-207):**
+```typescript
+// src/js/core/WASMBridge.ts - _initializeFunctionMappings()
+const functionNames: Array<keyof WASMModule> = [
+    // ... existing functions
+    'yourNewFunction',  // ⚠️ ADD HERE
+];
+```
+
+**Step 3b: If function mutates document, add to `documentMutatingFunctions` (lines ~128-132):**
+```typescript
+// Functions that mutate the document and should trigger redraw
+const documentMutatingFunctions = [
+    'setTitle', 'setComposer', 'setDocumentPitchSystem',
+    'yourNewFunction',  // ⚠️ ADD HERE if it changes document state
+];
+```
+
+**Step 3c: Add TypeScript declaration (lines ~320-420):**
+```typescript
+// Stub declarations to satisfy TypeScript
+yourNewFunction!: WASMModule['yourNewFunction'];
+```
+
+**Step 3d: Add to `WASMModule` interface in `src/types/wasm-module.ts`:**
+```typescript
+export interface WASMModule {
+    // ... existing methods
+    yourNewFunction(arg: string): Result;
+}
+```
+
+### Example - Complete Integration
 ```rust
 // src/api/core.rs
 #[wasm_bindgen(js_name = generateIRJson)]
@@ -899,29 +989,38 @@ pub fn generate_ir_json(document_js: JsValue) -> Result<String, JsValue> {
 }
 ```
 
-The function is now **exported from WASM**, but JavaScript code using `this.wasmModule.generateIRJson()` will **FAIL** unless you add it here:
+```typescript
+// src/js/core/WASMBridge.ts - add to functionNames array
+const functionNames: Array<keyof WASMModule> = [
+    // ...
+    'generateIRJson',  // ← ADD HERE
+];
 
-```javascript
-// src/js/editor.js - lines ~64-101
-this.wasmModule = {
-    // ... other functions
-    generateIRJson: wasmModule.generateIRJson  // ⚠️ ADD THIS LINE OR IT WON'T WORK
-};
+// Add stub declaration
+generateIRJson!: WASMModule['generateIRJson'];
 ```
 
-### Why This Happens
-- `wasm-pack` exports all `#[wasm_bindgen]` functions to the module's public API
-- The Editor class wraps WASM functions in `this.wasmModule` for organized access
-- If you don't add the function to the wrapper, `this.wasmModule.functionName` will be `undefined`
-- JavaScript code checking `typeof this.wasmModule?.functionName === 'function'` will fail silently
-- This wastes debugging time - the function exists in WASM but isn't accessible from JS
+```typescript
+// src/types/wasm-module.ts - add to interface
+export interface WASMModule {
+    generateIRJson(): string;
+}
+```
+
+### Why This Architecture?
+- **Error handling**: All WASM calls are wrapped with try/catch and logging
+- **Auto-redraw**: Document-mutating functions trigger automatic UI updates
+- **Type safety**: TypeScript interface ensures correct function signatures
+- **Debugging**: Failed calls are logged with function name and args count
 
 ### Quick Checklist for New WASM Functions
 - [ ] Function works in Rust tests (`cargo test`)
 - [ ] Added `#[wasm_bindgen]` decorator
 - [ ] Ran `npm run build-wasm` successfully
-- [ ] **Added to `this.wasmModule` object in `src/js/editor.js`** ← REQUIRED
-- [ ] JavaScript code calls `this.wasmModule.functionName()`
+- [ ] **Added to `functionNames` array in `src/js/core/WASMBridge.ts`** ← REQUIRED
+- [ ] **Added stub declaration in `WASMBridge.ts`** ← REQUIRED
+- [ ] **Added to `WASMModule` interface in `src/types/wasm-module.ts`** ← REQUIRED
+- [ ] If document-mutating: added to `documentMutatingFunctions` array
 - [ ] Tested in browser with hard refresh (Ctrl+Shift+R)
 
 ## ⚠️ CRITICAL: Feature Completion Criteria

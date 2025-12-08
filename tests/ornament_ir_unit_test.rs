@@ -1,5 +1,5 @@
-use editor_wasm::models::{Cell, ElementKind, Line, PitchCode, Ornament, OrnamentPlacement, SlurIndicator};
-use editor_wasm::ir::build_export_measures_from_line;
+use editor_wasm::models::{Cell, ElementKind, Line, PitchCode, Ornament, OrnamentPlacement, SlurIndicator, StaffRole};
+use editor_wasm::ir::{build_export_measures_from_line, ExportEvent};
 
 #[test]
 fn test_note_with_ornament_creates_note_with_grace_notes() {
@@ -14,6 +14,7 @@ fn test_note_with_ornament_creates_note_with_grace_notes() {
         pitch_system: None,
         slur_indicator: SlurIndicator::None,
         ornament: None,
+        combined_char: None,
         x: 0.0,
         y: 0.0,
         w: 1.0,
@@ -34,6 +35,7 @@ fn test_note_with_ornament_creates_note_with_grace_notes() {
             pitch_system: None,
             slur_indicator: SlurIndicator::None,
             ornament: None,
+            combined_char: None,
             x: 0.0,
             y: 0.0,
             w: 1.0,
@@ -51,6 +53,7 @@ fn test_note_with_ornament_creates_note_with_grace_notes() {
             pitch_system: None,
             slur_indicator: SlurIndicator::None,
             ornament: None,
+            combined_char: None,
             x: 0.0,
             y: 0.0,
             w: 1.0,
@@ -72,17 +75,22 @@ fn test_note_with_ornament_creates_note_with_grace_notes() {
         label: String::new(),
         tala: String::new(),
         lyrics: String::new(),
-        tonic: String::new(),
+        tonic: None,
         pitch_system: None,
         key_signature: String::new(),
         time_signature: String::new(),
         tempo: String::new(),
         beats: Vec::new(),
         slurs: Vec::new(),
+        part_id: "P1".to_string(),
+        system_id: 1,
+        staff_role: StaffRole::Melody,
+        system_marker: None,
+        new_system: false,
     };
 
     // Build IR from the line
-    let measures = build_export_measures_from_line(&line);
+    let measures = build_export_measures_from_line(&line, None);
 
     // Verify we got one measure
     assert_eq!(measures.len(), 1, "Should have one measure");
@@ -93,7 +101,6 @@ fn test_note_with_ornament_creates_note_with_grace_notes() {
     assert_eq!(measure.events.len(), 1, "Should have one note event");
 
     // Verify the event is a Note, not a Rest
-    use editor_wasm::renderers::musicxml::export_ir::ExportEvent;
     match &measure.events[0] {
         ExportEvent::Note(note) => {
             // Verify the main note has pitch N1
@@ -142,6 +149,7 @@ fn test_note_with_after_ornament_creates_grace_notes_after() {
         pitch_system: None,
         slur_indicator: SlurIndicator::None,
         ornament: None,
+        combined_char: None,
         x: 0.0,
         y: 0.0,
         w: 1.0,
@@ -161,6 +169,7 @@ fn test_note_with_after_ornament_creates_grace_notes_after() {
         pitch_system: None,
         slur_indicator: SlurIndicator::None,
         ornament: None,
+        combined_char: None,
         x: 0.0,
         y: 0.0,
         w: 1.0,
@@ -180,22 +189,26 @@ fn test_note_with_after_ornament_creates_grace_notes_after() {
         label: String::new(),
         tala: String::new(),
         lyrics: String::new(),
-        tonic: String::new(),
+        tonic: None,
         pitch_system: None,
         key_signature: String::new(),
         time_signature: String::new(),
         tempo: String::new(),
         beats: Vec::new(),
         slurs: Vec::new(),
+        part_id: "P1".to_string(),
+        system_id: 1,
+        staff_role: StaffRole::Melody,
+        system_marker: None,
+        new_system: false,
     };
 
-    let measures = build_export_measures_from_line(&line);
+    let measures = build_export_measures_from_line(&line, None);
     assert_eq!(measures.len(), 1);
 
     let measure = &measures[0];
     assert_eq!(measure.events.len(), 1, "Should have one note event");
 
-    use editor_wasm::renderers::musicxml::export_ir::ExportEvent;
     match &measure.events[0] {
         ExportEvent::Note(note) => {
             // Main note should be N4
