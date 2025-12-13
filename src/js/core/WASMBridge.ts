@@ -125,6 +125,8 @@ export class WASMBridge implements WASMModule {
     const wasm = this.rawModule;
 
     // Functions that mutate the document and should trigger redraw
+    // NOTE: setLineText is NOT included because TextareaRenderer handles updates locally
+    // and the async redraw would overwrite cursor position
     const documentMutatingFunctions = [
       'setTitle', 'setComposer', 'setDocumentPitchSystem', 'setDocumentTonic', 'setDocumentKeySignature',
       'setLineLabel', 'setLineLyrics', 'setLineTala', 'setLinePitchSystem', 'setLineTonic', 'setLineKeySignature',
@@ -139,12 +141,7 @@ export class WASMBridge implements WASMModule {
       // Layered Architecture API
       'selectWholeBeat', 'shiftOctave', 'setOctave',
       'toggleSlur', 'applySlurLayered', 'removeSlurLayered', 'getSlursForLine', 'applyAnnotationSlursToCells',
-      'applyOrnamentLayered', 'removeOrnamentLayered', 'setOrnamentPlacementLayered', 'getOrnamentAt', 'getOrnamentsForLine', 'applyAnnotationOrnamentsToCells',
       'setLineTalaModern',
-
-      // Ornament Copy/Paste API
-      'copyOrnamentFromCell', 'pasteOrnamentToCell', 'pasteOrnamentCells',
-      'setOrnamentPlacementOnCell', 'clearOrnamentFromCell',
 
       // Document lifecycle API
       'createNewDocument', 'loadDocument', 'getDocumentSnapshot',
@@ -203,8 +200,15 @@ export class WASMBridge implements WASMModule {
       'getMaxCharPosition', 'charPosToCellIndex', 'cellIndexToCharPos', 'charPosToPixel',
       'cellColToPixel',
 
-      // Superscript Glyph API (for ornament rendering)
-      'getSuperscriptGlyph', 'isSuperscriptGlyph', 'getSuperscriptOverline'
+      // Superscript Glyph API
+      'getSuperscriptGlyph', 'isSuperscriptGlyph', 'getSuperscriptOverline',
+      'toSuperscript', 'fromSuperscript',
+
+      // Superscript Selection API (grace note conversion)
+      'selectionToSuperscript', 'superscriptToNormal',
+
+      // Textarea Rendering API
+      'getTextareaLineData', 'getTextareaDisplayList', 'setLineText', 'splitLine', 'joinLines'
     ];
 
     // Automatically wrap all functions with error handling
@@ -357,17 +361,6 @@ export class WASMBridge implements WASMModule {
   removeSlurLayered!: WASMModule['removeSlurLayered'];
   getSlursForLine!: WASMModule['getSlursForLine'];
   applyAnnotationSlursToCells!: WASMModule['applyAnnotationSlursToCells'];
-  applyOrnamentLayered!: WASMModule['applyOrnamentLayered'];
-  removeOrnamentLayered!: WASMModule['removeOrnamentLayered'];
-  setOrnamentPlacementLayered!: WASMModule['setOrnamentPlacementLayered'];
-  getOrnamentAt!: WASMModule['getOrnamentAt'];
-  getOrnamentsForLine!: WASMModule['getOrnamentsForLine'];
-  applyAnnotationOrnamentsToCells!: WASMModule['applyAnnotationOrnamentsToCells'];
-  copyOrnamentFromCell!: WASMModule['copyOrnamentFromCell'];
-  pasteOrnamentToCell!: WASMModule['pasteOrnamentToCell'];
-  pasteOrnamentCells!: WASMModule['pasteOrnamentCells'];
-  clearOrnamentFromCell!: WASMModule['clearOrnamentFromCell'];
-  setOrnamentPlacementOnCell!: WASMModule['setOrnamentPlacementOnCell'];
   copyCells!: WASMModule['copyCells'];
   pasteCells!: WASMModule['pasteCells'];
   getPrimarySelection!: WASMModule['getPrimarySelection'];
@@ -414,12 +407,24 @@ export class WASMBridge implements WASMModule {
   exportMIDIDirect!: WASMModule['exportMIDIDirect'];
   generateIRJson!: WASMModule['generateIRJson'];
   exportAsText!: WASMModule['exportAsText'];
-  toggleOrnamentEditMode!: WASMModule['toggleOrnamentEditMode'];
 
-  // Superscript Glyph API (for ornament rendering)
+  // Superscript Glyph API
   getSuperscriptGlyph!: WASMModule['getSuperscriptGlyph'];
   isSuperscriptGlyph!: WASMModule['isSuperscriptGlyph'];
   getSuperscriptOverline!: WASMModule['getSuperscriptOverline'];
+  toSuperscript!: WASMModule['toSuperscript'];
+  fromSuperscript!: WASMModule['fromSuperscript'];
+
+  // Superscript Selection API
+  selectionToSuperscript!: WASMModule['selectionToSuperscript'];
+  superscriptToNormal!: WASMModule['superscriptToNormal'];
+
+  // Textarea Rendering API
+  getTextareaLineData!: WASMModule['getTextareaLineData'];
+  getTextareaDisplayList!: WASMModule['getTextareaDisplayList'];
+  setLineText!: WASMModule['setLineText'];
+  splitLine!: WASMModule['splitLine'];
+  joinLines!: WASMModule['joinLines'];
 }
 
 export default WASMBridge;

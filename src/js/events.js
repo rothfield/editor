@@ -229,6 +229,21 @@ class EventManager {
     logger.debug(LOG_CATEGORIES.EVENTS, 'Checking if editor has focus...');
     if (this.editorFocus()) {
       logger.debug(LOG_CATEGORIES.EVENTS, 'Editor HAS focus, routing key', { key });
+
+      // Let browser handle native text input in textarea
+      // Only intercept modifier commands (Ctrl/Alt for copy/paste/musical commands)
+      const hasModifier = event.ctrlKey || event.altKey || event.metaKey;
+
+      if (!hasModifier) {
+        // Let browser handle native text input, navigation, backspace, etc.
+        // The textarea-renderer will process input events via setLineText
+        logger.debug(LOG_CATEGORIES.EVENTS, 'Letting browser handle native input', { key });
+        return;
+      }
+
+      // Route modifier commands (Ctrl+C, Alt+S, etc.) to editor
+      logger.debug(LOG_CATEGORIES.EVENTS, 'Routing modifier command', { key, ctrl: event.ctrlKey, alt: event.altKey });
+
       // Prevent certain default behaviors
       if (this.preventDefaultWhenFocused.includes(key)) {
         event.preventDefault();
@@ -433,11 +448,12 @@ class EventManager {
 
   /**
    * Apply ornament to selection (Alt+O)
+   * Extracts pitches from selection and makes them superscript, applying after previous note
    */
   applyOrnament() {
     logger.info(LOG_CATEGORIES.EVENTS, 'Alt+O: Apply ornament shortcut triggered');
-    if (this.editor && this.editor.ui && this.editor.ui.pasteOrnament) {
-      this.editor.ui.pasteOrnament();
+    if (this.editor && this.editor.ui && this.editor.ui.selectionToOrnament) {
+      this.editor.ui.selectionToOrnament();
     } else {
       logger.warn(LOG_CATEGORIES.EVENTS, 'Apply ornament not available');
     }
@@ -513,12 +529,12 @@ class EventManager {
   }
 
   /**
-     * Return focus to editor element
+     * Return focus to editor textarea
      */
   returnFocusToEditor() {
-    const editorElement = document.getElementById('notation-editor');
-    if (editorElement) {
-      editorElement.focus();
+    const textarea = document.querySelector('.notation-textarea');
+    if (textarea) {
+      textarea.focus();
     }
   }
 

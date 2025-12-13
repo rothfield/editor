@@ -10,17 +10,20 @@ use editor_wasm::renderers::musicxml::builder::MusicXmlBuilder;
 
 /// Helper to create a pitched cell
 fn make_pitched_cell(char: &str, pitch_code: PitchCode, col: usize, slur: SlurIndicator) -> Cell {
+    let codepoint = char.chars().next().map(|c| c as u32).unwrap_or(0);
     Cell {
-        kind: ElementKind::PitchedElement,
+        codepoint,
         char: char.to_string(),
-        pitch_code: Some(pitch_code),
-        octave: 4,
+        kind: ElementKind::PitchedElement,
         col,
         flags: 0,
+        pitch_code: Some(pitch_code),
         pitch_system: None,
+        octave: 4,
+        superscript: false,
         slur_indicator: slur,
-        ornament: None,
-        combined_char: None,
+        underline: editor_wasm::renderers::line_variants::UnderlineState::None,
+        overline: editor_wasm::renderers::line_variants::OverlineState::None,
         x: 0.0,
         y: 0.0,
         w: 1.0,

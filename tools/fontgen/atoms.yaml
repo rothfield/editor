@@ -44,54 +44,33 @@ notation_systems:
         label: "7 (seventh degree)"
         accidentals: []
 
-  # Western System: A-G (uppercase + lowercase)
-  # Usage: "C" = middle C, "c" = lower c, "D" = D above middle C, etc.
+  # Western System: CDEFGAB (uppercase only)
+  # Octaves indicated by dots above/below, not by case
   - system_name: western
-    pua_base: 0xE100  # 14 chars × 30 variants = 420 glyphs (0xE100-0xE2A3)
+    pua_base: 0xE100  # 7 chars × 30 variants = 210 glyphs (0xE100-0xE1D1)
     display_name: "Western Letter Names"
-    description: "Standard A-B-C-D-E-F-G notation (uppercase + lowercase)"
+    description: "Standard CDEFGAB notation"
     characters:
       - char: "C"
-        label: "C (uppercase)"
+        label: "C"
         accidentals: []
       - char: "D"
-        label: "D (uppercase)"
+        label: "D"
         accidentals: []
       - char: "E"
-        label: "E (uppercase)"
+        label: "E"
         accidentals: []
       - char: "F"
-        label: "F (uppercase)"
+        label: "F"
         accidentals: []
       - char: "G"
-        label: "G (uppercase)"
+        label: "G"
         accidentals: []
       - char: "A"
-        label: "A (uppercase)"
+        label: "A"
         accidentals: []
       - char: "B"
-        label: "B (uppercase)"
-        accidentals: []
-      - char: "c"
-        label: "c (lowercase)"
-        accidentals: []
-      - char: "d"
-        label: "d (lowercase)"
-        accidentals: []
-      - char: "e"
-        label: "e (lowercase)"
-        accidentals: []
-      - char: "f"
-        label: "f (lowercase)"
-        accidentals: []
-      - char: "g"
-        label: "g (lowercase)"
-        accidentals: []
-      - char: "a"
-        label: "a (lowercase)"
-        accidentals: []
-      - char: "b"
-        label: "b (lowercase)"
+        label: "B"
         accidentals: []
 
   # Sargam System: Indian classical notation
@@ -138,55 +117,33 @@ notation_systems:
         label: "N (Ni - upper)"
         accidentals: []
 
-  # Doremi System: Solfège notation (includes 'f' for Fa)
-  # Usage: d=do, r=re, m=mi, f=fa, s=sol, l=la, t=ti
-  # NOTE: Both lowercase (d-t) and UPPERCASE (D-T) are supported
+  # Doremi System: Solfège notation (drmfslt)
+  # Octaves indicated by dots above/below, not by case
   - system_name: doremi
-    pua_base: 0xE500  # 14 chars × 30 variants = 420 glyphs (0xE500-0xE6A3)
+    pua_base: 0xE500  # 7 chars × 30 variants = 210 glyphs (0xE500-0xE5D1)
     display_name: "Doremi (Solfège)"
-    description: "Solfège notation (do-re-mi-fa-sol-la-ti), includes 'f' for Fa note"
+    description: "Solfège notation (drmfslt)"
     characters:
       - char: "d"
-        label: "d (do - lowercase)"
+        label: "d (do)"
         accidentals: []
       - char: "r"
-        label: "r (re - lowercase)"
+        label: "r (re)"
         accidentals: []
       - char: "m"
-        label: "m (mi - lowercase)"
+        label: "m (mi)"
         accidentals: []
       - char: "f"
-        label: "f (fa - lowercase) ★ Includes 'f' for Fa note"
+        label: "f (fa)"
         accidentals: []
       - char: "s"
-        label: "s (sol - lowercase)"
+        label: "s (sol)"
         accidentals: []
       - char: "l"
-        label: "l (la - lowercase)"
+        label: "l (la)"
         accidentals: []
       - char: "t"
-        label: "t (ti - lowercase)"
-        accidentals: []
-      - char: "D"
-        label: "D (DO - uppercase)"
-        accidentals: []
-      - char: "R"
-        label: "R (RE - uppercase)"
-        accidentals: []
-      - char: "M"
-        label: "M (MI - uppercase)"
-        accidentals: []
-      - char: "F"
-        label: "F (FA - uppercase) ★ Includes 'F' for Fa note"
-        accidentals: []
-      - char: "S"
-        label: "S (SOL - uppercase)"
-        accidentals: []
-      - char: "L"
-        label: "L (LA - uppercase)"
-        accidentals: []
-      - char: "T"
-        label: "T (TI - uppercase)"
+        label: "t (ti)"
         accidentals: []
 
 # Source Fonts - Dual-font architecture for optimal typography
@@ -299,153 +256,74 @@ pua_allocation:
   # -------------------------------------------------------------------------
   # SECTION 2: Line variants for beat grouping (15 variants per character)
   # Used for underlines, overlines, and combinations
-  # Only for LINE_CAPABLE_CHARS (37 pitch chars + dash + breath mark)
+  # Covers ALL ASCII printable characters (0x20-0x7E = 95 chars)
   # -------------------------------------------------------------------------
   line_variants:
     description: "Pre-composed glyphs with underline/overline for beat grouping and slurs"
-    line_capable_chars: 37  # 7 number + 14 western + 12 sargam + 4 special
-    variants_per_char: 15   # 3 underline states × 3 overline states + 6 single states
+    line_capable_chars: 95  # All ASCII printable (0x20-0x7E)
+    variants_per_char: 15   # 3 underline + 3 overline + 9 combined
 
     underline_only:
       pua_base: 0xE800
       variants: 3   # middle, left, right
-      range: "0xE800 - 0xE86E"  # 37 × 3 = 111 glyphs
+      range: "0xE800 - 0xE91C"  # 95 × 3 = 285 glyphs
 
     overline_only:
-      pua_base: 0xE900
+      pua_base: 0xE920
       variants: 3   # middle, left, right
-      range: "0xE900 - 0xE96E"  # 37 × 3 = 111 glyphs
+      range: "0xE920 - 0xEA3B"  # 95 × 3 = 285 glyphs
 
     combined:
-      pua_base: 0xEA00
+      pua_base: 0xEA40
       variants: 9   # 3 underline × 3 overline
-      range: "0xEA00 - 0xEB4C"  # 37 × 9 = 333 glyphs
+      range: "0xEA40 - 0xEDB3"  # 95 × 9 = 855 glyphs
 
   # -------------------------------------------------------------------------
-  # SECTION 3: Underlined note variants (for beat grouping)
-  # Each note atom needs an underlined version for multi-note beats
-  # Uses explicit PUA allocation (not offset formula) for reliability
+  # SECTION 3: Unified 15-variant line system for PUA note glyphs
+  # Each note atom gets 15 line variants: 3 underline + 3 overline + 9 combined
+  # Replaces legacy separate underlined_notes, overlined_notes, combined_line_notes
   # -------------------------------------------------------------------------
-  underlined_notes:
-    description: "Underlined variants of all note atoms for beat grouping display"
+  pua_note_line_variants:
+    description: "Unified 15-variant line system for all PUA note glyphs"
+    variants_per_note: 15  # 3 underline + 3 overline + 9 combined
 
-    # Explicit PUA ranges for each system (mirrors base note atoms)
-    # Formula: underlined_cp = underlined_pua_base + (char_index × 30) + variant_index
-    number_underlined:
-      pua_base: 0x16000  # Supplementary plane, mirrors 0xE000
-      chars_count: 7
-      variants_per_char: 30
-      range: "0x16000 - 0x160D1"  # 7 × 30 = 210 glyphs
+    # Variant indices (matches ASCII line_variants):
+    #   0-2: underline-only (middle, left, right)
+    #   3-5: overline-only (middle, left, right)
+    #   6-14: combined (3 underline × 3 overline)
 
-    western_underlined:
-      pua_base: 0x16100  # Mirrors 0xE100
-      chars_count: 14
-      variants_per_char: 30
-      range: "0x16100 - 0x162A3"  # 14 × 30 = 420 glyphs
+    # Formula: line_cp = system_line_base + (note_offset × 15) + variant_index
+    # where note_offset = original_codepoint - system_source_base
 
-    sargam_underlined:
-      pua_base: 0x16300  # Mirrors 0xE300
-      chars_count: 12
-      variants_per_char: 30
-      range: "0x16300 - 0x16467"  # 12 × 30 = 360 glyphs
-
-    doremi_underlined:
-      pua_base: 0x16500  # Mirrors 0xE500
-      chars_count: 14
-      variants_per_char: 30
-      range: "0x16500 - 0x166A3"  # 14 × 30 = 420 glyphs
-
-    # Mapping formula (same structure as base notes):
-    # underlined_codepoint = system_underlined_base + (char_index × 30) + variant_index
-    # This allows build.rs to generate parallel lookup tables
-
-  # -------------------------------------------------------------------------
-  # SECTION 3b: Overlined note variants (for slurs on superscripts)
-  # Each note atom needs an overlined version for slur indication
-  # Parallel structure to underlined_notes, uses 0x19000+ range
-  # -------------------------------------------------------------------------
-  overlined_notes:
-    description: "Overlined variants of all note atoms for slur indication on superscripts"
-
-    # Explicit PUA ranges for each system (mirrors underlined_notes structure)
-    # Formula: overlined_cp = overlined_pua_base + (char_index × 30) + variant_index
-    number_overlined:
-      pua_base: 0x19000  # Mirrors 0xE000 (base) and 0x16000 (underlined)
-      chars_count: 7
-      variants_per_char: 30
-      range: "0x19000 - 0x190D1"  # 7 × 30 = 210 glyphs
-
-    western_overlined:
-      pua_base: 0x19100  # Mirrors 0xE100 (base) and 0x16100 (underlined)
-      chars_count: 14
-      variants_per_char: 30
-      range: "0x19100 - 0x192A3"  # 14 × 30 = 420 glyphs
-
-    sargam_overlined:
-      pua_base: 0x19300  # Mirrors 0xE300 (base) and 0x16300 (underlined)
-      chars_count: 12
-      variants_per_char: 30
-      range: "0x19300 - 0x19467"  # 12 × 30 = 360 glyphs
-
-    doremi_overlined:
-      pua_base: 0x19500  # Mirrors 0xE500 (base) and 0x16500 (underlined)
-      chars_count: 14
-      variants_per_char: 30
-      range: "0x19500 - 0x196A3"  # 14 × 30 = 420 glyphs
-
-    # Mapping formula (same structure as underlined notes):
-    # overlined_codepoint = system_overlined_base + (char_index × 30) + variant_index
-    # This allows build.rs to generate parallel lookup tables
-
-  # -------------------------------------------------------------------------
-  # SECTION 3c: Combined underline+overline note variants
-  # Each note atom needs combined variants for notes that are both
-  # in a beat group (underlined) AND under a slur (overlined)
-  # 9 variants per note: 3 underline states × 3 overline states
-  # -------------------------------------------------------------------------
-  combined_line_notes:
-    description: "Combined underline+overline variants for note atoms"
-    line_states: 9  # 3 underline (middle, left, right) × 3 overline (middle, left, right)
-
-    # Formula: combined_cp = system_combined_base + (note_offset × 9) + line_variant
-    # where note_offset = original_codepoint - system_base
-    # and line_variant = (underline_state × 3) + overline_state
-    # underline_state: 0=middle, 1=left, 2=right
-    # overline_state: 0=middle, 1=left, 2=right
-
-    number_combined:
-      pua_base: 0xF2000  # PUA-A for large allocation
+    number_lines:
+      pua_base: 0x1A000
       source_base: 0xE000
-      chars_count: 7
-      variants_per_char: 30
-      line_states: 9
-      range: "0xF2000 - 0xF276D"  # 7 × 30 × 9 = 1890 glyphs
+      note_count: 210   # 7 chars × 30 variants
+      line_variants: 15
+      range: "0x1A000 - 0x1AC4D"  # 210 × 15 = 3,150 glyphs
 
-    western_combined:
-      pua_base: 0xF3000
+    western_lines:
+      pua_base: 0x1B000
       source_base: 0xE100
-      chars_count: 14
-      variants_per_char: 30
-      line_states: 9
-      range: "0xF3000 - 0xF3EDB"  # 14 × 30 × 9 = 3780 glyphs
+      note_count: 210   # 7 chars (CDEFGAB) × 30 variants
+      line_variants: 15
+      range: "0x1B000 - 0x1BC4D"  # 210 × 15 = 3,150 glyphs
 
-    sargam_combined:
-      pua_base: 0xF4000
+    sargam_lines:
+      pua_base: 0x1D000
       source_base: 0xE300
-      chars_count: 12
-      variants_per_char: 30
-      line_states: 9
-      range: "0xF4000 - 0xF4C9F"  # 12 × 30 × 9 = 3240 glyphs
+      note_count: 360   # 12 chars × 30 variants
+      line_variants: 15
+      range: "0x1D000 - 0x1E517"  # 360 × 15 = 5,400 glyphs
 
-    doremi_combined:
-      pua_base: 0xF5000
+    doremi_lines:
+      pua_base: 0x1F000
       source_base: 0xE500
-      chars_count: 14
-      variants_per_char: 30
-      line_states: 9
-      range: "0xF5000 - 0xF5EDB"  # 14 × 30 × 9 = 3780 glyphs
+      note_count: 210   # 7 chars (drmfslt) × 30 variants
+      line_variants: 15
+      range: "0x1F000 - 0x1FC4D"  # 210 × 15 = 3,150 glyphs
 
-    # Total: (7+14+12+14) × 30 × 9 = 47 × 30 × 9 = 12,690 glyphs
+    # Total: (210 + 210 + 360 + 210) × 15 = 990 × 15 = 14,850 glyphs
 
   # -------------------------------------------------------------------------
   # SECTION 4: Utility glyphs (marks, arcs, combining characters)
@@ -556,18 +434,8 @@ pua_allocation:
       variants_per_char: 30
       range: "0xFC600 - 0xFE03F"  # 14 × 30 × 16 = 6,720 glyphs
 
-# Character Order (CRITICAL!)
-# This exact order must be preserved in:
-# - Font generator output
-# - JSON mapping file
-# - JavaScript/Rust code that looks up characters
-# - Any code that assumes character indices
-character_order: "1234567CDEFGABcdefgabSrRgGmMPdDnNdrmfsltDRMFSLT"
-character_order_by_system:
-  number: "1234567"       # indices 0-6
-  western: "CDEFGABcdefgab"  # indices 7-20
-  sargam: "SrRgGmMPdDnN"  # indices 21-32
-  doremi: "drmfsltDRMFSLT"   # indices 33-46
+# NOTE: Character order is derived from notation_systems by generate.py
+# Do not manually maintain character lists here - edit notation_systems instead.
 
 # Geometry Configuration - Knobs for dot and symbol positioning
 # CRITICAL: All positioning is configurable, not hardcoded in Python
@@ -578,6 +446,18 @@ geometry:
     below_gap: 50        # Distance from character bbox bottom to first dot below
     vertical_step: 100   # Spacing between first and second dot (1-dot vs 2-dot)
     horizontal_center: true  # Always center dots horizontally over character
+    base_x_offset_factor: 0.8  # Multiplier for base dot horizontal offset (relative to dot width)
+
+    # Character-specific horizontal adjustments for dot placement
+    # Values are multipliers of the character's width
+    # Negative = shift dot left, Positive = shift dot right
+    char_adjustments:
+      "2": -0.10   # Shift dot left by 10% of char width
+      "3": -0.17   # Shift dot left by 17% of char width
+      "4": 0.04    # Shift dot right by 4% of char width
+      "5": -0.17   # Shift dot left by 17% of char width
+      "6": -0.17   # Shift dot left by 17% of char width
+      "7": -0.04   # Shift dot left by 4% of char width
 
   symbols:
     # Future: scaling and positioning for Bravura symbols
@@ -673,32 +553,6 @@ smufl_symbols:
     smufl_codepoint: 0xE566  # SMuFL U+E566
     codepoint_offset: 13
 
-  # Brackets (SMuFL staff brackets range)
-  # Source: Bravura (not available in Noto Music)
-  - glyph_name: "bracketTop"
-    label: "Bracket top cap"
-    smufl_codepoint: 0xE003  # SMuFL U+E003
-    codepoint_offset: 14
-    source_font: "bravura"
-
-  - glyph_name: "bracketBottom"
-    label: "Bracket bottom cap"
-    smufl_codepoint: 0xE004  # SMuFL U+E004
-    codepoint_offset: 15
-    source_font: "bravura"
-
-  - glyph_name: "reversedBracketTop"
-    label: "Reversed bracket top cap"
-    smufl_codepoint: 0xE005  # SMuFL U+E005
-    codepoint_offset: 16
-    source_font: "bravura"
-
-  - glyph_name: "reversedBracketBottom"
-    label: "Reversed bracket bottom cap"
-    smufl_codepoint: 0xE006  # SMuFL U+E006
-    codepoint_offset: 17
-    source_font: "bravura"
-
 # Summary Statistics
 summary:
   total_systems: 4
@@ -724,3 +578,128 @@ summary:
     - SMuFL standard codepoints are used directly (no custom allocation)
     - Font generation from atoms.yaml ensures compile-time consistency (build.rs)
     - Runtime lookup: JavaScript uses PUA ranges; WASM uses get_accidental_glyph_codepoint()
+
+# =============================================================================
+# LINE VARIANTS: Underline and Overline Pre-Composed Glyphs
+# =============================================================================
+# Every glyph gets 15 line variants (uniform system):
+# - 3 underline-only (Middle, Left, Right)
+# - 3 overline-only (Middle, Left, Right)
+# - 9 combined (3 underline × 3 overline)
+#
+# Formula: line_variant_codepoint = line_base + (glyph_offset × 15) + variant_index
+
+line_variant_config:
+  variants_per_glyph: 15
+  layout:
+    # Underline only (indices 0-2)
+    - index: 0
+      underline: middle
+      overline: none
+    - index: 1
+      underline: left
+      overline: none
+    - index: 2
+      underline: right
+      overline: none
+    # Overline only (indices 3-5)
+    - index: 3
+      underline: none
+      overline: middle
+    - index: 4
+      underline: none
+      overline: left
+    - index: 5
+      underline: none
+      overline: right
+    # Combined (indices 6-14): 3 underline × 3 overline
+    - index: 6
+      underline: middle
+      overline: middle
+    - index: 7
+      underline: middle
+      overline: left
+    - index: 8
+      underline: middle
+      overline: right
+    - index: 9
+      underline: left
+      overline: middle
+    - index: 10
+      underline: left
+      overline: left
+    - index: 11
+      underline: left
+      overline: right
+    - index: 12
+      underline: right
+      overline: middle
+    - index: 13
+      underline: right
+      overline: left
+    - index: 14
+      underline: right
+      overline: right
+
+# Per-system line variant bases for pitched notes
+# Formula: line_codepoint = line_base + (note_offset × 15) + variant_index
+pitched_note_line_bases:
+  number:
+    line_base: 0x1A000    # 210 glyphs (1234567 × 30) × 15 variants = 3,150
+  western:
+    line_base: 0x1B000    # 210 glyphs (CDEFGAB × 30) × 15 variants = 3,150
+  sargam:
+    line_base: 0x1D000    # 360 glyphs (SrRgGmMPdDnN × 30) × 15 variants = 5,400
+  doremi:
+    line_base: 0x1F000    # 210 glyphs (drmfslt × 30) × 15 variants = 3,150
+
+# =============================================================================
+# NOTATION ELEMENTS: Non-pitched symbols that appear in notation
+# =============================================================================
+# All get 15 line variants (same as pitched notes)
+# These are converted from ASCII input to PUA glyphs
+
+notation_elements:
+  # NOTE: 0xE700-0xE703 reserved for line endpoint caps (generate.py)
+  # Notation elements start at 0xE750 to avoid conflict
+  dash:
+    base: 0xE750
+    line_base: 0x1E000
+    ascii_input: ["-", "_"]
+    description: "Rhythmic placeholder / rest continuation"
+
+  breath_mark:
+    base: 0xE751
+    line_base: 0x1E00F
+    ascii_input: ["'", ","]
+    description: "Breath mark / phrasing separator"
+
+  space:
+    base: 0xE752
+    line_base: 0x1E01E
+    ascii_input: [" "]
+    description: "Beat separator"
+
+  single_barline:
+    base: 0xE753
+    line_base: 0x1E02D
+    ascii_input: ["|"]
+    description: "Single barline"
+
+  double_barline:
+    base: 0xE754
+    line_base: 0x1E03C
+    ascii_input: ["||"]
+    description: "Double barline"
+
+  repeat_left:
+    base: 0xE755
+    line_base: 0x1E04B
+    ascii_input: ["|:"]
+    description: "Repeat start barline"
+
+  repeat_right:
+    base: 0xE756
+    line_base: 0x1E05A
+    ascii_input: [":|"]
+    description: "Repeat end barline"

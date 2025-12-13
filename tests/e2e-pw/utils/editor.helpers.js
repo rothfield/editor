@@ -62,7 +62,20 @@ function parseInputSequence(input) {
  */
 export async function typeInEditor(page, text, options = {}) {
   const { delay = 0 } = options;
-  await page.focus('#notation-editor');
+
+  // Check if we're in textarea mode and focus appropriately
+  const isTextareaMode = await page.evaluate(() => {
+    return document.querySelector('.notation-textarea') !== null;
+  });
+
+  if (isTextareaMode) {
+    // Focus textarea for textarea mode
+    const textarea = page.locator('.notation-textarea').first();
+    await textarea.focus();
+  } else {
+    // Focus editor div for cell mode
+    await page.focus('#notation-editor');
+  }
 
   const sequence = parseInputSequence(text);
 

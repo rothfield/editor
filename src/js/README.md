@@ -54,11 +54,11 @@ This directory contains the refactored JavaScript modules for the Music Notation
 - **Dependencies**: constants.js
 - **Usage**: `import MenuSystem from './menu-system.js'`
 
-#### cell-renderer.js
-- **Purpose**: Cell rendering logic
-- **Exports**: `CellRenderer` class
-- **Dependencies**: constants.js
-- **Usage**: `import CellRenderer from './cell-renderer.js'`
+#### textarea-renderer.js
+- **Purpose**: Textarea-based notation rendering (one textarea per line)
+- **Exports**: `TextareaRenderer` class
+- **Dependencies**: mirror-div-service.js
+- **Usage**: `import TextareaRenderer from './textarea-renderer.js'`
 
 #### keyboard-handler.js
 - **Purpose**: Keyboard input handling
@@ -135,7 +135,7 @@ monitor         │                  │                  │
                             ↓
                 ┌───────────┼───────────┐
                 │           │           │
-            cell-      menu-       keyboard-
+            textarea-  menu-       keyboard-
             renderer   system      handler
                 │           │           │
                 └───────────┼───────────┘
@@ -185,7 +185,7 @@ import CursorManager from './cursor-manager.js';
 import TextInputHandler from './text-input-handler.js';
 import MenuSystem from './menu-system.js';
 import KeyboardHandler from './keyboard-handler.js';
-import CellRenderer from './cell-renderer.js';
+import TextareaRenderer from './textarea-renderer.js';
 import { PITCH_SYSTEMS } from './constants.js';
 
 class MusicEditor {
@@ -217,8 +217,8 @@ class MusicEditor {
     this.keyboard = new KeyboardHandler(this);
     this.keyboard.initialize();
 
-    // 8. Setup renderer
-    this.cellRenderer = new CellRenderer();
+    // 8. Setup renderer (textarea-based)
+    this.textareaRenderer = new TextareaRenderer(canvasElement, this);
   }
 
   // Methods that use the modules
@@ -230,9 +230,9 @@ class MusicEditor {
   }
 
   render() {
-    const line = this.document.lines[0];
-    this.cellRenderer.renderCells(line.cells, 0, this.container, line.beats);
-    this.cursor.updateVisualPosition();
+    // Get display list from WASM and render via TextareaRenderer
+    const displayList = this.wasm.getTextareaDisplayList();
+    this.textareaRenderer.renderAll(displayList);
   }
 }
 ```
@@ -248,7 +248,7 @@ class MusicEditor {
 | document-manager.js | 373 | Medium | 3 |
 | text-input-handler.js | 333 | Medium | 2 |
 | menu-system.js | 334 | Low | 1 |
-| cell-renderer.js | 282 | Low | 1 |
+| textarea-renderer.js | 550 | Medium | 1 |
 | keyboard-handler.js | 252 | Medium | 2 |
 
 **Total**: 2,882 lines across 9 modules
@@ -379,7 +379,7 @@ import { ClassName } from './module.js';
 | Document | ✅ Complete | - |
 | Text Input | ✅ Complete | - |
 | Menu System | ✅ Complete | - |
-| Cell Renderer | ✅ Complete | - |
+| Textarea Renderer | ✅ Complete | - |
 | Keyboard | ✅ Complete | - |
 | Editor Core | 🔄 In Progress | High |
 | UI | 🔄 In Progress | High |

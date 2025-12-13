@@ -49,7 +49,7 @@ export default class ClipboardCoordinator {
       const endRow = selection.end.line;
       const endCol = selection.end.col;
 
-      // Call WASM to copy cells (preserves octaves/slurs/ornaments)
+      // Call WASM to copy cells (preserves octaves/slurs/superscripts)
       const copyResult = this.editor.wasmModule.copyCells(startRow, startCol, endRow, endCol);
 
       if (copyResult && copyResult.text) {

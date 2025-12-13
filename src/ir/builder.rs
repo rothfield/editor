@@ -230,17 +230,18 @@ impl BeatAccumulator {
             let slur_indicator = self.take_slur_indicator();
 
             // Create a temporary cell for the attach_slur_to_note function
-            let temp_cell = Cell {
-                kind: ElementKind::PitchedElement,
+            let mut temp_cell = Cell {
+                codepoint: 0,
                 char: "".to_string(),
-                combined_char: None,
+                kind: ElementKind::PitchedElement,
                 col: 0,
                 flags: 0,
                 pitch_code: Some(pitch.pitch_code),
                 pitch_system: None,
                 octave: pitch.octave,
-                slur_indicator,
-                ornament: None,
+                superscript: false,
+                underline: crate::renderers::line_variants::UnderlineState::None,
+                overline: crate::renderers::line_variants::OverlineState::None,
                 x: 0.0,
                 y: 0.0,
                 w: 0.0,
@@ -248,6 +249,13 @@ impl BeatAccumulator {
                 bbox: (0.0, 0.0, 0.0, 0.0),
                 hit: (0.0, 0.0, 0.0, 0.0),
             };
+
+            // Set slur marker on temp cell based on indicator
+            match slur_indicator {
+                SlurIndicator::SlurStart => temp_cell.set_slur_start(),
+                SlurIndicator::SlurEnd => temp_cell.set_slur_end(),
+                SlurIndicator::None => {}
+            }
 
             attach_slur_to_note(&mut note, &temp_cell, self.inside_slur);
 
@@ -370,6 +378,17 @@ pub fn beat_transition(
     // Previously, extracting at the top caused the current cell's slur indicator
     // to be consumed by the PREVIOUS note's finish_pitch() call.
 
+    // SUPERSCRIPT HANDLING: Grace notes are rhythm-transparent
+    // They attach to the previous normal pitch (after placement by default)
+    if cell.is_superscript() {
+        if let Some(pitch_code) = cell.pitch_code {
+            let pitch = PitchInfo::with_tonic(pitch_code, cell.octave, tonic);
+            accum.add_grace_note(pitch);
+        }
+        // Stay in current state - superscripts don't affect FSM state
+        return state;
+    }
+
     match (state, cell.kind) {
         // DASHES
         (CellGroupingState::InBeat, ElementKind::UnpitchedElement) if cell.char == "-" => {
@@ -389,17 +408,17 @@ pub fn beat_transition(
                 let pitch = PitchInfo::with_tonic(pitch_code, cell.octave, tonic);
                 accum.start_pitch(pitch);
                 // Set slur indicator for THIS note (from current cell)
-                if cell.slur_indicator != SlurIndicator::None {
-                    accum.set_slur_indicator(cell.slur_indicator);
+                if cell.is_slur_start() {
+                    accum.set_slur_indicator(SlurIndicator::SlurStart);
+                } else if cell.is_slur_end() {
+                    accum.set_slur_indicator(SlurIndicator::SlurEnd);
                 }
                 accum.has_main_element = true;
                 // New pitch clears the breath mark context reset flag
                 accum.pitch_context_reset = false;
 
-                // Process ornament if present
-                if let Some(ornament) = &cell.ornament {
-                    accum.process_ornament(ornament);
-                }
+                // NOTE: Ornaments are now represented as superscript characters.
+                // The superscript detection happens at the top of beat_transition().
 
                 CellGroupingState::CollectingPitchInBeat
             } else {
@@ -413,8 +432,10 @@ pub fn beat_transition(
                 let pitch = PitchInfo::with_tonic(pitch_code, cell.octave, tonic);
                 accum.start_pitch(pitch);
                 // Set slur indicator for THIS note (from current cell)
-                if cell.slur_indicator != SlurIndicator::None {
-                    accum.set_slur_indicator(cell.slur_indicator);
+                if cell.is_slur_start() {
+                    accum.set_slur_indicator(SlurIndicator::SlurStart);
+                } else if cell.is_slur_end() {
+                    accum.set_slur_indicator(SlurIndicator::SlurEnd);
                 }
                 accum.has_main_element = true;
                 // New pitch clears the breath mark context reset flag
@@ -432,16 +453,16 @@ pub fn beat_transition(
                 let pitch = PitchInfo::with_tonic(pitch_code, cell.octave, tonic);
                 accum.start_pitch(pitch);
                 // Set slur indicator for THIS note AFTER finishing previous
-                if cell.slur_indicator != SlurIndicator::None {
-                    accum.set_slur_indicator(cell.slur_indicator);
+                if cell.is_slur_start() {
+                    accum.set_slur_indicator(SlurIndicator::SlurStart);
+                } else if cell.is_slur_end() {
+                    accum.set_slur_indicator(SlurIndicator::SlurEnd);
                 }
                 // New pitch clears the breath mark context reset flag
                 accum.pitch_context_reset = false;
 
-                // Process ornament if present
-                if let Some(ornament) = &cell.ornament {
-                    accum.process_ornament(ornament);
-                }
+                // NOTE: Ornaments are now represented as superscript characters.
+                // The superscript detection happens at the top of beat_transition().
 
                 CellGroupingState::CollectingPitchInBeat
             } else {
@@ -707,27 +728,23 @@ fn fill_slur_continue_markers(events: &mut [ExportEvent], line_inside_slur: &mut
 /// 2. SlurEnd indicator → SlurType::Stop
 /// 3. No indicator but inside_slur=true → SlurType::Continue
 pub fn attach_slur_to_note(note: &mut NoteData, cell: &Cell, inside_slur: bool) {
-    match cell.slur_indicator {
-        SlurIndicator::SlurStart => {
-            note.slur = Some(SlurData {
-                placement: SlurPlacement::Above, // TODO: derive from context
-                type_: SlurType::Start,
-            });
-        }
-        SlurIndicator::SlurEnd => {
+    if cell.is_slur_start() {
+        note.slur = Some(SlurData {
+            placement: SlurPlacement::Above, // TODO: derive from context
+            type_: SlurType::Start,
+        });
+    } else if cell.is_slur_end() {
+        note.slur = Some(SlurData {
+            placement: SlurPlacement::Above,
+            type_: SlurType::Stop,
+        });
+    } else {
+        // Check if we're inside an active slur
+        if inside_slur {
             note.slur = Some(SlurData {
                 placement: SlurPlacement::Above,
-                type_: SlurType::Stop,
+                type_: SlurType::Continue,
             });
-        }
-        SlurIndicator::None => {
-            // Check if we're inside an active slur
-            if inside_slur {
-                note.slur = Some(SlurData {
-                    placement: SlurPlacement::Above,
-                    type_: SlurType::Continue,
-                });
-            }
         }
     }
 }
@@ -951,6 +968,12 @@ pub fn calculate_beat_subdivisions(beat_cells_refs: &[&Cell]) -> usize {
             continue;
         }
 
+        // Skip superscripts (grace notes) - they are rhythm-transparent
+        if cell.is_superscript() {
+            i += 1;
+            continue;
+        }
+
         if cell.kind == ElementKind::PitchedElement {
             seen_pitched_element = true;
             // Count this note + following dash extensions
@@ -1125,57 +1148,56 @@ pub fn find_beat_boundaries_refs(cells: &[&Cell]) -> Vec<usize> {
 /// - SlurStart on a separator → transfer to the NEXT pitched cell (start of new slur)
 /// - SlurEnd on a separator → transfer to the PREVIOUS pitched cell (end of current slur)
 fn transfer_slur_indicators_from_separators(cells: &mut [&Cell]) {
-    // We need to track which cells need slur transfer
-    let mut slur_transfers: Vec<(usize, SlurIndicator)> = Vec::new();
+    // We need to track which cells need slur transfer: (target_idx, is_slur_start)
+    let mut slur_transfers: Vec<(usize, bool)> = Vec::new();
 
     // First pass: find separators with slur indicators
     for i in 0..cells.len() {
-        if cells[i].char.trim().is_empty() && cells[i].slur_indicator != SlurIndicator::None {
-            let slur = cells[i].slur_indicator;
+        if cells[i].char.trim().is_empty() && cells[i].has_slur() {
+            let is_start = cells[i].is_slur_start();
+            let is_end = cells[i].is_slur_end();
 
-            match slur {
-                SlurIndicator::SlurStart => {
-                    // SlurStart on separator: transfer to PREVIOUS pitched cell (the note that starts the slur)
-                    let mut found_prev = false;
-                    for j in (0..i).rev() {
-                        if !cells[j].char.trim().is_empty() && cells[j].kind == ElementKind::PitchedElement {
-                            slur_transfers.push((j, slur));
-                            found_prev = true;
-                            break;
-                        }
-                    }
-                    if !found_prev {
-                        eprintln!("Warning: SlurStart on separator but no previous pitched cell");
+            if is_start {
+                // SlurStart on separator: transfer to PREVIOUS pitched cell (the note that starts the slur)
+                let mut found_prev = false;
+                for j in (0..i).rev() {
+                    if !cells[j].char.trim().is_empty() && cells[j].kind == ElementKind::PitchedElement {
+                        slur_transfers.push((j, true)); // true = slur start
+                        found_prev = true;
+                        break;
                     }
                 }
-                SlurIndicator::SlurEnd => {
-                    // SlurEnd on separator: transfer to PREVIOUS pitched cell (the note that ends the slur)
-                    let mut found_prev = false;
-                    for j in (0..i).rev() {
-                        if !cells[j].char.trim().is_empty() && cells[j].kind == ElementKind::PitchedElement {
-                            slur_transfers.push((j, slur));
-                            found_prev = true;
-                            break;
-                        }
-                    }
-                    if !found_prev {
-                        eprintln!("Warning: SlurEnd on separator but no previous pitched cell");
+                if !found_prev {
+                    eprintln!("Warning: SlurStart on separator but no previous pitched cell");
+                }
+            } else if is_end {
+                // SlurEnd on separator: transfer to PREVIOUS pitched cell (the note that ends the slur)
+                let mut found_prev = false;
+                for j in (0..i).rev() {
+                    if !cells[j].char.trim().is_empty() && cells[j].kind == ElementKind::PitchedElement {
+                        slur_transfers.push((j, false)); // false = slur end
+                        found_prev = true;
+                        break;
                     }
                 }
-                SlurIndicator::None => {
-                    // Should not happen since we check for None above
+                if !found_prev {
+                    eprintln!("Warning: SlurEnd on separator but no previous pitched cell");
                 }
             }
         }
     }
 
     // Second pass: apply transfers (mutate the pitched cells)
-    for (target_idx, slur) in slur_transfers {
+    for (target_idx, is_slur_start) in slur_transfers {
         // Use unsafe to mutate through a shared reference
         // This is safe because we're not creating overlapping mutable references
         unsafe {
             let target_cell = cells[target_idx] as *const Cell as *mut Cell;
-            (*target_cell).slur_indicator = slur;
+            if is_slur_start {
+                (*target_cell).set_slur_start();
+            } else {
+                (*target_cell).set_slur_end();
+            }
         }
     }
 }
@@ -1464,17 +1486,20 @@ mod tests {
 
     /// Helper to create a Cell
     fn make_cell(kind: ElementKind, char: &str, pitch_code: Option<PitchCode>) -> Cell {
+        use crate::renderers::line_variants::{UnderlineState, OverlineState};
+        let codepoint = char.chars().next().map(|c| c as u32).unwrap_or(0);
         Cell {
-            kind,
+            codepoint,
             char: char.to_string(),
-            combined_char: None,
+            kind,
             col: 0,
             flags: 0,
             pitch_code,
             pitch_system: None,
             octave: 4,
-            slur_indicator: Default::default(),
-            ornament: None,
+            superscript: false,
+            underline: UnderlineState::None,
+            overline: OverlineState::None,
             x: 0.0,
             y: 0.0,
             w: 0.0,
@@ -1804,7 +1829,7 @@ mod tests {
         };
 
         let mut cell = make_cell(ElementKind::PitchedElement, "1", Some(PitchCode::N1));
-        cell.slur_indicator = SlurIndicator::SlurStart;
+        cell.set_slur_start();
 
         attach_slur_to_note(&mut note, &cell, false);
         assert!(note.slur.is_some());
@@ -1830,7 +1855,7 @@ mod tests {
         };
 
         let mut cell = make_cell(ElementKind::PitchedElement, "1", Some(PitchCode::N1));
-        cell.slur_indicator = SlurIndicator::SlurEnd;
+        cell.set_slur_end();
 
         attach_slur_to_note(&mut note, &cell, false);
         assert!(note.slur.is_some());

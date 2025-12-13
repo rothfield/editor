@@ -406,48 +406,9 @@ export default class CursorCoordinator {
 
   /**
    * Update cursor position display in UI
-   * Also updates char count and selection status
+   * Status bar removed - this is now a no-op
    */
   updateCursorPositionDisplay() {
-    // Update cursor position
-    const cursorPos = document.getElementById(DOM_SELECTORS.CURSOR_POSITION);
-    if (cursorPos) {
-      // Get line, lane (row), and column for debugging
-      const line = this.editor.getCurrentStave();
-      const col = this.getCursorPosition();
-
-      // Simple display: line:col
-      cursorPos.textContent = `Line ${line + 1}, Col ${col}`;
-    }
-
-    // Update char count
-    const charCount = document.getElementById(DOM_SELECTORS.CHAR_COUNT);
-    if (charCount && this.editor.getCurrentLine()) {
-      const cells = this.editor.getCurrentLine().cells || [];
-      charCount.textContent = cells.length;
-    }
-
-    // Update selection status
-    const selectionInfo = document.getElementById(DOM_SELECTORS.SELECTION_INFO);
-    if (selectionInfo) {
-      if (this.editor.hasSelection()) {
-        const selection = this.editor.getSelection();
-        const selectionText = this.editor.getSelectedText();
-
-        // Calculate cell count from selection range
-        let cellCount = 0;
-        if (selection.start.line === selection.end.line) {
-          cellCount = Math.abs(selection.end.col - selection.start.col);
-        } else {
-          cellCount = Math.abs(selection.end.line - selection.start.line);
-        }
-
-        selectionInfo.textContent = `Selected: ${cellCount} cells (${selectionText})`;
-        selectionInfo.className = 'text-xs text-success';
-      } else {
-        selectionInfo.textContent = 'No selection';
-        selectionInfo.className = 'text-xs text-ui-disabled-text';
-      }
-    }
+    // Status bar elements removed from UI
   }
 }

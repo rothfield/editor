@@ -1,0 +1,253 @@
+/**
+ * Textarea Notation Styling
+ *
+ * Styles for the textarea-based notation rendering system.
+ * Uses NotationFont for all visual rendering (PUA glyphs).
+ */
+
+/* ========== Line Container ========== */
+
+.notation-line-container {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 30px; /* Space for lyrics below */
+}
+
+/* Line gutter - left side with system marker */
+.line-gutter {
+  flex-shrink: 0;
+  width: 32px;
+  padding-top: 28px; /* Align with textarea content */
+  display: flex;
+  justify-content: center;
+}
+
+/* Line content wrapper - contains overlays and textarea */
+.line-content-wrapper {
+  flex: 1;
+  position: relative;
+  padding-top: 20px; /* Space for tala above */
+}
+
+/* ========== Notation Textarea ========== */
+
+.notation-textarea {
+  font-family: 'NotationFont', monospace;
+  font-size: 32px;
+  line-height: 1.5;
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 12px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  resize: none;
+  white-space: pre;
+  overflow-x: auto;
+  overflow-y: hidden;
+  outline: none;
+  caret-color: #3b82f6;
+}
+
+.notation-textarea:focus {
+  border-color: #e5e7eb;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.notation-textarea:hover:not(:focus) {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+/* Hide scrollbar but allow scrolling */
+.notation-textarea::-webkit-scrollbar {
+  height: 4px;
+}
+
+.notation-textarea::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.notation-textarea::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 2px;
+}
+
+.notation-textarea::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+/* ========== Overlay Containers ========== */
+
+.overlay-container {
+  position: absolute;
+  left: 12px;  /* Match textarea padding */
+  right: 12px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.tala-overlay {
+  top: 0;
+  height: 20px;
+}
+
+.lyric-overlay {
+  bottom: -22px;
+  height: 20px;
+}
+
+/* ========== Overlay Items ========== */
+
+.overlay-item {
+  position: absolute;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.tala-item {
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: #9333ea;
+  letter-spacing: 0.5px;
+}
+
+.lyric-item {
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  color: #6b7280;
+}
+
+/* ========== Line Label ========== */
+
+.notation-line-container .line-label {
+  position: absolute;
+  left: -100px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 90px;
+  text-align: right;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 12px;
+  color: #9ca3af;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ========== Selection Styling ========== */
+
+/* Selection overlay - shown when textarea is unfocused but has selection */
+.textarea-selection-overlay {
+  position: absolute;
+  background: rgba(59, 130, 246, 0.25);
+  pointer-events: none;
+  z-index: 0;
+  border-radius: 2px;
+}
+
+/* Indicate textarea has preserved selection */
+.notation-textarea.has-selection {
+  /* Subtle border to indicate selection exists */
+  border-color: rgba(59, 130, 246, 0.3);
+}
+
+/* Continuous selection across lines */
+.notation-textarea.selection-continues::selection {
+  background: #bfdbfe;
+}
+
+.notation-textarea.selection-start::selection {
+  background: #bfdbfe;
+}
+
+.notation-textarea.selection-middle {
+  background: rgba(191, 219, 254, 0.3);
+}
+
+.notation-textarea.selection-middle::selection {
+  background: #bfdbfe;
+}
+
+/* ========== Dark Mode ========== */
+
+@media (prefers-color-scheme: dark) {
+  .notation-textarea {
+    color: #e5e7eb;
+    caret-color: #60a5fa;
+  }
+
+  .notation-textarea:focus {
+    border-color: #374151;
+    background: rgba(0, 0, 0, 0.3);
+  }
+
+  .notation-textarea:hover:not(:focus) {
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  .notation-textarea::-webkit-scrollbar-thumb {
+    background: #4b5563;
+  }
+
+  .notation-textarea::-webkit-scrollbar-thumb:hover {
+    background: #6b7280;
+  }
+
+  .tala-item {
+    color: #a78bfa;
+  }
+
+  .lyric-item {
+    color: #9ca3af;
+  }
+
+  .notation-line-container .line-label {
+    color: #6b7280;
+  }
+}
+
+/* ========== Responsive ========== */
+
+@media (max-width: 768px) {
+  .notation-textarea {
+    font-size: 24px;
+    padding: 6px 8px;
+  }
+
+  .notation-line-container {
+    margin-bottom: 24px;
+    padding-top: 16px;
+  }
+
+  .tala-item {
+    font-size: 10px;
+  }
+
+  .lyric-item {
+    font-size: 12px;
+  }
+
+  .notation-line-container .line-label {
+    position: static;
+    transform: none;
+    width: auto;
+    text-align: left;
+    margin-bottom: 4px;
+  }
+}
+
+/* ========== Print Styles ========== */
+
+@media print {
+  .notation-textarea {
+    border: none;
+    background: transparent;
+  }
+
+  .notation-textarea:focus {
+    border: none;
+    background: transparent;
+  }
+}

@@ -316,7 +316,24 @@ pub fn beat_transition(
                 BeatProcessingState::InBeat  // No pitch, skip
             }
         }
-        (BeatProcessingState::InBeat, ElementKind::PitchedElement) if cell.ornament.is_none() => {
+        // SUPERSCRIPT = grace note (rhythm-transparent)
+        (BeatProcessingState::InBeat, ElementKind::PitchedElement) if cell.is_superscript() => {
+            // Grace note before any main element
+            if let Some(pitch_code) = &cell.pitch_code {
+                accum.add_grace_note(*pitch_code, cell.octave);
+            }
+            BeatProcessingState::InBeat
+        }
+        (BeatProcessingState::CollectingPitchInBeat, ElementKind::PitchedElement) if cell.is_superscript() => {
+            // Grace note after main element (trailing ornament)
+            if let Some(pitch_code) = &cell.pitch_code {
+                accum.add_grace_note(*pitch_code, cell.octave);
+            }
+            BeatProcessingState::CollectingTrailingGraceNotes
+        }
+
+        // NORMAL PITCHED ELEMENT (not superscript)
+        (BeatProcessingState::InBeat, ElementKind::PitchedElement) => {
             if let Some(pitch_code) = &cell.pitch_code {
                 accum.start_pitch(*pitch_code, cell.octave);
                 BeatProcessingState::CollectingPitchInBeat
@@ -324,7 +341,7 @@ pub fn beat_transition(
                 BeatProcessingState::InBeat
             }
         }
-        (BeatProcessingState::CollectingPitchInBeat, ElementKind::PitchedElement) if cell.ornament.is_none() => {
+        (BeatProcessingState::CollectingPitchInBeat, ElementKind::PitchedElement) => {
             // New pitch → finish previous and start new
             accum.finish_pitch();
             if let Some(pitch_code) = &cell.pitch_code {
@@ -339,22 +356,6 @@ pub fn beat_transition(
         (BeatProcessingState::CollectingPitchInBeat, ElementKind::UnpitchedElement) if cell.char == "-" => {
             accum.increment_dash();
             BeatProcessingState::CollectingPitchInBeat
-        }
-
-        // GRACE NOTES / ORNAMENTS
-        (BeatProcessingState::InBeat, ElementKind::PitchedElement) if cell.ornament.is_some() => {
-            // Grace note before any main element
-            if let Some(pitch_code) = &cell.pitch_code {
-                accum.add_grace_note(*pitch_code, cell.octave);
-            }
-            BeatProcessingState::InBeat
-        }
-        (BeatProcessingState::CollectingPitchInBeat, ElementKind::PitchedElement) if cell.ornament.is_some() => {
-            // Grace note after main element (trailing ornament)
-            if let Some(pitch_code) = &cell.pitch_code {
-                accum.add_grace_note(*pitch_code, cell.octave);
-            }
-            BeatProcessingState::CollectingTrailingGraceNotes
         }
 
         // Default: skip unhandled element kinds
@@ -459,7 +460,14 @@ pub fn transition(
                     beat_accum.start_dash();
                     MusicXMLState::CollectingDashesInBeat
                 }
-                ElementKind::PitchedElement if cell.ornament.is_none() => {
+                ElementKind::PitchedElement if cell.is_superscript() => {
+                    // Grace note (superscript) - rhythm transparent
+                    if let Some(pitch_code) = &cell.pitch_code {
+                        beat_accum.add_grace_note(*pitch_code, cell.octave);
+                    }
+                    MusicXMLState::InBeat
+                }
+                ElementKind::PitchedElement => {
                     let _ = measure_tracker.add_duration(1);
                     if let Some(pitch_code) = &cell.pitch_code {
                         beat_accum.start_pitch(*pitch_code, cell.octave);
@@ -467,13 +475,6 @@ pub fn transition(
                     } else {
                         MusicXMLState::InBeat
                     }
-                }
-                ElementKind::PitchedElement if cell.ornament.is_some() => {
-                    // Grace note before main element
-                    if let Some(pitch_code) = &cell.pitch_code {
-                        beat_accum.add_grace_note(*pitch_code, cell.octave);
-                    }
-                    MusicXMLState::InBeat
                 }
                 _ => MusicXMLState::InBeat,
             }
@@ -507,7 +508,14 @@ pub fn transition(
                     beat_accum.increment_dash();
                     MusicXMLState::CollectingPitchInBeat
                 }
-                ElementKind::PitchedElement if cell.ornament.is_none() => {
+                ElementKind::PitchedElement if cell.is_superscript() => {
+                    // Grace note (superscript) after main element
+                    if let Some(pitch_code) = &cell.pitch_code {
+                        beat_accum.add_grace_note(*pitch_code, cell.octave);
+                    }
+                    MusicXMLState::CollectingTrailingGraceNotes
+                }
+                ElementKind::PitchedElement => {
                     // New pitch → finish previous and start new
                     let _ = measure_tracker.add_duration(1);
                     beat_accum.finish_pitch();
@@ -517,13 +525,6 @@ pub fn transition(
                     } else {
                         MusicXMLState::InBeat
                     }
-                }
-                ElementKind::PitchedElement if cell.ornament.is_some() => {
-                    // Grace note after main element
-                    if let Some(pitch_code) = &cell.pitch_code {
-                        beat_accum.add_grace_note(*pitch_code, cell.octave);
-                    }
-                    MusicXMLState::CollectingTrailingGraceNotes
                 }
                 _ => MusicXMLState::CollectingPitchInBeat,
             }

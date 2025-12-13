@@ -38,7 +38,7 @@ export default class InspectorCoordinator {
     if (this.editor.ui && this.editor.ui.activeTab === 'displaylist') {
       const displayListDisplay = document.getElementById('displaylist-display');
       if (displayListDisplay && this.editor.displayList) {
-        displayListDisplay.textContent = JSON.stringify(this.editor.displayList, null, 2);
+        displayListDisplay.innerHTML = this.formatDisplayList(this.editor.displayList);
       }
     }
 
@@ -269,5 +269,118 @@ export default class InspectorCoordinator {
       this._hitboxUpdateScheduled = false;
       this.updateHitboxesDisplay();
     });
+  }
+
+  /**
+   * Format display list as HTML for inspector
+   */
+  formatDisplayList(displayList) {
+    if (!displayList || !displayList.lines) {
+      return '<div class="text-gray-500">No display list available</div>';
+    }
+
+    let html = '<div class="space-y-6">';
+
+    // Document metadata
+    if (displayList.title || displayList.composer) {
+      html += '<div class="mb-4 p-2 bg-gray-100 rounded">';
+      if (displayList.title) html += `<div><strong>Title:</strong> ${this.escapeHtml(displayList.title)}</div>`;
+      if (displayList.composer) html += `<div><strong>Composer:</strong> ${this.escapeHtml(displayList.composer)}</div>`;
+      html += '</div>';
+    }
+
+    // Each line
+    displayList.lines.forEach((line, idx) => {
+      html += `<div class="border border-gray-300 rounded p-3 mb-4">`;
+      html += `<div class="font-bold text-sm mb-2 text-blue-600">Line ${line.line_index}${line.label ? ` (${this.escapeHtml(line.label)})` : ''}</div>`;
+
+      // Text with cursor indicator
+      html += `<div class="mb-3 p-2 bg-gray-50 rounded font-mono text-sm">`;
+      html += `<div class="text-gray-500 text-xs mb-1">Text (${line.text.length} chars):</div>`;
+      html += `<div class="whitespace-pre">${this.escapeHtml(line.text)}</div>`;
+      if (line.cursor_pos !== null && line.cursor_pos !== undefined) {
+        html += `<div class="text-xs text-green-600 mt-1">Cursor: position ${line.cursor_pos}</div>`;
+      }
+      html += '</div>';
+
+      // Decoded glyphs table
+      if (line.decoded_glyphs && line.decoded_glyphs.length > 0) {
+        html += '<div class="mb-3">';
+        html += '<div class="text-gray-500 text-xs mb-1">Decoded Glyphs:</div>';
+        html += '<table class="w-full text-xs border-collapse">';
+        html += '<thead><tr class="bg-gray-100">';
+        html += '<th class="border border-gray-300 px-1 py-1">Idx</th>';
+        html += '<th class="border border-gray-300 px-1 py-1">Glyph</th>';
+        html += '<th class="border border-gray-300 px-1 py-1">Codepoint</th>';
+        html += '<th class="border border-gray-300 px-1 py-1">Base</th>';
+        html += '<th class="border border-gray-300 px-1 py-1">Pitch</th>';
+        html += '<th class="border border-gray-300 px-1 py-1">Oct</th>';
+        html += '<th class="border border-gray-300 px-1 py-1">Underline</th>';
+        html += '<th class="border border-gray-300 px-1 py-1">Overline</th>';
+        html += '</tr></thead><tbody>';
+
+        line.decoded_glyphs.forEach(g => {
+          const isPUA = g.codepoint.startsWith('U+E') || g.codepoint.startsWith('U+F');
+          const rowClass = isPUA ? 'bg-yellow-50' : '';
+          html += `<tr class="${rowClass}">`;
+          html += `<td class="border border-gray-300 px-1 py-1 text-center">${g.char_index}</td>`;
+          html += `<td class="border border-gray-300 px-1 py-1 text-center font-notation">${this.escapeHtml(g.glyph)}</td>`;
+          html += `<td class="border border-gray-300 px-1 py-1 text-center font-mono text-xs">${g.codepoint}</td>`;
+          html += `<td class="border border-gray-300 px-1 py-1 text-center">${this.escapeHtml(g.base_char)}</td>`;
+          html += `<td class="border border-gray-300 px-1 py-1 text-center">${g.pitch || '-'}</td>`;
+          html += `<td class="border border-gray-300 px-1 py-1 text-center">${g.octave !== 0 ? g.octave : '-'}</td>`;
+          html += `<td class="border border-gray-300 px-1 py-1 text-center">${g.underline !== 'None' ? g.underline : '-'}</td>`;
+          html += `<td class="border border-gray-300 px-1 py-1 text-center">${g.overline !== 'None' ? g.overline : '-'}</td>`;
+          html += '</tr>';
+        });
+
+        html += '</tbody></table>';
+        html += '</div>';
+      }
+
+      // Lyric overlays
+      if (line.lyrics && line.lyrics.length > 0) {
+        html += '<div class="mb-3 p-2 bg-blue-50 rounded">';
+        html += '<div class="text-gray-500 text-xs mb-1">Lyric Overlays:</div>';
+        html += '<div class="flex flex-wrap gap-2">';
+        line.lyrics.forEach(lyric => {
+          html += `<span class="bg-blue-100 px-2 py-1 rounded text-xs">`;
+          html += `@${lyric.char_index}: "${this.escapeHtml(lyric.content)}"`;
+          html += '</span>';
+        });
+        html += '</div></div>';
+      }
+
+      // Tala overlays
+      if (line.talas && line.talas.length > 0) {
+        html += '<div class="mb-3 p-2 bg-purple-50 rounded">';
+        html += '<div class="text-gray-500 text-xs mb-1">Tala Overlays:</div>';
+        html += '<div class="flex flex-wrap gap-2">';
+        line.talas.forEach(tala => {
+          html += `<span class="bg-purple-100 px-2 py-1 rounded text-xs">`;
+          html += `@${tala.char_index}: "${this.escapeHtml(tala.content)}"`;
+          html += '</span>';
+        });
+        html += '</div></div>';
+      }
+
+      html += '</div>';
+    });
+
+    html += '</div>';
+    return html;
+  }
+
+  /**
+   * Escape HTML special characters
+   */
+  escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
   }
 }

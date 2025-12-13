@@ -1,102 +1,144 @@
 //! Line variant glyph mapping
 //!
-//! Maps base glyphs to 19 line variant PUA codepoints based on underline/overline state.
+//! Maps base glyphs to 15 line variant PUA codepoints based on underline/overline state.
 //! Used by both document model (compute_line_variants) and text export.
+//!
+//! Variant structure (15 total per character):
+//! - 0-2: underline-only (middle, left, right)
+//! - 3-5: overline-only (middle, left, right)
+//! - 6-14: combined (3 underline × 3 overline)
 
-/// Line-capable characters that have 19 line variants in the font
-pub const LINE_CAPABLE_CHARS: &[char] = &[
-    // Number system (7 chars)
-    '1', '2', '3', '4', '5', '6', '7',
-    // Western system (14 chars)
-    'A', 'B', 'C', 'D', 'E', 'F', 'G', 'a', 'b', 'c', 'd', 'e', 'f', 'g',
-    // Sargam system (12 chars) - S r R g G m M P d D n N
-    'S', 'r', 'R', 'g', 'G', 'm', 'M', 'P', 'd', 'D', 'n', 'N',
-    // Special characters
-    '-',  // Dash (rest/extension)
-    '\'', // Breath mark
-    ' ',  // Space (can have lines for beat grouping)
-    '\u{00A0}', // Non-breaking space (NBSP)
-];
-
-/// PUA bases for 19 line variant system
+/// PUA bases for 15-variant line system
+///
+/// Architecture: Each notation system has 15 line variants per glyph:
+/// - 0-2: underline-only (middle, left, right)
+/// - 3-5: overline-only (middle, left, right)
+/// - 6-14: combined (3 underline × 3 overline)
+///
+/// Formula: line_cp = LINE_BASE + (note_offset × 15) + variant_idx
 pub mod pua {
-    pub const UNDERLINE_BASE: u32 = 0xE800;  // 37 chars × 4 variants
-    pub const OVERLINE_BASE: u32 = 0xE900;   // 37 chars × 3 variants
-    pub const COMBINED_BASE: u32 = 0xEA00;   // 37 chars × 12 variants
+    // ASCII printable (0x20-0x7E = 95 chars)
+    pub const ASCII_UNDERLINE_BASE: u32 = 0xE800;  // 95 chars × 3 variants = 285
+    pub const ASCII_OVERLINE_BASE: u32 = 0xE920;   // 95 chars × 3 variants = 285
+    pub const ASCII_COMBINED_BASE: u32 = 0xEA40;   // 95 chars × 9 variants = 855
+
+    // PUA note line variants (all accidentals pre-composed into system ranges)
+    // Each system: note_count × 15 variants
+    pub const NUMBER_LINE_BASE: u32 = 0x1A000;   // 210 notes (1234567) × 15 = 3,150
+    pub const WESTERN_LINE_BASE: u32 = 0x1B000;  // 210 notes (CDEFGAB) × 15 = 3,150
+    pub const SARGAM_LINE_BASE: u32 = 0x1D000;   // 360 notes (SrRgGmMPdDnN) × 15 = 5,400
+    pub const DOREMI_LINE_BASE: u32 = 0x1F000;   // 210 notes (drmfslt) × 15 = 3,150
+
+    // PUA note source bases (for calculating offsets)
+    // Each char has 30 variants: 6 accidentals × 5 octaves
+    pub const NUMBER_SOURCE_BASE: u32 = 0xE000;   // 7 chars (1234567) × 30 = 210
+    pub const WESTERN_SOURCE_BASE: u32 = 0xE100;  // 7 chars (CDEFGAB) × 30 = 210
+    pub const SARGAM_SOURCE_BASE: u32 = 0xE300;   // 12 chars (SrRgGmMPdDnN) × 30 = 360
+    pub const DOREMI_SOURCE_BASE: u32 = 0xE500;   // 7 chars (drmfslt) × 30 = 210
 }
 
+use serde::{Serialize, Deserialize};
+
 /// Underline state for line variants
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
 pub enum UnderlineState {
+    #[default]
     None,
     Middle,  // Inside beat group
     Left,    // Start of beat group (left arc)
     Right,   // End of beat group (right arc)
-    Both,    // Single-note beat (both arcs)
 }
 
 /// Overline state for line variants
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
 pub enum OverlineState {
+    #[default]
     None,
     Middle,  // Inside slur
     Left,    // Start of slur (left arc)
     Right,   // End of slur (right arc)
 }
 
-/// Get the 19-variant line codepoint for a character
+/// Check if a character is ASCII printable (line-capable)
+pub fn is_ascii_line_capable(c: char) -> bool {
+    c >= ' ' && c <= '~'  // 0x20-0x7E
+}
+
+/// Check if a codepoint is a PUA note (line-capable)
+///
+/// All notation system glyphs use the 30-variant architecture where each
+/// base character gets 30 codepoints for accidental+octave combinations.
+/// Accidentals are pre-composed into these ranges, not separate.
+pub fn is_pua_note_line_capable(cp: u32) -> bool {
+    matches!(cp,
+        // Natural notes with all accidental+octave variants
+        0xE000..=0xE0D1 |  // number: 7 chars (1234567) × 30 = 210 glyphs
+        0xE100..=0xE1D1 |  // western: 7 chars (CDEFGAB) × 30 = 210 glyphs
+        0xE300..=0xE467 |  // sargam: 12 chars (SrRgGmMPdDnN) × 30 = 360 glyphs
+        0xE500..=0xE5D1    // doremi: 7 chars (drmfslt) × 30 = 210 glyphs
+    )
+}
+
+/// Check if a character is line-capable (can have underline/overline variants)
+pub fn is_line_capable(c: char) -> bool {
+    let cp = c as u32;
+    is_ascii_line_capable(c) || is_pua_note_line_capable(cp)
+}
+
+/// Get the 15-variant line codepoint for an ASCII character
 ///
 /// Returns None if:
-/// - Character is not in LINE_CAPABLE_CHARS
+/// - Character is not ASCII printable (0x20-0x7E)
 /// - Both underline and overline are None (plain character)
 pub fn get_line_variant_codepoint(
     base_char: char,
     underline: UnderlineState,
     overline: OverlineState,
 ) -> Option<char> {
-    // Find character index in LINE_CAPABLE_CHARS
-    let char_index = LINE_CAPABLE_CHARS.iter().position(|&c| c == base_char)?;
+    // Only ASCII printable characters
+    if !is_ascii_line_capable(base_char) {
+        return None;
+    }
 
     // No line needed - return None to use plain character
     if underline == UnderlineState::None && overline == OverlineState::None {
         return None;
     }
 
+    // Calculate char index (0-94 for ASCII printable)
+    let char_index = (base_char as u32) - 0x20;
+
     // Calculate variant index and PUA codepoint based on line states
     let variant_cp = match (underline, overline) {
-        // Underline-only (indices 0-3)
+        // Underline-only (indices 0-2)
         (UnderlineState::Middle, OverlineState::None) => {
-            pua::UNDERLINE_BASE + (char_index as u32 * 4) + 0
+            pua::ASCII_UNDERLINE_BASE + (char_index * 3) + 0
         }
         (UnderlineState::Left, OverlineState::None) => {
-            pua::UNDERLINE_BASE + (char_index as u32 * 4) + 1
+            pua::ASCII_UNDERLINE_BASE + (char_index * 3) + 1
         }
         (UnderlineState::Right, OverlineState::None) => {
-            pua::UNDERLINE_BASE + (char_index as u32 * 4) + 2
-        }
-        (UnderlineState::Both, OverlineState::None) => {
-            pua::UNDERLINE_BASE + (char_index as u32 * 4) + 3
+            pua::ASCII_UNDERLINE_BASE + (char_index * 3) + 2
         }
 
-        // Overline-only (indices 0-2 relative to overline base)
+        // Overline-only (indices 0-2)
         (UnderlineState::None, OverlineState::Middle) => {
-            pua::OVERLINE_BASE + (char_index as u32 * 3) + 0
+            pua::ASCII_OVERLINE_BASE + (char_index * 3) + 0
         }
         (UnderlineState::None, OverlineState::Left) => {
-            pua::OVERLINE_BASE + (char_index as u32 * 3) + 1
+            pua::ASCII_OVERLINE_BASE + (char_index * 3) + 1
         }
         (UnderlineState::None, OverlineState::Right) => {
-            pua::OVERLINE_BASE + (char_index as u32 * 3) + 2
+            pua::ASCII_OVERLINE_BASE + (char_index * 3) + 2
         }
 
-        // Combined (4 underline × 3 overline = 12 variants)
+        // Combined (3 underline × 3 overline = 9 variants)
         (u, o) => {
-            // Map underline state to index 0-3
+            // Map underline state to index 0-2
             let u_idx = match u {
                 UnderlineState::Middle => 0,
                 UnderlineState::Left => 1,
                 UnderlineState::Right => 2,
-                UnderlineState::Both => 3,
                 UnderlineState::None => return None,
             };
             // Map overline state to index 0-2
@@ -107,16 +149,225 @@ pub fn get_line_variant_codepoint(
                 OverlineState::None => return None,
             };
             // Combined variant index: u_idx * 3 + o_idx
-            pua::COMBINED_BASE + (char_index as u32 * 12) + (u_idx * 3 + o_idx)
+            pua::ASCII_COMBINED_BASE + (char_index * 9) + (u_idx * 3 + o_idx)
         }
     };
 
     char::from_u32(variant_cp)
 }
 
-/// Check if a character is line-capable (can have underline/overline variants)
-pub fn is_line_capable(c: char) -> bool {
-    LINE_CAPABLE_CHARS.contains(&c)
+/// Get the 15-variant line codepoint for a PUA note
+///
+/// Returns None if:
+/// - Codepoint is not a PUA note (0xE000-0xE6A3)
+/// - Both underline and overline are None (plain note)
+///
+/// Note: Accidentals are pre-composed into each system's range, so a sharp
+/// note like N1s (0xE019) is within the number system range and gets its
+/// line variants from NUMBER_LINE_BASE.
+pub fn get_pua_note_line_variant_codepoint(
+    note_cp: u32,
+    underline: UnderlineState,
+    overline: OverlineState,
+) -> Option<char> {
+    // No line needed - return None to use plain note
+    if underline == UnderlineState::None && overline == OverlineState::None {
+        return None;
+    }
+
+    // Determine which system this note belongs to and get the line base
+    // Note: Each system includes all accidental variants (30 per char: 6 acc × 5 oct)
+    let (source_base, line_base) = if note_cp >= pua::NUMBER_SOURCE_BASE && note_cp < pua::NUMBER_SOURCE_BASE + 210 {
+        (pua::NUMBER_SOURCE_BASE, pua::NUMBER_LINE_BASE)
+    } else if note_cp >= pua::WESTERN_SOURCE_BASE && note_cp < pua::WESTERN_SOURCE_BASE + 210 {
+        (pua::WESTERN_SOURCE_BASE, pua::WESTERN_LINE_BASE)
+    } else if note_cp >= pua::SARGAM_SOURCE_BASE && note_cp < pua::SARGAM_SOURCE_BASE + 360 {
+        (pua::SARGAM_SOURCE_BASE, pua::SARGAM_LINE_BASE)
+    } else if note_cp >= pua::DOREMI_SOURCE_BASE && note_cp < pua::DOREMI_SOURCE_BASE + 210 {
+        (pua::DOREMI_SOURCE_BASE, pua::DOREMI_LINE_BASE)
+    } else {
+        return None;
+    };
+
+    // Calculate note offset within its system
+    let note_offset = note_cp - source_base;
+
+    // Calculate variant index (0-14)
+    let variant_idx = match (underline, overline) {
+        // Underline-only (indices 0-2)
+        (UnderlineState::Middle, OverlineState::None) => 0,
+        (UnderlineState::Left, OverlineState::None) => 1,
+        (UnderlineState::Right, OverlineState::None) => 2,
+
+        // Overline-only (indices 3-5)
+        (UnderlineState::None, OverlineState::Middle) => 3,
+        (UnderlineState::None, OverlineState::Left) => 4,
+        (UnderlineState::None, OverlineState::Right) => 5,
+
+        // Combined (indices 6-14)
+        (u, o) => {
+            let u_idx = match u {
+                UnderlineState::Middle => 0,
+                UnderlineState::Left => 1,
+                UnderlineState::Right => 2,
+                UnderlineState::None => return None,
+            };
+            let o_idx = match o {
+                OverlineState::Middle => 0,
+                OverlineState::Left => 1,
+                OverlineState::Right => 2,
+                OverlineState::None => return None,
+            };
+            6 + (u_idx * 3 + o_idx)
+        }
+    };
+
+    // Calculate target codepoint: line_base + (note_offset × 15) + variant_idx
+    let target_cp = line_base + (note_offset * 15) + variant_idx;
+    char::from_u32(target_cp)
+}
+
+/// Encode an ASCII character with line variants into a PUA codepoint
+///
+/// Supports any printable ASCII char (0x20-0x7E) with underline and/or overline.
+/// Returns None if:
+/// - Character is not printable ASCII
+/// - Both underline and overline are None (use plain char)
+pub fn encode_ascii_line_variant(
+    ch: char,
+    underline: UnderlineState,
+    overline: OverlineState,
+) -> Option<char> {
+    // Only handle printable ASCII
+    if !is_ascii_line_capable(ch) {
+        return None;
+    }
+
+    // No line needed - return None to use plain char
+    if underline == UnderlineState::None && overline == OverlineState::None {
+        return None;
+    }
+
+    let char_index = (ch as u32) - 0x20;
+
+    let cp = match (underline, overline) {
+        // Underline-only: 0xE800 + (char_index * 3) + variant
+        (UnderlineState::Middle, OverlineState::None) => pua::ASCII_UNDERLINE_BASE + (char_index * 3) + 0,
+        (UnderlineState::Left, OverlineState::None) => pua::ASCII_UNDERLINE_BASE + (char_index * 3) + 1,
+        (UnderlineState::Right, OverlineState::None) => pua::ASCII_UNDERLINE_BASE + (char_index * 3) + 2,
+
+        // Overline-only: 0xE920 + (char_index * 3) + variant
+        (UnderlineState::None, OverlineState::Middle) => pua::ASCII_OVERLINE_BASE + (char_index * 3) + 0,
+        (UnderlineState::None, OverlineState::Left) => pua::ASCII_OVERLINE_BASE + (char_index * 3) + 1,
+        (UnderlineState::None, OverlineState::Right) => pua::ASCII_OVERLINE_BASE + (char_index * 3) + 2,
+
+        // Combined: 0xEA40 + (char_index * 9) + (u_idx * 3 + o_idx)
+        (u, o) => {
+            let u_idx = match u {
+                UnderlineState::Middle => 0,
+                UnderlineState::Left => 1,
+                UnderlineState::Right => 2,
+                UnderlineState::None => return None,
+            };
+            let o_idx = match o {
+                OverlineState::Middle => 0,
+                OverlineState::Left => 1,
+                OverlineState::Right => 2,
+                OverlineState::None => return None,
+            };
+            pua::ASCII_COMBINED_BASE + (char_index * 9) + (u_idx * 3 + o_idx)
+        }
+    };
+
+    char::from_u32(cp)
+}
+
+/// Result of decoding a PUA line variant character
+#[derive(Clone, Debug, PartialEq)]
+pub struct DecodedLineVariant {
+    /// The base character or codepoint
+    pub base_char: char,
+    /// Underline state
+    pub underline: UnderlineState,
+    /// Overline state
+    pub overline: OverlineState,
+}
+
+/// Decode a PUA line variant codepoint into its components
+///
+/// Given a PUA codepoint from the ASCII line variant ranges (0xE800-0xEDB3),
+/// returns the base character and line states. Returns None if the
+/// codepoint is not in a line variant range.
+pub fn decode_line_variant(ch: char) -> Option<DecodedLineVariant> {
+    let cp = ch as u32;
+    const NUM_ASCII_CHARS: u32 = 95;
+
+    // Check ASCII underline-only range: 0xE800 + (char_index * 3) + variant
+    if cp >= pua::ASCII_UNDERLINE_BASE && cp < pua::ASCII_UNDERLINE_BASE + NUM_ASCII_CHARS * 3 {
+        let offset = cp - pua::ASCII_UNDERLINE_BASE;
+        let char_index = offset / 3;
+        let variant = offset % 3;
+
+        let underline = match variant {
+            0 => UnderlineState::Middle,
+            1 => UnderlineState::Left,
+            2 => UnderlineState::Right,
+            _ => return None,
+        };
+        return Some(DecodedLineVariant {
+            base_char: char::from_u32(0x20 + char_index)?,
+            underline,
+            overline: OverlineState::None,
+        });
+    }
+
+    // Check ASCII overline-only range: 0xE920 + (char_index * 3) + variant
+    if cp >= pua::ASCII_OVERLINE_BASE && cp < pua::ASCII_OVERLINE_BASE + NUM_ASCII_CHARS * 3 {
+        let offset = cp - pua::ASCII_OVERLINE_BASE;
+        let char_index = offset / 3;
+        let variant = offset % 3;
+
+        let overline = match variant {
+            0 => OverlineState::Middle,
+            1 => OverlineState::Left,
+            2 => OverlineState::Right,
+            _ => return None,
+        };
+        return Some(DecodedLineVariant {
+            base_char: char::from_u32(0x20 + char_index)?,
+            underline: UnderlineState::None,
+            overline,
+        });
+    }
+
+    // Check ASCII combined range: 0xEA40 + (char_index * 9) + (u_idx * 3 + o_idx)
+    if cp >= pua::ASCII_COMBINED_BASE && cp < pua::ASCII_COMBINED_BASE + NUM_ASCII_CHARS * 9 {
+        let offset = cp - pua::ASCII_COMBINED_BASE;
+        let char_index = offset / 9;
+        let combined_variant = offset % 9;
+        let u_idx = combined_variant / 3;
+        let o_idx = combined_variant % 3;
+
+        let underline = match u_idx {
+            0 => UnderlineState::Middle,
+            1 => UnderlineState::Left,
+            2 => UnderlineState::Right,
+            _ => return None,
+        };
+        let overline = match o_idx {
+            0 => OverlineState::Middle,
+            1 => OverlineState::Left,
+            2 => OverlineState::Right,
+            _ => return None,
+        };
+        return Some(DecodedLineVariant {
+            base_char: char::from_u32(0x20 + char_index)?,
+            underline,
+            overline,
+        });
+    }
+
+    None
 }
 
 /// Extract the first character from a string for line variant lookup

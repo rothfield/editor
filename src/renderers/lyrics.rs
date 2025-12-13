@@ -4,7 +4,7 @@
 //! respecting slurs (melismas) where multiple notes share one syllable.
 
 use serde::{Serialize, Deserialize};
-use crate::models::{Cell, ElementKind, SlurIndicator};
+use crate::models::{Cell, ElementKind};
 
 /// Represents a syllable assigned to a cell
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -138,49 +138,43 @@ pub fn distribute_lyrics(lyrics: &str, cells: &[Cell]) -> Vec<SyllableAssignment
             continue;
         }
 
-        // Track slur state
-        let slur_indicator = cell.slur_indicator;
+        // Track slur state using cell methods
+        if cell.is_slur_start() {
+            // Slur starts - assign syllable to this pitch, then enter melisma
+            if syllable_index < syllables.len() {
+                assignments.push(SyllableAssignment {
+                    cell_index,
+                    syllable: syllables[syllable_index].clone(),
+                });
+                syllable_index += 1;
+            }
 
-        match slur_indicator {
-            SlurIndicator::SlurStart => {
-                // Slur starts - assign syllable to this pitch, then enter melisma
-                if syllable_index < syllables.len() {
-                    assignments.push(SyllableAssignment {
-                        cell_index,
-                        syllable: syllables[syllable_index].clone(),
-                    });
-                    syllable_index += 1;
-                }
+            slur_depth += 1;
+            state = LyricsState::InMelisma;
+            continue;
+        } else if cell.is_slur_end() {
+            // Slur ends - this pitch is still part of melisma, don't assign
+            slur_depth = slur_depth.saturating_sub(1);
 
-                slur_depth += 1;
-                state = LyricsState::InMelisma;
+            if slur_depth == 0 {
+                state = LyricsState::SeekingPitch;
+            }
+            continue;
+        } else {
+            // Normal pitch or inside melisma
+            if state == LyricsState::InMelisma {
+                // Inside slur - skip this pitch (part of melisma)
                 continue;
             }
-            SlurIndicator::SlurEnd => {
-                // Slur ends - this pitch is still part of melisma, don't assign
-                slur_depth = slur_depth.saturating_sub(1);
 
-                if slur_depth == 0 {
-                    state = LyricsState::SeekingPitch;
-                }
-                continue;
-            }
-            SlurIndicator::None => {
-                // Normal pitch or inside melisma
-                if state == LyricsState::InMelisma {
-                    // Inside slur - skip this pitch (part of melisma)
-                    continue;
-                }
-
-                // Assign syllable to this pitch
-                if syllable_index < syllables.len() {
-                    assignments.push(SyllableAssignment {
-                        cell_index,
-                        syllable: syllables[syllable_index].clone(),
-                    });
-                    syllable_index += 1;
-                    state = LyricsState::SyllableAssigned;
-                }
+            // Assign syllable to this pitch
+            if syllable_index < syllables.len() {
+                assignments.push(SyllableAssignment {
+                    cell_index,
+                    syllable: syllables[syllable_index].clone(),
+                });
+                syllable_index += 1;
+                state = LyricsState::SyllableAssigned;
             }
         }
     }

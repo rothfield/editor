@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Music Notation Editor POC - Cell-based musical notation editing">
+    <meta name="description" content="Music Notation Editor POC - Textarea-based musical notation editing">
     <title>Music Notation Editor - POC</title>
 
     <!-- External CSS -->
@@ -12,6 +12,7 @@
     <link rel="stylesheet" href="src/css/key-signature-selector.css">
     <link rel="stylesheet" href="src/css/constraints-dialog.css">
     <link rel="stylesheet" href="src/css/new-document-dialog.css">
+    <link rel="stylesheet" href="src/css/textarea-notation.css">
 
     <!-- Custom UI styles -->
     <style>
@@ -500,21 +501,6 @@
                         </li>
                     </ul>
                 </nav>
-
-                <!-- Center: Editor Status Bar -->
-                <div class="flex items-center space-x-4 text-gray-600" role="status" aria-live="polite" aria-label="Editor status">
-                    <span>Position: <span id="editor-cursor-position" data-testid="cursor-position">Line: 0, Col: 0 (Lane: 1)</span></span>
-                    <span class="text-gray-400" role="separator">|</span>
-                    <span>Pitch System: <span id="editor-pitch-system" data-testid="pitch-system" style="font-weight: bold;">Number</span></span>
-                    <span class="text-gray-400" role="separator">|</span>
-                    <span>Characters: <span id="editor-char-count" data-testid="char-count">0</span></span>
-                    <span class="text-gray-400" role="separator">|</span>
-                    <span id="editor-selection-status" data-testid="selection-status">No selection</span>
-                    <span class="text-gray-400" role="separator">|</span>
-                    <button id="mode-toggle-btn" class="mode-toggle-btn" title="No constraint active (double-click to select)">
-                        <span id="mode-toggle-text">Mode: None</span>
-                    </button>
-                </div>
 
                 <!-- Right: Document Title and Panel Toggle -->
                 <div class="flex items-center space-x-4">

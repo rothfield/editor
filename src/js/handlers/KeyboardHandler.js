@@ -38,6 +38,9 @@ export class KeyboardHandler {
       }
     }
 
+    // NOTE: Textarea mode now traps keystrokes in events.js and routes here
+    // So we process them the same way as cell mode - WASM is source of truth
+
     // Handle Ctrl key combinations (copy/paste/undo/redo)
     if (modifiers.ctrl && !modifiers.alt) {
       this.handleCtrlCommand(key);
@@ -102,7 +105,8 @@ export class KeyboardHandler {
         await this.editor.showTalaDialog();
         break;
       case '0':
-        // Convert selection to ornament (Alt+0)
+      case 'o':
+        // Convert selection to ornament (Alt+O or Alt+0)
         if (this.editor.ui && this.editor.ui.selectionToOrnament) {
           await this.editor.ui.selectionToOrnament();
         }
@@ -111,7 +115,7 @@ export class KeyboardHandler {
         logger.warn(LOG_CATEGORIES.KEYBOARD, 'Unknown Alt command', { key });
         this.editor.showWarning(`Unknown musical command: Alt+${key}`, {
           important: false,
-          details: `Available commands: Alt+N (new), Alt+S (slur), Alt+U (upper octave), Alt+M (middle octave), Alt+L (lower octave), Alt+T (tala), Alt+0 (selection to ornament)`
+          details: `Available commands: Alt+N (new), Alt+S (slur), Alt+U (upper octave), Alt+M (middle octave), Alt+L (lower octave), Alt+T (tala), Alt+O (ornament)`
         });
         return;
     }
@@ -179,7 +183,7 @@ export class KeyboardHandler {
 
       // Restore selection after operation
       this.editor.wasmModule.setSelection(selection.anchor, selection.head);
-      await this.editor.render(); // Re-render to show selection
+      await this.editor.render();
     } catch (error) {
       logger.error(LOG_CATEGORIES.EDITOR, 'Failed to set octave', { error });
     }
@@ -197,15 +201,11 @@ export class KeyboardHandler {
         // Remove slur using layered API
         await this._removeSlurLayered();
         break;
-      case 'o':
-        // Toggle ornament edit mode
-        await this.editor.toggleOrnamentEditMode();
-        break;
       default:
         logger.warn(LOG_CATEGORIES.KEYBOARD, 'Unknown Alt+Shift command', { key });
         this.editor.showWarning(`Unknown mode command: Alt+Shift+${key.toUpperCase()}`, {
           important: false,
-          details: `Available commands: Alt+Shift+S (remove slur), Alt+Shift+O (toggle ornament edit mode)`
+          details: `Available commands: Alt+Shift+S (remove slur)`
         });
         return;
     }

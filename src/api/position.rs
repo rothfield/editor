@@ -265,34 +265,20 @@ mod tests {
     };
 
     fn create_test_document(cells: Vec<Cell>, edit_mode: bool) -> Document {
-        let line = Line {
-            label: None,
-            tonic: "C".to_string(),
-            pitch_system: PitchSystem::Number,
-            cells,
-            lyrics: None,
-            tala: None,
-            key_signature: None,
-        };
+        let mut line = Line::new();
+        line.cells = cells;
+        line.sync_text_from_cells();
 
-        Document {
-            title: "Test".to_string(),
-            composer: None,
-            lines: vec![line],
-            state: DocumentState {
-                cursor: Cursor {
-                    line: 0,
-                    col: 0,
-                    lane: 1,
-                },
-                selection: None,
-            },
-            ornament_edit_mode: edit_mode,
-        }
+        let mut doc = Document::new();
+        doc.lines = vec![line];
+        doc.ornament_edit_mode = edit_mode;
+        doc
     }
 
     fn create_cell(char: &str, _is_ornament: bool) -> Cell {
+        let codepoint = char.chars().next().map(|c| c as u32).unwrap_or(' ' as u32);
         Cell {
+            codepoint,
             char: char.to_string(),
             kind: ElementKind::PitchedElement,
             col: 0,

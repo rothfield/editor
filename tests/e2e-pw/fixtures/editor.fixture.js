@@ -20,10 +20,11 @@ export const test = base.extend({
       { timeout: 10000 }
     );
 
-    // Focus the editor
-    await page.click('#notation-editor');
+    // Focus the textarea (in textarea mode, the first notation-textarea receives focus)
+    const textarea = page.locator('.notation-textarea').first();
+    await textarea.click();
     await page.waitForFunction(
-      () => document.activeElement?.id === 'notation-editor',
+      () => document.activeElement?.classList.contains('notation-textarea'),
       { timeout: 5000 }
     );
 

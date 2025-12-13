@@ -5,7 +5,9 @@ use editor_wasm::renderers::musicxml::to_musicxml;
 
 /// Create a simple cell for testing
 fn make_cell(kind: ElementKind, char: &str, pitch_code: Option<PitchCode>) -> Cell {
+    let codepoint = char.chars().next().map(|c| c as u32).unwrap_or(0);
     Cell {
+        codepoint,
         kind,
         char: char.to_string(),
         col: 0,
@@ -13,9 +15,10 @@ fn make_cell(kind: ElementKind, char: &str, pitch_code: Option<PitchCode>) -> Ce
         pitch_code,
         pitch_system: None,
         octave: 4,
+        superscript: false,
         slur_indicator: Default::default(),
-        ornament: None,
-        combined_char: None,
+        underline: editor_wasm::renderers::line_variants::UnderlineState::None,
+        overline: editor_wasm::renderers::line_variants::OverlineState::None,
         x: 0.0,
         y: 0.0,
         w: 0.0,

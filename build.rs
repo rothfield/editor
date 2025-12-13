@@ -32,6 +32,9 @@ fn main() {
 
     // Generate superscript lookup tables for ornament rendering
     generate_superscript_tables(&atoms, &out_dir);
+
+    // Generate beat element predicates from atoms.yaml
+    generate_beat_element_predicates(&atoms, &out_dir);
 }
 
 /// Generate font constants from per-system notation systems
@@ -347,10 +350,10 @@ struct UnderlinedBracketSystem {
 /// All underlined bracket systems (generated from atoms.yaml)
 /// Layout: left = bracket_base + offset, right = bracket_base + count + offset
 const UNDERLINED_BRACKET_SYSTEMS: &[UnderlinedBracketSystem] = &[
-    UnderlinedBracketSystem { underlined_start: 0x16000, underlined_end: 0x160D2, bracket_base: 0x17000, count: 210 },  // number
-    UnderlinedBracketSystem { underlined_start: 0x16100, underlined_end: 0x162A4, bracket_base: 0x171A4, count: 420 },  // western
-    UnderlinedBracketSystem { underlined_start: 0x16300, underlined_end: 0x16468, bracket_base: 0x174EC, count: 360 },  // sargam
-    UnderlinedBracketSystem { underlined_start: 0x16500, underlined_end: 0x166A4, bracket_base: 0x177BC, count: 420 },  // doremi
+    UnderlinedBracketSystem { underlined_start: 0x16000, underlined_end: 0x160D1, bracket_base: 0x17000, count: 210 },  // number: 1234567
+    UnderlinedBracketSystem { underlined_start: 0x16100, underlined_end: 0x161D1, bracket_base: 0x171A4, count: 210 },  // western: CDEFGAB
+    UnderlinedBracketSystem { underlined_start: 0x16300, underlined_end: 0x16467, bracket_base: 0x173AC, count: 360 },  // sargam: SrRgGmMPdDnN
+    UnderlinedBracketSystem { underlined_start: 0x16500, underlined_end: 0x165D1, bracket_base: 0x17614, count: 210 },  // doremi: drmfslt
 ];
 
 /// Get bracket variant for an underlined glyph
@@ -504,6 +507,44 @@ fn generate_system_lookup_table(
         "pub fn pitch_from_glyph_{}(ch: char) -> Option<(PitchCode, i8)> {{\n",
         system_name_upper.to_lowercase()
     ));
+    // Add line variant check before the match
+    // Use fully qualified paths since this code is include!ed
+    code.push_str("    let cp = ch as u32;\n");
+    code.push_str(&format!(
+        "    // Check if it's a {} line variant (0x1A000+ range)\n",
+        system_name_upper
+    ));
+    code.push_str(&format!(
+        "    if cp >= crate::renderers::line_variants::pua::{}_LINE_BASE && cp < crate::renderers::line_variants::pua::{}_LINE_BASE + {} * 15 {{\n",
+        system_name_upper, system_name_upper,
+        match system_name_upper { "NUMBER" => 210, "WESTERN" => 210, "SARGAM" => 360, "DOREMI" => 210, _ => 210 }
+    ));
+    code.push_str(&format!(
+        "        let note_offset = (cp - crate::renderers::line_variants::pua::{}_LINE_BASE) / 15;\n",
+        system_name_upper
+    ));
+    code.push_str(&format!(
+        "        let base_cp = crate::renderers::line_variants::pua::{}_SOURCE_BASE + note_offset;\n",
+        system_name_upper
+    ));
+    code.push_str(&format!(
+        "        return pitch_from_glyph_{}(char::from_u32(base_cp)?);\n",
+        system_name_upper.to_lowercase()
+    ));
+    code.push_str("    }\n");
+
+    // Add superscript check (0xF8000+ range)
+    code.push_str("    // Check if it's a superscript (0xF8000+ range)\n");
+    code.push_str("    if cp >= 0xF8000 && cp < 0xFE040 {\n");
+    code.push_str("        // Convert superscript back to normal and recurse\n");
+    code.push_str("        if let Some(normal_cp) = crate::renderers::font_utils::from_superscript(cp) {\n");
+    code.push_str(&format!(
+        "            return pitch_from_glyph_{}(char::from_u32(normal_cp)?);\n",
+        system_name_upper.to_lowercase()
+    ));
+    code.push_str("        }\n");
+    code.push_str("    }\n");
+
     code.push_str("    match ch {\n");
 
     for (pitch_idx, pitch_code) in pitch_codes.iter().enumerate() {
@@ -835,10 +876,9 @@ fn generate_fontspec_json(atoms: &serde_yaml::Value, out_dir: &PathBuf) {
     fs::write(&fontspec_path, &json_str)
         .expect("Failed to write fontspec.json");
 
-    // Also write to tools/fontgen/fontspec.json for Python consumption
-    let python_fontspec_path = PathBuf::from("tools/fontgen/fontspec.json");
-    fs::write(&python_fontspec_path, &json_str)
-        .expect("Failed to write tools/fontgen/fontspec.json");
+    // NOTE: We no longer write to tools/fontgen/fontspec.json from build.rs
+    // The Python font generator should read atoms.yaml directly (single source of truth)
+    // or use: cargo build && cp $OUT_DIR/fontspec.json tools/fontgen/
 }
 
 /// Generate measurement system configurations from atoms.yaml
@@ -1049,16 +1089,16 @@ pub type SuperscriptOverline = SuperscriptLineVariant;
 /// ASCII superscripts PUA base (95 chars × 16 variants = 1,520 codepoints)
 pub const SUPERSCRIPT_ASCII_BASE: u32 = 0xF8000;
 
-/// Number system superscripts PUA base (7 chars × 30 variants × 16 = 3,360 codepoints)
+/// Number system superscripts PUA base (7 chars (1234567) × 30 variants × 16 = 3,360 codepoints)
 pub const SUPERSCRIPT_NUMBER_BASE: u32 = 0xF8600;
 
-/// Western system superscripts PUA base (14 chars × 30 variants × 16 = 6,720 codepoints)
+/// Western system superscripts PUA base (7 chars (CDEFGAB) × 30 variants × 16 = 3,360 codepoints)
 pub const SUPERSCRIPT_WESTERN_BASE: u32 = 0xF9400;
 
-/// Sargam system superscripts PUA base (12 chars × 30 variants × 16 = 5,760 codepoints)
+/// Sargam system superscripts PUA base (12 chars (SrRgGmMPdDnN) × 30 variants × 16 = 5,760 codepoints)
 pub const SUPERSCRIPT_SARGAM_BASE: u32 = 0xFAF00;
 
-/// Doremi system superscripts PUA base (14 chars × 30 variants × 16 = 6,720 codepoints)
+/// Doremi system superscripts PUA base (7 chars (drmfslt) × 30 variants × 16 = 3,360 codepoints)
 pub const SUPERSCRIPT_DOREMI_BASE: u32 = 0xFC600;
 
 /// Number of line variants per superscript glyph
@@ -1119,7 +1159,7 @@ pub fn superscript_number(source_cp: u32, line_variant: SuperscriptLineVariant) 
 /// * `None` - If codepoint is outside Western system range
 pub fn superscript_western(source_cp: u32, line_variant: SuperscriptLineVariant) -> Option<char> {
     const SOURCE_BASE: u32 = 0xE100;
-    const MAX_OFFSET: u32 = 14 * 30; // 14 chars × 30 variants = 420
+    const MAX_OFFSET: u32 = 7 * 30; // 7 chars (CDEFGAB) × 30 variants = 210
 
     if source_cp < SOURCE_BASE || source_cp >= SOURCE_BASE + MAX_OFFSET {
         return None;
@@ -1161,7 +1201,7 @@ pub fn superscript_sargam(source_cp: u32, line_variant: SuperscriptLineVariant) 
 /// * `None` - If codepoint is outside Doremi system range
 pub fn superscript_doremi(source_cp: u32, line_variant: SuperscriptLineVariant) -> Option<char> {
     const SOURCE_BASE: u32 = 0xE500;
-    const MAX_OFFSET: u32 = 14 * 30; // 14 chars × 30 variants = 420
+    const MAX_OFFSET: u32 = 7 * 30; // 7 chars (drmfslt) × 30 variants = 210
 
     if source_cp < SOURCE_BASE || source_cp >= SOURCE_BASE + MAX_OFFSET {
         return None;
@@ -1252,4 +1292,550 @@ pub fn superscript_overline(cp: u32) -> Option<SuperscriptOverline> {
 
     let dest_file = out_dir.join("superscript_tables.rs");
     fs::write(&dest_file, code).expect("Failed to write superscript_tables.rs");
+}
+
+/// Generate beat element predicates from atoms.yaml
+///
+/// Creates functions to check if a codepoint is a beat element:
+/// - is_pitched_note(cp) - checks all pitched note ranges (base + line variants)
+/// - is_dash(cp) - checks dash (base + line variants)
+/// - is_breath_mark(cp) - checks breath mark (base + line variants)
+/// - is_beat_element(cp) - combination of above (pitched notes + dash + breath mark)
+fn generate_beat_element_predicates(atoms: &serde_yaml::Value, out_dir: &PathBuf) {
+    const VARIANTS_PER_CHAR: u32 = 30;  // 6 accidentals × 5 octaves
+    const LINE_VARIANTS_PER_GLYPH: u32 = 15;  // 3 underline × (1 + 3 overline + 3 combined)
+
+    let mut code = String::from(r#"/// Auto-generated beat element predicates from atoms.yaml at compile time
+/// DO NOT EDIT - This file is generated by build.rs
+///
+/// Source: tools/fontgen/atoms.yaml
+///
+/// Beat elements are characters that participate in beat grouping:
+/// - Pitched notes (all notation systems, all accidentals, all octaves)
+/// - Dash (rhythmic placeholder)
+/// - Breath mark (phrasing separator)
+///
+/// Each element has:
+/// - Base codepoint range (e.g., 0xE000-0xE0D1 for Number notes)
+/// - Line variant range (e.g., 0x1A000+ for underlined/overlined variants)
+
+"#);
+
+    // Collect notation system info
+    let mut system_ranges: Vec<(String, u32, u32, u32, u32)> = Vec::new();  // (name, base, count, line_base, line_count)
+
+    if let Some(systems) = atoms.get("notation_systems").and_then(|v| v.as_sequence()) {
+        let line_bases = atoms.get("pitched_note_line_bases");
+
+        for system in systems {
+            let name = system.get("system_name").and_then(|v| v.as_str()).unwrap_or("unknown");
+            let pua_base = system.get("pua_base").and_then(|v| parse_hex(v)).unwrap_or(0);
+            let char_count = system.get("characters").and_then(|v| v.as_sequence()).map(|s| s.len()).unwrap_or(0) as u32;
+            let total_glyphs = char_count * VARIANTS_PER_CHAR;
+
+            // Get line variant base for this system
+            let line_base = line_bases
+                .and_then(|lb| lb.get(name))
+                .and_then(|sys| sys.get("line_base"))
+                .and_then(|v| parse_hex(v))
+                .unwrap_or(0);
+
+            let line_count = total_glyphs * LINE_VARIANTS_PER_GLYPH;
+
+            system_ranges.push((name.to_uppercase(), pua_base, total_glyphs, line_base, line_count));
+        }
+    }
+
+    // Collect notation element info (dash, breath_mark, etc.)
+    let mut element_info: Vec<(String, u32, u32)> = Vec::new();  // (name, base, line_base)
+
+    if let Some(elements) = atoms.get("notation_elements").as_ref() {
+        for (key, value) in [
+            ("DASH", elements.get("dash")),
+            ("BREATH_MARK", elements.get("breath_mark")),
+            ("SPACE", elements.get("space")),
+            ("SINGLE_BARLINE", elements.get("single_barline")),
+            ("DOUBLE_BARLINE", elements.get("double_barline")),
+            ("REPEAT_LEFT", elements.get("repeat_left")),
+            ("REPEAT_RIGHT", elements.get("repeat_right")),
+        ] {
+            if let Some(elem) = value {
+                let base = elem.get("base").and_then(|v| parse_hex(v)).unwrap_or(0);
+                let line_base = elem.get("line_base").and_then(|v| parse_hex(v)).unwrap_or(0);
+                element_info.push((key.to_string(), base, line_base));
+            }
+        }
+    }
+
+    // Generate constants
+    code.push_str("// =============================================================================\n");
+    code.push_str("// PITCHED NOTE RANGES (from notation_systems)\n");
+    code.push_str("// =============================================================================\n\n");
+
+    for (name, base, count, line_base, line_count) in &system_ranges {
+        code.push_str(&format!("/// {} base glyphs: 0x{:X} - 0x{:X} ({} codepoints)\n",
+            name, base, base + count - 1, count));
+        code.push_str(&format!("pub const {}_BASE: u32 = 0x{:X};\n", name, base));
+        code.push_str(&format!("pub const {}_COUNT: u32 = {};\n", name, count));
+        if *line_base > 0 {
+            code.push_str(&format!("/// {} line variants: 0x{:X} - 0x{:X} ({} codepoints)\n",
+                name, line_base, line_base + line_count - 1, line_count));
+            code.push_str(&format!("pub const {}_LINE_BASE: u32 = 0x{:X};\n", name, line_base));
+            code.push_str(&format!("pub const {}_LINE_COUNT: u32 = {};\n", name, line_count));
+        }
+        code.push_str("\n");
+    }
+
+    code.push_str("// =============================================================================\n");
+    code.push_str("// NOTATION ELEMENTS (from notation_elements)\n");
+    code.push_str("// =============================================================================\n\n");
+
+    code.push_str(&format!("/// Line variants per glyph (uniform system)\n"));
+    code.push_str(&format!("pub const LINE_VARIANTS_PER_GLYPH: u32 = {};\n\n", LINE_VARIANTS_PER_GLYPH));
+
+    for (name, base, line_base) in &element_info {
+        code.push_str(&format!("/// {} base codepoint\n", name));
+        code.push_str(&format!("pub const {}_BASE: u32 = 0x{:X};\n", name, base));
+        if *line_base > 0 {
+            code.push_str(&format!("/// {} line variants: 0x{:X} - 0x{:X}\n",
+                name, line_base, line_base + LINE_VARIANTS_PER_GLYPH - 1));
+            code.push_str(&format!("pub const {}_LINE_BASE: u32 = 0x{:X};\n", name, line_base));
+        }
+        code.push_str("\n");
+    }
+
+    // Generate predicate functions
+    code.push_str("// =============================================================================\n");
+    code.push_str("// PREDICATE FUNCTIONS\n");
+    code.push_str("// =============================================================================\n\n");
+
+    // is_pitched_note
+    code.push_str(r#"/// Check if codepoint is a pitched note (any system, any variant)
+///
+/// Includes:
+/// - Base glyphs (all notation systems)
+/// - Line variant glyphs (underlined/overlined)
+#[inline]
+pub fn is_pitched_note(cp: u32) -> bool {
+"#);
+
+    // Generate range checks for each system
+    let mut conditions = Vec::new();
+    for (name, _base, _count, line_base, _line_count) in &system_ranges {
+        conditions.push(format!("    // {} base glyphs\n    (cp >= {}_BASE && cp < {}_BASE + {}_COUNT)",
+            name, name, name, name));
+        if *line_base > 0 {
+            conditions.push(format!("    // {} line variants\n    (cp >= {}_LINE_BASE && cp < {}_LINE_BASE + {}_LINE_COUNT)",
+                name, name, name, name));
+        }
+    }
+    code.push_str(&conditions.join(" ||\n"));
+    code.push_str("\n}\n\n");
+
+    // is_dash
+    code.push_str(r#"/// Check if codepoint is a dash (rhythmic placeholder)
+#[inline]
+pub fn is_dash(cp: u32) -> bool {
+    cp == DASH_BASE ||
+    (cp >= DASH_LINE_BASE && cp < DASH_LINE_BASE + LINE_VARIANTS_PER_GLYPH)
+}
+
+"#);
+
+    // is_breath_mark
+    code.push_str(r#"/// Check if codepoint is a breath mark
+#[inline]
+pub fn is_breath_mark(cp: u32) -> bool {
+    cp == BREATH_MARK_BASE ||
+    (cp >= BREATH_MARK_LINE_BASE && cp < BREATH_MARK_LINE_BASE + LINE_VARIANTS_PER_GLYPH)
+}
+
+"#);
+
+    // is_beat_element
+    code.push_str(r#"/// Check if codepoint is a beat element (participates in beat grouping)
+///
+/// Beat elements are:
+/// - Pitched notes (any system)
+/// - Dash (rhythmic placeholder)
+/// - Breath mark (phrasing separator)
+///
+/// Non-beat elements (spaces, barlines) do NOT participate in beat grouping.
+#[inline]
+pub fn is_beat_element(cp: u32) -> bool {
+    is_pitched_note(cp) || is_dash(cp) || is_breath_mark(cp)
+}
+
+"#);
+
+    // is_space
+    code.push_str(r#"/// Check if codepoint is a space (beat separator)
+#[inline]
+pub fn is_space(cp: u32) -> bool {
+    cp == SPACE_BASE ||
+    (cp >= SPACE_LINE_BASE && cp < SPACE_LINE_BASE + LINE_VARIANTS_PER_GLYPH)
+}
+
+"#);
+
+    // is_barline
+    code.push_str(r#"/// Check if codepoint is a barline (any type)
+#[inline]
+pub fn is_barline(cp: u32) -> bool {
+    // Base barlines
+    (cp >= SINGLE_BARLINE_BASE && cp <= REPEAT_RIGHT_BASE) ||
+    // Line variants for barlines
+    (cp >= SINGLE_BARLINE_LINE_BASE && cp < REPEAT_RIGHT_LINE_BASE + LINE_VARIANTS_PER_GLYPH)
+}
+
+"#);
+
+    // strip_line_variant - get base glyph from line variant
+    code.push_str(r#"/// Strip line variant from a codepoint, returning the base glyph
+///
+/// If the codepoint is a line variant, returns the base glyph.
+/// If already a base glyph, returns it unchanged.
+/// Returns None if codepoint is not recognized.
+pub fn strip_line_variant(cp: u32) -> Option<u32> {
+"#);
+
+    // Generate strip logic for pitched notes
+    for (name, _base, _count, line_base, _line_count) in &system_ranges {
+        if *line_base > 0 {
+            code.push_str(&format!(r#"    // {} line variants → base
+    if cp >= {}_LINE_BASE && cp < {}_LINE_BASE + {}_LINE_COUNT {{
+        let offset = (cp - {}_LINE_BASE) / LINE_VARIANTS_PER_GLYPH;
+        return Some({}_BASE + offset);
+    }}
+"#, name, name, name, name, name, name));
+        }
+    }
+
+    // Generate strip logic for notation elements
+    for (name, _base, line_base) in &element_info {
+        if *line_base > 0 {
+            code.push_str(&format!(r#"    // {} line variant → base
+    if cp >= {}_LINE_BASE && cp < {}_LINE_BASE + LINE_VARIANTS_PER_GLYPH {{
+        return Some({}_BASE);
+    }}
+"#, name, name, name, name));
+        }
+    }
+
+    code.push_str(r#"
+    // Base glyphs pass through unchanged
+    if is_pitched_note(cp) || is_dash(cp) || is_breath_mark(cp) || is_space(cp) || is_barline(cp) {
+        return Some(cp);
+    }
+
+    None
+}
+
+"#);
+
+    // get_line_variant - apply line variant to base glyph
+    code.push_str(r#"/// Apply line variant to a base glyph
+///
+/// # Arguments
+/// * `base_cp` - The base glyph codepoint
+/// * `variant_index` - Line variant index (0-14, see line_variant_config in atoms.yaml)
+///
+/// # Returns
+/// * `Some(char)` - The line variant codepoint
+/// * `None` - If base is not recognized or variant_index out of range
+pub fn get_line_variant(base_cp: u32, variant_index: u32) -> Option<u32> {
+    if variant_index >= LINE_VARIANTS_PER_GLYPH {
+        return None;
+    }
+
+"#);
+
+    // Generate line variant logic for pitched notes
+    for (name, _base, _count, line_base, _line_count) in &system_ranges {
+        if *line_base > 0 {
+            code.push_str(&format!(r#"    // {} base → line variant
+    if base_cp >= {}_BASE && base_cp < {}_BASE + {}_COUNT {{
+        let offset = base_cp - {}_BASE;
+        return Some({}_LINE_BASE + (offset * LINE_VARIANTS_PER_GLYPH) + variant_index);
+    }}
+"#, name, name, name, name, name, name));
+        }
+    }
+
+    // Generate line variant logic for notation elements
+    for (name, _base, line_base) in &element_info {
+        if *line_base > 0 {
+            code.push_str(&format!(r#"    // {} base → line variant
+    if base_cp == {}_BASE {{
+        return Some({}_LINE_BASE + variant_index);
+    }}
+"#, name, name, name));
+        }
+    }
+
+    code.push_str(r#"
+    None
+}
+
+// =============================================================================
+// LINE VARIANT DECODING (for CharInfo)
+// =============================================================================
+// Uses UnderlineState and OverlineState already imported in font_utils.rs
+
+/// Decoded line variant information
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub struct DecodedLineVariant {
+    /// Base codepoint (without line variant)
+    pub base_cp: u32,
+    /// Underline state
+    pub underline: UnderlineState,
+    /// Overline state
+    pub overline: OverlineState,
+    /// Whether this is a superscript (grace note)
+    pub is_superscript: bool,
+}
+
+/// Line variant encoding scheme (15 variants per glyph):
+///
+/// Index | Underline | Overline | Description
+/// ------|-----------|----------|------------
+///   0   | Middle    | None     | Underline only - middle
+///   1   | Left      | None     | Underline only - left cap
+///   2   | Right     | None     | Underline only - right cap
+///   3   | None      | Middle   | Overline only - middle
+///   4   | None      | Left     | Overline only - left cap
+///   5   | None      | Right    | Overline only - right cap
+///   6   | Middle    | Middle   | Combined - middle/middle
+///   7   | Middle    | Left     | Combined - middle/left
+///   8   | Middle    | Right    | Combined - middle/right
+///   9   | Left      | Middle   | Combined - left/middle
+///  10   | Left      | Left     | Combined - left/left
+///  11   | Left      | Right    | Combined - left/right
+///  12   | Right     | Middle   | Combined - right/middle
+///  13   | Right     | Left     | Combined - right/left
+///  14   | Right     | Right    | Combined - right/right
+///
+/// Formula: variant_index = encode(underline, overline)
+/// Decode: (underline, overline) = decode(variant_index)
+
+/// Decode a line variant index (0-14) into underline and overline states
+///
+/// This is the inverse of the encoding used in atoms.yaml line_variant_config.
+#[inline]
+pub fn decode_line_variant_index(idx: u32) -> (UnderlineState, OverlineState) {
+    match idx {
+        // Underline only (0-2)
+        0 => (UnderlineState::Middle, OverlineState::None),
+        1 => (UnderlineState::Left, OverlineState::None),
+        2 => (UnderlineState::Right, OverlineState::None),
+        // Overline only (3-5)
+        3 => (UnderlineState::None, OverlineState::Middle),
+        4 => (UnderlineState::None, OverlineState::Left),
+        5 => (UnderlineState::None, OverlineState::Right),
+        // Combined (6-14): underline × overline
+        6 => (UnderlineState::Middle, OverlineState::Middle),
+        7 => (UnderlineState::Middle, OverlineState::Left),
+        8 => (UnderlineState::Middle, OverlineState::Right),
+        9 => (UnderlineState::Left, OverlineState::Middle),
+        10 => (UnderlineState::Left, OverlineState::Left),
+        11 => (UnderlineState::Left, OverlineState::Right),
+        12 => (UnderlineState::Right, OverlineState::Middle),
+        13 => (UnderlineState::Right, OverlineState::Left),
+        14 => (UnderlineState::Right, OverlineState::Right),
+        _ => (UnderlineState::None, OverlineState::None),
+    }
+}
+
+/// Encode underline and overline states into a line variant index (0-14)
+///
+/// Returns None for (None, None) since that's the base glyph, not a variant.
+#[inline]
+pub fn encode_line_variant_index(underline: UnderlineState, overline: OverlineState) -> Option<u32> {
+    match (underline, overline) {
+        (UnderlineState::None, OverlineState::None) => None, // Base glyph
+        // Underline only
+        (UnderlineState::Middle, OverlineState::None) => Some(0),
+        (UnderlineState::Left, OverlineState::None) => Some(1),
+        (UnderlineState::Right, OverlineState::None) => Some(2),
+        // Overline only
+        (UnderlineState::None, OverlineState::Middle) => Some(3),
+        (UnderlineState::None, OverlineState::Left) => Some(4),
+        (UnderlineState::None, OverlineState::Right) => Some(5),
+        // Combined
+        (UnderlineState::Middle, OverlineState::Middle) => Some(6),
+        (UnderlineState::Middle, OverlineState::Left) => Some(7),
+        (UnderlineState::Middle, OverlineState::Right) => Some(8),
+        (UnderlineState::Left, OverlineState::Middle) => Some(9),
+        (UnderlineState::Left, OverlineState::Left) => Some(10),
+        (UnderlineState::Left, OverlineState::Right) => Some(11),
+        (UnderlineState::Right, OverlineState::Middle) => Some(12),
+        (UnderlineState::Right, OverlineState::Left) => Some(13),
+        (UnderlineState::Right, OverlineState::Right) => Some(14),
+    }
+}
+
+/// Fully decode a codepoint into base glyph + line states + superscript flag
+///
+/// This is the main entry point for CharInfo decoding.
+///
+/// # Returns
+/// * `Some(DecodedLineVariant)` - Decoded information
+/// * `None` - If codepoint is not recognized
+pub fn decode_codepoint(cp: u32) -> Option<DecodedLineVariant> {
+    // Check if superscript (0xF8000 - 0xFE03F)
+    let is_superscript = cp >= 0xF8000 && cp < 0xFE040;
+
+    if is_superscript {
+        // Superscripts have 16 line variants per glyph
+        let line_variant_idx = cp % 16;
+        let (underline, overline) = decode_superscript_line_variant(line_variant_idx);
+
+        // Get base codepoint by reversing superscript encoding
+        // This requires knowing which system it came from
+        let base_cp = decode_superscript_base(cp)?;
+
+        return Some(DecodedLineVariant {
+            base_cp,
+            underline,
+            overline,
+            is_superscript: true,
+        });
+    }
+
+    // Check if line variant (has base + variant index)
+    if let Some(base_cp) = strip_line_variant(cp) {
+        if base_cp != cp {
+            // It's a line variant - decode the index
+            let variant_idx = decode_line_variant_from_cp(cp)?;
+            let (underline, overline) = decode_line_variant_index(variant_idx);
+            return Some(DecodedLineVariant {
+                base_cp,
+                underline,
+                overline,
+                is_superscript: false,
+            });
+        }
+    }
+
+    // Base glyph (no line variant)
+    if is_pitched_note(cp) || is_dash(cp) || is_breath_mark(cp) || is_space(cp) || is_barline(cp) {
+        return Some(DecodedLineVariant {
+            base_cp: cp,
+            underline: UnderlineState::None,
+            overline: OverlineState::None,
+            is_superscript: false,
+        });
+    }
+
+    // ASCII printable (0x20-0x7E)
+    if cp >= 0x20 && cp <= 0x7E {
+        return Some(DecodedLineVariant {
+            base_cp: cp,
+            underline: UnderlineState::None,
+            overline: OverlineState::None,
+            is_superscript: false,
+        });
+    }
+
+    None
+}
+
+/// Decode superscript line variant (16 variants: 0-15)
+///
+/// Superscripts use a different encoding than regular line variants:
+/// - 0: None
+/// - 1-3: Underline only (left, middle, right)
+/// - 4-6: Overline only (left, middle, right)
+/// - 7-15: Combined (3 underline × 3 overline)
+fn decode_superscript_line_variant(idx: u32) -> (UnderlineState, OverlineState) {
+    match idx {
+        0 => (UnderlineState::None, OverlineState::None),
+        1 => (UnderlineState::Left, OverlineState::None),
+        2 => (UnderlineState::Middle, OverlineState::None),
+        3 => (UnderlineState::Right, OverlineState::None),
+        4 => (UnderlineState::None, OverlineState::Left),
+        5 => (UnderlineState::None, OverlineState::Middle),
+        6 => (UnderlineState::None, OverlineState::Right),
+        7 => (UnderlineState::Left, OverlineState::Left),
+        8 => (UnderlineState::Left, OverlineState::Middle),
+        9 => (UnderlineState::Left, OverlineState::Right),
+        10 => (UnderlineState::Middle, OverlineState::Left),
+        11 => (UnderlineState::Middle, OverlineState::Middle),
+        12 => (UnderlineState::Middle, OverlineState::Right),
+        13 => (UnderlineState::Right, OverlineState::Left),
+        14 => (UnderlineState::Right, OverlineState::Middle),
+        15 => (UnderlineState::Right, OverlineState::Right),
+        _ => (UnderlineState::None, OverlineState::None),
+    }
+}
+
+/// Decode superscript codepoint to get base (non-superscript) codepoint
+fn decode_superscript_base(cp: u32) -> Option<u32> {
+    const ASCII_BASE: u32 = 0xF8000;
+    const ASCII_END: u32 = 0xF8600;
+    const NUMBER_BASE: u32 = 0xF8600;
+    const NUMBER_END: u32 = 0xF9400;
+    const WESTERN_BASE: u32 = 0xF9400;
+    const WESTERN_END: u32 = 0xFAF00;
+    const SARGAM_BASE: u32 = 0xFAF00;
+    const SARGAM_END: u32 = 0xFC600;
+    const DOREMI_BASE: u32 = 0xFC600;
+    const DOREMI_END: u32 = 0xFE040;
+
+    const LINE_VARIANTS: u32 = 16;
+
+    if cp >= ASCII_BASE && cp < ASCII_END {
+        let offset = (cp - ASCII_BASE) / LINE_VARIANTS;
+        return Some(0x20 + offset); // ASCII base
+    }
+    if cp >= NUMBER_BASE && cp < NUMBER_END {
+        let offset = (cp - NUMBER_BASE) / LINE_VARIANTS;
+        return Some(0xE000 + offset); // Number PUA base
+    }
+    if cp >= WESTERN_BASE && cp < WESTERN_END {
+        let offset = (cp - WESTERN_BASE) / LINE_VARIANTS;
+        return Some(0xE100 + offset); // Western PUA base
+    }
+    if cp >= SARGAM_BASE && cp < SARGAM_END {
+        let offset = (cp - SARGAM_BASE) / LINE_VARIANTS;
+        return Some(0xE300 + offset); // Sargam PUA base
+    }
+    if cp >= DOREMI_BASE && cp < DOREMI_END {
+        let offset = (cp - DOREMI_BASE) / LINE_VARIANTS;
+        return Some(0xE500 + offset); // Doremi PUA base
+    }
+
+    None
+}
+
+/// Extract line variant index from a line variant codepoint
+fn decode_line_variant_from_cp(cp: u32) -> Option<u32> {
+"#);
+
+    // Generate extraction logic for pitched notes
+    for (name, _base, _count, line_base, _line_count) in &system_ranges {
+        if *line_base > 0 {
+            code.push_str(&format!(r#"    if cp >= {}_LINE_BASE && cp < {}_LINE_BASE + {}_LINE_COUNT {{
+        return Some((cp - {}_LINE_BASE) % LINE_VARIANTS_PER_GLYPH);
+    }}
+"#, name, name, name, name));
+        }
+    }
+
+    // Generate extraction logic for notation elements
+    for (name, _base, line_base) in &element_info {
+        if *line_base > 0 {
+            code.push_str(&format!(r#"    if cp >= {}_LINE_BASE && cp < {}_LINE_BASE + LINE_VARIANTS_PER_GLYPH {{
+        return Some(cp - {}_LINE_BASE);
+    }}
+"#, name, name, name));
+        }
+    }
+
+    code.push_str(r#"    None
+}
+"#);
+
+    let dest_file = out_dir.join("beat_element_predicates.rs");
+    fs::write(&dest_file, code).expect("Failed to write beat_element_predicates.rs");
 }

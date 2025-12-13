@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Superscript Glyph Test</title>
+    <style>
+        @font-face {
+            font-family: 'NotationFont';
+            src: url('static/fonts/NotationFont.woff2') format('woff2'),
+                 url('static/fonts/NotationFont.ttf') format('truetype');
+        }
+        body {
+            font-family: 'NotationFont', sans-serif;
+            font-size: 48px;
+            padding: 40px;
+        }
+        .test-row {
+            margin: 20px 0;
+            display: flex;
+            align-items: baseline;
+            gap: 20px;
+        }
+        .label {
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+            min-width: 200px;
+        }
+        .glyph {
+            border: 1px dashed #ccc;
+            padding: 10px;
+            min-width: 80px;
+            text-align: center;
+        }
+        .hex {
+            font-family: monospace;
+            font-size: 12px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <h1 style="font-family: Arial; font-size: 24px;">Superscript Glyph Test</h1>
+
+    <div class="test-row">
+        <div class="label">Regular "2" (0xE01E):</div>
+        <div class="glyph">&#xE01E;</div>
+        <div class="hex">U+E01E</div>
+    </div>
+
+    <div class="test-row">
+        <div class="label">Superscript "2" (0xF87E0) - hex entity:</div>
+        <div class="glyph">&#xF87E0;</div>
+        <div class="hex">U+F87E0</div>
+    </div>
+
+    <div class="test-row">
+        <div class="label">Superscript "2" - decimal entity:</div>
+        <div class="glyph">&#1017824;</div>
+        <div class="hex">decimal 1017824</div>
+    </div>
+
+    <div class="test-row">
+        <div class="label">Using JS escape:</div>
+        <div class="glyph" id="js-super"></div>
+        <div class="hex">String.fromCodePoint(0xF87E0)</div>
+    </div>
+
+    <div class="test-row">
+        <div class="label">Side by side (reg vs super):</div>
+        <div class="glyph">&#xE01E; vs &#xF87E0;</div>
+    </div>
+
+    <div class="test-row">
+        <div class="label">ASCII "1" superscript (0xF8110):</div>
+        <div class="glyph">&#xF8110;</div>
+        <div class="hex">U+F8110</div>
+    </div>
+
+    <script>
+        // Test using JavaScript
+        document.getElementById('js-super').textContent = String.fromCodePoint(0xF87E0);
+
+        // Log glyph info
+        console.log('Regular 2 codepoint:', 0xE01E.toString(16));
+        console.log('Superscript 2 codepoint:', 0xF87E0.toString(16), '=', 0xF87E0);
+        console.log('Char from codepoint:', String.fromCodePoint(0xF87E0));
+    </script>
+</body>
+</html>

@@ -244,11 +244,11 @@ Configuration:
   mode:          STRICT
 
 [STAGE 1] Loading atom specification...
-  ✓ number: 7 characters
-  ✓ western: 14 characters
-  ✓ sargam: 12 characters
-  ✓ doremi: 14 characters
-  ✓ Character order validated: 1234567CDEFGABcdefgabSrRgGmMPdDnNdrmfsltDRMFSLT
+  ✓ number: 7 characters (1234567)
+  ✓ western: 7 characters (CDEFGAB)
+  ✓ sargam: 12 characters (SrRgGmMPdDnN)
+  ✓ doremi: 7 characters (drmfslt)
+  ✓ Character order validated: 1234567CDEFGABSrRgGmMPdDnNdrmfslt
 
 [STAGE 2] Assigning PUA codepoints (starting at 0xe600)
   ✓ Assigned 188 note atoms: 0xe600 - 0xe6bb

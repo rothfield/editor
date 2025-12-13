@@ -147,7 +147,7 @@ pub fn set_title(title: &str) -> Result<(), JsValue> {
     wasm_info!("  Document title set to: '{}'", title);
 
     // Compute glyphs after metadata change
-    doc.compute_glyphs();
+    
 
     wasm_info!("setTitle completed successfully");
     Ok(())
@@ -166,7 +166,7 @@ pub fn set_composer(composer: &str) -> Result<(), JsValue> {
     wasm_info!("  Document composer set to: '{}'", composer);
 
     // Compute glyphs after metadata change
-    doc.compute_glyphs();
+    
 
     wasm_info!("setComposer completed successfully");
     Ok(())
@@ -198,7 +198,7 @@ pub fn set_document_tonic(tonic: &str) -> Result<(), JsValue> {
     wasm_info!("  Document tonic set to: '{}'", tonic);
 
     // Compute glyphs after metadata change
-    doc.compute_glyphs();
+    
 
     wasm_info!("setDocumentTonic completed successfully");
     Ok(())
@@ -239,7 +239,7 @@ pub fn set_line_tonic(line_idx: usize, tonic: &str) -> Result<(), JsValue> {
     wasm_info!("  Line {} tonic set to: '{}'", line_idx, tonic);
 
     // Compute glyphs after metadata change
-    doc.compute_glyphs();
+    
 
     wasm_info!("setLineTonic completed successfully");
     Ok(())
@@ -266,7 +266,7 @@ pub fn set_document_key_signature(key_signature: &str) -> Result<(), JsValue> {
     wasm_info!("  Document key signature set to: '{}'", key_signature);
 
     // Compute glyphs after metadata change
-    doc.compute_glyphs();
+    
 
     wasm_info!("setDocumentKeySignature completed successfully");
     Ok(())
@@ -303,7 +303,7 @@ pub fn set_line_key_signature(line_idx: usize, key_signature: &str) -> Result<()
     wasm_info!("  Line {} key signature set to: '{}'", line_idx, key_signature);
 
     // Compute glyphs after metadata change
-    doc.compute_glyphs();
+    
 
     wasm_info!("setLineKeySignature completed successfully");
     Ok(())
@@ -336,7 +336,7 @@ pub fn set_line_label(line_index: usize, label: &str) -> Result<(), JsValue> {
     wasm_info!("  Line {} label set to: '{}'", line_index, label);
 
     // Compute glyphs after metadata change
-    doc.compute_glyphs();
+    
 
     wasm_info!("setLineLabel completed successfully");
     Ok(())
@@ -369,7 +369,7 @@ pub fn set_line_lyrics(line_index: usize, lyrics: &str) -> Result<(), JsValue> {
     wasm_info!("  Line {} lyrics set to: '{}'", line_index, lyrics);
 
     // Compute glyphs after metadata change
-    doc.compute_glyphs();
+    
 
     wasm_info!("setLineLyrics completed successfully");
     Ok(())
@@ -408,7 +408,7 @@ pub fn set_line_tala(line_index: usize, tala: &str) -> Result<(), JsValue> {
     wasm_info!("  Line {} tala set to: '{}'", line_index, tala);
 
     // Compute glyphs after metadata change
-    doc.compute_glyphs();
+    
 
     wasm_info!("setLineTala completed successfully");
     Ok(())
@@ -454,7 +454,7 @@ pub fn set_line_pitch_system(line_index: usize, pitch_system: u8) -> Result<(), 
     wasm_info!("  Line {} pitch system set to: {:?}", line_index, system);
 
     // Compute glyphs after metadata change
-    doc.compute_glyphs();
+    
 
     wasm_info!("setLinePitchSystem completed successfully");
     Ok(())
@@ -495,7 +495,7 @@ pub fn set_line_new_system(line_index: usize, new_system: bool) -> Result<(), Js
     wasm_info!("  System and part IDs recalculated");
 
     // Compute glyphs after metadata change
-    doc.compute_glyphs();
+    
 
     wasm_info!("setLineNewSystem completed successfully");
     Ok(())
@@ -633,8 +633,9 @@ pub fn split_line_at_position(
     line.lyrics = lyrics_before;
 
     // Create new line with cells after split, inheriting musical properties
-    let new_line = Line {
+    let mut new_line = Line {
         cells: cells_after,
+        text: Vec::new(), // Will be synced below
         label: String::new(), // New line starts with no label
         tala: String::new(),  // New line starts with no tala
         lyrics: lyrics_after, // New line gets remaining lyrics
@@ -651,6 +652,7 @@ pub fn split_line_at_position(
         beats: Vec::new(),
         slurs: Vec::new(),
     };
+    new_line.sync_text_from_cells();
 
     wasm_log!("Old line now has {} cells, new line has {} cells",
               line.cells.len(), new_line.cells.len());
@@ -663,7 +665,7 @@ pub fn split_line_at_position(
     doc.recalculate_system_and_part_ids();
 
     // Compute glyphs after structural change
-    doc.compute_glyphs();
+    
 
     wasm_info!("Line split successfully, document now has {} lines", doc.lines.len());
 
@@ -742,7 +744,7 @@ pub fn set_document_pitch_system(pitch_system: u8) -> Result<(), JsValue> {
     wasm_info!("  Document pitch system set to: {:?}", system);
 
     // Compute glyphs after metadata change
-    doc.compute_glyphs();
+    
 
     wasm_info!("setDocumentPitchSystem completed successfully");
     Ok(())
@@ -1051,6 +1053,8 @@ pub fn edit_replace_range(
             for (idx, cell) in new_cells.iter().enumerate() {
                 line.cells.insert(start_col + idx, cell.clone());
             }
+            // Sync text field after bulk modification
+            line.sync_text_from_cells();
             wasm_info!("  Inserted {} cells at ({},{})", new_cells.len(), start_row, start_col);
         }
     }
@@ -1294,6 +1298,8 @@ pub fn insert_text(text: &str) -> Result<JsValue, JsValue> {
             wasm_info!("  Modification failed, falling back to normal insert");
             let cell = parse_single(typed_char, pitch_system, insert_pos, active_constraint);
             line.cells.insert(insert_pos, cell.clone());
+            // Sync text field after insert
+            line.sync_text_from_cells();
 
             // Update annotation positions
             doc.annotation_layer.on_insert(crate::text::cursor::TextPos::new(cursor_line, insert_pos));
@@ -1333,6 +1339,8 @@ pub fn insert_text(text: &str) -> Result<JsValue, JsValue> {
             // Update annotation positions
             doc.annotation_layer.on_insert(crate::text::cursor::TextPos::new(cursor_line, insert_pos + i));
         }
+        // Sync text field after bulk modification
+        line.sync_text_from_cells();
 
         // Update column indices for cells after insertion
         let cells_inserted = new_cells.len();
@@ -1358,7 +1366,7 @@ pub fn insert_text(text: &str) -> Result<JsValue, JsValue> {
     wasm_info!("  Cursor moved to ({}, {})", cursor_line, new_cursor_col);
 
     // Recompute glyphs to convert pitch_code + octave to PUA codepoints
-    doc.compute_glyphs();
+    
 
     // Return EditorDiff with cursor state
     let diff = doc.state.to_editor_diff(&doc, vec![cursor_line]);
@@ -1474,6 +1482,8 @@ pub fn delete_at_cursor() -> Result<JsValue, JsValue> {
                 let deleted_cell = line.cells[cursor_col - 1].clone();
 
                 line.cells.remove(cursor_col - 1);
+                // Sync text field after removal
+                line.sync_text_from_cells();
 
                 // Update annotation positions
                 doc.annotation_layer.on_delete(crate::text::cursor::TextPos::new(cursor_line, cursor_col - 1));
@@ -1659,6 +1669,8 @@ pub fn delete_forward() -> Result<JsValue, JsValue> {
         let deleted_cell = line.cells[cursor_col].clone();
 
         line.cells.remove(cursor_col);
+        // Sync text field after removal
+        line.sync_text_from_cells();
 
         // Update annotation positions
         doc.annotation_layer.on_delete(crate::text::cursor::TextPos::new(cursor_line, cursor_col));
@@ -1739,8 +1751,9 @@ pub fn insert_newline() -> Result<JsValue, JsValue> {
         .collect();
 
     // Create new line
-    let new_line = Line {
+    let mut new_line = Line {
         cells: new_line_cells,
+        text: Vec::new(), // Will be synced below
         tonic: current_line.tonic.clone(),
         lyrics: current_line.lyrics.clone(),
         tala: current_line.tala.clone(),
@@ -1757,6 +1770,7 @@ pub fn insert_newline() -> Result<JsValue, JsValue> {
         beats: Vec::new(),
         slurs: Vec::new(),
     };
+    new_line.sync_text_from_cells();
 
     // Insert new line after current line
     doc.lines.insert(cursor_line + 1, new_line);
@@ -1940,6 +1954,7 @@ pub fn paste_cells(
     for (row, new_row_cells) in lines_map {
         if row < doc.lines.len() {
             doc.lines[row].cells = new_row_cells;
+            doc.lines[row].sync_text_from_cells();
         }
     }
 
@@ -2201,8 +2216,11 @@ pub fn load_document(document_js: JsValue) -> Result<(), JsValue> {
     doc.recalculate_system_and_part_ids();
 
     // Recompute glyphs after deserialization
-    // combined_char has #[serde(skip)] so it's not serialized - we must recompute it
-    doc.compute_glyphs();
+    // cell.char is regenerated to include line variants
+    
+
+    // Sync text field for all lines (text has #[serde(skip)])
+    doc.sync_text_for_all_lines();
 
     // Acquire lock again to store the document
     *lock_document()? = Some(doc);
@@ -2255,7 +2273,7 @@ pub fn create_new_document() -> Result<JsValue, JsValue> {
     document.recalculate_system_and_part_ids();
 
     // Compute glyphs
-    document.compute_glyphs();
+    
 
     // Store in internal WASM storage for edit operations
     *lock_document()? = Some(document.clone());
@@ -2303,8 +2321,11 @@ pub fn compute_layout(
         })?;
 
     // Recompute glyphs after deserialization
-    // combined_char has #[serde(skip)] so it's not serialized - we must recompute it
-    document.compute_glyphs();
+    // cell.char is regenerated to include line variants
+    
+
+    // Sync text field for all lines (text has #[serde(skip)])
+    document.sync_text_for_all_lines();
 
     // Debug: Check if selection survived deserialization
     if let Some(sel) = document.state.selection_manager.get_selection() {
@@ -3197,21 +3218,12 @@ pub fn copy_ornament() -> Result<String, JsValue> {
     let line = doc.lines.get(cursor_pos.line)
         .ok_or_else(|| JsValue::from_str("No active line"))?;
 
-    let cell = line.cells.get(target_cell_index)
+    let _cell = line.cells.get(target_cell_index)
         .ok_or_else(|| JsValue::from_str("Cell index out of bounds"))?;
 
-    let ornament = cell.ornament.as_ref()
-        .ok_or_else(|| JsValue::from_str("Cell has no ornament"))?;
-
-    // Convert ornament cells to notation string
-    let notation: String = ornament.cells.iter()
-        .map(|cell| cell.char.clone())
-        .collect::<Vec<String>>()
-        .join("");
-
-    wasm_info!("  Copied ornament: {}", notation);
-
-    Ok(notation)
+    // NOTE: Ornament field removed. Grace notes are now superscript characters.
+    // This function is deprecated - use selectionToSuperscript/superscriptToNormal instead.
+    Err(JsValue::from_str("DEPRECATED: Ornament field removed. Grace notes are now superscript characters. Use selectionToSuperscript/superscriptToNormal instead."))
 }
 
 /// Clear ornament from current selection (WASM-owned state)
@@ -3245,18 +3257,12 @@ pub fn clear_ornament() -> Result<JsValue, JsValue> {
     let line = doc.lines.get_mut(cursor_pos.line)
         .ok_or_else(|| JsValue::from_str("No active line"))?;
 
-    let cell = line.cells.get_mut(target_cell_index)
+    let _cell = line.cells.get_mut(target_cell_index)
         .ok_or_else(|| JsValue::from_str("Cell index out of bounds"))?;
 
-    // Clear the ornament
-    cell.ornament = None;
-
-    wasm_info!("  Ornament cleared from cell {}", target_cell_index);
-
-    // Return EditorDiff
-    let diff = create_editor_diff(&doc, Some(cursor_pos.line));
-    serde_wasm_bindgen::to_value(&diff)
-        .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
+    // NOTE: Ornament field removed. Grace notes are now superscript characters.
+    // This function is deprecated - use superscriptToNormal to convert back.
+    Err(JsValue::from_str("DEPRECATED: Ornament field removed. Grace notes are now superscript characters. Use superscriptToNormal to convert back to normal."))
 }
 
 /// Set ornament placement for current selection (WASM-owned state)
@@ -3264,9 +3270,7 @@ pub fn clear_ornament() -> Result<JsValue, JsValue> {
 /// WASM-FIRST: This function handles selection internally, no cell_index needed
 #[wasm_bindgen(js_name = setOrnamentPlacement)]
 pub fn set_ornament_placement(placement: &str) -> Result<JsValue, JsValue> {
-    use crate::models::elements::OrnamentPlacement;
-
-    wasm_info!("setOrnamentPlacement called: placement={}", placement);
+    wasm_info!("setOrnamentPlacement called: placement={} - DEPRECATED", placement);
 
     let mut doc = lock_document()?;
     let doc = doc.as_mut()
@@ -3292,25 +3296,13 @@ pub fn set_ornament_placement(placement: &str) -> Result<JsValue, JsValue> {
     let line = doc.lines.get_mut(cursor_pos.line)
         .ok_or_else(|| JsValue::from_str("No active line"))?;
 
-    let cell = line.cells.get_mut(target_cell_index)
+    let _cell = line.cells.get_mut(target_cell_index)
         .ok_or_else(|| JsValue::from_str("Cell index out of bounds"))?;
 
-    // Update placement if ornament exists
-    if let Some(ref mut ornament) = cell.ornament {
-        ornament.placement = match placement {
-            "before" => OrnamentPlacement::Before,
-            "after" => OrnamentPlacement::After,
-            _ => OrnamentPlacement::Before,
-        };
-        wasm_info!("  Ornament placement updated to: {}", placement);
-    } else {
-        return Err(JsValue::from_str("Cell has no ornament"));
-    }
-
-    // Return EditorDiff
-    let diff = create_editor_diff(&doc, Some(cursor_pos.line));
-    serde_wasm_bindgen::to_value(&diff)
-        .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
+    // NOTE: Ornament field removed. Grace notes are now superscript characters.
+    // Placement is now implicit - superscripts attach to the previous note ("after" placement).
+    // "Before" placement is not supported in the new architecture.
+    Err(JsValue::from_str("DEPRECATED: Ornament field removed. Grace notes are now superscript characters with implicit 'after' placement."))
 }
 
 /// OLD FUNCTION - DEPRECATED - Use copyOrnament() instead
@@ -3325,19 +3317,11 @@ pub fn copy_ornament_as_notation(cell_index: usize) -> Result<String, JsValue> {
     let line = doc.active_line()
         .ok_or_else(|| JsValue::from_str("No active line"))?;
 
-    let cell = line.cells.get(cell_index)
+    let _cell = line.cells.get(cell_index)
         .ok_or_else(|| JsValue::from_str("Cell index out of bounds"))?;
 
-    let ornament = cell.ornament.as_ref()
-        .ok_or_else(|| JsValue::from_str("Cell has no ornament"))?;
-
-    // Convert ornament cells to notation string
-    let notation: String = ornament.cells.iter()
-        .map(|cell| cell.char.clone())
-        .collect::<Vec<String>>()
-        .join("");
-
-    Ok(notation)
+    // NOTE: Ornament field removed. Grace notes are now superscript characters.
+    Err(JsValue::from_str("DEPRECATED: Ornament field removed. Grace notes are now superscript characters."))
 }
 
 /// Paste ornament from notation string to current selection (WASM-owned state)
@@ -3345,12 +3329,10 @@ pub fn copy_ornament_as_notation(cell_index: usize) -> Result<String, JsValue> {
 /// WASM-FIRST: This function handles selection internally, no cell_index needed
 #[wasm_bindgen(js_name = pasteOrnament)]
 pub fn paste_ornament(
-    notation_text: &str,
-    placement: &str
+    _notation_text: &str,
+    _placement: &str
 ) -> Result<JsValue, JsValue> {
-    use crate::models::elements::{Ornament, OrnamentPlacement};
-
-    wasm_info!("pasteOrnament called: notation={:?}, placement={}", notation_text, placement);
+    wasm_info!("pasteOrnament called - DEPRECATED");
 
     let mut doc = lock_document()?;
     let doc = doc.as_mut()
@@ -3376,51 +3358,22 @@ pub fn paste_ornament(
     let line = doc.lines.get_mut(cursor_pos.line)
         .ok_or_else(|| JsValue::from_str("No active line"))?;
 
-    let cell = line.cells.get_mut(target_cell_index)
+    let _cell = line.cells.get_mut(target_cell_index)
         .ok_or_else(|| JsValue::from_str("Cell index out of bounds"))?;
 
-    // Parse notation text - simple character-by-character conversion
-    let parsed_cells: Vec<Cell> = notation_text.chars()
-        .enumerate()
-        .map(|(idx, ch)| Cell::new(ch.to_string(), ElementKind::PitchedElement, idx))
-        .collect();
-
-    if parsed_cells.is_empty() {
-        return Err(JsValue::from_str("Empty notation text"));
-    }
-
-    // Determine placement
-    let ornament_placement = match placement {
-        "before" => OrnamentPlacement::Before,
-        "after" => OrnamentPlacement::After,
-        _ => OrnamentPlacement::Before, // default
-    };
-
-    // Create ornament and attach
-    let ornament = Ornament {
-        cells: parsed_cells,
-        placement: ornament_placement,
-    };
-    cell.ornament = Some(ornament);
-
-    wasm_info!("  Ornament attached to cell {}", target_cell_index);
-
-    // Return EditorDiff
-    let diff = create_editor_diff(&doc, Some(cursor_pos.line));
-    serde_wasm_bindgen::to_value(&diff)
-        .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
+    // NOTE: Ornament field removed. Grace notes are now superscript characters.
+    // Use selectionToSuperscript to convert pitches to grace notes.
+    Err(JsValue::from_str("DEPRECATED: Ornament field removed. Use selectionToSuperscript to convert pitches to grace notes."))
 }
 
 /// OLD FUNCTION - DEPRECATED - Use pasteOrnament() instead
 #[wasm_bindgen(js_name = pasteOrnamentFromNotation)]
 pub fn paste_ornament_from_notation(
     cell_index: usize,
-    notation_text: &str,
-    placement: &str
+    _notation_text: &str,
+    _placement: &str
 ) -> Result<JsValue, JsValue> {
-    wasm_warn!("pasteOrnamentFromNotation is DEPRECATED - use pasteOrnament instead");
-
-    use crate::models::elements::{Ornament, OrnamentPlacement};
+    wasm_warn!("pasteOrnamentFromNotation is DEPRECATED");
 
     let mut doc = lock_document()?;
     let doc = doc.as_mut()
@@ -3429,33 +3382,11 @@ pub fn paste_ornament_from_notation(
     let line = doc.lines.first_mut()
         .ok_or_else(|| JsValue::from_str("No active line"))?;
 
-    let cell = line.cells.get_mut(cell_index)
+    let _cell = line.cells.get_mut(cell_index)
         .ok_or_else(|| JsValue::from_str("Cell index out of bounds"))?;
 
-    let parsed_cells: Vec<Cell> = notation_text.chars()
-        .enumerate()
-        .map(|(idx, ch)| Cell::new(ch.to_string(), ElementKind::PitchedElement, idx))
-        .collect();
-
-    if parsed_cells.is_empty() {
-        return Err(JsValue::from_str("Empty notation text"));
-    }
-
-    let ornament_placement = match placement {
-        "before" => OrnamentPlacement::Before,
-        "after" => OrnamentPlacement::After,
-        _ => OrnamentPlacement::Before,
-    };
-
-    let ornament = Ornament {
-        cells: parsed_cells,
-        placement: ornament_placement,
-    };
-    cell.ornament = Some(ornament);
-
-    let diff = create_editor_diff(&doc, Some(0));
-    serde_wasm_bindgen::to_value(&diff)
-        .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
+    // NOTE: Ornament field removed. Grace notes are now superscript characters.
+    Err(JsValue::from_str("DEPRECATED: Ornament field removed. Use selectionToSuperscript to convert pitches to grace notes."))
 }
 
 // OLD FUNCTIONS REMOVED - Replaced by WASM-First versions above that handle selection internally
@@ -3661,32 +3592,32 @@ mod tests {
         // Test 1: Apply slur from cell 10 to 11 (end=12, exclusive)
         let slur_result = apply_slur_cells(&cells, 10, 12);
         assert_eq!(slur_result.len(), 12, "Should have 12 cells after slur application");
-        assert_eq!(slur_result[10].slur_indicator, crate::models::SlurIndicator::SlurStart,
+        assert!(slur_result[10].is_slur_start(),
                    "Cell 10 should have SlurStart");
-        assert_eq!(slur_result[11].slur_indicator, crate::models::SlurIndicator::SlurEnd,
+        assert!(slur_result[11].is_slur_end(),
                    "Cell 11 should have SlurEnd");
-        assert_eq!(slur_result[9].slur_indicator, crate::models::SlurIndicator::None,
+        assert!(!slur_result[9].has_slur(),
                    "Cell 9 should NOT have slur indicator");
 
         // Test 2: Apply slur with only 1 cell (should not apply)
         let slur_single = apply_slur_cells(&cells, 10, 11);
-        assert_eq!(slur_single[10].slur_indicator, crate::models::SlurIndicator::None,
+        assert!(!slur_single[10].has_slur(),
                    "Single cell should not get a slur (needs at least 2 cells)");
 
         // Test 3: Apply slur across entire 12-cell line
         let slur_all = apply_slur_cells(&cells, 0, 12);
-        assert_eq!(slur_all[0].slur_indicator, crate::models::SlurIndicator::SlurStart,
+        assert!(slur_all[0].is_slur_start(),
                    "Cell 0 should have SlurStart");
-        assert_eq!(slur_all[11].slur_indicator, crate::models::SlurIndicator::SlurEnd,
+        assert!(slur_all[11].is_slur_end(),
                    "Cell 11 should have SlurEnd in full line slur");
 
         // Test 4: Apply slur from cell 9 to 11
         let slur_three = apply_slur_cells(&cells, 9, 12);
-        assert_eq!(slur_three[9].slur_indicator, crate::models::SlurIndicator::SlurStart,
+        assert!(slur_three[9].is_slur_start(),
                    "Cell 9 should have SlurStart");
-        assert_eq!(slur_three[10].slur_indicator, crate::models::SlurIndicator::None,
+        assert!(!slur_three[10].has_slur(),
                    "Cell 10 should NOT have slur (middle cell)");
-        assert_eq!(slur_three[11].slur_indicator, crate::models::SlurIndicator::SlurEnd,
+        assert!(slur_three[11].is_slur_end(),
                    "Cell 11 should have SlurEnd");
     }
 
@@ -3724,23 +3655,23 @@ mod tests {
 
         // Test 1: Apply slur via applyCommand to cells 0-1
         let result1 = apply_command_slur(&cells, 0, 2);
-        assert_eq!(result1[0].slur_indicator, crate::models::SlurIndicator::SlurStart,
+        assert!(result1[0].is_slur_start(),
                    "Cell 0 should have SlurStart after applyCommand");
-        assert_eq!(result1[1].slur_indicator, crate::models::SlurIndicator::SlurEnd,
+        assert!(result1[1].is_slur_end(),
                    "Cell 1 should have SlurEnd after applyCommand");
 
         // Test 2: Toggle slur off
         let result2 = apply_command_slur(&result1, 0, 2);
-        assert_eq!(result2[0].slur_indicator, crate::models::SlurIndicator::None,
+        assert!(!result2[0].has_slur(),
                    "Cell 0 should have None after toggling slur off");
-        assert_eq!(result2[1].slur_indicator, crate::models::SlurIndicator::None,
+        assert!(!result2[1].has_slur(),
                    "Cell 1 should have None after toggling slur off");
 
         // Test 3: Apply slur with exclusive-end (10, 12) for 12-cell array
         let result3 = apply_command_slur(&cells, 10, 12);
-        assert_eq!(result3[10].slur_indicator, crate::models::SlurIndicator::SlurStart,
+        assert!(result3[10].is_slur_start(),
                    "Cell 10 should have SlurStart with exclusive end (10, 12)");
-        assert_eq!(result3[11].slur_indicator, crate::models::SlurIndicator::SlurEnd,
+        assert!(result3[11].is_slur_end(),
                    "Cell 11 should have SlurEnd with exclusive end (10, 12)");
     }
 

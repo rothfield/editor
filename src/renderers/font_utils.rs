@@ -182,6 +182,566 @@ pub fn get_font_config() -> JsValue {
 include!(concat!(env!("OUT_DIR"), "/font_lookup_tables.rs"));
 include!(concat!(env!("OUT_DIR"), "/font_measurement_systems.rs"));
 include!(concat!(env!("OUT_DIR"), "/superscript_tables.rs"));
+include!(concat!(env!("OUT_DIR"), "/beat_element_predicates.rs"));
+
+// ============================================================================
+// GlyphExt - Fluent API for codepoint transformations
+// ============================================================================
+
+use crate::renderers::line_variants::{
+    UnderlineState, OverlineState, get_pua_note_line_variant_codepoint, decode_line_variant,
+    encode_ascii_line_variant,
+};
+
+/// Extension trait for glyph codepoint transformations.
+///
+/// Adds fluent transformation methods directly to `char`. Each method
+/// transforms the codepoint and returns a new `char`. If a transformation
+/// doesn't apply (e.g., `.octave()` on a dash), returns self unchanged.
+///
+/// # Example
+/// ```
+/// use crate::renderers::font_utils::{GlyphExt, glyph_for_pitch};
+/// use crate::models::elements::PitchSystem;
+/// use crate::models::pitch_code::PitchCode;
+/// use crate::renderers::line_variants::UnderlineState;
+///
+/// let ch = glyph_for_pitch(PitchCode::N1, 0, PitchSystem::Number)
+///     .unwrap()
+///     .octave(1)
+///     .underline(UnderlineState::Left)
+///     .superscript(true);
+/// ```
+///
+/// Also aliased as `CharTransform` for compatibility.
+pub trait GlyphExt {
+    /// Set octave (-2 to +2). No-op on non-pitched glyphs.
+    fn octave(self, oct: i8) -> Self;
+
+    /// Set underline state for beat grouping.
+    fn underline(self, state: UnderlineState) -> Self;
+
+    /// Set overline state for slurs.
+    fn overline(self, state: OverlineState) -> Self;
+
+    /// Convert to/from superscript (grace note). Pass `true` to make superscript, `false` to make normal.
+    fn superscript(self, enable: bool) -> Self;
+
+    // Checked variants for debugging/tests
+    /// Like `underline()` but returns `None` if transformation not applicable.
+    fn try_underline(self, state: UnderlineState) -> Option<Self> where Self: Sized;
+
+    /// Like `superscript()` but returns `None` if transformation not applicable.
+    fn try_superscript(self, enable: bool) -> Option<Self> where Self: Sized;
+}
+
+/// Alias for GlyphExt trait (for backward compatibility)
+pub use GlyphExt as CharTransform;
+
+/// Internal decoded representation of a glyph for efficient chained transformations.
+#[derive(Clone, Copy, Debug)]
+struct GlyphParts {
+    /// Base codepoint (without line variants or superscript)
+    base_cp: u32,
+    /// Current line variant index (0-15)
+    line_variant: u8,
+    /// Whether currently a superscript
+    is_super: bool,
+}
+
+impl GlyphParts {
+    /// Decode a char into its parts
+    fn decode(ch: char) -> Self {
+        let cp = ch as u32;
+
+        // Check if superscript (0xF8000+)
+        if is_superscript(cp) {
+            let line_variant = (cp % SUPERSCRIPT_LINE_VARIANTS) as u8;
+            // Get the base (non-superscript) codepoint
+            let base_cp = from_superscript(cp).unwrap_or(cp);
+            return GlyphParts { base_cp, line_variant, is_super: true };
+        }
+
+        // Check if NOTE line variant PUA (0x1A000+)
+        // These encode pitch PUA codepoints with line variants
+        // Formula: line_cp = LINE_BASE + (note_offset × 15) + variant_idx
+        if let Some((base_cp, line_variant)) = Self::decode_note_line_variant(cp) {
+            return GlyphParts { base_cp, line_variant, is_super: false };
+        }
+
+        // Check if ASCII line variant PUA (0xE800-0xEBFF)
+        if let Some(decoded) = decode_line_variant(ch) {
+            let line_variant = line_states_to_variant(decoded.underline, decoded.overline);
+
+            // Try to reconstruct pitch PUA from ASCII base char
+            // Line variants store ASCII chars, but we want to preserve pitch PUA semantics
+            let base_cp = pitch_from_glyph_number(decoded.base_char)
+                .and_then(|(pitch, octave)| {
+                    glyph_for_pitch(pitch, octave, crate::models::elements::PitchSystem::Number)
+                        .map(|c| c as u32)
+                })
+                .or_else(|| pitch_from_glyph_western(decoded.base_char)
+                    .and_then(|(pitch, octave)| {
+                        glyph_for_pitch(pitch, octave, crate::models::elements::PitchSystem::Western)
+                            .map(|c| c as u32)
+                    }))
+                .or_else(|| pitch_from_glyph_sargam(decoded.base_char)
+                    .and_then(|(pitch, octave)| {
+                        glyph_for_pitch(pitch, octave, crate::models::elements::PitchSystem::Sargam)
+                            .map(|c| c as u32)
+                    }))
+                .unwrap_or(decoded.base_char as u32);
+
+            return GlyphParts { base_cp, line_variant, is_super: false };
+        }
+
+        // Plain codepoint (ASCII, base PUA pitch, etc.)
+        GlyphParts { base_cp: cp, line_variant: 0, is_super: false }
+    }
+
+    /// Decode NOTE line variant PUA (0x1A000+)
+    /// Returns (base_pitch_pua_cp, line_variant)
+    fn decode_note_line_variant(cp: u32) -> Option<(u32, u8)> {
+        // NOTE line variant bases and corresponding pitch PUA bases
+        // Formula: line_cp = LINE_BASE + (note_offset × 15) + variant_idx
+        const NUMBER_LINE_BASE: u32 = 0x1A000;
+        const NUMBER_SOURCE_BASE: u32 = 0xE000;
+        const NUMBER_SIZE: u32 = 210;  // 7 chars × 30 variants
+
+        const WESTERN_LINE_BASE: u32 = 0x1B000;
+        const WESTERN_SOURCE_BASE: u32 = 0xE100;
+        const WESTERN_SIZE: u32 = 210;
+
+        const SARGAM_LINE_BASE: u32 = 0x1D000;
+        const SARGAM_SOURCE_BASE: u32 = 0xE300;
+        const SARGAM_SIZE: u32 = 360;  // 12 chars × 30 variants
+
+        const DOREMI_LINE_BASE: u32 = 0x1F000;
+        const DOREMI_SOURCE_BASE: u32 = 0xE500;
+        const DOREMI_SIZE: u32 = 210;
+
+        const VARIANTS_PER_NOTE: u32 = 15;
+
+        // Check each system range
+        let (line_base, source_base, max_notes) = if cp >= NUMBER_LINE_BASE && cp < NUMBER_LINE_BASE + NUMBER_SIZE * VARIANTS_PER_NOTE {
+            (NUMBER_LINE_BASE, NUMBER_SOURCE_BASE, NUMBER_SIZE)
+        } else if cp >= WESTERN_LINE_BASE && cp < WESTERN_LINE_BASE + WESTERN_SIZE * VARIANTS_PER_NOTE {
+            (WESTERN_LINE_BASE, WESTERN_SOURCE_BASE, WESTERN_SIZE)
+        } else if cp >= SARGAM_LINE_BASE && cp < SARGAM_LINE_BASE + SARGAM_SIZE * VARIANTS_PER_NOTE {
+            (SARGAM_LINE_BASE, SARGAM_SOURCE_BASE, SARGAM_SIZE)
+        } else if cp >= DOREMI_LINE_BASE && cp < DOREMI_LINE_BASE + DOREMI_SIZE * VARIANTS_PER_NOTE {
+            (DOREMI_LINE_BASE, DOREMI_SOURCE_BASE, DOREMI_SIZE)
+        } else {
+            return None;
+        };
+
+        let offset = cp - line_base;
+        let note_offset = offset / VARIANTS_PER_NOTE;
+        let variant_idx = (offset % VARIANTS_PER_NOTE) as u8;
+
+        if note_offset >= max_notes {
+            return None;
+        }
+
+        // Convert variant_idx (0-14) to our line_variant (0-15)
+        // The encoding in get_pua_note_line_variant_codepoint is:
+        // 0-2: Underline only (M/L/R)
+        // 3-5: Overline only (M/L/R)
+        // 6-14: Combined (u_idx * 3 + o_idx)
+        let line_variant = Self::note_variant_to_line_variant(variant_idx);
+
+        let base_cp = source_base + note_offset;
+        Some((base_cp, line_variant))
+    }
+
+    /// Convert NOTE line variant encoding to our unified line_variant (0-15)
+    fn note_variant_to_line_variant(variant_idx: u8) -> u8 {
+        // NOTE encoding:
+        // 0 = Middle underline, 1 = Left underline, 2 = Right underline
+        // 3 = Middle overline, 4 = Left overline, 5 = Right overline
+        // 6-14 = Combined (u_idx * 3 + o_idx where u/o are 0=M, 1=L, 2=R)
+        //
+        // Our unified encoding (line_states_to_variant):
+        // 0 = None/None, 1 = L/None, 2 = M/None, 3 = R/None
+        // 4 = None/L, 5 = None/M, 6 = None/R
+        // 7-15 = Combined
+
+        match variant_idx {
+            // Underline only: M=0→2, L=1→1, R=2→3
+            0 => 2,  // Middle underline
+            1 => 1,  // Left underline
+            2 => 3,  // Right underline
+            // Overline only: M=3→5, L=4→4, R=5→6
+            3 => 5,  // Middle overline
+            4 => 4,  // Left overline
+            5 => 6,  // Right overline
+            // Combined: need to map (u_idx, o_idx) to our combined format
+            n if n >= 6 && n <= 14 => {
+                let combined = n - 6;
+                let u_idx = combined / 3;  // 0=M, 1=L, 2=R
+                let o_idx = combined % 3;  // 0=M, 1=L, 2=R
+                // Our combined uses: u_idx: L=0, M=1, R=2 and o_idx: L=0, M=1, R=2
+                // NOTE uses: u_idx: M=0, L=1, R=2 and o_idx: M=0, L=1, R=2
+                let our_u = match u_idx { 0 => 1, 1 => 0, 2 => 2, _ => 0 };  // M→1, L→0, R→2
+                let our_o = match o_idx { 0 => 1, 1 => 0, 2 => 2, _ => 0 };
+                // Our combined formula: 7 + (our_u * 3) + our_o
+                7 + (our_u * 3) + our_o
+            }
+            _ => 0,
+        }
+    }
+
+    /// Encode parts back to a char
+    fn encode(self) -> char {
+        let cp = if self.is_super {
+            // Encode as superscript with line variant
+            let super_cp = get_superscript_glyph(self.base_cp, self.line_variant);
+            // If superscript conversion fails (returns 0), fall back to base
+            if super_cp != 0 { super_cp } else { self.base_cp }
+        } else if self.line_variant != 0 {
+            // Encode with line variant
+            let (underline, overline) = variant_to_line_states(self.line_variant);
+            // Try PUA note encoding first, then ASCII encoding
+            get_pua_note_line_variant_codepoint(self.base_cp, underline, overline)
+                .map(|c| c as u32)
+                .or_else(|| {
+                    // Fall back to ASCII line variant encoding
+                    char::from_u32(self.base_cp)
+                        .and_then(|ch| encode_ascii_line_variant(ch, underline, overline))
+                        .map(|c| c as u32)
+                })
+                .unwrap_or(self.base_cp)
+        } else {
+            // Plain base codepoint
+            self.base_cp
+        };
+
+        char::from_u32(cp).unwrap_or('?')
+    }
+}
+
+impl GlyphExt for char {
+    fn octave(self, oct: i8) -> Self {
+        let parts = GlyphParts::decode(self);
+
+        // Try to get pitch info and change octave
+        if let Some((pitch, _old_oct)) = pitch_from_codepoint(parts.base_cp) {
+            if let Some(new_base) = glyph_for_pitch_from_cp(pitch, oct, parts.base_cp) {
+                let new_parts = GlyphParts {
+                    base_cp: new_base as u32,
+                    line_variant: parts.line_variant,
+                    is_super: parts.is_super,
+                };
+                return new_parts.encode();
+            }
+        }
+
+        // Not applicable - return unchanged
+        self
+    }
+
+    fn underline(self, state: UnderlineState) -> Self {
+        let mut parts = GlyphParts::decode(self);
+        let new_variant = set_underline_in_variant(parts.line_variant, state);
+        parts.line_variant = new_variant;
+        parts.encode()
+    }
+
+    fn overline(self, state: OverlineState) -> Self {
+        let mut parts = GlyphParts::decode(self);
+        let new_variant = set_overline_in_variant(parts.line_variant, state);
+        parts.line_variant = new_variant;
+        parts.encode()
+    }
+
+    fn superscript(self, enable: bool) -> Self {
+        let mut parts = GlyphParts::decode(self);
+        parts.is_super = enable;
+        parts.encode()
+    }
+
+    fn try_underline(self, state: UnderlineState) -> Option<Self> {
+        let parts = GlyphParts::decode(self);
+        let new_variant = set_underline_in_variant(parts.line_variant, state);
+
+        // Check if the transformation actually works
+        let new_parts = GlyphParts {
+            base_cp: parts.base_cp,
+            line_variant: new_variant,
+            is_super: parts.is_super,
+        };
+        let result = new_parts.encode();
+
+        // Verify the result encodes the expected state
+        let check = GlyphParts::decode(result);
+        if check.line_variant == new_variant {
+            Some(result)
+        } else {
+            None
+        }
+    }
+
+    fn try_superscript(self, enable: bool) -> Option<Self> {
+        let parts = GlyphParts::decode(self);
+        let new_parts = GlyphParts {
+            base_cp: parts.base_cp,
+            line_variant: parts.line_variant,
+            is_super: enable,
+        };
+        let result = new_parts.encode();
+
+        // Verify the result encodes the expected state
+        let check = GlyphParts::decode(result);
+        if check.is_super == enable {
+            Some(result)
+        } else {
+            None
+        }
+    }
+}
+
+/// Helper: get pitch info from a codepoint
+fn pitch_from_codepoint(cp: u32) -> Option<(crate::models::pitch_code::PitchCode, i8)> {
+    let ch = char::from_u32(cp)?;
+    // Try each system
+    pitch_from_glyph_number(ch)
+        .or_else(|| pitch_from_glyph_western(ch))
+        .or_else(|| pitch_from_glyph_sargam(ch))
+}
+
+/// Helper: get glyph for pitch, inferring system from source codepoint
+fn glyph_for_pitch_from_cp(pitch: crate::models::pitch_code::PitchCode, octave: i8, source_cp: u32) -> Option<char> {
+    // Infer system from source codepoint range
+    let system = if source_cp >= 0xE000 && source_cp < 0xE100 {
+        crate::models::elements::PitchSystem::Number
+    } else if source_cp >= 0xE100 && source_cp < 0xE300 {
+        crate::models::elements::PitchSystem::Western
+    } else if source_cp >= 0xE300 && source_cp < 0xE500 {
+        crate::models::elements::PitchSystem::Sargam
+    } else {
+        crate::models::elements::PitchSystem::Number
+    };
+    glyph_for_pitch(pitch, octave, system)
+}
+
+/// Helper: set underline in line variant byte
+fn set_underline_in_variant(variant: u8, underline: UnderlineState) -> u8 {
+    let (_, overline) = variant_to_line_states(variant);
+    line_states_to_variant(underline, overline)
+}
+
+/// Helper: set overline in line variant byte
+fn set_overline_in_variant(variant: u8, overline: OverlineState) -> u8 {
+    let (underline, _) = variant_to_line_states(variant);
+    line_states_to_variant(underline, overline)
+}
+
+/// Convert line variant index (0-15) to (UnderlineState, OverlineState)
+fn variant_to_line_states(variant: u8) -> (UnderlineState, OverlineState) {
+    match variant {
+        0 => (UnderlineState::None, OverlineState::None),
+        1 => (UnderlineState::Left, OverlineState::None),
+        2 => (UnderlineState::Middle, OverlineState::None),
+        3 => (UnderlineState::Right, OverlineState::None),
+        4 => (UnderlineState::None, OverlineState::Left),
+        5 => (UnderlineState::None, OverlineState::Middle),
+        6 => (UnderlineState::None, OverlineState::Right),
+        7 => (UnderlineState::Left, OverlineState::Left),
+        8 => (UnderlineState::Left, OverlineState::Middle),
+        9 => (UnderlineState::Left, OverlineState::Right),
+        10 => (UnderlineState::Middle, OverlineState::Left),
+        11 => (UnderlineState::Middle, OverlineState::Middle),
+        12 => (UnderlineState::Middle, OverlineState::Right),
+        13 => (UnderlineState::Right, OverlineState::Left),
+        14 => (UnderlineState::Right, OverlineState::Middle),
+        15 => (UnderlineState::Right, OverlineState::Right),
+        _ => (UnderlineState::None, OverlineState::None),
+    }
+}
+
+/// Convert (UnderlineState, OverlineState) to line variant index (0-15)
+fn line_states_to_variant(underline: UnderlineState, overline: OverlineState) -> u8 {
+    match (underline, overline) {
+        (UnderlineState::None, OverlineState::None) => 0,
+        (UnderlineState::Left, OverlineState::None) => 1,
+        (UnderlineState::Middle, OverlineState::None) => 2,
+        (UnderlineState::Right, OverlineState::None) => 3,
+        (UnderlineState::None, OverlineState::Left) => 4,
+        (UnderlineState::None, OverlineState::Middle) => 5,
+        (UnderlineState::None, OverlineState::Right) => 6,
+        (UnderlineState::Left, OverlineState::Left) => 7,
+        (UnderlineState::Left, OverlineState::Middle) => 8,
+        (UnderlineState::Left, OverlineState::Right) => 9,
+        (UnderlineState::Middle, OverlineState::Left) => 10,
+        (UnderlineState::Middle, OverlineState::Middle) => 11,
+        (UnderlineState::Middle, OverlineState::Right) => 12,
+        (UnderlineState::Right, OverlineState::Left) => 13,
+        (UnderlineState::Right, OverlineState::Middle) => 14,
+        (UnderlineState::Right, OverlineState::Right) => 15,
+    }
+}
+
+// ============================================================================
+// CodepointTransform - Bit manipulation trait for u32 codepoints
+// ============================================================================
+
+/// Extension trait for direct bit manipulation on u32 codepoints.
+///
+/// This provides efficient operations for reading/modifying line variant bits
+/// without going through char conversion. Used by the slur algorithm:
+///
+/// ```rust
+/// for cell in &mut self.cells {
+///     if cell.codepoint.slur_left() {
+///         in_slur = true;
+///     }
+///     if !cell.codepoint.slur_left() && !cell.codepoint.slur_right() {
+///         cell.codepoint = cell.codepoint.overline_mid(in_slur);
+///     }
+///     if cell.codepoint.slur_right() {
+///         in_slur = false;
+///     }
+/// }
+/// ```
+///
+/// # Design
+/// - Slur markers (Left/Right overline) are durable - set once
+/// - Middle overline is derived - recalculated on each redraw
+/// - No String allocation, direct codepoint math
+pub trait CodepointTransform {
+    /// Check if this codepoint has overline Left (slur start marker)
+    fn slur_left(self) -> bool;
+
+    /// Check if this codepoint has overline Right (slur end marker)
+    fn slur_right(self) -> bool;
+
+    /// Set or clear overline Middle based on `in_slur` state
+    /// Returns new codepoint with middle bit modified
+    fn overline_mid(self, set: bool) -> Self;
+
+    /// Check if this codepoint has underline Left (beat start)
+    fn beat_left(self) -> bool;
+
+    /// Check if this codepoint has underline Right (beat end)
+    fn beat_right(self) -> bool;
+
+    /// Set or clear underline Middle based on `in_beat` state
+    fn underline_mid(self, set: bool) -> Self;
+
+    /// Get the current overline state
+    fn get_overline(self) -> OverlineState;
+
+    /// Get the current underline state
+    fn get_underline(self) -> UnderlineState;
+
+    /// Set overline state directly
+    fn set_overline(self, state: OverlineState) -> Self;
+
+    /// Set underline state directly
+    fn set_underline(self, state: UnderlineState) -> Self;
+
+    /// Strip all line variants (reset to base codepoint)
+    fn strip_lines(self) -> Self;
+
+    /// Convert to char for display
+    fn to_char(self) -> char;
+}
+
+impl CodepointTransform for u32 {
+    fn slur_left(self) -> bool {
+        self.get_overline() == OverlineState::Left
+    }
+
+    fn slur_right(self) -> bool {
+        self.get_overline() == OverlineState::Right
+    }
+
+    fn overline_mid(self, set: bool) -> Self {
+        let current = self.get_overline();
+        // Only modify if current state is None or Middle
+        // Don't touch Left/Right (durable markers)
+        if current == OverlineState::Left || current == OverlineState::Right {
+            self
+        } else {
+            let new_state = if set { OverlineState::Middle } else { OverlineState::None };
+            self.set_overline(new_state)
+        }
+    }
+
+    fn beat_left(self) -> bool {
+        self.get_underline() == UnderlineState::Left
+    }
+
+    fn beat_right(self) -> bool {
+        self.get_underline() == UnderlineState::Right
+    }
+
+    fn underline_mid(self, set: bool) -> Self {
+        let current = self.get_underline();
+        // Only modify if current state is None or Middle
+        // Don't touch Left/Right (durable markers)
+        if current == UnderlineState::Left || current == UnderlineState::Right {
+            self
+        } else {
+            let new_state = if set { UnderlineState::Middle } else { UnderlineState::None };
+            self.set_underline(new_state)
+        }
+    }
+
+    fn get_overline(self) -> OverlineState {
+        if let Some(ch) = char::from_u32(self) {
+            let parts = GlyphParts::decode(ch);
+            let (_, overline) = variant_to_line_states(parts.line_variant);
+            overline
+        } else {
+            OverlineState::None
+        }
+    }
+
+    fn get_underline(self) -> UnderlineState {
+        if let Some(ch) = char::from_u32(self) {
+            let parts = GlyphParts::decode(ch);
+            let (underline, _) = variant_to_line_states(parts.line_variant);
+            underline
+        } else {
+            UnderlineState::None
+        }
+    }
+
+    fn set_overline(self, state: OverlineState) -> Self {
+        if let Some(ch) = char::from_u32(self) {
+            ch.overline(state) as u32
+        } else {
+            self
+        }
+    }
+
+    fn set_underline(self, state: UnderlineState) -> Self {
+        if let Some(ch) = char::from_u32(self) {
+            ch.underline(state) as u32
+        } else {
+            self
+        }
+    }
+
+    fn strip_lines(self) -> Self {
+        if let Some(ch) = char::from_u32(self) {
+            let parts = GlyphParts::decode(ch);
+            let stripped = GlyphParts {
+                base_cp: parts.base_cp,
+                line_variant: 0,
+                is_super: parts.is_super,
+            };
+            stripped.encode() as u32
+        } else {
+            self
+        }
+    }
+
+    fn to_char(self) -> char {
+        char::from_u32(self).unwrap_or('?')
+    }
+}
 
 /// Get the glyph character for a pitch with octave shift
 ///
@@ -271,6 +831,158 @@ pub fn pitch_from_glyph(
 }
 
 // ============================================================================
+// UNIFIED CHARACTER DECODING
+// ============================================================================
+
+/// Fully decoded character information
+///
+/// Contains all information that can be extracted from any character:
+/// - ASCII input characters ('1', 'S', '-', etc.)
+/// - Pitch PUA glyphs (with octave variants)
+/// - Line variant PUA glyphs (with underline/overline)
+#[derive(Clone, Debug, PartialEq)]
+pub struct DecodedChar {
+    /// The underlying ASCII character ('1', '2', 'S', '-', ' ', etc.)
+    pub base_char: char,
+
+    /// Pitch code if this is a pitched character
+    pub pitch_code: Option<crate::models::pitch_code::PitchCode>,
+
+    /// Octave offset (-2 to +2), 0 for non-pitched or base octave
+    pub octave: i8,
+
+    /// Underline state (for beat grouping)
+    pub underline: UnderlineState,
+
+    /// Overline state (for slurs)
+    pub overline: OverlineState,
+}
+
+impl DecodedChar {
+    /// Create a new DecodedChar with default values
+    pub fn new(base_char: char) -> Self {
+        Self {
+            base_char,
+            pitch_code: None,
+            octave: 0,
+            underline: UnderlineState::None,
+            overline: OverlineState::None,
+        }
+    }
+
+    /// Check if this is a pitched character
+    pub fn is_pitched(&self) -> bool {
+        self.pitch_code.is_some()
+    }
+
+    /// Check if this has any line decorations
+    pub fn has_lines(&self) -> bool {
+        self.underline != UnderlineState::None || self.overline != OverlineState::None
+    }
+}
+
+/// Decode any character into its full component information
+///
+/// This is the single source of truth for understanding what any character
+/// (ASCII, Pitch PUA, or Line Variant PUA) represents.
+///
+/// # Arguments
+/// * `ch` - Any character to decode
+/// * `pitch_system` - The pitch system context for interpreting pitch characters
+///
+/// # Returns
+/// A `DecodedChar` with all extractable information
+///
+/// # Examples
+/// ```
+/// use crate::renderers::font_utils::decode_char;
+/// use crate::models::elements::PitchSystem;
+///
+/// // ASCII '1' → N1 at octave 0, no lines
+/// let d = decode_char('1', PitchSystem::Number);
+/// assert_eq!(d.base_char, '1');
+/// assert!(d.pitch_code.is_some());
+/// assert_eq!(d.octave, 0);
+///
+/// // Line variant PUA → base char with underline
+/// let d = decode_char('\u{E805}', PitchSystem::Number);
+/// assert_eq!(d.base_char, '2');
+/// assert!(d.has_lines());
+/// ```
+pub fn decode_char(
+    ch: char,
+    pitch_system: crate::models::elements::PitchSystem,
+) -> DecodedChar {
+    // 1. Check if it's a line variant PUA (0xE800-0xEBFF)
+    if let Some(decoded) = decode_line_variant(ch) {
+        // Line variant found - extract base char and line states
+        // Then try to get pitch info from the base char
+        let pitch_code_opt = pitch_from_glyph(decoded.base_char, pitch_system)
+            .map(|(pc, _)| pc);
+
+        return DecodedChar {
+            base_char: decoded.base_char,
+            pitch_code: pitch_code_opt,
+            octave: 0, // Line variants don't encode octave (known limitation)
+            underline: decoded.underline,
+            overline: decoded.overline,
+        };
+    }
+
+    // 2. Check if it's a pitch PUA glyph (0xE000-0xE7FF range, system-dependent)
+    if let Some((pitch_code, octave)) = pitch_from_glyph(ch, pitch_system) {
+        // Pitch PUA - has pitch + octave, no lines
+        // Derive base char from pitch code
+        let base_char = pitch_code_to_base_char(pitch_code, pitch_system);
+
+        return DecodedChar {
+            base_char,
+            pitch_code: Some(pitch_code),
+            octave,
+            underline: UnderlineState::None,
+            overline: OverlineState::None,
+        };
+    }
+
+    // 3. Plain ASCII or unknown - try to parse as pitch
+    let pitch_info = pitch_from_glyph(ch, pitch_system);
+
+    DecodedChar {
+        base_char: ch,
+        pitch_code: pitch_info.map(|(pc, _)| pc),
+        octave: pitch_info.map(|(_, o)| o).unwrap_or(0),
+        underline: UnderlineState::None,
+        overline: OverlineState::None,
+    }
+}
+
+/// Convert a PitchCode back to its base ASCII character
+fn pitch_code_to_base_char(
+    pitch_code: crate::models::pitch_code::PitchCode,
+    pitch_system: crate::models::elements::PitchSystem,
+) -> char {
+    let degree = pitch_code.degree();
+    match pitch_system {
+        crate::models::elements::PitchSystem::Number => {
+            char::from_digit(degree as u32, 10).unwrap_or('?')
+        }
+        crate::models::elements::PitchSystem::Western => {
+            match degree {
+                1 => 'C', 2 => 'D', 3 => 'E', 4 => 'F',
+                5 => 'G', 6 => 'A', 7 => 'B', _ => '?',
+            }
+        }
+        crate::models::elements::PitchSystem::Sargam => {
+            match degree {
+                1 => 'S', 2 => 'R', 3 => 'G', 4 => 'M',
+                5 => 'P', 6 => 'D', 7 => 'N', _ => '?',
+            }
+        }
+        _ => char::from_digit(degree as u32, 10).unwrap_or('?'),
+    }
+}
+
+// ============================================================================
 // SUPERSCRIPT GLYPH API FOR ORNAMENT RENDERING
 // ============================================================================
 
@@ -322,6 +1034,100 @@ pub fn get_superscript_overline(cp: u32) -> u8 {
     superscript_overline(cp)
         .map(|o| o as u8)
         .unwrap_or(255)
+}
+
+// ============================================================================
+// SUPERSCRIPT ↔ NORMAL CONVERSION API
+// ============================================================================
+
+/// Convert a normal pitch codepoint to its superscript equivalent
+///
+/// This is used when the user presses Alt+O to convert selected pitches to grace notes.
+/// The superscript codepoint encodes the same pitch information but renders at 50% scale.
+///
+/// # Arguments
+/// * `normal_cp` - Normal pitch codepoint (ASCII 0x20-0x7E or PUA 0xE000+)
+///
+/// # Returns
+/// * `Some(superscript_cp)` - The superscript codepoint (0xF8000+)
+/// * `None` - If the codepoint cannot be converted
+///
+/// # Example
+/// ```
+/// // Normal "1" (0xE000) → Superscript "1" (0xF8600)
+/// assert_eq!(to_superscript(0xE000), Some(0xF8600));
+/// ```
+pub fn to_superscript(normal_cp: u32) -> Option<u32> {
+    superscript_glyph(normal_cp, SuperscriptOverline::None)
+        .map(|c| c as u32)
+}
+
+/// Convert a superscript codepoint back to its normal equivalent
+///
+/// This is the inverse of `to_superscript`. Used when removing grace note status.
+///
+/// # Arguments
+/// * `super_cp` - Superscript codepoint (0xF8000+)
+///
+/// # Returns
+/// * `Some(normal_cp)` - The normal pitch codepoint
+/// * `None` - If not a valid superscript codepoint
+pub fn from_superscript(super_cp: u32) -> Option<u32> {
+    if !is_superscript(super_cp) {
+        return None;
+    }
+
+    // Remove line variant (last 4 bits)
+    let base_offset = (super_cp % SUPERSCRIPT_LINE_VARIANTS) as u32;
+    let without_variant = super_cp - base_offset;
+
+    // Determine which system and convert back
+    if without_variant >= SUPERSCRIPT_ASCII_BASE && without_variant < SUPERSCRIPT_NUMBER_BASE {
+        // ASCII superscript
+        let source_offset = (without_variant - SUPERSCRIPT_ASCII_BASE) / SUPERSCRIPT_LINE_VARIANTS;
+        Some(0x20 + source_offset)
+    } else if without_variant >= SUPERSCRIPT_NUMBER_BASE && without_variant < SUPERSCRIPT_WESTERN_BASE {
+        // Number system
+        let source_offset = (without_variant - SUPERSCRIPT_NUMBER_BASE) / SUPERSCRIPT_LINE_VARIANTS;
+        Some(0xE000 + source_offset)
+    } else if without_variant >= SUPERSCRIPT_WESTERN_BASE && without_variant < SUPERSCRIPT_SARGAM_BASE {
+        // Western system
+        let source_offset = (without_variant - SUPERSCRIPT_WESTERN_BASE) / SUPERSCRIPT_LINE_VARIANTS;
+        Some(0xE100 + source_offset)
+    } else if without_variant >= SUPERSCRIPT_SARGAM_BASE && without_variant < SUPERSCRIPT_DOREMI_BASE {
+        // Sargam system
+        let source_offset = (without_variant - SUPERSCRIPT_SARGAM_BASE) / SUPERSCRIPT_LINE_VARIANTS;
+        Some(0xE300 + source_offset)
+    } else if without_variant >= SUPERSCRIPT_DOREMI_BASE {
+        // Doremi system
+        let source_offset = (without_variant - SUPERSCRIPT_DOREMI_BASE) / SUPERSCRIPT_LINE_VARIANTS;
+        Some(0xE500 + source_offset)
+    } else {
+        None
+    }
+}
+
+/// Convert a character to superscript (WASM export)
+///
+/// Takes a normal character and returns its superscript codepoint.
+/// Returns 0 if conversion not possible.
+#[wasm_bindgen(js_name = toSuperscript)]
+pub fn to_superscript_wasm(normal_cp: u32) -> u32 {
+    to_superscript(normal_cp).unwrap_or(0)
+}
+
+/// Convert a superscript character back to normal (WASM export)
+///
+/// Takes a superscript codepoint and returns the normal codepoint.
+/// Returns 0 if not a valid superscript.
+#[wasm_bindgen(js_name = fromSuperscript)]
+pub fn from_superscript_wasm(super_cp: u32) -> u32 {
+    from_superscript(super_cp).unwrap_or(0)
+}
+
+/// Check if a character is a superscript (grace note) - for use in IR builder
+pub fn is_grace_note_codepoint(cp: u32) -> bool {
+    is_superscript(cp)
 }
 
 #[cfg(test)]
@@ -513,5 +1319,518 @@ mod tests {
 
         let invalid = get_superscript_glyph(0x31, 20); // Invalid line variant (max is 15)
         assert_eq!(invalid, 0);
+    }
+
+    // ============================================================================
+    // DECODE_CHAR TESTS
+    // ============================================================================
+
+    #[test]
+    fn test_decode_char_ascii_pitch() {
+        // ASCII '1' should decode to N1 at octave 0, no lines
+        let d = decode_char('1', PitchSystem::Number);
+        assert_eq!(d.base_char, '1');
+        assert_eq!(d.pitch_code, Some(PitchCode::N1));
+        assert_eq!(d.octave, 0);
+        assert_eq!(d.underline, UnderlineState::None);
+        assert_eq!(d.overline, OverlineState::None);
+        assert!(d.is_pitched());
+        assert!(!d.has_lines());
+    }
+
+    #[test]
+    fn test_decode_char_pitch_pua_with_octave() {
+        // Pitch PUA for N1 at octave +1 should decode correctly
+        let glyph = glyph_for_pitch(PitchCode::N1, 1, PitchSystem::Number).unwrap();
+        let d = decode_char(glyph, PitchSystem::Number);
+        assert_eq!(d.base_char, '1');
+        assert_eq!(d.pitch_code, Some(PitchCode::N1));
+        assert_eq!(d.octave, 1);
+        assert_eq!(d.underline, UnderlineState::None);
+        assert_eq!(d.overline, OverlineState::None);
+    }
+
+    #[test]
+    fn test_decode_char_line_variant_underline() {
+        use crate::renderers::line_variants::get_line_variant_codepoint;
+
+        // Line variant for '1' with underline middle
+        let line_char = get_line_variant_codepoint('1', UnderlineState::Middle, OverlineState::None)
+            .unwrap();
+        let d = decode_char(line_char, PitchSystem::Number);
+
+        assert_eq!(d.base_char, '1');
+        assert_eq!(d.pitch_code, Some(PitchCode::N1));
+        assert_eq!(d.octave, 0); // Line variants don't preserve octave
+        assert_eq!(d.underline, UnderlineState::Middle);
+        assert_eq!(d.overline, OverlineState::None);
+        assert!(d.has_lines());
+    }
+
+    #[test]
+    fn test_decode_char_line_variant_overline() {
+        use crate::renderers::line_variants::get_line_variant_codepoint;
+
+        // Line variant for '2' with overline left
+        let line_char = get_line_variant_codepoint('2', UnderlineState::None, OverlineState::Left)
+            .unwrap();
+        let d = decode_char(line_char, PitchSystem::Number);
+
+        assert_eq!(d.base_char, '2');
+        assert_eq!(d.pitch_code, Some(PitchCode::N2));
+        assert_eq!(d.underline, UnderlineState::None);
+        assert_eq!(d.overline, OverlineState::Left);
+    }
+
+    #[test]
+    fn test_decode_char_line_variant_combined() {
+        use crate::renderers::line_variants::get_line_variant_codepoint;
+
+        // Line variant with both underline and overline
+        let line_char = get_line_variant_codepoint('3', UnderlineState::Left, OverlineState::Right)
+            .unwrap();
+        let d = decode_char(line_char, PitchSystem::Number);
+
+        assert_eq!(d.base_char, '3');
+        assert_eq!(d.pitch_code, Some(PitchCode::N3));
+        assert_eq!(d.underline, UnderlineState::Left);
+        assert_eq!(d.overline, OverlineState::Right);
+    }
+
+    #[test]
+    fn test_decode_char_non_pitched() {
+        // Dash should decode with no pitch
+        let d = decode_char('-', PitchSystem::Number);
+        assert_eq!(d.base_char, '-');
+        assert_eq!(d.pitch_code, None);
+        assert_eq!(d.octave, 0);
+        assert!(!d.is_pitched());
+
+        // Space
+        let d = decode_char(' ', PitchSystem::Number);
+        assert_eq!(d.base_char, ' ');
+        assert_eq!(d.pitch_code, None);
+    }
+
+    #[test]
+    fn test_decode_char_unknown() {
+        // Unknown character should return as-is
+        let d = decode_char('x', PitchSystem::Number);
+        assert_eq!(d.base_char, 'x');
+        assert_eq!(d.pitch_code, None);
+        assert_eq!(d.octave, 0);
+        assert_eq!(d.underline, UnderlineState::None);
+        assert_eq!(d.overline, OverlineState::None);
+    }
+
+    #[test]
+    fn test_decode_char_sargam() {
+        // Test with Sargam system
+        let d = decode_char('S', PitchSystem::Sargam);
+        assert_eq!(d.base_char, 'S');
+        assert!(d.pitch_code.is_some());
+        assert_eq!(d.octave, 0);
+    }
+
+    #[test]
+    fn test_decode_char_line_variant_dash() {
+        use crate::renderers::line_variants::get_line_variant_codepoint;
+
+        // Line variant for dash (non-pitched) with underline
+        let line_char = get_line_variant_codepoint('-', UnderlineState::Middle, OverlineState::None)
+            .unwrap();
+        let d = decode_char(line_char, PitchSystem::Number);
+
+        assert_eq!(d.base_char, '-');
+        assert_eq!(d.pitch_code, None); // Dash is not pitched
+        assert_eq!(d.underline, UnderlineState::Middle);
+        assert!(!d.is_pitched());
+        assert!(d.has_lines());
+    }
+
+    // ============================================================================
+    // SUPERSCRIPT CONVERSION TESTS
+    // ============================================================================
+
+    #[test]
+    fn test_to_superscript_number_system() {
+        // Number "1" at base octave (0xE000) → superscript (0xF8600)
+        let result = to_superscript(0xE000);
+        assert_eq!(result, Some(0xF8600));
+    }
+
+    #[test]
+    fn test_to_superscript_ascii() {
+        // ASCII '1' (0x31) → superscript ASCII
+        let result = to_superscript(0x31);
+        assert!(result.is_some());
+        let cp = result.unwrap();
+        assert!(cp >= 0xF8000 && cp < 0xF8600); // ASCII superscript range
+    }
+
+    #[test]
+    fn test_from_superscript_number_system() {
+        // Superscript 0xF8600 → normal 0xE000
+        let result = from_superscript(0xF8600);
+        assert_eq!(result, Some(0xE000));
+    }
+
+    #[test]
+    fn test_from_superscript_ascii() {
+        // First convert to superscript, then back
+        let original = 0x31; // '1'
+        let super_cp = to_superscript(original).unwrap();
+        let back = from_superscript(super_cp);
+        assert_eq!(back, Some(original));
+    }
+
+    #[test]
+    fn test_superscript_round_trip_number() {
+        // Test round-trip for all number system pitches
+        for offset in 0..(7 * 30) {
+            let normal = 0xE000 + offset;
+            if let Some(super_cp) = to_superscript(normal) {
+                let back = from_superscript(super_cp);
+                assert_eq!(back, Some(normal), "Round-trip failed for 0x{:X}", normal);
+            }
+        }
+    }
+
+    #[test]
+    fn test_superscript_round_trip_western() {
+        // Test round-trip for Western system
+        for offset in 0..(7 * 30) {
+            let normal = 0xE100 + offset;
+            if let Some(super_cp) = to_superscript(normal) {
+                let back = from_superscript(super_cp);
+                assert_eq!(back, Some(normal), "Round-trip failed for 0x{:X}", normal);
+            }
+        }
+    }
+
+    #[test]
+    fn test_is_grace_note_codepoint() {
+        // Superscript codepoints are grace notes
+        assert!(is_grace_note_codepoint(0xF8600));
+        assert!(is_grace_note_codepoint(0xF8000));
+
+        // Normal codepoints are not grace notes
+        assert!(!is_grace_note_codepoint(0xE000));
+        assert!(!is_grace_note_codepoint(0x31));
+    }
+
+    #[test]
+    fn test_from_superscript_invalid() {
+        // Non-superscript codepoints should return None
+        assert_eq!(from_superscript(0xE000), None);
+        assert_eq!(from_superscript(0x31), None);
+        assert_eq!(from_superscript(0), None);
+    }
+
+    // ============================================================================
+    // GLYPH_EXT TRAIT TESTS
+    // ============================================================================
+
+    #[test]
+    fn test_glyph_ext_underline_idempotence() {
+        // ch.underline(X).underline(X) == ch.underline(X)
+        let ch = glyph_for_pitch(PitchCode::N1, 0, PitchSystem::Number).unwrap();
+
+        let once = ch.underline(UnderlineState::Left);
+        let twice = ch.underline(UnderlineState::Left).underline(UnderlineState::Left);
+        assert_eq!(once, twice, "Underline should be idempotent");
+
+        let once_mid = ch.underline(UnderlineState::Middle);
+        let twice_mid = ch.underline(UnderlineState::Middle).underline(UnderlineState::Middle);
+        assert_eq!(once_mid, twice_mid, "Underline middle should be idempotent");
+    }
+
+    #[test]
+    fn test_glyph_ext_superscript_idempotence() {
+        // ch.superscript(true).superscript(true) == ch.superscript(true)
+        let ch = glyph_for_pitch(PitchCode::N1, 0, PitchSystem::Number).unwrap();
+
+        let once = ch.superscript(true);
+        let twice = ch.superscript(true).superscript(true);
+        assert_eq!(once, twice, "Superscript should be idempotent");
+    }
+
+    #[test]
+    fn test_glyph_ext_superscript_toggle() {
+        // ch.superscript(true).superscript(false) returns to original
+        let ch = glyph_for_pitch(PitchCode::N1, 0, PitchSystem::Number).unwrap();
+
+        let super_then_normal = ch.superscript(true).superscript(false);
+        assert_eq!(ch, super_then_normal, "Superscript should toggle back to original");
+    }
+
+    #[test]
+    fn test_glyph_ext_underline_remove() {
+        // ch.underline(X).underline(None) removes underline
+        let ch = glyph_for_pitch(PitchCode::N1, 0, PitchSystem::Number).unwrap();
+
+        let with_underline = ch.underline(UnderlineState::Left);
+        let removed = with_underline.underline(UnderlineState::None);
+        assert_eq!(ch, removed, "Underline None should remove underline");
+    }
+
+    #[test]
+    fn test_glyph_ext_order_independence_underline_overline() {
+        // ch.underline(X).overline(Y) == ch.overline(Y).underline(X)
+        let ch = glyph_for_pitch(PitchCode::N1, 0, PitchSystem::Number).unwrap();
+
+        let under_over = ch.underline(UnderlineState::Left).overline(OverlineState::Middle);
+        let over_under = ch.overline(OverlineState::Middle).underline(UnderlineState::Left);
+        assert_eq!(under_over, over_under, "Underline and overline should commute");
+    }
+
+    #[test]
+    fn test_glyph_ext_order_independence_superscript_underline() {
+        // ch.superscript(true).underline(X) == ch.underline(X).superscript(true)
+        let ch = glyph_for_pitch(PitchCode::N1, 0, PitchSystem::Number).unwrap();
+
+        let super_under = ch.superscript(true).underline(UnderlineState::Left);
+        let under_super = ch.underline(UnderlineState::Left).superscript(true);
+        assert_eq!(super_under, under_super, "Superscript and underline should commute");
+    }
+
+    #[test]
+    fn test_glyph_ext_order_independence_triple() {
+        // All three transforms should commute
+        let ch = glyph_for_pitch(PitchCode::N1, 0, PitchSystem::Number).unwrap();
+
+        let result1 = ch.underline(UnderlineState::Left).overline(OverlineState::Right).superscript(true);
+        let result2 = ch.superscript(true).underline(UnderlineState::Left).overline(OverlineState::Right);
+        let result3 = ch.overline(OverlineState::Right).superscript(true).underline(UnderlineState::Left);
+
+        assert_eq!(result1, result2, "All transforms should commute (1==2)");
+        assert_eq!(result2, result3, "All transforms should commute (2==3)");
+    }
+
+    #[test]
+    fn test_glyph_ext_roundtrip_decode_encode() {
+        // For any transformed glyph, decode→encode should preserve it
+        let ch = glyph_for_pitch(PitchCode::N1, 0, PitchSystem::Number).unwrap();
+
+        // Transform with multiple operations
+        let transformed = ch
+            .underline(UnderlineState::Left)
+            .overline(OverlineState::Middle)
+            .superscript(true);
+
+        // Decode and re-encode
+        let parts = GlyphParts::decode(transformed);
+        let re_encoded = parts.encode();
+
+        assert_eq!(transformed, re_encoded, "Decode→encode should preserve glyph");
+    }
+
+    #[test]
+    fn test_glyph_ext_non_pitch_no_panic() {
+        // Non-pitched glyphs (dash, space) should not panic
+        let dash = '-';
+        let space = ' ';
+
+        // These should all return self unchanged (no-op)
+        assert_eq!(dash.octave(1), dash);
+        assert_eq!(space.octave(-1), space);
+
+        // Underline/overline might work on some chars
+        let _ = dash.underline(UnderlineState::Left);
+        let _ = space.superscript(true);
+    }
+
+    #[test]
+    fn test_glyph_ext_checked_variants() {
+        // try_superscript should return Some for valid transforms
+        let ch = glyph_for_pitch(PitchCode::N1, 0, PitchSystem::Number).unwrap();
+
+        let result = ch.try_superscript(true);
+        assert!(result.is_some(), "try_superscript should succeed on pitch glyph");
+
+        // Verify the result is actually a superscript
+        let super_ch = result.unwrap();
+        assert!(is_superscript(super_ch as u32), "Result should be a superscript codepoint");
+    }
+
+    #[test]
+    fn test_glyph_ext_all_pitches_roundtrip() {
+        // Test roundtrip for all natural pitches with transforms
+        for pitch_code in [
+            PitchCode::N1, PitchCode::N2, PitchCode::N3, PitchCode::N4,
+            PitchCode::N5, PitchCode::N6, PitchCode::N7,
+        ] {
+            let ch = glyph_for_pitch(pitch_code, 0, PitchSystem::Number).unwrap();
+
+            // Apply transforms
+            let transformed = ch
+                .underline(UnderlineState::Middle)
+                .superscript(true);
+
+            // Decode and verify state
+            let parts = GlyphParts::decode(transformed);
+            assert!(parts.is_super, "Should be superscript for {:?}", pitch_code);
+            assert_eq!(parts.line_variant, 2, "Should have middle underline for {:?}", pitch_code);
+        }
+    }
+
+    // ============================================================================
+    // CODEPOINT_TRANSFORM TRAIT TESTS
+    // ============================================================================
+
+    #[test]
+    fn test_codepoint_transform_slur_left() {
+        use super::CodepointTransform;
+
+        let ch = glyph_for_pitch(PitchCode::N1, 0, PitchSystem::Number).unwrap();
+        let cp = ch as u32;
+
+        // Base codepoint should not be a slur
+        assert!(!cp.slur_left());
+        assert!(!cp.slur_right());
+
+        // Set overline Left (slur start)
+        let with_slur_start = cp.set_overline(OverlineState::Left);
+        assert!(with_slur_start.slur_left());
+        assert!(!with_slur_start.slur_right());
+
+        // Set overline Right (slur end)
+        let with_slur_end = cp.set_overline(OverlineState::Right);
+        assert!(!with_slur_end.slur_left());
+        assert!(with_slur_end.slur_right());
+    }
+
+    #[test]
+    fn test_codepoint_transform_overline_mid() {
+        use super::CodepointTransform;
+
+        let ch = glyph_for_pitch(PitchCode::N1, 0, PitchSystem::Number).unwrap();
+        let cp = ch as u32;
+
+        // Set middle overline
+        let with_middle = cp.overline_mid(true);
+        assert_eq!(with_middle.get_overline(), OverlineState::Middle);
+
+        // Clear middle overline
+        let without_middle = with_middle.overline_mid(false);
+        assert_eq!(without_middle.get_overline(), OverlineState::None);
+
+        // overline_mid should NOT change Left/Right markers
+        let with_left = cp.set_overline(OverlineState::Left);
+        let still_left = with_left.overline_mid(true);
+        assert_eq!(still_left.get_overline(), OverlineState::Left, "overline_mid should not change Left");
+
+        let with_right = cp.set_overline(OverlineState::Right);
+        let still_right = with_right.overline_mid(false);
+        assert_eq!(still_right.get_overline(), OverlineState::Right, "overline_mid should not change Right");
+    }
+
+    #[test]
+    fn test_codepoint_transform_beat_underlines() {
+        use super::CodepointTransform;
+
+        let ch = glyph_for_pitch(PitchCode::N2, 0, PitchSystem::Number).unwrap();
+        let cp = ch as u32;
+
+        // Set underline Left (beat start)
+        let with_beat_start = cp.set_underline(UnderlineState::Left);
+        assert!(with_beat_start.beat_left());
+        assert!(!with_beat_start.beat_right());
+
+        // Set underline Right (beat end)
+        let with_beat_end = cp.set_underline(UnderlineState::Right);
+        assert!(!with_beat_end.beat_left());
+        assert!(with_beat_end.beat_right());
+
+        // Set middle underline
+        let with_middle = cp.underline_mid(true);
+        assert_eq!(with_middle.get_underline(), UnderlineState::Middle);
+    }
+
+    #[test]
+    fn test_codepoint_transform_strip_lines() {
+        use super::CodepointTransform;
+
+        let ch = glyph_for_pitch(PitchCode::N3, 0, PitchSystem::Number).unwrap();
+        let cp = ch as u32;
+
+        // Add both underline and overline
+        let decorated = cp
+            .set_underline(UnderlineState::Left)
+            .set_overline(OverlineState::Middle);
+
+        // Strip lines
+        let stripped = decorated.strip_lines();
+        assert_eq!(stripped.get_underline(), UnderlineState::None);
+        assert_eq!(stripped.get_overline(), OverlineState::None);
+    }
+
+    #[test]
+    fn test_codepoint_transform_idempotent() {
+        use super::CodepointTransform;
+
+        let ch = glyph_for_pitch(PitchCode::N1, 0, PitchSystem::Number).unwrap();
+        let cp = ch as u32;
+
+        // overline_mid(true) should be idempotent
+        let once = cp.overline_mid(true);
+        let twice = once.overline_mid(true);
+        assert_eq!(once, twice, "overline_mid(true) should be idempotent");
+
+        // underline_mid(true) should be idempotent
+        let once_u = cp.underline_mid(true);
+        let twice_u = once_u.underline_mid(true);
+        assert_eq!(once_u, twice_u, "underline_mid(true) should be idempotent");
+    }
+
+    #[test]
+    fn test_codepoint_transform_to_char() {
+        use super::CodepointTransform;
+
+        let ch = glyph_for_pitch(PitchCode::N1, 0, PitchSystem::Number).unwrap();
+        let cp = ch as u32;
+
+        // to_char should return the original char
+        assert_eq!(cp.to_char(), ch);
+
+        // Invalid codepoint should return '?'
+        let invalid: u32 = 0xFFFFFFFF;
+        assert_eq!(invalid.to_char(), '?');
+    }
+
+    #[test]
+    fn test_codepoint_transform_combined_operations() {
+        use super::CodepointTransform;
+
+        let ch = glyph_for_pitch(PitchCode::N4, 0, PitchSystem::Number).unwrap();
+        let cp = ch as u32;
+
+        // Combine slur start (overline Left) with beat middle (underline Middle)
+        let combined = cp
+            .set_overline(OverlineState::Left)
+            .underline_mid(true);
+
+        assert!(combined.slur_left(), "Should still have slur left");
+        assert_eq!(combined.get_underline(), UnderlineState::Middle);
+
+        // overline_mid should not affect Left
+        let after_mid = combined.overline_mid(true);
+        assert!(after_mid.slur_left(), "Should preserve slur left after overline_mid");
+    }
+
+    #[test]
+    fn test_space_overline_middle() {
+        use super::CodepointTransform;
+        use crate::renderers::line_variants::pua;
+
+        let space: u32 = ' ' as u32;  // 0x20
+        let with_middle = space.set_overline(OverlineState::Middle);
+
+        println!("Space codepoint: 0x{:X}", space);
+        println!("After set_overline(Middle): 0x{:X}", with_middle);
+        println!("Expected ASCII_OVERLINE_BASE: 0x{:X}", pua::ASCII_OVERLINE_BASE);
+
+        // Expected: 0xE920 (ASCII_OVERLINE_BASE + 0)
+        assert_eq!(with_middle, pua::ASCII_OVERLINE_BASE, "Space with Middle overline should be ASCII_OVERLINE_BASE");
     }
 }

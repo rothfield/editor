@@ -140,9 +140,6 @@ class UI {
     // Setup Line menu
     this.setupLineMenu();
 
-    // Setup Ornament menu
-    this.setupOrnamentMenu();
-
     // Add menu toggle listeners
     document.getElementById('file-menu-button').addEventListener('click', (event) => {
       this.handleMenuToggle('file', event);
@@ -156,8 +153,20 @@ class UI {
       this.handleMenuToggle('line', event);
     });
 
-    document.getElementById('ornament-menu-button').addEventListener('click', (event) => {
-      this.handleMenuToggle('ornament', event);
+    // Prevent menu buttons from stealing focus from textarea
+    const menuButtons = document.querySelectorAll('[id$="-menu-button"]');
+    menuButtons.forEach(button => {
+      button.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+      });
+    });
+
+    // Prevent menu items from stealing focus
+    const menuItems = document.querySelectorAll('.menu-item');
+    menuItems.forEach(item => {
+      item.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+      });
     });
   }
 
@@ -219,9 +228,8 @@ class UI {
       { id: 'menu-cut', label: 'Cut (Ctrl+X)', action: 'cut', testid: 'menu-cut' },
       { id: 'menu-paste', label: 'Paste (Ctrl+V)', action: 'paste', testid: 'menu-paste' },
       { id: 'menu-separator-1', label: null, separator: true },
-      { id: 'menu-toggle-ornament-edit-mode', label: 'Toggle Ornament Edit Mode (Alt+Shift+O)', action: 'toggle-ornament-edit-mode', checkable: true, checked: this.editor.ornamentEditMode, testid: 'menu-toggle-ornament-edit-mode' },
-      { id: 'menu-separator-2', label: null, separator: true },
       { id: 'menu-apply-slur', label: 'Apply Slur (Alt+S)', action: 'apply-slur' },
+      { id: 'menu-make-ornament', label: 'Make Ornament (Alt+O)', action: 'make-ornament', testid: 'menu-make-ornament' },
       { id: 'menu-octave-highest', label: 'Highest Octave (Alt+H)', action: 'octave-highest' },
       { id: 'menu-octave-upper', label: 'Upper Octave (Alt+U)', action: 'octave-upper' },
       { id: 'menu-octave-middle', label: 'Middle Octave (Alt+M)', action: 'octave-middle' },
@@ -247,9 +255,6 @@ class UI {
         if (item.testid) {
           menuItem.dataset.testid = item.testid;
         }
-        if (item.id === 'menu-edit-ornaments') {
-          menuItem.dataset.testid = 'btn-toggle-ornament-edit-mode';
-        }
 
         if (item.checkable) {
           // Add checkbox indicator for checkable items
@@ -257,17 +262,6 @@ class UI {
           checkbox.className = 'menu-checkbox';
           checkbox.textContent = item.checked ? '✓ ' : '☐ '; // Checkmark or empty square
           checkbox.dataset.checked = item.checked ? 'true' : 'false';
-          menuItem.appendChild(checkbox);
-
-          const label = document.createElement('span');
-          label.textContent = item.label;
-          menuItem.appendChild(label);
-        } else if (item.id === 'menu-toggle-ornament-edit-mode') {
-          // Specific handling for ornament edit mode to show its checked state
-          const checkbox = document.createElement('span');
-          checkbox.className = 'menu-checkbox';
-          checkbox.textContent = this.editor.ornamentEditMode ? '✓ ' : '☐ ';
-          checkbox.dataset.checked = this.editor.ornamentEditMode ? 'true' : 'false';
           menuItem.appendChild(checkbox);
 
           const label = document.createElement('span');
@@ -344,154 +338,6 @@ class UI {
   }
 
   /**
-   * Setup Ornament menu
-   */
-  setupOrnamentMenu() {
-    // Helper: Get glyph for octave-shifted character (from font_utils.rs logic)
-    const getGlyph = (baseChar, octaveShift) => {
-      const ALL_CHARS = "1234567CDEFGABcdefgabSrRgGmMPdDnNdrmfsltDRMFSLT";
-      const PUA_START = 0xE000;
-
-      if (octaveShift === 0 || !baseChar) return baseChar;
-
-      const index = ALL_CHARS.indexOf(baseChar);
-      if (index === -1) return baseChar;
-
-      let variant;
-      switch (octaveShift) {
-        case 1: variant = 0; break;   // 1 dot above
-        case 2: variant = 1; break;   // 2 dots above
-        case -1: variant = 2; break;  // 1 dot below
-        case -2: variant = 3; break;  // 2 dots below
-        default: return baseChar;
-      }
-
-      const codepoint = PUA_START + (index * 4) + variant;
-      return String.fromCodePoint(codepoint);
-    };
-
-    // Get current cell's ornament (if any)
-    let currentOrnament = null;
-    if (this.editor && this.editor.getDocument()) {
-      const cursor = this.editor.getDocument().state.cursor;
-      const line = this.editor.getDocument().lines[cursor.line];
-      if (line && cursor.col > 0) {
-        const cellIndex = cursor.col - 1;
-        if (cellIndex < line.cells.length) {
-          const cell = line.cells[cellIndex];
-          if (cell.ornament) {
-            const placement = cell.ornament.placement || 'before';
-            // Apply glyph substitution for octave shifts in ornament cells
-            const notation = cell.ornament.cells
-              .map(c => {
-                const baseChar = c.char.charAt(0);
-                const octaveShift = c.octave || 0;
-                return getGlyph(baseChar, octaveShift);
-              })
-              .join('');
-            currentOrnament = { placement, notation };
-          }
-        }
-      }
-    }
-
-    // Build labels for placement options, showing ornament if it exists
-    const beforeLabel = currentOrnament?.placement === 'before'
-      ? `Before - ${currentOrnament.notation}`
-      : 'Before';
-    const ontopLabel = currentOrnament?.placement === 'ontop'
-      ? `On top - ${currentOrnament.notation}`
-      : 'On top';
-    const afterLabel = currentOrnament?.placement === 'after'
-      ? `After - ${currentOrnament.notation}`
-      : 'After';
-
-    const menuItems = [
-      { id: 'menu-ornament-before', label: beforeLabel, action: 'ornament-position-before', checkable: true, checked: currentOrnament?.placement === 'before' || !currentOrnament, hasOrnamentNotation: currentOrnament?.placement === 'before' && currentOrnament },
-      { id: 'menu-ornament-ontop', label: ontopLabel, action: 'ornament-position-ontop', checkable: true, checked: currentOrnament?.placement === 'ontop', hasOrnamentNotation: currentOrnament?.placement === 'ontop' && currentOrnament },
-      { id: 'menu-ornament-after', label: afterLabel, action: 'ornament-position-after', checkable: true, checked: currentOrnament?.placement === 'after', hasOrnamentNotation: currentOrnament?.placement === 'after' && currentOrnament },
-      { id: 'menu-separator-0', label: null, separator: true },
-      { id: 'menu-ornament-selection-to-ornament', label: 'Selection to Ornament', action: 'ornament-selection-to-ornament', testid: 'menu-ornament-selection-to-ornament' },
-      { id: 'menu-separator-1', label: null, separator: true },
-      { id: 'menu-ornament-copy', label: 'Copy', action: 'ornament-copy', testid: 'menu-ornament-copy' },
-      { id: 'menu-ornament-paste', label: 'Ornament from Clipboard', action: 'ornament-paste', testid: 'menu-ornament-paste', shortcut: 'Alt+O' },
-      { id: 'menu-ornament-clear', label: 'Clear', action: 'ornament-clear', testid: 'menu-ornament-clear' }
-    ];
-
-    const ornamentMenu = document.getElementById('ornament-menu');
-    ornamentMenu.innerHTML = '';
-
-    menuItems.forEach(item => {
-      if (item.separator) {
-        const separator = document.createElement('div');
-        separator.className = 'menu-separator';
-        ornamentMenu.appendChild(separator);
-      } else {
-        const menuItem = document.createElement('div');
-        menuItem.id = item.id;
-        menuItem.className = 'menu-item';
-        menuItem.dataset.action = item.action;
-
-        // Add data-testid attributes (for E2E tests)
-        if (item.testid) {
-          menuItem.dataset.testid = item.testid;
-        }
-
-        if (item.checkable) {
-          // Add checkbox indicator for checkable items (radio-style for positions)
-          const checkbox = document.createElement('span');
-          checkbox.className = 'menu-checkbox';
-          checkbox.textContent = item.checked ? '✓ ' : '  '; // Checkmark or empty
-          checkbox.dataset.checked = item.checked ? 'true' : 'false';
-          menuItem.appendChild(checkbox);
-
-          const label = document.createElement('span');
-          label.textContent = item.label;
-          // Apply NotationFont if label contains ornament notation
-          if (item.hasOrnamentNotation) {
-            label.style.fontFamily = "'NotationFont', monospace";
-          }
-          menuItem.appendChild(label);
-
-          // Add shortcut if present
-          if (item.shortcut) {
-            const shortcut = document.createElement('span');
-            shortcut.className = 'menu-shortcut';
-            shortcut.textContent = item.shortcut;
-            shortcut.style.marginLeft = 'auto';
-            shortcut.style.opacity = '0.6';
-            shortcut.style.fontSize = '0.9em';
-            menuItem.appendChild(shortcut);
-            menuItem.style.display = 'flex';
-            menuItem.style.justifyContent = 'space-between';
-          }
-        } else {
-          // Create label span for non-checkable items
-          const label = document.createElement('span');
-          label.textContent = item.label;
-          menuItem.appendChild(label);
-
-          // Add shortcut if present
-          if (item.shortcut) {
-            const shortcut = document.createElement('span');
-            shortcut.className = 'menu-shortcut';
-            shortcut.textContent = item.shortcut;
-            shortcut.style.marginLeft = 'auto';
-            shortcut.style.opacity = '0.6';
-            shortcut.style.fontSize = '0.9em';
-            menuItem.appendChild(shortcut);
-            menuItem.style.display = 'flex';
-            menuItem.style.justifyContent = 'space-between';
-          }
-        }
-
-        menuItem.addEventListener('click', this.handleMenuItemClick);
-        ornamentMenu.appendChild(menuItem);
-      }
-    });
-  }
-
-  /**
      * Setup tab system
      */
   setupTabs() {
@@ -541,11 +387,6 @@ class UI {
     const isHidden = menu.classList.contains('hidden');
 
     if (isHidden) {
-      // Refresh ornament menu before showing (to display current ornament text)
-      if (menuName === 'ornament') {
-        this.setupOrnamentMenu();
-      }
-
       // Refresh line menu before showing
       if (menuName === 'line') {
         this.setupLineMenu();
@@ -799,32 +640,11 @@ class UI {
       case 'paste':
         this.editor.handlePaste();
         break;
-      case 'toggle-ornament-edit-mode':
-        await this.editor.toggleOrnamentEditMode();
-        break;
-      case 'ornament-position-before':
-        this.setOrnamentPosition('before');
-        break;
-      case 'ornament-position-ontop':
-        this.setOrnamentPosition('ontop');
-        break;
-      case 'ornament-position-after':
-        this.setOrnamentPosition('after');
-        break;
-      case 'ornament-selection-to-ornament':
-        await this.selectionToOrnament();
-        break;
-      case 'ornament-copy':
-        this.copyOrnament();
-        break;
-      case 'ornament-paste':
-        this.pasteOrnament();
-        break;
-      case 'ornament-clear':
-        this.clearOrnament();
-        break;
       case 'apply-slur':
         await this.applySlur();
+        break;
+      case 'make-ornament':
+        await this.selectionToOrnament();
         break;
       case 'octave-highest':
         await this.applyOctave(2);
@@ -1134,21 +954,10 @@ class UI {
 
   /**
    * Setup mode toggle button event listeners
+   * Status bar removed - this is now a no-op
    */
   setupModeToggleButton() {
-    const modeBtn = document.getElementById('mode-toggle-btn');
-    if (!modeBtn) {
-      logger.warn(LOG_CATEGORIES.UI, 'Mode toggle button not found');
-      return;
-    }
-
-    // Single click = toggle constraint on/off
-    modeBtn.addEventListener('click', this.handleModeToggleClick.bind(this));
-
-    // Double click = open constraints dialog
-    modeBtn.addEventListener('dblclick', this.handleModeToggleDblClick.bind(this));
-
-    logger.info(LOG_CATEGORIES.UI, 'Mode toggle button initialized');
+    // Mode toggle button removed from UI
   }
 
   /**
@@ -1193,57 +1002,10 @@ class UI {
 
   /**
    * Update mode toggle button display
-   * Call this when document changes or constraint is selected/changed
+   * Status bar removed - this is now a no-op
    */
   updateModeToggleDisplay() {
-    const modeBtn = document.getElementById('mode-toggle-btn');
-    const modeText = document.getElementById('mode-toggle-text');
-
-    if (!modeBtn || !modeText) {
-      return;
-    }
-
-    // Get active constraint from WASM
-    const wasmModule = this.editor.wasmModule;
-    if (!wasmModule || typeof wasmModule.getActiveConstraint !== 'function') {
-      return;
-    }
-
-    const activeConstraintId = wasmModule.getActiveConstraint();
-
-    if (!activeConstraintId) {
-      // No constraint active
-      modeBtn.className = 'mode-toggle-btn';
-      modeBtn.title = 'No constraint active (double-click to select)';
-      modeText.textContent = 'Mode: None';
-      this.constraintEnabled = true; // Reset state
-      return;
-    }
-
-    // Get constraint details
-    let constraintName = 'Unknown';
-    try {
-      const constraints = wasmModule.getPredefinedConstraints();
-      const constraint = constraints.find(c => c.id === activeConstraintId);
-      if (constraint) {
-        constraintName = constraint.name;
-      }
-    } catch (error) {
-      logger.error(LOG_CATEGORIES.UI, 'Error getting constraint details', { error });
-    }
-
-    // Update display based on enabled state
-    if (this.constraintEnabled) {
-      // Active state
-      modeBtn.className = 'mode-toggle-btn active';
-      modeBtn.title = `Constrain to ${constraintName} (click to disable, double-click to change)`;
-      modeText.textContent = constraintName;
-    } else {
-      // Inactive state (selected but disabled)
-      modeBtn.className = 'mode-toggle-btn inactive';
-      modeBtn.title = `${constraintName} (disabled - click to enable, double-click to change)`;
-      modeText.textContent = constraintName;
-    }
+    // Mode toggle button removed from UI
   }
 
   /**
@@ -1492,7 +1254,15 @@ class UI {
      * Return focus to editor element
      */
   returnFocusToEditor() {
-    // Focus immediately so keyboard input works right away
+    // Focus the active textarea (not just the container) to show native selection
+    // This properly restores selection for PUA characters (surrogate pairs)
+    if (this.editor?.textareaRenderer) {
+      const currentLine = this.editor.wasmModule?.getCursorLine?.() ?? 0;
+      this.editor.textareaRenderer.focusLine(currentLine);
+      return;
+    }
+
+    // Fallback: focus the container element
     const editorElement = document.getElementById('notation-editor');
     if (!editorElement) return;
 
@@ -1594,13 +1364,7 @@ class UI {
      * Update UI displays
      */
   updateCurrentPitchSystemDisplay() {
-    const system = this.getCurrentPitchSystem();
-    const systemName = this.getPitchSystemName(system);
-
-    const displayElement = document.getElementById(DOM_SELECTORS.PITCH_SYSTEM);
-    if (displayElement) {
-      displayElement.textContent = systemName;
-    }
+    // Status bar removed - pitch system display is now a no-op
   }
 
   /**
@@ -1996,263 +1760,14 @@ class UI {
   }
 
   /**
-   * Ornament Copy/Paste Methods
-   */
-
-  /**
-   * Set ornament position and update menu checkmarks
-   */
-  setOrnamentPosition(position) {
-    logger.debug(LOG_CATEGORIES.UI, 'setOrnamentPosition', { position });
-
-    // Store pending position for next paste
-    this.pendingOrnamentPosition = position;
-
-    // If there's a selected cell with an ornament, update its placement via layered API
-    if (this.editor) {
-      try {
-        const cursor = this.editor.getDocument().state.cursor;
-
-        // Effective selection logic: cursor.col - 1
-        if (cursor.col > 0) {
-          const cellIndex = cursor.col - 1;
-
-          // Call WASM layered API to update placement in annotation layer
-          const result = this.editor.wasmModule.setOrnamentPlacementLayered(
-            cursor.line,
-            cellIndex,
-            position
-          );
-
-          if (result && result.success) {
-            // Render to sync annotation layer to cells
-            this.editor.renderAndUpdate();
-            logger.info(LOG_CATEGORIES.UI, `Ornament position set to: ${position}`);
-          } else {
-            // Ornament doesn't exist yet, that's okay - position will be used for next paste
-            logger.debug(LOG_CATEGORIES.UI, 'No ornament to update position', { error: result?.error });
-          }
-        }
-      } catch (error) {
-        // Ornament doesn't exist yet, that's okay - position will be used for next paste
-        logger.debug(LOG_CATEGORIES.UI, 'No ornament to update position', { message: error.message });
-      }
-    }
-
-    // Rebuild menu to show updated checkmarks and labels
-    this.setupOrnamentMenu();
-  }
-
-  /**
-   * Copy ornament from selected cell
+   * Convert selected pitches to superscript (grace notes)
    *
-   * KISS logic: Store the cell and its ornament in the object clipboard.
-   * - JS calculates cell_index from cursor position
-   * - JS stores the cell in this.clipboard.cells (same as regular cell copy)
-   * When pasted, the ornament property of this cell will replace the target's ornament
-   */
-  async copyOrnament() {
-    console.log('[UI] copyOrnament');
-
-    if (!this.editor) {
-      alert('No editor available');
-      return;
-    }
-
-    try {
-      // Get cursor position and calculate target cell index
-      const cursor = this.editor.getDocument().state.cursor;
-      const line = this.editor.getDocument().lines[cursor.line];
-
-      // Effective selection logic: cursor.col - 1
-      if (cursor.col === 0) {
-        alert('No cell selected (cursor at start of line)');
-        return;
-      }
-
-      const cellIndex = cursor.col - 1;
-
-      if (cellIndex >= line.cells.length) {
-        alert('Invalid cell index');
-        return;
-      }
-
-      const cell = line.cells[cellIndex];
-
-      // Get ornament data from annotation layer (text-first architecture)
-      const ornamentResult = this.editor.wasmModule.getOrnamentAt(cursor.line, cellIndex);
-
-      if (!ornamentResult || !ornamentResult.notation) {
-        alert('No ornament found at this position');
-        return;
-      }
-
-      const notation = ornamentResult.notation;
-
-      // Store TEXT in clipboard, not Cell object
-      this.editor.clipboard.ornamentNotation = notation;
-      this.editor.addToConsoleLog(`Ornament copied: ${notation}`);
-    } catch (error) {
-      console.error('[UI] Copy ornament error:', error);
-      alert(`Failed to copy ornament: ${error.message || error}`);
-    }
-  }
-
-  /**
-   * Paste ornament from clipboard to selected cell (TEXT-BASED, LAYERED API)
-   *
-   * Uses the new layered architecture:
-   * - Reads TEXT notation from clipboard
-   * - Calls applyOrnamentLayered() which stores in annotation layer
-   * - Renders (which calls applyAnnotationOrnamentsToCells() to sync)
-   */
-  async pasteOrnament() {
-    console.log('[UI] pasteOrnament');
-
-    if (!this.editor) {
-      alert('No editor available');
-      return;
-    }
-
-    try {
-      const doc = this.editor.getDocument();
-      const cursor = doc.state.cursor;
-      const selection = doc.state.selection_manager?.current_selection;
-
-      let notation;
-      let targetCol;
-
-      // Check if there's a selection
-      if (selection && selection.anchor && selection.head) {
-        console.log('[UI] Selection detected, using selected text as ornament');
-
-        // Get the selected text
-        const line = doc.lines[cursor.line];
-        const start = Math.min(selection.anchor.col, selection.head.col);
-        const end = Math.max(selection.anchor.col, selection.head.col);
-
-        // Extract selected text from cells
-        const selectedText = line.cells
-          .slice(start, end)
-          .map(cell => cell.char)
-          .join('');
-
-        console.log(`[UI] Selected text: "${selectedText}" (cols ${start}-${end})`);
-
-        if (!selectedText || selectedText.trim().length === 0) {
-          alert('No text selected');
-          return;
-        }
-
-        notation = selectedText;
-
-        // Target is the note BEFORE the selection
-        // If selection starts at col 0, can't apply ornament
-        if (start === 0) {
-          alert('Cannot apply ornament: selection starts at beginning of line');
-          return;
-        }
-
-        targetCol = start - 1; // The cell before the selection
-
-        console.log(`[UI] Applying ornament "${notation}" to col ${targetCol}`);
-      } else {
-        // No selection - use clipboard
-        notation = this.editor.clipboard.ornamentNotation;
-        if (!notation) {
-          alert('No ornament in clipboard and no text selected');
-          return;
-        }
-
-        // Effective selection logic: cursor.col - 1
-        if (cursor.col === 0) {
-          alert('No cell selected (cursor at start of line)');
-          return;
-        }
-
-        targetCol = cursor.col - 1;
-      }
-
-      const placement = this.pendingOrnamentPosition || 'after';
-      const col = targetCol;
-
-      // Call layered API with TEXT notation
-      const result = await this.editor.wasmModule.applyOrnamentLayered(
-        cursor.line,
-        col,
-        notation,
-        placement
-      );
-
-      console.log('[UI] applyOrnamentLayered result:', result);
-
-      if (!result.success) {
-        alert(`Failed to apply ornament: ${result.error || 'Unknown error'}`);
-        return;
-      }
-
-      // Render (will call applyAnnotationOrnamentsToCells() to sync)
-      await this.editor.renderAndUpdate();
-      this.editor.addToConsoleLog(`Ornament pasted: ${notation} (${placement})`);
-    } catch (error) {
-      console.error('[UI] Paste ornament error:', error);
-      alert(`Failed to paste ornament: ${error.message || error}`);
-    }
-  }
-
-  /**
-   * Clear ornament from selected cell (LAYERED API)
-   *
-   * Uses the new layered architecture:
-   * - Calls removeOrnamentLayered() which removes from annotation layer
-   * - Renders (which calls applyAnnotationOrnamentsToCells() to sync)
-   */
-  async clearOrnament() {
-    console.log('[UI] clearOrnament');
-
-    if (!this.editor) {
-      alert('No editor available');
-      return;
-    }
-
-    try {
-      // Get cursor position
-      const cursor = this.editor.getDocument().state.cursor;
-
-      // Effective selection logic: cursor.col - 1
-      if (cursor.col === 0) {
-        alert('No cell selected (cursor at start of line)');
-        return;
-      }
-
-      const col = cursor.col - 1;
-
-      // Call layered API to remove ornament
-      const result = await this.editor.wasmModule.removeOrnamentLayered(cursor.line, col);
-
-      console.log('[UI] removeOrnamentLayered result:', result);
-
-      if (!result.success) {
-        // Not necessarily an error - just means no ornament was there
-        console.log('No ornament to remove');
-      }
-
-      // Render (will call applyAnnotationOrnamentsToCells() to sync)
-      await this.editor.renderAndUpdate();
-      this.editor.addToConsoleLog('Ornament cleared');
-    } catch (error) {
-      console.error('[UI] Clear ornament error:', error);
-      alert(`Failed to clear ornament: ${error.message || error}`);
-    }
-  }
-
-  /**
-   * Convert selected text to ornament on the preceding pitch
-   * Takes the current selection, applies it as an ornament to the cell before the selection,
-   * then deletes the selected text. Overwrites any existing ornament.
+   * NEW ARCHITECTURE: Grace notes are represented as superscript codepoints.
+   * Superscripts are rhythm-transparent and attach to the previous normal pitch.
+   * The codepoint change (normal → superscript) is the only change needed.
    */
   async selectionToOrnament() {
-    console.log('[UI] selectionToOrnament');
+    console.log('[UI] selectionToOrnament (superscript-based)');
 
     if (!this.editor) {
       alert('No editor available');
@@ -2272,57 +1787,33 @@ class UI {
 
       console.log('[UI] Selection detected');
 
-      // Get the selected text
-      const line = doc.lines[cursor.line];
+      const line = cursor.line;
       const start = Math.min(selection.anchor.col, selection.head.col);
       const end = Math.max(selection.anchor.col, selection.head.col);
 
-      // Extract selected text from cells
-      const selectedText = line.cells
-        .slice(start, end)
-        .map(cell => cell.char)
-        .join('');
+      console.log(`[UI] Converting cols ${start}-${end} to superscript on line ${line}`);
 
-      console.log(`[UI] Selected text: "${selectedText}" (cols ${start}-${end})`);
+      // Call WASM to convert selection to superscript
+      const result = this.editor.wasmModule.selectionToSuperscript(line, start, end);
 
-      if (!selectedText || selectedText.trim().length === 0) {
-        alert('No text selected');
-        return;
-      }
-
-      // Target is the note BEFORE the selection
-      // If selection starts at col 0, can't apply ornament
-      if (start === 0) {
-        alert('Cannot apply ornament: selection starts at beginning of line');
-        return;
-      }
-
-      const targetCol = start - 1; // The cell before the selection
-      const placement = this.pendingOrnamentPosition || 'after';
-
-      console.log(`[UI] Applying ornament "${selectedText}" to col ${targetCol} (${placement})`);
-
-      // Apply the ornament (overwrites existing ornament)
-      const result = await this.editor.wasmModule.applyOrnamentLayered(
-        cursor.line,
-        targetCol,
-        selectedText,
-        placement
-      );
-
-      console.log('[UI] applyOrnamentLayered result:', result);
+      console.log('[UI] selectionToSuperscript result:', result);
 
       if (!result.success) {
-        alert(`Failed to apply ornament: ${result.error || 'Unknown error'}`);
+        alert(`Failed to convert to ornament: ${result.error || 'Unknown error'}`);
         return;
       }
 
-      // Note: Selection is NOT deleted - the ornament references the selected notes
-      // which remain in the document as the source of the grace notes
+      if (result.cells_converted === 0) {
+        alert('No pitched cells found in selection to convert');
+        return;
+      }
 
-      // Render (will call applyAnnotationOrnamentsToCells() to sync)
+      // Clear selection after conversion
+      this.editor.wasmModule.clearSelection();
+
+      // Render the updated document
       await this.editor.renderAndUpdate();
-      this.editor.addToConsoleLog(`Selection converted to ornament: ${selectedText}`);
+      this.editor.addToConsoleLog(`Converted ${result.cells_converted} note(s) to grace notes`);
     } catch (error) {
       console.error('[UI] Selection to ornament error:', error);
       alert(`Failed to convert selection to ornament: ${error.message || error}`);

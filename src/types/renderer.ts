@@ -37,18 +37,6 @@ export interface IRenderer {
 }
 
 /**
- * Cell renderer interface
- */
-export interface ICellRenderer {
-  renderCell(
-    cell: Cell,
-    context: RenderContext,
-    parent: HTMLElement
-  ): HTMLElement;
-  clearCell(element: HTMLElement): void;
-}
-
-/**
  * SVG arc renderer (for slurs, beat loops)
  */
 export interface IArcRenderer {

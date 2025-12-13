@@ -37,6 +37,8 @@ impl Command {
                 for (i, cell) in cells.iter().enumerate() {
                     line_obj.cells.insert(start_col + i, cell.clone());
                 }
+                // Sync text field after bulk modification
+                line_obj.sync_text_from_cells();
                 Ok(())
             }
             Command::DeleteText { line, start_col, deleted_cells } => {
@@ -49,6 +51,8 @@ impl Command {
                         line_obj.cells.remove(*start_col);
                     }
                 }
+                // Sync text field after bulk modification
+                line_obj.sync_text_from_cells();
                 Ok(())
             }
             Command::Batch { commands } => {
@@ -73,6 +77,8 @@ impl Command {
                         line_obj.cells.remove(*start_col);
                     }
                 }
+                // Sync text field after bulk modification
+                line_obj.sync_text_from_cells();
                 Ok(())
             }
             Command::DeleteText { line, start_col, deleted_cells } => {
@@ -83,6 +89,8 @@ impl Command {
                 for (i, cell) in deleted_cells.iter().enumerate() {
                     line_obj.cells.insert(start_col + i, cell.clone());
                 }
+                // Sync text field after bulk modification
+                line_obj.sync_text_from_cells();
                 Ok(())
             }
             Command::Batch { commands } => {
@@ -320,20 +328,23 @@ impl UndoStack {
 mod tests {
     use super::*;
     use crate::models::core::{Cell, Document, StaffRole};
-    use crate::models::elements::{ElementKind, SlurIndicator};
+    use crate::models::elements::ElementKind;
 
     fn create_test_cell(ch: &str) -> Cell {
+        use crate::renderers::line_variants::{UnderlineState, OverlineState};
+        let codepoint = ch.chars().next().map(|c| c as u32).unwrap_or(0);
         Cell {
+            codepoint,
             char: ch.to_string(),
-            combined_char: None,
             kind: ElementKind::PitchedElement,
             col: 0,
             flags: 0,
             pitch_code: None,
             pitch_system: None,
             octave: 0,
-            slur_indicator: SlurIndicator::None,
-            ornament: None,
+            superscript: false,
+            underline: UnderlineState::None,
+            overline: OverlineState::None,
             x: 0.0,
             y: 0.0,
             w: 0.0,
@@ -348,6 +359,7 @@ mod tests {
         let mut doc = Document::new();
         let line = Line {
             cells: vec![],
+            text: Vec::new(),
             label: String::new(),
             tonic: None,
             pitch_system: None,

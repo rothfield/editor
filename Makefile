@@ -140,16 +140,22 @@ fonts-spec:
 	@echo "✓ fontspec.json generated: tools/fontgen/fontspec.json"
 
 # Generate final TTF font (requires fontspec.json from Rust)
+FONTGEN_LOG := logs/fontgen-$(shell date +%Y%m%d-%H%M%S).log
+
 fonts: fonts-spec
 	@echo "Generating unified NotationFont.ttf from fontspec.json + Noto Music..."
-	@mkdir -p dist/fonts
-	@python3 tools/fontgen/generate.py --strict --output-dir dist/fonts
+	@mkdir -p dist/fonts logs
+	@echo "=== Font Generation Started: $$(date) ===" > $(FONTGEN_LOG)
+	@python3 tools/fontgen/generate.py --strict --output-dir dist/fonts 2>&1 | tee -a $(FONTGEN_LOG)
+	@echo "=== Font Generation Completed: $$(date) ===" >> $(FONTGEN_LOG)
 	@echo "Copying unified font to static/fonts..."
 	@mkdir -p static/fonts
 	@cp dist/fonts/NotationFont.ttf static/fonts/
 	@cp dist/fonts/NotationFont.woff2 static/fonts/
 	@cp dist/fonts/NotationFont-map.json static/fonts/
-	@echo "✓ Font generated: dist/fonts/NotationFont.ttf (contains all systems: Number, Western, Sargam, Doremi)"
+	@ln -sf $$(basename $(FONTGEN_LOG)) logs/fontgen-latest.log
+	@echo "✓ Font generated: dist/fonts/NotationFont.ttf"
+	@echo "✓ Log: $(FONTGEN_LOG)"
 
 # Validate configuration (Rust + Python pipeline)
 fonts-validate: fonts-spec
@@ -164,10 +170,18 @@ fonts-debug: fonts-spec
 	@python3 tools/fontgen/generate.py --debug-html --output-dir dist/fonts
 	@echo "✓ Debug specimen: dist/fonts/debug-specimen.html"
 
+FONTTEST_LOG := logs/fonttest-$(shell date +%Y%m%d-%H%M%S).log
+
 fonts-test:
 	@echo "Running font generator tests..."
-	@python3 -m pytest tools/fontgen/test_generator.py -v
-	@echo "✓ Font tests complete!"
+	@mkdir -p logs
+	@echo "=== Font Tests Started: $$(date) ===" > $(FONTTEST_LOG)
+	@python3 -m pytest tools/fontgen/test_generator.py -v 2>&1 | tee -a $(FONTTEST_LOG); \
+		EXIT_CODE=$${PIPESTATUS[0]}; \
+		echo "=== Font Tests Completed: $$(date) (exit: $$EXIT_CODE) ===" >> $(FONTTEST_LOG); \
+		ln -sf $$(basename $(FONTTEST_LOG)) logs/fonttest-latest.log; \
+		exit $$EXIT_CODE
+	@echo "✓ Font tests complete! Log: $(FONTTEST_LOG)"
 
 fonts-install:
 	@echo "Installing NotationFont (derived from Noto Music) locally..."
@@ -264,9 +278,18 @@ clean:
 test: test-e2e
 	@echo "All tests completed!"
 
+E2E_LOG := logs/e2e-$(shell date +%Y%m%d-%H%M%S).log
+
 test-e2e:
 	@echo "Running E2E tests..."
-	npm run test-e2e
+	@mkdir -p logs
+	@echo "=== E2E Tests Started: $$(date) ===" > $(E2E_LOG)
+	@npm run test-e2e 2>&1 | tee -a $(E2E_LOG); \
+		EXIT_CODE=$${PIPESTATUS[0]}; \
+		echo "=== E2E Tests Completed: $$(date) (exit: $$EXIT_CODE) ===" >> $(E2E_LOG); \
+		ln -sf $$(basename $(E2E_LOG)) logs/e2e-latest.log; \
+		exit $$EXIT_CODE
+	@echo "✓ E2E tests complete! Log: $(E2E_LOG)"
 
 test-headless:
 	@echo "Running headless tests..."

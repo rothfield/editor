@@ -13,19 +13,30 @@
 use editor_wasm::models::{Cell, ElementKind, Line, PitchCode, SlurIndicator, StaffRole};
 use editor_wasm::ir::{build_export_measures_from_line, ExportEvent, SlurType};
 
+/// Helper to create a Line with cells and properly sync text field
+fn make_test_line(cells: Vec<Cell>) -> Line {
+    let mut line = Line::new();
+    line.cells = cells;
+    line.sync_text_from_cells();
+    line
+}
+
 /// Helper to create a pitched cell
 fn make_pitched_cell(char: &str, pitch_code: PitchCode, col: usize, slur: SlurIndicator) -> Cell {
+    let codepoint = char.chars().next().map(|c| c as u32).unwrap_or(0);
     Cell {
-        kind: ElementKind::PitchedElement,
+        codepoint,
         char: char.to_string(),
-        pitch_code: Some(pitch_code),
-        octave: 4,
+        kind: ElementKind::PitchedElement,
         col,
         flags: 0,
+        pitch_code: Some(pitch_code),
         pitch_system: None,
+        octave: 4,
+        superscript: false,
         slur_indicator: slur,
-        ornament: None,
-        combined_char: None,
+        underline: editor_wasm::renderers::line_variants::UnderlineState::None,
+        overline: editor_wasm::renderers::line_variants::OverlineState::None,
         x: 0.0,
         y: 0.0,
         w: 1.0,
@@ -46,24 +57,7 @@ fn test_triplet_slur_ir_covers_all_three_notes() {
     ];
 
     // Create a line with these cells (no beats specified - will be derived)
-    let line = Line {
-        cells,
-        label: String::new(),
-        tala: String::new(),
-        lyrics: String::new(),
-        tonic: None,
-        pitch_system: None,
-        key_signature: String::new(),
-        time_signature: String::new(),
-        tempo: String::new(),
-        beats: Vec::new(),
-        slurs: Vec::new(),
-        part_id: "P1".to_string(),
-        system_id: 1,
-        staff_role: StaffRole::Melody,
-        system_marker: None,
-        new_system: false,
-    };
+    let line = make_test_line(cells);
 
     // Build IR from the line
     let measures = build_export_measures_from_line(&line, None);
@@ -132,24 +126,7 @@ fn test_two_note_slur_ir_bug() {
     println!("  Cell 0 ('1'): {:?}", cells[0].slur_indicator);
     println!("  Cell 1 ('2'): {:?}", cells[1].slur_indicator);
 
-    let line = Line {
-        cells,
-        label: String::new(),
-        tala: String::new(),
-        lyrics: String::new(),
-        tonic: None,
-        pitch_system: None,
-        key_signature: String::new(),
-        time_signature: String::new(),
-        tempo: String::new(),
-        beats: Vec::new(),
-        slurs: Vec::new(),
-        part_id: "P1".to_string(),
-        system_id: 1,
-        staff_role: StaffRole::Melody,
-        system_marker: None,
-        new_system: false,
-    };
+    let line = make_test_line(cells);
 
     let measures = build_export_measures_from_line(&line, None);
     assert_eq!(measures.len(), 1);

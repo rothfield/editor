@@ -4,7 +4,7 @@
 //! respecting slurs (melismas) where multiple notes share one syllable.
 
 use serde::{Serialize, Deserialize};
-use crate::models::{Cell, ElementKind, SlurIndicator};
+use crate::models::{Cell, ElementKind};
 
 /// Represents a syllable assigned to a cell
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -218,29 +218,25 @@ pub fn distribute_lyrics(lyrics: &str, cells: &[Cell]) -> Vec<SyllableAssignment
         pitched_index += 1;
 
         // Track slur state
-        let slur_indicator = cell.slur_indicator;
+        let is_slur_start = cell.is_slur_start();
+        let is_slur_end = cell.is_slur_end();
 
         // CHECK SLUR STATE FIRST - before consuming syllables
         // For melisma notes (SlurEnd or inside slur), don't consume syllables
-        match slur_indicator {
-            SlurIndicator::SlurEnd => {
-                // Slur ends - this pitch is still part of melisma, don't consume syllable
-                slur_depth = slur_depth.saturating_sub(1);
-                if slur_depth == 0 {
-                    state = LyricsState::SeekingPitch;
-                }
+        if is_slur_end {
+            // Slur ends - this pitch is still part of melisma, don't consume syllable
+            slur_depth = slur_depth.saturating_sub(1);
+            if slur_depth == 0 {
+                state = LyricsState::SeekingPitch;
+            }
+            continue;
+        } else if !is_slur_start {
+            if state == LyricsState::InMelisma {
+                // Inside slur - skip this pitch (part of melisma), don't consume syllable
                 continue;
             }
-            SlurIndicator::None => {
-                if state == LyricsState::InMelisma {
-                    // Inside slur - skip this pitch (part of melisma), don't consume syllable
-                    continue;
-                }
-            }
-            SlurIndicator::SlurStart => {
-                // Will consume and assign syllable below
-            }
         }
+        // else: SlurStart - will consume and assign syllable below
 
         // NOW consume syllable (only reached if we're going to assign)
         // Skip whitespace syllables (don't assign them to cells)
@@ -288,27 +284,21 @@ pub fn distribute_lyrics(lyrics: &str, cells: &[Cell]) -> Vec<SyllableAssignment
         };
 
         // Assign syllable based on slur state
-        match slur_indicator {
-            SlurIndicator::SlurStart => {
-                // Slur starts - assign syllable to this pitch, then enter melisma
-                assignments.push(SyllableAssignment {
-                    cell_index,
-                    syllable: syll_text,
-                });
-                slur_depth += 1;
-                state = LyricsState::InMelisma;
-            }
-            SlurIndicator::None => {
-                // Normal pitch (not in melisma) - assign syllable
-                assignments.push(SyllableAssignment {
-                    cell_index,
-                    syllable: syll_text,
-                });
-                state = LyricsState::SyllableAssigned;
-            }
-            SlurIndicator::SlurEnd => {
-                unreachable!("SlurEnd already handled above");
-            }
+        if is_slur_start {
+            // Slur starts - assign syllable to this pitch, then enter melisma
+            assignments.push(SyllableAssignment {
+                cell_index,
+                syllable: syll_text,
+            });
+            slur_depth += 1;
+            state = LyricsState::InMelisma;
+        } else {
+            // Normal pitch (not in melisma) - assign syllable
+            assignments.push(SyllableAssignment {
+                cell_index,
+                syllable: syll_text,
+            });
+            state = LyricsState::SyllableAssigned;
         }
     }
 

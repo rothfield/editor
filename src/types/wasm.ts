@@ -45,14 +45,14 @@ export interface Cell {
   /** Octave modifier (-2, -1, 0, 1, 2) */
   octave?: number;
 
+  /** Whether this cell is a superscript (grace note/ornament) */
+  superscript?: boolean;
+
   /** Accidental (sharp, flat, natural) */
   accidental?: string;
 
   /** Slur indicator data */
   slur_indicator?: SlurIndicator;
-
-  /** Ornament data */
-  ornament?: Ornament;
 
   /** Lyric syllable */
   lyric?: string;
@@ -83,15 +83,6 @@ export enum ElementKind {
 export interface SlurIndicator {
   kind: 'start' | 'end';
   direction?: 'up' | 'down';
-}
-
-/**
- * Ornament attached to a cell
- */
-export interface Ornament {
-  cells: Cell[];
-  placement: 'before' | 'after';
-  notation_text?: string;
 }
 
 /**
@@ -135,7 +126,6 @@ export enum PitchSystem {
  */
 export interface DocumentConstraints {
   default_pitch_system: PitchSystem;
-  enable_ornaments: boolean;
   enable_slurs: boolean;
   enable_lyrics: boolean;
   [key: string]: any;
@@ -225,7 +215,6 @@ export interface NoteData {
   accidental?: string;
   slur_data?: SlurData;
   tie_data?: TieData;
-  ornament_data?: OrnamentData;
 }
 
 export interface SlurData {
@@ -237,9 +226,4 @@ export interface SlurData {
 export interface TieData {
   is_start: boolean;
   is_end: boolean;
-}
-
-export interface OrnamentData {
-  kind: string;
-  notes: NoteData[];
 }

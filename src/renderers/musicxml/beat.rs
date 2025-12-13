@@ -4,7 +4,7 @@
 //! This module contains the core rhythm calculation logic for converting
 //! cell-based beats to MusicXML measures.
 
-use crate::models::{Cell, ElementKind, PitchCode, SlurIndicator, BeatSpan};
+use crate::models::{Cell, ElementKind, PitchCode, BeatSpan};
 use super::builder::MusicXmlBuilder;
 use super::helpers::gcd;
 
@@ -178,7 +178,8 @@ pub fn process_beat(
             duration_divs: usize,
             musical_duration: f64,
             is_last_note: bool,
-            slur_indicator: SlurIndicator,
+            is_slur_start: bool,
+            is_slur_end: bool,
         },
         Rest {
             duration_divs: usize,
@@ -203,20 +204,17 @@ pub fn process_beat(
         let mut slur_marked_indices = Vec::new();
 
         for (idx, element) in elements.iter().enumerate() {
-            if let BeatElement::Note { slur_indicator, .. } = element {
-                match slur_indicator {
-                    SlurIndicator::SlurStart | SlurIndicator::SlurEnd => {
-                        slur_marked_indices.push((idx, slur_indicator));
-                    }
-                    SlurIndicator::None => {}
+            if let BeatElement::Note { is_slur_start, is_slur_end, .. } = element {
+                if *is_slur_start || *is_slur_end {
+                    slur_marked_indices.push(idx);
                 }
             }
         }
 
         // If we have slur markers, determine the span they cover
         if !slur_marked_indices.is_empty() {
-            let min_idx = *slur_marked_indices.iter().map(|(idx, _)| idx).min().unwrap_or(&0);
-            let max_idx = *slur_marked_indices.iter().map(|(idx, _)| idx).max().unwrap_or(&0);
+            let min_idx = *slur_marked_indices.iter().min().unwrap_or(&0);
+            let max_idx = *slur_marked_indices.iter().max().unwrap_or(&0);
 
             // Mark the first note in the slur span with "start"
             slur_types[min_idx] = Some("start");
@@ -286,7 +284,8 @@ pub fn process_beat(
                         duration_divs,
                         musical_duration,
                         is_last_note,
-                        slur_indicator: cell.slur_indicator,
+                        is_slur_start: cell.is_slur_start(),
+                        is_slur_end: cell.is_slur_end(),
                     });
                 }
 
@@ -351,7 +350,7 @@ pub fn process_beat(
             };
 
             match element {
-                BeatElement::Note { pitch_code, octave, duration_divs, musical_duration, is_last_note, slur_indicator: _original_slur_indicator } => {
+                BeatElement::Note { pitch_code, octave, duration_divs, musical_duration, is_last_note, is_slur_start: _, is_slur_end: _ } => {
                     // Use computed slur type instead of original indicator (fixes tuplet slur off-by-one)
                     let slur = slur_types_per_element.get(idx).and_then(|&opt| opt);
 

@@ -24,7 +24,7 @@
 use wasm_bindgen::prelude::*;
 use serde::{Deserialize, Serialize};
 use crate::text::cursor::{TextPos, TextRange};
-use crate::text::annotations::{SlurSpan, OrnamentPlacement};
+use crate::text::annotations::SlurSpan;
 use crate::structure::line_analysis::find_beat_at_position;
 use crate::structure::operations::shift_octaves_in_range;
 use crate::models::PitchSystem;
@@ -341,6 +341,7 @@ pub fn shift_octave(line: usize, start_col: usize, end_col: usize, delta: i8) ->
         .collect();
 
     doc.lines[line].cells = new_cells;
+    doc.lines[line].sync_text_from_cells();
 
     let result = OctaveShiftResult {
         line,
@@ -444,7 +445,7 @@ pub fn set_octave(line: usize, start_col: usize, end_col: usize, target_octave: 
     let end = end_col.min(doc.lines[line].cells.len());
 
     // Regenerate glyphs for the modified cells (octave dots changed!)
-    doc.compute_glyphs();
+    
 
     // Reconstruct text for result (derived from cells)
     let new_text: String = doc.lines[line].cells.iter().map(|c| c.display_char()).collect();
@@ -851,20 +852,19 @@ pub fn get_slurs_for_line(line: usize) -> JsValue {
 
 /// Apply annotation layer slurs to document cells for export
 ///
-/// This function converts SlurSpan annotations to SlurIndicator flags on cells,
+/// This function converts SlurSpan annotations to slur markers on cells,
 /// allowing the existing export pipeline to work with layered architecture slurs.
 ///
 /// ## How it works
 /// - Reads slurs from document.annotation_layer
-/// - For each slur, sets SlurStart on the cell at slur.start
-/// - Sets SlurEnd on the cell at slur.end
+/// - For each slur, sets slur_start on the cell at slur.start
+/// - Sets slur_end on the cell at slur.end
 /// - Cells between start and end don't get markers (they're implicitly slurred)
 ///
 /// ## Returns
 /// JSON object with the number of slurs applied per line
 #[wasm_bindgen(js_name = applyAnnotationSlursToCells)]
 pub fn apply_annotation_slurs_to_cells() -> JsValue {
-    use crate::models::SlurIndicator;
 
     // Lock document
     let mut doc_guard = match lock_document() {
@@ -886,7 +886,7 @@ pub fn apply_annotation_slurs_to_cells() -> JsValue {
     // Clear all existing slur indicators from cells (start fresh)
     for line in &mut doc.lines {
         for cell in &mut line.cells {
-            cell.slur_indicator = SlurIndicator::None;
+            cell.clear_slur();
         }
     }
 
@@ -911,7 +911,7 @@ pub fn apply_annotation_slurs_to_cells() -> JsValue {
 
         // Set SlurStart on start column
         if slur.start.col < line.cells.len() {
-            line.cells[slur.start.col].slur_indicator = SlurIndicator::SlurStart;
+            line.cells[slur.start.col].set_slur_start();
             #[cfg(target_arch = "wasm32")]
             web_sys::console::log_1(&format!(
                 "[applyAnnotationSlursToCells] Set SlurStart on line {} col {} (char: '{}')",
@@ -926,7 +926,7 @@ pub fn apply_annotation_slurs_to_cells() -> JsValue {
         // Subtract 1 because TextRange.end is exclusive but slur.end is the last character
         let end_col = if slur.end.col > 0 { slur.end.col - 1 } else { 0 };
         if end_col < line.cells.len() {
-            line.cells[end_col].slur_indicator = SlurIndicator::SlurEnd;
+            line.cells[end_col].set_slur_end();
             slurs_applied += 1;
             #[cfg(target_arch = "wasm32")]
             web_sys::console::log_1(&format!(
@@ -966,85 +966,56 @@ pub fn apply_annotation_slurs_to_cells() -> JsValue {
 }
 
 //=============================================================================
-// ORNAMENT LAYERED API
+// SUPERSCRIPT (GRACE NOTE) LAYERED API
 //=============================================================================
 
-/// Result of ornament apply/remove operation (returned to JavaScript)
+/// Result of converting selection to superscript (grace notes)
 #[derive(Serialize, Deserialize)]
-pub struct OrnamentResult {
-    /// Line number
-    pub line: usize,
-
-    /// Column position
-    pub col: usize,
-
-    /// Ornament notation text (if applied)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub notation: Option<String>,
-
-    /// Ornament placement (if applied)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub placement: Option<String>,
-
+pub struct SuperscriptConversionResult {
     /// Success flag
     pub success: bool,
+
+    /// Number of cells converted
+    pub cells_converted: usize,
 
     /// Error message (if success = false)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
 
-/// Apply ornament at a position using text notation
+/// Convert selected cells to superscript (grace notes)
 ///
-/// JavaScript: applyOrnamentLayered(line, col, notation, placement)
+/// JavaScript: selectionToSuperscript(line, start_col, end_col)
 ///
-/// - `line`: Line number
-/// - `col`: Column position
-/// - `notation`: Text notation (e.g., "2 3" or "2̇")
-/// - `placement`: "before", "after", or "ontop"
+/// Converts normal pitch codepoints to their superscript equivalents.
+/// Superscript pitches are rhythm-transparent and attach to the previous normal pitch.
 ///
-/// Stores ornament in annotation layer at TextPos(line, col)
-#[wasm_bindgen(js_name = applyOrnamentLayered)]
-pub fn apply_ornament_layered(
+/// # Arguments
+/// * `line` - Line number
+/// * `start_col` - Start column (inclusive)
+/// * `end_col` - End column (exclusive)
+///
+/// # Returns
+/// JSON result with success flag and count of converted cells
+#[wasm_bindgen(js_name = selectionToSuperscript)]
+pub fn selection_to_superscript(
     line: usize,
-    col: usize,
-    notation: String,
-    placement: String,
+    start_col: usize,
+    end_col: usize,
 ) -> JsValue {
     #[cfg(target_arch = "wasm32")]
     web_sys::console::log_1(&format!(
-        "[WASM] applyOrnamentLayered: line={}, col={}, notation='{}', placement='{}'",
-        line, col, notation, placement
+        "[WASM] selectionToSuperscript: line={}, cols {}..{}",
+        line, start_col, end_col
     ).into());
-
-    // Parse placement string
-    let ornament_placement = match placement.to_lowercase().as_str() {
-        "before" => OrnamentPlacement::Before,
-        "after" => OrnamentPlacement::After,
-        "ontop" | "on-top" | "on_top" => OrnamentPlacement::OnTop,
-        _ => {
-            let result = OrnamentResult {
-                line,
-                col,
-                notation: None,
-                placement: None,
-                success: false,
-                error: Some(format!("Invalid placement: '{}'. Must be 'before', 'after', or 'ontop'", placement)),
-            };
-            return serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL);
-        }
-    };
 
     // Lock document
     let mut doc_guard = match lock_document() {
         Ok(guard) => guard,
         Err(e) => {
-            let result = OrnamentResult {
-                line,
-                col,
-                notation: None,
-                placement: None,
+            let result = SuperscriptConversionResult {
                 success: false,
+                cells_converted: 0,
                 error: Some(format!("Failed to lock document: {:?}", e)),
             };
             return serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL);
@@ -1054,66 +1025,103 @@ pub fn apply_ornament_layered(
     let document = match doc_guard.as_mut() {
         Some(doc) => doc,
         None => {
-            let result = OrnamentResult {
-                line,
-                col,
-                notation: None,
-                placement: None,
+            let result = SuperscriptConversionResult {
                 success: false,
+                cells_converted: 0,
                 error: Some("No document loaded".to_string()),
             };
             return serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL);
         }
     };
 
-    // Add ornament to annotation layer
-    document.annotation_layer.add_ornament(
-        TextPos::new(line, col),
-        notation.clone(),
-        ornament_placement.clone(),
-    );
+    // Validate line
+    if line >= document.lines.len() {
+        let result = SuperscriptConversionResult {
+            success: false,
+            cells_converted: 0,
+            error: Some(format!("Line {} out of range (max {})", line, document.lines.len())),
+        };
+        return serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL);
+    }
+
+    let mut cells_converted = 0;
+    let cells_len = document.lines[line].cells.len();
+
+    // Convert cells in range to superscript
+    for col in start_col..end_col.min(cells_len) {
+        let cell = &mut document.lines[line].cells[col];
+
+        // Only convert pitched elements
+        if cell.kind != crate::models::ElementKind::PitchedElement {
+            continue;
+        }
+
+        // Set superscript flag and update codepoint
+        if !cell.superscript {
+            cell.superscript = true;
+
+            // Convert codepoint to superscript variant
+            if let Some(super_cp) = crate::renderers::font_utils::to_superscript(cell.codepoint) {
+                cell.codepoint = super_cp;
+                cell.char = char::from_u32(super_cp).map(|c| c.to_string()).unwrap_or(cell.char.clone());
+            }
+
+            cells_converted += 1;
+
+            #[cfg(target_arch = "wasm32")]
+            web_sys::console::log_1(&format!(
+                "[WASM] Set superscript=true for col {}",
+                col
+            ).into());
+        }
+    }
+
+
+    // Sync text from cells
+    document.lines[line].sync_text_from_cells();
 
     #[cfg(target_arch = "wasm32")]
     web_sys::console::log_1(&format!(
-        "[WASM] ✅ Ornament applied: line={}, col={}, notation='{}', placement='{:?}'",
-        line, col, notation, ornament_placement
+        "[WASM] ✅ Converted {} cells to superscript",
+        cells_converted
     ).into());
 
-    let result = OrnamentResult {
-        line,
-        col,
-        notation: Some(notation),
-        placement: Some(format!("{:?}", ornament_placement).to_lowercase()),
+    let result = SuperscriptConversionResult {
         success: true,
+        cells_converted,
         error: None,
     };
 
     serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL)
 }
 
-/// Remove ornament at a position
+/// Convert superscript cells back to normal
 ///
-/// JavaScript: removeOrnamentLayered(line, col)
+/// JavaScript: superscriptToNormal(line, start_col, end_col)
 ///
-/// Returns true if an ornament was removed, false if none existed
-#[wasm_bindgen(js_name = removeOrnamentLayered)]
-pub fn remove_ornament_layered(line: usize, col: usize) -> JsValue {
+/// # Arguments
+/// * `line` - Line number
+/// * `start_col` - Start column (inclusive)
+/// * `end_col` - End column (exclusive)
+#[wasm_bindgen(js_name = superscriptToNormal)]
+pub fn superscript_to_normal(
+    line: usize,
+    start_col: usize,
+    end_col: usize,
+) -> JsValue {
     #[cfg(target_arch = "wasm32")]
     web_sys::console::log_1(&format!(
-        "[WASM] removeOrnamentLayered: line={}, col={}",
-        line, col
+        "[WASM] superscriptToNormal: line={}, cols {}..{}",
+        line, start_col, end_col
     ).into());
 
     // Lock document
     let mut doc_guard = match lock_document() {
         Ok(guard) => guard,
         Err(e) => {
-            let result = OrnamentResult {
-                line,
-                col,
-                notation: None,
-                placement: None,
+            let result = SuperscriptConversionResult {
                 success: false,
+                cells_converted: 0,
                 error: Some(format!("Failed to lock document: {:?}", e)),
             };
             return serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL);
@@ -1123,414 +1131,61 @@ pub fn remove_ornament_layered(line: usize, col: usize) -> JsValue {
     let document = match doc_guard.as_mut() {
         Some(doc) => doc,
         None => {
-            let result = OrnamentResult {
-                line,
-                col,
-                notation: None,
-                placement: None,
+            let result = SuperscriptConversionResult {
                 success: false,
+                cells_converted: 0,
                 error: Some("No document loaded".to_string()),
             };
             return serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL);
         }
     };
 
-    // Remove ornament from annotation layer
-    let was_removed = document.annotation_layer.remove_ornament(TextPos::new(line, col));
-
-    #[cfg(target_arch = "wasm32")]
-    web_sys::console::log_1(&format!(
-        "[WASM] {} Ornament removed: {}",
-        if was_removed { "✅" } else { "⚠️" },
-        was_removed
-    ).into());
-
-    let result = OrnamentResult {
-        line,
-        col,
-        notation: None,
-        placement: None,
-        success: was_removed,
-        error: if !was_removed {
-            Some("No ornament found at position".to_string())
-        } else {
-            None
-        },
-    };
-
-    serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL)
-}
-
-/// Set ornament placement at a position (update existing ornament)
-///
-/// JavaScript: setOrnamentPlacementLayered(line, col, placement)
-///
-/// Updates the placement of an existing ornament in the annotation layer.
-/// Returns success/error status.
-#[wasm_bindgen(js_name = setOrnamentPlacementLayered)]
-pub fn set_ornament_placement_layered(line: usize, col: usize, placement: String) -> JsValue {
-    #[cfg(target_arch = "wasm32")]
-    web_sys::console::log_1(&format!(
-        "[WASM] setOrnamentPlacementLayered: line={}, col={}, placement='{}'",
-        line, col, placement
-    ).into());
-
-    // Parse placement string
-    let ornament_placement = match placement.to_lowercase().as_str() {
-        "before" => OrnamentPlacement::Before,
-        "after" => OrnamentPlacement::After,
-        "ontop" | "on-top" | "on_top" => OrnamentPlacement::OnTop,
-        _ => {
-            let result = OrnamentResult {
-                line,
-                col,
-                notation: None,
-                placement: None,
-                success: false,
-                error: Some(format!("Invalid placement: '{}'. Must be 'before', 'after', or 'ontop'", placement)),
-            };
-            return serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL);
-        }
-    };
-
-    // Lock document
-    let mut doc_guard = match lock_document() {
-        Ok(guard) => guard,
-        Err(e) => {
-            let result = OrnamentResult {
-                line,
-                col,
-                notation: None,
-                placement: None,
-                success: false,
-                error: Some(format!("Failed to lock document: {:?}", e)),
-            };
-            return serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL);
-        }
-    };
-
-    let document = match doc_guard.as_mut() {
-        Some(doc) => doc,
-        None => {
-            let result = OrnamentResult {
-                line,
-                col,
-                notation: None,
-                placement: None,
-                success: false,
-                error: Some("No document loaded".to_string()),
-            };
-            return serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL);
-        }
-    };
-
-    // Get existing ornament and update its placement
-    let pos = TextPos::new(line, col);
-    if let Some(ornament_data) = document.annotation_layer.ornaments.iter_mut().find(|o| o.pos == pos) {
-        let notation = ornament_data.notation.clone();
-        ornament_data.placement = ornament_placement.clone();
-
-        #[cfg(target_arch = "wasm32")]
-        web_sys::console::log_1(&format!(
-            "[WASM] ✅ Ornament placement updated: line={}, col={}, placement='{:?}'",
-            line, col, ornament_placement
-        ).into());
-
-        let result = OrnamentResult {
-            line,
-            col,
-            notation: Some(notation),
-            placement: Some(format!("{:?}", ornament_placement).to_lowercase()),
-            success: true,
-            error: None,
-        };
-        serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL)
-    } else {
-        #[cfg(target_arch = "wasm32")]
-        web_sys::console::log_1(&format!(
-            "[WASM] ⚠️ No ornament found at line={}, col={}",
-            line, col
-        ).into());
-
-        let result = OrnamentResult {
-            line,
-            col,
-            notation: None,
-            placement: None,
+    // Validate line
+    if line >= document.lines.len() {
+        let result = SuperscriptConversionResult {
             success: false,
-            error: Some("No ornament found at position".to_string()),
+            cells_converted: 0,
+            error: Some(format!("Line {} out of range (max {})", line, document.lines.len())),
         };
-        serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL)
-    }
-}
-
-/// Get ornament at a position
-///
-/// JavaScript: getOrnamentAt(line, col)
-///
-/// Returns ornament data if exists, null otherwise
-#[wasm_bindgen(js_name = getOrnamentAt)]
-pub fn get_ornament_at(line: usize, col: usize) -> JsValue {
-    // Lock document
-    let doc_guard = match lock_document() {
-        Ok(guard) => guard,
-        Err(_) => return JsValue::NULL,
-    };
-
-    let document = match doc_guard.as_ref() {
-        Some(doc) => doc,
-        None => return JsValue::NULL,
-    };
-
-    // Get ornament from annotation layer
-    match document.annotation_layer.get_ornament(TextPos::new(line, col)) {
-        Some(ornament_data) => {
-            #[derive(Serialize)]
-            struct OrnamentDataResult {
-                notation: String,
-                placement: String,
-            }
-
-            let result = OrnamentDataResult {
-                notation: ornament_data.notation.clone(),
-                placement: format!("{:?}", ornament_data.placement).to_lowercase(),
-            };
-
-            serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL)
-        }
-        None => JsValue::NULL,
-    }
-}
-
-/// Get all ornaments on a line
-///
-/// JavaScript: getOrnamentsForLine(line)
-///
-/// Returns array of ornaments with positions
-#[wasm_bindgen(js_name = getOrnamentsForLine)]
-pub fn get_ornaments_for_line(line: usize) -> JsValue {
-    // Lock document
-    let doc_guard = match lock_document() {
-        Ok(guard) => guard,
-        Err(_) => return serde_wasm_bindgen::to_value(&Vec::<()>::new()).unwrap_or(JsValue::NULL),
-    };
-
-    let document = match doc_guard.as_ref() {
-        Some(doc) => doc,
-        None => return serde_wasm_bindgen::to_value(&Vec::<()>::new()).unwrap_or(JsValue::NULL),
-    };
-
-    // Get ornaments for line
-    let ornaments = document.annotation_layer.get_ornaments_for_line(line);
-
-    #[derive(Serialize)]
-    struct OrnamentPositionResult {
-        col: usize,
-        notation: String,
-        placement: String,
+        return serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL);
     }
 
-    let results: Vec<OrnamentPositionResult> = ornaments
-        .iter()
-        .map(|ornament_data| OrnamentPositionResult {
-            col: ornament_data.pos.col,
-            notation: ornament_data.notation.clone(),
-            placement: format!("{:?}", ornament_data.placement).to_lowercase(),
-        })
-        .collect();
+    let mut cells_converted = 0;
+    let cells_len = document.lines[line].cells.len();
 
-    serde_wasm_bindgen::to_value(&results).unwrap_or(JsValue::NULL)
-}
+    // Convert cells in range by clearing superscript flag
+    for col in start_col..end_col.min(cells_len) {
+        let cell = &mut document.lines[line].cells[col];
 
-/// Sync ornaments from annotation layer to cells (for export/rendering)
-///
-/// JavaScript: applyAnnotationOrnamentsToCells()
-///
-/// Reads ornaments from annotation layer, parses notation text into cells,
-/// and attaches them to target cells as Ornament objects.
-/// This function is called before export and rendering.
-#[wasm_bindgen(js_name = applyAnnotationOrnamentsToCells)]
-pub fn apply_annotation_ornaments_to_cells() -> JsValue {
-    use crate::models::elements::{Ornament, OrnamentPlacement as ModelOrnamentPlacement};
-    use crate::models::{Cell, ElementKind};
+        // Clear superscript flag if set
+        if cell.superscript {
+            cell.superscript = false;
+            cells_converted += 1;
 
-    #[cfg(target_arch = "wasm32")]
-    web_sys::console::log_1(&"[applyAnnotationOrnamentsToCells] Starting sync...".into());
-
-    // Lock document
-    let mut doc_guard = match lock_document() {
-        Ok(guard) => guard,
-        Err(e) => {
             #[cfg(target_arch = "wasm32")]
-            web_sys::console::log_1(&format!("[applyAnnotationOrnamentsToCells] Failed to lock document: {:?}", e).into());
-
-            #[derive(Serialize)]
-            struct ErrorResult {
-                success: bool,
-                error: String,
-            }
-            let result = ErrorResult {
-                success: false,
-                error: format!("Failed to lock document: {:?}", e),
-            };
-            return serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL);
+            web_sys::console::log_1(&format!(
+                "[WASM] Set superscript=false for col {}",
+                col
+            ).into());
         }
-    };
+    }
 
-    let doc = match doc_guard.as_mut() {
-        Some(d) => d,
-        None => {
-            #[cfg(target_arch = "wasm32")]
-            web_sys::console::log_1(&"[applyAnnotationOrnamentsToCells] No document loaded".into());
+    // Recompute glyphs to apply normal rendering
+    
 
-            #[derive(Serialize)]
-            struct ErrorResult {
-                success: bool,
-                error: String,
-            }
-            let result = ErrorResult {
-                success: false,
-                error: "No document loaded".to_string(),
-            };
-            return serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL);
-        }
-    };
-
-    let total_ornaments = doc.annotation_layer.ornaments.len();
-    let mut ornaments_applied = 0;
+    // Sync text from cells
+    document.lines[line].sync_text_from_cells();
 
     #[cfg(target_arch = "wasm32")]
     web_sys::console::log_1(&format!(
-        "[applyAnnotationOrnamentsToCells] Found {} ornaments in annotation layer",
-        total_ornaments
+        "[WASM] ✅ Reverted {} cells from superscript to normal",
+        cells_converted
     ).into());
 
-    // First, clear all existing ornaments from cells
-    for line in &mut doc.lines {
-        for cell in &mut line.cells {
-            cell.ornament = None;
-        }
-    }
-
-    // Collect ornament data first to avoid borrow issues
-    let ornaments_to_apply: Vec<_> = doc.annotation_layer.ornaments.iter()
-        .filter_map(|ornament_data| {
-            let pos = &ornament_data.pos;
-
-            // Check if line exists
-            if pos.line >= doc.lines.len() {
-                #[cfg(target_arch = "wasm32")]
-                web_sys::console::log_1(&format!(
-                    "[applyAnnotationOrnamentsToCells] Ornament at line {} out of bounds (doc has {} lines)",
-                    pos.line, doc.lines.len()
-                ).into());
-                return None;
-            }
-
-            // Get pitch system for this line
-            let pitch_system = doc.lines.get(pos.line)
-                .and_then(|line| line.pitch_system)
-                .unwrap_or(crate::models::PitchSystem::Number);
-
-            // Check if column exists
-            if pos.col >= doc.lines[pos.line].cells.len() {
-                #[cfg(target_arch = "wasm32")]
-                web_sys::console::log_1(&format!(
-                    "[applyAnnotationOrnamentsToCells] Ornament at col {} out of bounds (line has {} cells)",
-                    pos.col, doc.lines[pos.line].cells.len()
-                ).into());
-                return None;
-            }
-
-            // Parse notation text into cells with proper pitch_code
-            // Use pitch_from_glyph to decode each character
-            // IMPORTANT: Strip slurs and recalculate glyphs for ornament cells
-            let parsed_cells: Vec<Cell> = ornament_data.notation.chars()
-                .enumerate()
-                .filter_map(|(idx, ch)| {
-                    // Try to decode as pitch glyph
-                    if let Some((pitch_code, octave)) = crate::renderers::font_utils::pitch_from_glyph(ch, pitch_system) {
-                        // Recalculate the proper glyph for this pitch/octave/system
-                        let recalc_glyph = crate::renderers::font_utils::glyph_for_pitch(
-                            pitch_code, octave, pitch_system
-                        ).map(|g| g.to_string())
-                         .unwrap_or_else(|| ch.to_string());
-
-                        let mut cell = Cell::new(recalc_glyph, ElementKind::PitchedElement, idx);
-                        cell.pitch_code = Some(pitch_code);
-                        cell.octave = octave;
-                        // Explicitly strip slur indicator (ornaments should not have slurs)
-                        cell.slur_indicator = crate::models::SlurIndicator::None;
-                        Some(cell)
-                    } else if ch.is_whitespace() {
-                        // Skip whitespace
-                        None
-                    } else {
-                        // Keep non-pitch characters as unpitched (spaces, etc.)
-                        let mut cell = Cell::new(ch.to_string(), ElementKind::UnpitchedElement, idx);
-                        // Explicitly strip slur indicator
-                        cell.slur_indicator = crate::models::SlurIndicator::None;
-                        Some(cell)
-                    }
-                })
-                .collect();
-
-            if parsed_cells.is_empty() {
-                #[cfg(target_arch = "wasm32")]
-                web_sys::console::log_1(&format!(
-                    "[applyAnnotationOrnamentsToCells] Empty parsed cells for ornament at line={}, col={}, notation='{}'",
-                    pos.line, pos.col, ornament_data.notation
-                ).into());
-                return None;
-            }
-
-            // Convert placement
-            let model_placement = match ornament_data.placement {
-                OrnamentPlacement::Before => ModelOrnamentPlacement::Before,
-                OrnamentPlacement::After => ModelOrnamentPlacement::After,
-                OrnamentPlacement::OnTop => ModelOrnamentPlacement::OnTop,
-            };
-
-            Some((pos.line, pos.col, parsed_cells, model_placement, ornament_data.notation.clone()))
-        })
-        .collect();
-
-    // Now apply to cells
-    for (line_idx, col, parsed_cells, model_placement, notation) in ornaments_to_apply {
-        // Create ornament and attach to cell
-        let ornament = Ornament {
-            cells: parsed_cells,
-            placement: model_placement,
-        };
-
-        doc.lines[line_idx].cells[col].ornament = Some(ornament);
-        ornaments_applied += 1;
-
-        #[cfg(target_arch = "wasm32")]
-        web_sys::console::log_1(&format!(
-            "[applyAnnotationOrnamentsToCells] Applied ornament at line={}, col={}, notation='{}'",
-            line_idx, col, notation
-        ).into());
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    web_sys::console::log_1(&format!(
-        "[applyAnnotationOrnamentsToCells] Applied {} of {} ornaments to cells",
-        ornaments_applied, total_ornaments
-    ).into());
-
-    // Return success
-    #[derive(Serialize)]
-    struct ApplyOrnamentsResult {
-        success: bool,
-        ornaments_applied: usize,
-        total_ornaments: usize,
-    }
-
-    let result = ApplyOrnamentsResult {
+    let result = SuperscriptConversionResult {
         success: true,
-        ornaments_applied,
-        total_ornaments,
+        cells_converted,
+        error: None,
     };
 
     serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL)
@@ -1568,6 +1223,7 @@ mod tests {
 
         let mut line = Line::new();
         line.cells = cells;
+        line.sync_text_from_cells();
 
         let mut doc = Document::new();
         doc.title = Some("Test".to_string());

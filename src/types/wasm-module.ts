@@ -342,98 +342,6 @@ export interface WASMModule {
    */
   applyAnnotationSlursToCells(): { [line: number]: number };
 
-  // ========== Ornament Operations ==========
-
-  /**
-   * Apply ornament at a position using text notation
-   */
-  applyOrnamentLayered(
-    line: number,
-    col: number,
-    notation: string,
-    placement: string
-  ): DocumentOperationResult;
-
-  /**
-   * Remove ornament at a position
-   */
-  removeOrnamentLayered(
-    line: number,
-    col: number
-  ): DocumentOperationResult;
-
-  /**
-   * Set ornament placement at a position (update existing ornament)
-   */
-  setOrnamentPlacementLayered(
-    line: number,
-    col: number,
-    placement: string
-  ): DocumentOperationResult;
-
-  /**
-   * Get ornament at a position
-   */
-  getOrnamentAt(
-    line: number,
-    col: number
-  ): { notation: string; placement: string } | null;
-
-  /**
-   * Get all ornaments for a line
-   */
-  getOrnamentsForLine(line: number): Array<{
-    col: number;
-    notation: string;
-    placement: string;
-  }>;
-
-  /**
-   * Apply ornaments from annotation layer to cells
-   */
-  applyAnnotationOrnamentsToCells(): { [line: number]: number };
-
-  // ========== Ornament Cell-Level Operations ==========
-
-  /**
-   * Copy ornament from a cell (returns notation string)
-   */
-  copyOrnamentFromCell(cellsJs: Cell[], cellIndex: number): string;
-
-  /**
-   * Paste ornament to a cell using notation text
-   */
-  pasteOrnamentToCell(
-    cellsJs: Cell[],
-    cellIndex: number,
-    notationText: string,
-    placement: string
-  ): Cell[];
-
-  /**
-   * Paste ornament cells directly to a cell
-   */
-  pasteOrnamentCells(
-    cellsJs: Cell[],
-    cellIndex: number,
-    ornamentCellsJs: Cell[],
-    placement: string
-  ): Cell[];
-
-  /**
-   * Clear ornament from a cell
-   */
-  clearOrnamentFromCell(cellsJs: Cell[], cellIndex: number): Cell[];
-
-  /**
-   * Set ornament placement on a cell ('before', 'after', or 'ontop')
-   */
-  setOrnamentPlacementOnCell(
-    cellsJs: Cell[],
-    cellIndex: number,
-    placement: string
-  ): Cell[];
-
   // ========== Copy/Paste Operations ==========
 
   /**
@@ -729,20 +637,13 @@ export interface WASMModule {
    */
   exportAsText(): string;
 
-  // ========== Ornament Edit Mode ==========
+  // ========== Superscript Glyph API ==========
 
   /**
-   * Toggle ornament edit mode on/off
-   */
-  toggleOrnamentEditMode(): void;
-
-  // ========== Superscript Glyph API (for ornament rendering) ==========
-
-  /**
-   * Get superscript glyph for ornament rendering
+   * Get superscript glyph
    *
    * Returns the 75% scaled superscript version of a source glyph with optional overline.
-   * Used for rendering grace notes and ornaments in the editor.
+   * Used for rendering grace notes in the editor.
    *
    * @param sourceCp - Source codepoint (ASCII 0x20-0x7E or PUA pitch glyph)
    * @param overlineVariant - 0=none, 1=left-cap, 2=middle, 3=right-cap
@@ -765,7 +666,158 @@ export interface WASMModule {
    * @returns Overline variant (0-3) or 255 if not a superscript glyph
    */
   getSuperscriptOverline(cp: number): number;
+
+  /**
+   * Convert a normal pitch codepoint to its superscript equivalent
+   *
+   * @param normalCp - Normal pitch codepoint (ASCII 0x20-0x7E or PUA 0xE000+)
+   * @returns Superscript codepoint (0xF8000+) or 0 if conversion not possible
+   */
+  toSuperscript(normalCp: number): number;
+
+  /**
+   * Convert a superscript codepoint back to its normal equivalent
+   *
+   * @param superCp - Superscript codepoint (0xF8000+)
+   * @returns Normal codepoint or 0 if not a valid superscript
+   */
+  fromSuperscript(superCp: number): number;
+
+  // ========== Superscript Selection API (Grace Note Conversion) ==========
+
+  /**
+   * Convert selected cells to superscript (grace notes)
+   *
+   * Superscript pitches are rhythm-transparent and attach to the previous normal pitch.
+   *
+   * @param line - Line number
+   * @param startCol - Start column (inclusive)
+   * @param endCol - End column (exclusive)
+   * @returns Result with success flag and count of converted cells
+   */
+  selectionToSuperscript(
+    line: number,
+    startCol: number,
+    endCol: number
+  ): { success: boolean; cells_converted: number; error?: string };
+
+  /**
+   * Convert superscript cells back to normal
+   *
+   * @param line - Line number
+   * @param startCol - Start column (inclusive)
+   * @param endCol - End column (exclusive)
+   * @returns Result with success flag and count of converted cells
+   */
+  superscriptToNormal(
+    line: number,
+    startCol: number,
+    endCol: number
+  ): { success: boolean; cells_converted: number; error?: string };
+
+  // ========== Textarea Rendering API ==========
+
+  /**
+   * Get textarea display data for a single line
+   * Returns the line text with PUA glyphs plus overlay positions (lyrics, tala)
+   *
+   * @param lineIndex - Index of the line in the document
+   * @returns TextareaLineDisplay with text and overlay positions
+   */
+  getTextareaLineData(lineIndex: number): TextareaLineDisplay;
+
+  /**
+   * Get textarea display data for all lines in the document
+   *
+   * @returns TextareaDisplayList with all lines
+   */
+  getTextareaDisplayList(): TextareaDisplayList;
+
+  /**
+   * Set text content for a line (textarea mode input sync)
+   *
+   * @param lineIndex - Line index to update
+   * @param text - New text content
+   * @param cursorCharPos - Optional cursor character position in input text
+   * @returns Updated TextareaLineDisplay for the line
+   */
+  setLineText(lineIndex: number, text: string, cursorCharPos?: number): TextareaLineDisplay;
+
+  /**
+   * Split a line at the given cell position
+   *
+   * Creates a new line after the current one, moving content after the split
+   * point to the new line. Cursor is moved to start of new line.
+   *
+   * @param lineIndex - Line index to split
+   * @param cellPos - Cell position where to split (0 = before first cell)
+   * @returns Updated TextareaDisplayList (all lines, since count changed)
+   */
+  splitLine(lineIndex: number, cellPos: number): TextareaDisplayList;
+
+  /**
+   * Join a line with the previous line
+   *
+   * Removes the line at lineIndex and appends its cells to the previous line.
+   * Cursor is positioned at the join point (where the previous line ended).
+   * Does nothing if lineIndex is 0 (first line has no previous line to join).
+   *
+   * @param lineIndex - Line index to join with previous (must be > 0 to have effect)
+   * @returns Updated TextareaDisplayList (all lines, since count may have changed)
+   */
+  joinLines(lineIndex: number): TextareaDisplayList;
 }
+
+/**
+ * Textarea line display data
+ */
+export interface TextareaLineDisplay {
+  /** Line index in document */
+  line_index: number;
+  /** Text content for the textarea (includes PUA glyphs) */
+  text: string;
+  /** Optional cursor position (character index in text) */
+  cursor_pos: number | null;
+  /** Optional selection range */
+  selection: TextRange | null;
+  /** Lyrics overlay items with character positions */
+  lyrics: OverlayItem[];
+  /** Tala marker overlay items with character positions */
+  talas: OverlayItem[];
+  /** Optional line label */
+  label: string | null;
+}
+
+/**
+ * Text range for selection
+ */
+export interface TextRange {
+  start: number;
+  end: number;
+}
+
+/**
+ * Overlay item positioned at a character index
+ */
+export interface OverlayItem {
+  /** Character index in the line text (0-based) */
+  char_index: number;
+  /** Content to display (syllable, tala marker, etc.) */
+  content: string;
+}
+
+/**
+ * Textarea display list for entire document
+ */
+export interface TextareaDisplayList {
+  /** All lines as textarea displays */
+  lines: TextareaLineDisplay[];
+  /** Document title (optional) */
+  title: string | null;
+  /** Document composer (optional) */
+  composer: string | null;
+}
+
 
 /**
  * Type guard to check if WASM module is initialized

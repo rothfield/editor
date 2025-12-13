@@ -194,27 +194,23 @@ impl CellStyleBuilder {
         let mut slur_start: Option<usize> = None;
 
         for (idx, cell) in cells.iter().enumerate() {
-            match cell.slur_indicator {
-                SlurIndicator::SlurStart => {
-                    slur_start = Some(idx);
-                }
-                SlurIndicator::SlurEnd => {
-                    if let Some(start) = slur_start {
-                        // Mark all cells in the slur span
-                        for i in start..=idx {
-                            let role = if i == start {
-                                "slur-first"
-                            } else if i == idx {
-                                "slur-last"
-                            } else {
-                                "slur-middle"
-                            };
-                            map.insert(i, role.to_string());
-                        }
-                        slur_start = None;
+            if cell.is_slur_start() {
+                slur_start = Some(idx);
+            } else if cell.is_slur_end() {
+                if let Some(start) = slur_start {
+                    // Mark all cells in the slur span
+                    for i in start..=idx {
+                        let role = if i == start {
+                            "slur-first"
+                        } else if i == idx {
+                            "slur-last"
+                        } else {
+                            "slur-middle"
+                        };
+                        map.insert(i, role.to_string());
                     }
+                    slur_start = None;
                 }
-                SlurIndicator::None => {}
             }
         }
 

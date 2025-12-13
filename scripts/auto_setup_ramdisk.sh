@@ -8,7 +8,7 @@ set -e
 PROJECT_DIR=$PROJECT 
 #"/home/john/projects/music-text"
 RAMDISK_MOUNT="/mnt/rust_ramdisk"
-RAMDISK_SIZE="2G"
+RAMDISK_SIZE="4G"
 
 echo "🚀 Auto-setting up Rust ramdisk..."
 

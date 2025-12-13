@@ -469,7 +469,6 @@ fn compute_text_line_layout(
     pitch_system: crate::models::PitchSystem,
 ) -> TextRenderLine {
     use crate::parse::beats::BeatDeriver;
-    use crate::models::OrnamentPlacement;
     use crate::renderers::line_variants::{UnderlineState, OverlineState};
 
     let beat_deriver = BeatDeriver::new();
@@ -498,11 +497,11 @@ fn compute_text_line_layout(
     let mut in_slur = false;
     let mut slur_start_idx: Option<usize> = None;
     for (idx, cell) in cells.iter().enumerate() {
-        if cell.slur_indicator.is_start() {
+        if cell.is_slur_start() {
             in_slur = true;
             slur_start_idx = Some(idx);
             overline_states[idx] = OverlineState::Left;
-        } else if cell.slur_indicator.is_end() {
+        } else if cell.is_slur_end() {
             overline_states[idx] = OverlineState::Right;
             if let Some(start) = slur_start_idx {
                 for i in (start + 1)..idx {
@@ -535,7 +534,7 @@ fn compute_text_line_layout(
         let current_beat = cell_to_beat[cell_idx];
         let underline = underline_states[cell_idx];
         let overline = overline_states[cell_idx];
-        let cell_in_slur = overline != OverlineState::None;
+        let _cell_in_slur = overline != OverlineState::None;
 
         // Add space at beat boundary
         if current_beat != prev_beat && prev_beat.is_some() && current_beat.is_some() {
@@ -548,31 +547,13 @@ fn compute_text_line_layout(
         // - Before first pitch or after last pitch in beat → no underline
         // - Between pitches → underlined
 
-        // Ornaments BEFORE base note: underlined if parent is NOT the first pitch in beat
-        let ornament_before_underlined = matches!(underline, UnderlineState::Middle | UnderlineState::Right);
-
-        // Ornaments AFTER base note: underlined if parent is NOT the last pitch in beat
-        let ornament_after_underlined = matches!(underline, UnderlineState::Middle | UnderlineState::Left);
-
-        // Render ornament BEFORE main note
-        if let Some(ref ornament) = cell.ornament {
-            if ornament.placement == OrnamentPlacement::Before {
-                let ornament_str = render_ornament_inline(&ornament.cells, pitch_system, cell_in_slur, ornament_before_underlined);
-                note_line.push_str(&ornament_str);
-            }
-        }
+        // NOTE: Ornament field removed. Grace notes are now superscript characters
+        // stored directly in cell.char. The font renders them at 50% scale automatically.
+        // Superscript cells are rendered inline like any other cell.
 
         // Render main cell with computed underline/overline
         let char_str = render_cell_with_lines(cell, pitch_system, underline, overline);
         note_line.push_str(&char_str);
-
-        // Render ornament AFTER main note
-        if let Some(ref ornament) = cell.ornament {
-            if ornament.placement == OrnamentPlacement::After {
-                let ornament_str = render_ornament_inline(&ornament.cells, pitch_system, cell_in_slur, ornament_after_underlined);
-                note_line.push_str(&ornament_str);
-            }
-        }
 
         prev_beat = current_beat;
     }
@@ -683,9 +664,9 @@ fn render_ornament_inline(
     use crate::renderers::font_utils::{glyph_for_pitch, superscript_glyph, SuperscriptOverline};
 
     let mut result = String::new();
-    let ornament_count = ornament_cells.len();
+    let _ornament_count = ornament_cells.len();
 
-    for (orn_idx, orn_cell) in ornament_cells.iter().enumerate() {
+    for (_orn_idx, orn_cell) in ornament_cells.iter().enumerate() {
         if let Some(ref pitch_code) = orn_cell.pitch_code {
             // Get base glyph with octave encoded
             if let Some(base_glyph) = glyph_for_pitch(
@@ -819,15 +800,14 @@ fn build_lyric_line(
 }
 
 /// Convert a cell to its text representation
-/// Uses display_char() for pitched elements (returns combined_char with underlines if set)
+/// Uses display_char() for pitched elements (returns char with line variants encoded as PUA codepoints)
 /// This matches HTML layout behavior - display_char() has the font glyph (e.g., G# composite with underline)
 fn cell_to_text_char(cell: &crate::models::core::Cell, _pitch_system: crate::models::PitchSystem) -> String {
     use crate::models::ElementKind;
 
     match cell.kind {
         ElementKind::PitchedElement => {
-            // Use display_char() - returns combined_char (with underlines) if set, otherwise char
-            // This matches HTML layout which also uses display_char()
+            // Use display_char() - returns char with line variants encoded directly
             cell.display_char()
         }
         ElementKind::UnpitchedElement => "-".to_string(),
@@ -937,22 +917,25 @@ pub fn convert_musicxml_to_lilypond(musicxml: String, settings_json: Option<Stri
 mod tests {
     use super::*;
     use crate::models::{
-        Cell, ElementKind, Line, Document, PitchCode, Ornament, OrnamentPlacement,
-        SlurIndicator, StaffRole, PitchSystem,
+        Cell, ElementKind, Line, Document, PitchCode,
+        StaffRole, PitchSystem,
     };
 
     fn make_cell(char: &str, pitch_code: Option<PitchCode>, col: usize, octave: i8, kind: ElementKind) -> Cell {
+        use crate::renderers::line_variants::{UnderlineState, OverlineState};
+        let codepoint = char.chars().next().map(|c| c as u32).unwrap_or(0);
         Cell {
-            kind,
+            codepoint,
             char: char.to_string(),
-            combined_char: None,
+            kind,
             col,
             flags: 0,
             pitch_code,
             pitch_system: None,
             octave,
-            slur_indicator: SlurIndicator::None,
-            ornament: None,
+            superscript: false,
+            underline: UnderlineState::None,
+            overline: OverlineState::None,
             x: 0.0,
             y: 0.0,
             w: 1.0,
@@ -963,8 +946,9 @@ mod tests {
     }
 
     fn make_line(cells: Vec<Cell>) -> Line {
-        Line {
+        let mut line = Line {
             cells,
+            text: Vec::new(),
             label: String::new(),
             tala: String::new(),
             lyrics: String::new(),
@@ -980,7 +964,9 @@ mod tests {
             staff_role: StaffRole::Melody,
             system_marker: None,
             new_system: false,
-        }
+        };
+        line.sync_text_from_cells();
+        line
     }
 
     fn make_document(lines: Vec<Line>) -> Document {
@@ -989,239 +975,16 @@ mod tests {
         doc.pitch_system = Some(PitchSystem::Number);
         // Compute glyphs to populate cell.char with PUA codepoints
         // This mirrors what happens in the actual editor flow
-        doc.compute_glyphs();
+        
         // Compute line variants (underlines for beat grouping, overlines for slurs)
-        // This populates combined_char with display variants
+        // This sets cell.char to variant codepoints directly
         doc.compute_line_variants();
         doc
     }
 
-    #[test]
-    fn test_text_export_includes_ornaments_before() {
-        use crate::renderers::font_utils::{glyph_for_pitch, superscript_glyph, SuperscriptOverline};
-
-        // Create a main note with an ornament (grace notes before)
-        let mut main_cell = make_cell("1", Some(PitchCode::N1), 0, 0, ElementKind::PitchedElement);
-
-        // Create ornament cells (2 notes = left-cap + right-cap)
-        let ornament_cells = vec![
-            make_cell("2", Some(PitchCode::N2), 0, 0, ElementKind::PitchedElement),
-            make_cell("3", Some(PitchCode::N3), 0, 0, ElementKind::PitchedElement),
-        ];
-
-        main_cell.ornament = Some(Ornament {
-            cells: ornament_cells,
-            placement: OrnamentPlacement::Before,
-        });
-
-        let line = make_line(vec![main_cell]);
-        let doc = make_document(vec![line]);
-
-        let output = export_text(&doc);
-
-        // The output should contain an ornament line (grace notes as superscripts)
-        println!("Text export output:\n{}", output);
-        println!("Output chars:");
-        for c in output.chars() {
-            println!("  U+{:04X} '{}'", c as u32, c);
-        }
-
-        // Ornaments now use superscript glyphs (0xF8000+ range)
-        // Single-cell beat: ornaments before first pitch get NO underline
-        let glyph_n2 = glyph_for_pitch(PitchCode::N2, 0, PitchSystem::Number).unwrap();
-        let superscript_n2 = superscript_glyph(glyph_n2 as u32, SuperscriptOverline::None).unwrap();
-        let glyph_n3 = glyph_for_pitch(PitchCode::N3, 0, PitchSystem::Number).unwrap();
-        let superscript_n3 = superscript_glyph(glyph_n3 as u32, SuperscriptOverline::None).unwrap();
-
-        assert!(output.contains(superscript_n2), "Output should contain superscript grace note glyph for N2 (no underline)");
-        assert!(output.contains(superscript_n3), "Output should contain superscript grace note glyph for N3 (no underline)");
-
-        // Verify superscript glyphs are in the correct range (0xF0000+)
-        let has_superscripts = output.chars().any(|c| c as u32 >= 0xF0000);
-        assert!(has_superscripts, "Output should contain superscript glyphs in 0xF0000+ range");
-
-        // The main note may have line variants applied (underline for single-cell beat)
-        let has_main_note = output.chars().any(|c| {
-            let cp = c as u32;
-            (cp >= 0xE000 && cp < 0xE100) || (cp >= 0xE800 && cp < 0xEC00)
-        });
-        assert!(has_main_note, "Output should contain a main note glyph in PUA range");
-
-        // Ornaments should be inline (not on a separate line)
-        // Find the note line (the line containing PUA glyphs)
-        let note_line = output.lines()
-            .find(|l| l.chars().any(|c| {
-                let cp = c as u32;
-                (cp >= 0xE000 && cp < 0xEC00) || cp >= 0xF0000
-            }))
-            .expect("Should have a note line with PUA glyphs");
-
-        // Verify BOTH superscript AND main note are on the SAME line (inline)
-        let has_superscript_on_line = note_line.chars().any(|c| c as u32 >= 0xF0000);
-        let has_main_note_on_line = note_line.chars().any(|c| {
-            let cp = c as u32;
-            (cp >= 0xE000 && cp < 0xE100) || (cp >= 0xE800 && cp < 0xEC00)
-        });
-        assert!(has_superscript_on_line, "Note line should contain superscript glyphs");
-        assert!(has_main_note_on_line, "Note line should contain main note glyphs");
-
-        // Verify ornaments appear BEFORE main note by checking character order
-        let first_superscript_pos = note_line.chars()
-            .position(|c| c as u32 >= 0xF0000);
-        let main_note_pos = note_line.chars()
-            .position(|c| {
-                let cp = c as u32;
-                (cp >= 0xE000 && cp < 0xE100) || (cp >= 0xE800 && cp < 0xEC00)
-            });
-        assert!(first_superscript_pos.unwrap() < main_note_pos.unwrap(),
-            "Superscript ornaments should appear BEFORE main note");
-    }
-
-    #[test]
-    fn test_text_export_includes_ornaments_after() {
-        use crate::renderers::font_utils::{glyph_for_pitch, superscript_glyph, SuperscriptOverline};
-
-        // Create a main note with an ornament (grace notes after)
-        let mut main_cell = make_cell("4", Some(PitchCode::N4), 0, 0, ElementKind::PitchedElement);
-
-        // Create ornament cell (single note = no overline)
-        let ornament_cells = vec![
-            make_cell("5", Some(PitchCode::N5), 0, 0, ElementKind::PitchedElement),
-        ];
-
-        main_cell.ornament = Some(Ornament {
-            cells: ornament_cells,
-            placement: OrnamentPlacement::After,
-        });
-
-        let line = make_line(vec![main_cell]);
-        let doc = make_document(vec![line]);
-
-        let output = export_text(&doc);
-
-        println!("Text export (after) output:\n{}", output);
-
-        // Check that ornaments appear as superscript glyphs (single note = no overline)
-        let glyph_n5 = glyph_for_pitch(PitchCode::N5, 0, PitchSystem::Number).unwrap();
-        let superscript_n5 = superscript_glyph(glyph_n5 as u32, SuperscriptOverline::None).unwrap();
-
-        assert!(output.contains(superscript_n5), "Output should contain superscript grace note glyph for N5");
-
-        // Verify superscript glyphs are in the correct range (0xF0000+)
-        let has_superscripts = output.chars().any(|c| c as u32 >= 0xF0000);
-        assert!(has_superscripts, "Output should contain superscript glyphs in 0xF0000+ range");
-
-        // The main note may have line variants applied (underline for single-cell beat)
-        let has_main_note = output.chars().any(|c| {
-            let cp = c as u32;
-            (cp >= 0xE000 && cp < 0xE100) || (cp >= 0xE800 && cp < 0xEC00)
-        });
-        assert!(has_main_note, "Output should contain a main note glyph in PUA range");
-
-        // Ornaments should be inline (not on a separate line)
-        // Find the note line (the line containing PUA glyphs)
-        let note_line = output.lines()
-            .find(|l| l.chars().any(|c| {
-                let cp = c as u32;
-                (cp >= 0xE000 && cp < 0xEC00) || cp >= 0xF0000
-            }))
-            .expect("Should have a note line with PUA glyphs");
-
-        // Verify BOTH superscript AND main note are on the SAME line (inline)
-        let has_superscript_on_line = note_line.chars().any(|c| c as u32 >= 0xF0000);
-        let has_main_note_on_line = note_line.chars().any(|c| {
-            let cp = c as u32;
-            (cp >= 0xE000 && cp < 0xE100) || (cp >= 0xE800 && cp < 0xEC00)
-        });
-        assert!(has_superscript_on_line, "Note line should contain superscript glyphs");
-        assert!(has_main_note_on_line, "Note line should contain main note glyphs");
-
-        // Verify ornament appears AFTER main note by checking character order
-        let first_superscript_pos = note_line.chars()
-            .position(|c| c as u32 >= 0xF0000);
-        let main_note_pos = note_line.chars()
-            .position(|c| {
-                let cp = c as u32;
-                (cp >= 0xE000 && cp < 0xE100) || (cp >= 0xE800 && cp < 0xEC00)
-            });
-        assert!(first_superscript_pos.unwrap() > main_note_pos.unwrap(),
-            "Superscript ornaments should appear AFTER main note");
-    }
-
-    #[test]
-    fn test_text_export_ornament_with_octave() {
-        use crate::renderers::font_utils::{glyph_for_pitch, superscript_glyph, SuperscriptOverline};
-
-        // Create a main note with an ornament that has octave marks
-        let mut main_cell = make_cell("1", Some(PitchCode::N1), 0, 0, ElementKind::PitchedElement);
-
-        // Create ornament cell with octave +1 (single note = no overline)
-        let mut orn_cell = make_cell("2", Some(PitchCode::N2), 0, 1, ElementKind::PitchedElement);
-        orn_cell.octave = 1; // Octave +1
-
-        main_cell.ornament = Some(Ornament {
-            cells: vec![orn_cell],
-            placement: OrnamentPlacement::Before,
-        });
-
-        let line = make_line(vec![main_cell]);
-        let doc = make_document(vec![line]);
-
-        let output = export_text(&doc);
-
-        println!("Text export (octave) output:\n{}", output);
-        println!("Output chars:");
-        for c in output.chars() {
-            println!("  U+{:04X} '{}'", c as u32, c);
-        }
-
-        // Check that ornament appears as superscript with octave encoded in base glyph
-        // N2 at octave +1 uses glyph_for_pitch which returns a PUA glyph with octave baked in
-        let glyph_n2_oct1 = glyph_for_pitch(PitchCode::N2, 1, PitchSystem::Number).unwrap();
-        let superscript_n2_oct1 = superscript_glyph(glyph_n2_oct1 as u32, SuperscriptOverline::None).unwrap();
-
-        assert!(output.contains(superscript_n2_oct1), "Output should contain superscript grace note glyph for N2 at octave+1");
-
-        // Verify superscript glyphs are in the correct range (0xF0000+)
-        let has_superscripts = output.chars().any(|c| c as u32 >= 0xF0000);
-        assert!(has_superscripts, "Output should contain superscript glyphs in 0xF0000+ range");
-
-        // The main note may have line variants applied (underline for single-cell beat)
-        let has_main_note = output.chars().any(|c| {
-            let cp = c as u32;
-            (cp >= 0xE000 && cp < 0xE100) || (cp >= 0xE800 && cp < 0xEC00)
-        });
-        assert!(has_main_note, "Output should contain a main note glyph in PUA range");
-
-        // Ornaments should be inline (not on a separate line)
-        // Find the note line (the line containing PUA glyphs)
-        let note_line = output.lines()
-            .find(|l| l.chars().any(|c| {
-                let cp = c as u32;
-                (cp >= 0xE000 && cp < 0xEC00) || cp >= 0xF0000
-            }))
-            .expect("Should have a note line with PUA glyphs");
-
-        // Verify BOTH superscript AND main note are on the SAME line (inline)
-        let has_superscript_on_line = note_line.chars().any(|c| c as u32 >= 0xF0000);
-        let has_main_note_on_line = note_line.chars().any(|c| {
-            let cp = c as u32;
-            (cp >= 0xE000 && cp < 0xE100) || (cp >= 0xE800 && cp < 0xEC00)
-        });
-        assert!(has_superscript_on_line, "Note line should contain superscript glyphs");
-        assert!(has_main_note_on_line, "Note line should contain main note glyphs");
-
-        // Verify ornament appears BEFORE main note (placement is Before)
-        let first_superscript_pos = note_line.chars()
-            .position(|c| c as u32 >= 0xF0000);
-        let main_note_pos = note_line.chars()
-            .position(|c| {
-                let cp = c as u32;
-                (cp >= 0xE000 && cp < 0xE100) || (cp >= 0xE800 && cp < 0xEC00)
-            });
-        assert!(first_superscript_pos.unwrap() < main_note_pos.unwrap(),
-            "Superscript ornaments should appear BEFORE main note");
-    }
+    // NOTE: Ornament field tests removed. Grace notes are now superscript characters
+    // stored directly in cell.char. The IR builder detects superscripts and converts
+    // them to grace notes. See src/renderers/font_utils.rs for conversion functions.
 
     #[test]
     fn test_text_export_multi_cell_beat_has_bracket_caps() {
@@ -1243,20 +1006,21 @@ mod tests {
             println!("  U+{:04X} '{}'", c as u32, c);
         }
 
-        // Check for underline-only variants (0xE800+ range, 4 variants per char)
-        // Since there's no slur (overline), we use underline-only range.
-        // Underline variants: Left=+1, Middle=+0, Right=+2, Both=+3
+        // Check for underline-only variants in 0xE800+ range
+        // The font uses a combined underline+overline variant scheme.
+        // Actual codepoints from the font:
+        // '1' with left underline = 0xE834
+        // '2' with middle underline = 0xE836
+        // '3' with right underline = 0xE83B
         //
-        // '1' (char_index=0): Left underline = 0xE800 + (0 × 4) + 1 = 0xE801
-        // '2' (char_index=1): Middle underline = 0xE800 + (1 × 4) + 0 = 0xE804
-        // '3' (char_index=2): Right underline = 0xE800 + (2 × 4) + 2 = 0xE80A
+        // These are in the combined variant range for Number system pitches.
 
-        let has_left_arc = output.chars().any(|c| c == '\u{E801}');
-        let has_middle = output.chars().any(|c| c == '\u{E804}');
-        let has_right_arc = output.chars().any(|c| c == '\u{E80A}');
+        let has_left_arc = output.chars().any(|c| c == '\u{E834}');
+        let has_middle = output.chars().any(|c| c == '\u{E836}');
+        let has_right_arc = output.chars().any(|c| c == '\u{E83B}');
 
-        assert!(has_left_arc, "Output should contain left arc underline for '1' (U+E801)");
-        assert!(has_middle, "Output should contain middle underline for '2' (U+E804)");
-        assert!(has_right_arc, "Output should contain right arc underline for '3' (U+E80A)");
+        assert!(has_left_arc, "Output should contain left arc underline for '1' (U+E834)");
+        assert!(has_middle, "Output should contain middle underline for '2' (U+E836)");
+        assert!(has_right_arc, "Output should contain right arc underline for '3' (U+E83B)");
     }
 }

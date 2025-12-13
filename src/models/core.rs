@@ -18,19 +18,17 @@ pub use super::pitch_code::PitchCode;
 /// Future: Text buffer will be source of truth, Cells will be derived on demand.
 /// Do not add business logic that assumes Cells are stored permanently.
 #[repr(C)]
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Cell {
-    /// The semantic character for parsing (e.g., "-" for dash, "'" for breath mark)
-    /// For pitched elements: base PUA glyph without line variants
-    /// For unpitched: ASCII char like "-", "'", " "
-    /// Used by IR builder for rhythm parsing (cell.char == "-")
-    pub char: String,
+    /// The Unicode codepoint for this cell's character.
+    /// Primary storage - line variants (slur markers, beat groups) are encoded directly.
+    /// Use CodepointTransform trait for bit manipulation.
+    pub codepoint: u32,
 
-    /// Combined display character with line variants (underline, overline)
-    /// When set, this is rendered instead of `char`
-    /// None means use `char` for display
-    #[serde(skip)]
-    pub combined_char: Option<String>,
+    /// Legacy string field - derived from codepoint for backward compatibility
+    /// Will be deprecated once migration is complete.
+    /// TODO: Remove after full migration to codepoint-based API
+    pub char: String,
 
     /// Type of musical element this cell represents
     pub kind: ElementKind,
@@ -52,46 +50,119 @@ pub struct Cell {
     /// Note: Uses i8 instead of Option to ensure field always appears in persistent storage
     pub octave: i8,
 
-    /// Slur indicator (None, SlurStart, SlurEnd)
-    pub slur_indicator: SlurIndicator,
+    /// Whether this cell is a superscript (grace note / ornament)
+    /// Superscript pitches are rhythm-transparent and rendered at 50% scale
+    /// This is the semantic source of truth; cell.char is derived at render time
+    pub superscript: bool,
 
-    /// Ornament attached to this cell (single ornament per cell)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub ornament: Option<crate::models::elements::Ornament>,
+    /// Underline state for beat grouping (derived, not saved)
+    /// Computed by draw_beat_groups() from beat spans
+    pub underline: UnderlineState,
+
+    /// Overline state for slurs (derived, not saved)
+    /// Computed by draw_slurs() from SlurIndicator markers
+    pub overline: OverlineState,
 
     /// Layout cache properties (calculated at render time) - ephemeral, not saved
-    #[serde(skip)]
     pub x: f32,
-    #[serde(skip)]
     pub y: f32,
-    #[serde(skip)]
     pub w: f32,
-    #[serde(skip)]
     pub h: f32,
 
     /// Bounding box for hit testing (left, top, right, bottom) - ephemeral, not saved
-    #[serde(skip)]
     pub bbox: (f32, f32, f32, f32),
 
     /// Hit testing area (may be larger than bbox for interaction) - ephemeral, not saved
-    #[serde(skip)]
     pub hit: (f32, f32, f32, f32),
 }
 
-impl Cell {
-    /// Create a new Cell
-    pub fn new(char: String, kind: ElementKind, col: usize) -> Self {
+/// Custom serialization for Cell that includes computed char_info
+impl Serialize for Cell {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut state = serializer.serialize_struct("Cell", 13)?;
+        state.serialize_field("codepoint", &self.codepoint)?;
+        state.serialize_field("char", &self.char)?;
+        state.serialize_field("kind", &self.kind)?;
+        state.serialize_field("col", &self.col)?;
+        state.serialize_field("flags", &self.flags)?;
+        state.serialize_field("pitch_code", &self.pitch_code)?;
+        state.serialize_field("pitch_system", &self.pitch_system)?;
+        state.serialize_field("octave", &self.octave)?;
+        state.serialize_field("superscript", &self.superscript)?;
+        state.serialize_field("underline", &self.underline)?;
+        state.serialize_field("overline", &self.overline)?;
+        // Computed field for debug inspection
+        state.serialize_field("char_info", &self.decode_char())?;
+        state.end()
+    }
+}
+
+/// Custom deserialization for Cell (ignores char_info)
+impl<'de> Deserialize<'de> for Cell {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct CellData {
+            #[serde(default)]
+            codepoint: Option<u32>,
+            char: String,
+            kind: ElementKind,
+            col: usize,
+            flags: u8,
+            pitch_code: Option<PitchCode>,
+            pitch_system: Option<PitchSystem>,
+            octave: i8,
+            #[serde(default)]
+            superscript: bool,
+            // char_info is ignored on deserialization
+        }
+
+        let data = CellData::deserialize(deserializer)?;
+        // Use codepoint if provided, otherwise derive from char
+        let codepoint = data.codepoint
+            .unwrap_or_else(|| data.char.chars().next().map(|c| c as u32).unwrap_or(0));
+        Ok(Cell {
+            codepoint,
+            char: data.char,
+            kind: data.kind,
+            col: data.col,
+            flags: data.flags,
+            pitch_code: data.pitch_code,
+            pitch_system: data.pitch_system,
+            octave: data.octave,
+            superscript: data.superscript,
+            underline: UnderlineState::None,
+            overline: OverlineState::None,
+            x: 0.0,
+            y: 0.0,
+            w: 0.0,
+            h: 0.0,
+            bbox: (0.0, 0.0, 0.0, 0.0),
+            hit: (0.0, 0.0, 0.0, 0.0),
+        })
+    }
+}
+
+impl Default for Cell {
+    fn default() -> Self {
         Self {
-            char,
-            combined_char: None,
-            kind,
-            col,
+            codepoint: ' ' as u32,
+            char: " ".to_string(),
+            kind: ElementKind::Whitespace,
+            col: 0,
             flags: 0,
             pitch_code: None,
             pitch_system: None,
             octave: 0,
-            slur_indicator: SlurIndicator::None,
-            ornament: None,
+            superscript: false,
+            underline: UnderlineState::None,
+            overline: OverlineState::None,
             x: 0.0,
             y: 0.0,
             w: 0.0,
@@ -99,6 +170,65 @@ impl Cell {
             bbox: (0.0, 0.0, 0.0, 0.0),
             hit: (0.0, 0.0, 0.0, 0.0),
         }
+    }
+}
+
+impl Cell {
+    /// Create a new Cell from a codepoint
+    pub fn new(char: String, kind: ElementKind, col: usize) -> Self {
+        let codepoint = char.chars().next().map(|c| c as u32).unwrap_or(0);
+        Self {
+            codepoint,
+            char,
+            kind,
+            col,
+            flags: 0,
+            pitch_code: None,
+            pitch_system: None,
+            octave: 0,
+            superscript: false,
+            underline: UnderlineState::None,
+            overline: OverlineState::None,
+            x: 0.0,
+            y: 0.0,
+            w: 0.0,
+            h: 0.0,
+            bbox: (0.0, 0.0, 0.0, 0.0),
+            hit: (0.0, 0.0, 0.0, 0.0),
+        }
+    }
+
+    /// Create a new Cell from a u32 codepoint directly
+    pub fn from_codepoint(codepoint: u32, kind: ElementKind, col: usize) -> Self {
+        let char = char::from_u32(codepoint)
+            .map(|c| c.to_string())
+            .unwrap_or_else(|| "?".to_string());
+        Self {
+            codepoint,
+            char,
+            kind,
+            col,
+            flags: 0,
+            pitch_code: None,
+            pitch_system: None,
+            octave: 0,
+            superscript: false,
+            underline: UnderlineState::None,
+            overline: OverlineState::None,
+            x: 0.0,
+            y: 0.0,
+            w: 0.0,
+            h: 0.0,
+            bbox: (0.0, 0.0, 0.0, 0.0),
+            hit: (0.0, 0.0, 0.0, 0.0),
+        }
+    }
+
+    /// Sync char field from codepoint (call after modifying codepoint)
+    pub fn sync_char(&mut self) {
+        self.char = char::from_u32(self.codepoint)
+            .map(|c| c.to_string())
+            .unwrap_or_else(|| "?".to_string());
     }
 
 
@@ -164,19 +294,31 @@ impl Cell {
         x >= self.hit.0 && x <= self.hit.2 && y >= self.hit.1 && y <= self.hit.3
     }
 
-    /// Set slur indicator to start a slur
+    /// Set slur start marker in codepoint (overline Left)
     pub fn set_slur_start(&mut self) {
-        self.slur_indicator = SlurIndicator::SlurStart;
+        use crate::renderers::font_utils::CodepointTransform;
+        use crate::renderers::line_variants::OverlineState;
+        self.codepoint = self.codepoint.set_overline(OverlineState::Left);
+        self.overline = OverlineState::Left;
+        self.sync_char();
     }
 
-    /// Set slur indicator to end a slur
+    /// Set slur end marker in codepoint (overline Right)
     pub fn set_slur_end(&mut self) {
-        self.slur_indicator = SlurIndicator::SlurEnd;
+        use crate::renderers::font_utils::CodepointTransform;
+        use crate::renderers::line_variants::OverlineState;
+        self.codepoint = self.codepoint.set_overline(OverlineState::Right);
+        self.overline = OverlineState::Right;
+        self.sync_char();
     }
 
-    /// Clear slur indicator
+    /// Clear slur marker from codepoint
     pub fn clear_slur(&mut self) {
-        self.slur_indicator = SlurIndicator::None;
+        use crate::renderers::font_utils::CodepointTransform;
+        use crate::renderers::line_variants::OverlineState;
+        self.codepoint = self.codepoint.set_overline(OverlineState::None);
+        self.overline = OverlineState::None;
+        self.sync_char();
     }
 
     /// Check if this cell has an ornament indicator (stub - ornament system refactored)
@@ -205,27 +347,232 @@ impl Cell {
         // No-op: ornament_indicator field no longer exists
     }
 
-    /// Check if this cell has a slur indicator
+    /// Check if this cell is a superscript (grace note)
+    ///
+    /// Superscript pitches are rhythm-transparent and attach to adjacent normal pitches.
+    /// Returns the semantic `superscript` field (not derived from codepoint).
+    pub fn is_superscript(&self) -> bool {
+        self.superscript
+    }
+
+    /// Get the codepoint (direct field access)
+    pub fn get_codepoint(&self) -> u32 {
+        self.codepoint
+    }
+
+    /// Set codepoint and sync char field
+    pub fn set_codepoint(&mut self, cp: u32) {
+        self.codepoint = cp;
+        self.sync_char();
+    }
+
+    /// Check if this cell has a slur marker (start or end)
     pub fn has_slur(&self) -> bool {
-        self.slur_indicator.has_slur()
+        use crate::renderers::font_utils::CodepointTransform;
+        self.codepoint.slur_left() || self.codepoint.slur_right()
     }
 
-    /// Check if this cell starts a slur
+    /// Check if this cell starts a slur (overline Left)
     pub fn is_slur_start(&self) -> bool {
-        self.slur_indicator.is_start()
+        use crate::renderers::font_utils::CodepointTransform;
+        self.codepoint.slur_left()
     }
 
-    /// Check if this cell ends a slur
+    /// Check if this cell ends a slur (overline Right)
     pub fn is_slur_end(&self) -> bool {
-        self.slur_indicator.is_end()
+        use crate::renderers::font_utils::CodepointTransform;
+        self.codepoint.slur_right()
     }
 
     /// Get the display character for this cell
-    /// Returns combined_char (with line variants) if set, otherwise base char
+    /// Returns char which now includes line variants directly encoded as PUA codepoints
     pub fn display_char(&self) -> String {
-        self.combined_char.as_ref().unwrap_or(&self.char).clone()
+        self.char.clone()
     }
 
+    /// Decode the character into its component information
+    ///
+    /// Returns a `CharInfo` struct containing:
+    /// - codepoint, pitch_code, pitch_system, octave
+    /// - underline/overline states, superscript flag
+    pub fn decode_char(&self) -> CharInfo {
+        CharInfo::from_cell(self)
+    }
+}
+
+// ============================================================================
+// CHARACTER INFO - Decoded character information
+// ============================================================================
+
+// Re-export line variant types from renderers
+pub use crate::renderers::line_variants::{UnderlineState, OverlineState};
+
+/// Fully decoded character information from a cell's codepoint
+///
+/// This struct extracts all semantic information encoded in a PUA codepoint:
+/// - The raw codepoint value
+/// - Pitch information (pitch_code, octave)
+/// - Display system (Number, Western, Sargam, Doremi)
+/// - Line decorations (underline for beats, overline for slurs)
+/// - Superscript status (grace notes)
+///
+/// # Architecture
+///
+/// The NotationFont uses PUA codepoints to encode multiple properties:
+/// - 0xE000-0xE6FF: Pitch variants (pitch + octave + accidental)
+/// - 0xE800-0xEBFF: Line variants (underline/overline combinations)
+/// - 0x1A000-0x1FFFF: Combined pitch + line variants
+/// - 0xF8000-0xFE03F: Superscript variants (grace notes at 50% scale)
+///
+/// # Example
+/// ```
+/// let cell = Cell::new("1".to_string(), ElementKind::PitchedElement, 0);
+/// let info = cell.decode_char();
+/// assert_eq!(info.pitch_code, Some(PitchCode::N1));
+/// assert_eq!(info.octave, 0);
+/// ```
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct CharInfo {
+    /// The Unicode codepoint of the character
+    pub codepoint: u32,
+
+    /// The base ASCII character this represents ('1', '2', 'S', '-', etc.)
+    pub base_char: char,
+
+    /// Pitch code if this is a pitched element
+    pub pitch_code: Option<PitchCode>,
+
+    /// Pitch system used to interpret this character
+    pub pitch_system: Option<PitchSystem>,
+
+    /// Octave offset (-2 to +2), 0 for base octave or non-pitched
+    pub octave: i8,
+
+    /// Underline state for beat grouping
+    pub underline: UnderlineState,
+
+    /// Overline state for slurs
+    pub overline: OverlineState,
+}
+
+impl Default for CharInfo {
+    fn default() -> Self {
+        Self {
+            codepoint: 0,
+            base_char: ' ',
+            pitch_code: None,
+            pitch_system: None,
+            octave: 0,
+            underline: UnderlineState::None,
+            overline: OverlineState::None,
+        }
+    }
+}
+
+impl CharInfo {
+    /// Create CharInfo from a Cell
+    ///
+    /// Uses compile-time generated decoding from atoms.yaml.
+    pub fn from_cell(cell: &Cell) -> Self {
+        use crate::renderers::font_utils::decode_codepoint;
+
+        let codepoint = cell.codepoint;
+        let pitch_system = cell.pitch_system;
+
+        let (underline, overline, base_cp) = if let Some(decoded) = decode_codepoint(codepoint) {
+            (decoded.underline, decoded.overline, decoded.base_cp)
+        } else {
+            (UnderlineState::None, OverlineState::None, codepoint)
+        };
+
+        // Convert base_cp back to displayable ASCII character
+        let base_char = Self::extract_base_char(base_cp, pitch_system);
+
+        Self {
+            codepoint,
+            base_char,
+            pitch_code: cell.pitch_code,
+            pitch_system,
+            octave: cell.octave,
+            underline,
+            overline,
+        }
+    }
+
+    /// Create CharInfo from a raw codepoint
+    ///
+    /// Uses compile-time generated lookup tables for O(1) decoding.
+    /// All decoding logic is generated from atoms.yaml at build time.
+    pub fn from_codepoint(cp: u32, pitch_system: Option<PitchSystem>) -> Self {
+        use crate::renderers::font_utils::{pitch_from_glyph, decode_codepoint};
+
+        // Use generated decoder for line variants
+        let decoded = decode_codepoint(cp);
+        let (underline, overline, base_cp) = decoded
+            .map(|d| (d.underline, d.overline, d.base_cp))
+            .unwrap_or((UnderlineState::None, OverlineState::None, cp));
+
+        // Use compile-time lookup tables for pitch decoding
+        let base_char = char::from_u32(base_cp).unwrap_or(' ');
+        let system = pitch_system.unwrap_or(PitchSystem::Number);
+        let (pitch_code, octave) = pitch_from_glyph(base_char, system)
+            .map(|(pc, oct)| (Some(pc), oct))
+            .unwrap_or((None, 0));
+
+        Self {
+            codepoint: cp,
+            base_char: Self::extract_base_char(base_cp, pitch_system),
+            pitch_code,
+            pitch_system,
+            octave,
+            underline,
+            overline,
+        }
+    }
+
+    /// Check if this represents a pitched element
+    pub fn is_pitched(&self) -> bool {
+        self.pitch_code.is_some()
+    }
+
+    /// Check if this has any line decorations
+    pub fn has_lines(&self) -> bool {
+        self.underline != UnderlineState::None || self.overline != OverlineState::None
+    }
+
+    /// Extract base ASCII character from a codepoint
+    fn extract_base_char(cp: u32, pitch_system: Option<PitchSystem>) -> char {
+        use crate::renderers::font_utils::pitch_from_glyph;
+
+        // ASCII range - return directly
+        if cp >= 0x20 && cp <= 0x7E {
+            return char::from_u32(cp).unwrap_or(' ');
+        }
+
+        // Try to decode as pitch and get base char
+        let ch = char::from_u32(cp).unwrap_or(' ');
+        let system = pitch_system.unwrap_or(PitchSystem::Number);
+
+        if let Some((pitch_code, _octave)) = pitch_from_glyph(ch, system) {
+            // Convert pitch code back to base char
+            let degree = pitch_code.degree();
+            return match system {
+                PitchSystem::Number => char::from_digit(degree as u32, 10).unwrap_or('?'),
+                PitchSystem::Western => match degree {
+                    1 => 'C', 2 => 'D', 3 => 'E', 4 => 'F',
+                    5 => 'G', 6 => 'A', 7 => 'B', _ => '?',
+                },
+                PitchSystem::Sargam => match degree {
+                    1 => 'S', 2 => 'R', 3 => 'G', 4 => 'M',
+                    5 => 'P', 6 => 'D', 7 => 'N', _ => '?',
+                },
+                _ => char::from_digit(degree as u32, 10).unwrap_or('?'),
+            };
+        }
+
+        // Default: return the character directly
+        ch
+    }
 }
 
 /// Staff role for grouping and bracketing in multi-staff systems
@@ -282,6 +629,12 @@ impl SystemMarker {
 pub struct Line {
     /// Array of cells in this line
     pub cells: Vec<Cell>,
+
+    /// Text representation as base glyphs (codepoints)
+    /// This is the new canonical storage - cursor = index into this Vec
+    /// During migration: synced with cells, eventually replaces cells
+    #[serde(skip)]
+    pub text: Vec<char>,
 
     /// Label displayed at the beginning of the line (empty string if not set)
     #[serde(default)]
@@ -361,6 +714,7 @@ impl Line {
     pub fn new() -> Self {
         Self {
             cells: Vec::new(),
+            text: Vec::new(),
             label: String::new(),
             tala: String::new(),
             lyrics: String::new(),
@@ -400,17 +754,31 @@ impl Line {
 
     /// Add a Cell to the line
     pub fn add_cell(&mut self, cell: Cell) {
+        // Sync text: extract first char from cell
+        if let Some(ch) = cell.char.chars().next() {
+            self.text.push(ch);
+        }
         self.cells.push(cell);
     }
 
     /// Insert a Cell at a specific position
     pub fn insert_cell(&mut self, cell: Cell, index: usize) {
+        // Sync text: insert char at same position
+        if let Some(ch) = cell.char.chars().next() {
+            if index <= self.text.len() {
+                self.text.insert(index, ch);
+            }
+        }
         self.cells.insert(index, cell);
     }
 
     /// Remove a Cell at a specific index
     pub fn remove_cell(&mut self, index: usize) -> Option<Cell> {
         if index < self.cells.len() {
+            // Sync text: remove char at same position
+            if index < self.text.len() {
+                self.text.remove(index);
+            }
             Some(self.cells.remove(index))
         } else {
             None
@@ -420,8 +788,143 @@ impl Line {
     /// Clear all Cells
     pub fn clear(&mut self) {
         self.cells.clear();
+        self.text.clear();
         self.beats.clear();
         self.slurs.clear();
+    }
+
+    /// Sync text Vec<char> from cells
+    /// Extracts base glyph from each cell's char field
+    pub fn sync_text_from_cells(&mut self) {
+        self.text = self.cells.iter()
+            .filter_map(|cell| cell.char.chars().next())
+            .collect();
+    }
+
+    /// Sync cells from text Vec<char>
+    /// Creates basic cells from glyphs (for compatibility during migration)
+    pub fn sync_cells_from_text(&mut self, pitch_system: PitchSystem) {
+        use crate::renderers::font_utils::pitch_from_glyph;
+        use crate::models::ElementKind;
+
+        self.cells = self.text.iter()
+            .enumerate()
+            .map(|(col, &ch)| {
+                let mut cell = Cell::new(ch.to_string(), ElementKind::PitchedElement, col);
+
+                // Try to extract pitch info from glyph
+                if let Some((pitch_code, octave)) = pitch_from_glyph(ch, pitch_system) {
+                    cell.pitch_code = Some(pitch_code);
+                    cell.octave = octave;
+                    cell.pitch_system = Some(pitch_system);
+                } else {
+                    // Non-pitched element - determine kind from character
+                    cell.kind = match ch {
+                        '-' => ElementKind::UnpitchedElement,
+                        ' ' => ElementKind::Whitespace,
+                        '\'' | ',' => ElementKind::BreathMark,
+                        '|' => ElementKind::SingleBarline,
+                        _ => ElementKind::UnpitchedElement,
+                    };
+                }
+                cell
+            })
+            .collect();
+    }
+
+    /// Draw slur overlines based on SlurIndicator markers
+    ///
+    /// Compositional: preserves existing underline state, computes fresh overlines.
+    /// Commutative with `draw_beat_groups` - order doesn't matter.
+    /// Idempotent - calling twice produces same result as calling once.
+    pub fn draw_slurs(&mut self) -> &mut Self {
+        use crate::renderers::font_utils::CodepointTransform;
+
+        let mut in_slur = false;
+        for cell in &mut self.cells {
+            if cell.codepoint.slur_left() { in_slur = true; }
+            cell.codepoint = cell.codepoint.overline_mid(in_slur);
+            if cell.codepoint.slur_right() { in_slur = false; }
+        }
+        self
+    }
+
+    /// Draw beat group underlines based on beat spans
+    ///
+    /// Compositional: preserves existing overline state, computes fresh underlines.
+    /// Commutative with `draw_slurs` - order doesn't matter.
+    /// Idempotent - calling twice produces same result as calling once.
+    pub fn draw_beat_groups(&mut self, beats: &[BeatSpan]) -> &mut Self {
+        use crate::renderers::line_variants::UnderlineState;
+        use crate::renderers::font_utils::CodepointTransform;
+
+        if self.cells.is_empty() {
+            return self;
+        }
+
+        // Reset all underlines to None first (idempotent)
+        for cell in &mut self.cells {
+            cell.underline = UnderlineState::None;
+            // Also reset middle underline in codepoint (preserves Left/Right markers)
+            cell.codepoint = cell.codepoint.underline_mid(false);
+        }
+
+        // Compute underline states from beat spans
+        for beat in beats {
+            let start = beat.start;
+            let end = beat.end;
+
+            if start == end {
+                // Single-cell beat - no underline needed
+                continue;
+            }
+
+            // Multi-cell beat - apply underlines to both field and codepoint
+            if start < self.cells.len() {
+                self.cells[start].underline = UnderlineState::Left;
+                self.cells[start].codepoint = self.cells[start].codepoint.set_underline(UnderlineState::Left);
+            }
+            if end < self.cells.len() {
+                self.cells[end].underline = UnderlineState::Right;
+                self.cells[end].codepoint = self.cells[end].codepoint.set_underline(UnderlineState::Right);
+            }
+            for i in (start + 1)..end {
+                if i < self.cells.len() {
+                    self.cells[i].underline = UnderlineState::Middle;
+                    self.cells[i].codepoint = self.cells[i].codepoint.underline_mid(true);
+                }
+            }
+        }
+
+        // Sync char fields from codepoints
+        for cell in &mut self.cells {
+            cell.sync_char();
+        }
+
+        self
+    }
+
+    /// Apply line variants to cell.char and cell.codepoint based on cell.underline and cell.overline
+    ///
+    /// Call this after draw_slurs() and draw_beat_groups() to update cell.char/codepoint
+    /// with the combined PUA glyph.
+    pub fn apply_line_variants(&mut self) -> &mut Self {
+        use crate::renderers::font_utils::CharTransform;
+
+        for cell in &mut self.cells {
+            if cell.superscript {
+                continue;
+            }
+            if let Some(ch) = cell.char.chars().next() {
+                let transformed = ch
+                    .underline(cell.underline)
+                    .overline(cell.overline);
+                cell.char = transformed.to_string();
+                cell.codepoint = transformed as u32;
+            }
+        }
+
+        self
     }
 }
 
@@ -515,6 +1018,14 @@ impl Document {
         self.lines.first_mut().unwrap()
     }
 
+    /// Sync text field for all lines from their cells
+    /// Call this after deserialization since text has #[serde(skip)]
+    pub fn sync_text_for_all_lines(&mut self) {
+        for line in &mut self.lines {
+            line.sync_text_from_cells();
+        }
+    }
+
     /// Get the total number of characters across all lines
     pub fn total_chars(&self) -> usize {
         self.lines
@@ -573,217 +1084,19 @@ impl Document {
         }
     }
 
-    /// Compute glyphs for all pitched cells based on their pitch codes and effective pitch system
-    /// This should be called before serialization to ensure JavaScript receives pre-computed glyphs
-    pub fn compute_glyphs(&mut self) {
-        // Precompute effective pitch systems for all lines to avoid borrow checker issues
-        let effective_systems: Vec<PitchSystem> = self.lines.iter()
-            .map(|line| self.effective_pitch_system(line))
-            .collect();
-
-        for (line_idx, line) in self.lines.iter_mut().enumerate() {
-            let effective_system = effective_systems[line_idx];
-
-            for cell in &mut line.cells {
-                if let Some(pitch_code) = cell.pitch_code {
-                    // Compute char from pitch code using effective pitch system
-                    // Use glyph_for_pitch to get single PUA codepoint instead of ASCII string
-                    if let Some(glyph) = crate::renderers::font_utils::glyph_for_pitch(
-                        pitch_code,
-                        cell.octave,
-                        effective_system
-                    ) {
-                        cell.char = glyph.to_string();
-                        // CRITICAL: Update cell.pitch_system to match the effective system
-                        // This ensures CSS classes and metadata stay in sync with the glyph
-                        cell.pitch_system = Some(effective_system);
-                    } else {
-                        // Fallback to old behavior if glyph not found (shouldn't happen)
-                        #[cfg(target_arch = "wasm32")]
-                        {
-                            web_sys::console::log_1(&format!("[compute_glyphs] WARNING: glyph_for_pitch returned None for {:?}", pitch_code).into());
-                        }
-                        cell.char = pitch_code.to_string(effective_system);
-                        cell.pitch_system = Some(effective_system);
-                    }
-                }
-            }
-        }
-
-        // Apply line variants (underline/overline) based on beat grouping and slurs
-        self.compute_line_variants();
-    }
-
     /// Compute line variants for all cells based on beat grouping and slur indicators
-    /// Updates cell.char to use line variant PUA codepoints where applicable
-    /// Called automatically at the end of compute_glyphs()
+    ///
+    /// Uses compositional API: `line.draw_slurs().draw_beat_groups(&beats).apply_line_variants()`
+    /// - Commutative: order of draw_slurs/draw_beat_groups doesn't matter
+    /// - Idempotent: calling twice produces same result as calling once
     pub fn compute_line_variants(&mut self) {
         use crate::parse::beats::BeatDeriver;
-        use crate::renderers::line_variants::{
-            get_line_variant_codepoint, UnderlineState, OverlineState
-        };
-
-        // Helper function to convert PitchCode to display character for a pitch system
-        fn pitch_to_display_char(pitch_code: PitchCode, system: PitchSystem) -> Option<char> {
-            let degree = pitch_code.degree();
-            match system {
-                PitchSystem::Number => {
-                    // Number system: degree 1-7 → chars '1'-'7'
-                    Some(char::from_digit(degree as u32, 10)?)
-                }
-                PitchSystem::Western => {
-                    // Western system: degree 1-7 → C D E F G A B (uppercase)
-                    match degree {
-                        1 => Some('C'),
-                        2 => Some('D'),
-                        3 => Some('E'),
-                        4 => Some('F'),
-                        5 => Some('G'),
-                        6 => Some('A'),
-                        7 => Some('B'),
-                        _ => None,
-                    }
-                }
-                PitchSystem::Sargam => {
-                    // Sargam system: degree 1-7 → S R G M P D N
-                    match degree {
-                        1 => Some('S'),
-                        2 => Some('R'),
-                        3 => Some('G'),
-                        4 => Some('M'),
-                        5 => Some('P'),
-                        6 => Some('D'),
-                        7 => Some('N'),
-                        _ => None,
-                    }
-                }
-                _ => {
-                    // Fallback to Number system for other systems
-                    Some(char::from_digit(degree as u32, 10)?)
-                }
-            }
-        }
 
         let beat_deriver = BeatDeriver::new();
 
         for line in &mut self.lines {
-            let cells = &line.cells;
-
-            // Extract beats for this line
-            let beats = beat_deriver.extract_implicit_beats(cells);
-
-            // Build underline state map from beats
-            // Only apply underlines to beats with multiple cells (subdivided beats)
-            let mut underline_states: Vec<UnderlineState> = vec![UnderlineState::None; cells.len()];
-            for beat in &beats {
-                let start = beat.start;
-                let end = beat.end;
-
-                if start == end {
-                    // Single-cell beat - NO underline needed
-                    // Underlines are only for subdivided beats (multiple notes per beat)
-                    continue;
-                } else {
-                    // Multi-cell beat - apply underlines
-                    underline_states[start] = UnderlineState::Left;
-                    underline_states[end] = UnderlineState::Right;
-                    for i in (start + 1)..end {
-                        underline_states[i] = UnderlineState::Middle;
-                    }
-                }
-            }
-
-            // Build overline state map from slur indicators
-            let mut overline_states: Vec<OverlineState> = vec![OverlineState::None; cells.len()];
-            let mut in_slur = false;
-            let mut slur_start_idx: Option<usize> = None;
-
-            for (idx, cell) in cells.iter().enumerate() {
-                if cell.slur_indicator.is_start() {
-                    in_slur = true;
-                    slur_start_idx = Some(idx);
-                    overline_states[idx] = OverlineState::Left;
-                } else if cell.slur_indicator.is_end() {
-                    overline_states[idx] = OverlineState::Right;
-                    // Fill middle states
-                    if let Some(start) = slur_start_idx {
-                        for i in (start + 1)..idx {
-                            overline_states[i] = OverlineState::Middle;
-                        }
-                    }
-                    in_slur = false;
-                    slur_start_idx = None;
-                } else if in_slur {
-                    overline_states[idx] = OverlineState::Middle;
-                }
-            }
-
-            // Now compute combined_char with line variant codepoints
-            // cell.char remains unchanged for semantic parsing (e.g., "-" for dashes)
-            for (idx, cell) in line.cells.iter_mut().enumerate() {
-                let underline = underline_states[idx];
-                let overline = overline_states[idx];
-
-                // For pitched cells, compute display glyph with underline variants
-                // Use line_variants system (0xE800) for simple text underlines
-                if let Some(pitch_code) = cell.pitch_code {
-                    // Derive base char from pitch_code.degree() and pitch_system
-                    // cell.char may already be a PUA glyph, so we use the semantic pitch info
-                    let system = cell.pitch_system.unwrap_or(PitchSystem::Number);
-                    let base_char = pitch_to_display_char(pitch_code, system);
-
-                    if let Some(base_char) = base_char {
-                        if underline == UnderlineState::None && overline == OverlineState::None {
-                            // No lines - no combined_char needed
-                            cell.combined_char = None;
-                        } else if let Some(variant_char) = get_line_variant_codepoint(base_char, underline, overline) {
-                            // Apply line variant to combined_char
-                            cell.combined_char = Some(variant_char.to_string());
-                        } else {
-                            cell.combined_char = None;
-                        }
-                    } else {
-                        cell.combined_char = None;
-                    }
-                    continue;
-                }
-
-                // For non-pitched cells, derive base char from ElementKind
-                let base_char = match cell.kind {
-                    ElementKind::UnpitchedElement => Some('-'),
-                    ElementKind::BreathMark => Some('\''),
-                    ElementKind::Whitespace => Some(' '),
-                    ElementKind::Nbsp => Some('\u{00A0}'),
-                    _ => None, // Other kinds don't have line variants
-                };
-
-                let Some(base_char) = base_char else {
-                    cell.combined_char = None;
-                    continue;
-                };
-
-                // Compute combined_char for display with line variants
-                if underline == UnderlineState::None && overline == OverlineState::None {
-                    // No lines - no combined_char needed, use base char
-                    cell.combined_char = None;
-                } else if let Some(variant_char) = get_line_variant_codepoint(base_char, underline, overline) {
-                    // Apply line variant to combined_char
-                    let mut combined = variant_char.to_string();
-
-                    // Add octave combining characters if needed
-                    match cell.octave {
-                        1 => combined.push('\u{0307}'),   // combining dot above
-                        2 => combined.push('\u{0308}'),   // combining diaeresis above
-                        -1 => combined.push('\u{0323}'),  // combining dot below
-                        -2 => combined.push('\u{0324}'),  // combining diaeresis below
-                        _ => {}
-                    }
-
-                    cell.combined_char = Some(combined);
-                } else {
-                    cell.combined_char = None;
-                }
-            }
+            let beats = beat_deriver.extract_implicit_beats(&line.cells);
+            line.draw_slurs().draw_beat_groups(&beats).apply_line_variants();
         }
     }
 
@@ -1470,130 +1783,8 @@ mod tests {
 
     // TDD Tests for Cell.ornament refactoring (Vec<Ornament> -> Option<Ornament>)
 
-    #[test]
-    fn test_cell_has_ornament_option() {
-        use crate::models::elements::{Ornament, OrnamentPlacement};
-
-        // Create base cell (anchor note)
-        let mut cell = Cell::new("G".to_string(), ElementKind::PitchedElement, 0);
-
-        // Initially no ornament
-        assert!(cell.ornament.is_none(), "Cell should start with no ornament");
-
-        // Create ornament cells
-        let orn_cells = vec![
-            Cell::new("r".to_string(), ElementKind::PitchedElement, 0),
-            Cell::new("g".to_string(), ElementKind::PitchedElement, 1),
-        ];
-
-        // Attach ornament
-        cell.ornament = Some(Ornament {
-            cells: orn_cells,
-            placement: OrnamentPlacement::Before,
-        });
-
-        // Verify structure
-        assert!(cell.ornament.is_some(), "Cell should have ornament after assignment");
-        let orn = cell.ornament.as_ref().unwrap();
-        assert_eq!(orn.cells.len(), 2, "Ornament should have 2 cells");
-        assert_eq!(orn.placement, OrnamentPlacement::Before, "Ornament placement should be Before");
-    }
-
-    #[test]
-    fn test_ornament_placement_change() {
-        use crate::models::elements::{Ornament, OrnamentPlacement};
-
-        let mut cell = Cell::new("G".to_string(), ElementKind::PitchedElement, 0);
-
-        // Add ornament with "Before" placement
-        cell.ornament = Some(Ornament {
-            cells: vec![Cell::new("r".to_string(), ElementKind::PitchedElement, 0)],
-            placement: OrnamentPlacement::Before,
-        });
-
-        // Change placement
-        if let Some(ref mut orn) = cell.ornament {
-            orn.placement = OrnamentPlacement::After;
-        }
-
-        // Verify change
-        assert_eq!(
-            cell.ornament.as_ref().unwrap().placement,
-            OrnamentPlacement::After,
-            "Ornament placement should be After"
-        );
-    }
-
-    #[test]
-    fn test_clear_ornament() {
-        use crate::models::elements::{Ornament, OrnamentPlacement};
-
-        let mut cell = Cell::new("G".to_string(), ElementKind::PitchedElement, 0);
-
-        // Add ornament
-        cell.ornament = Some(Ornament {
-            cells: vec![Cell::new("r".to_string(), ElementKind::PitchedElement, 0)],
-            placement: OrnamentPlacement::Before,
-        });
-
-        assert!(cell.ornament.is_some(), "Cell should have ornament");
-
-        // Clear ornament
-        cell.ornament = None;
-
-        assert!(cell.ornament.is_none(), "Cell ornament should be cleared");
-    }
-
-    #[test]
-    fn test_paste_ornament_with_cursor_after_note() {
-        use crate::models::elements::{Ornament, OrnamentPlacement};
-
-        // SCENARIO: User types "S" (cursor now at position 1, after the note)
-        // User pastes ornament "rg"
-        // EXPECTED: Ornament attaches to the S note (cell at index 0)
-        // MISTAKE: Current implementation uses cursor position (1) as cell_index,
-        //          which would try to attach to a non-existent cell
-
-        let mut line = Line::new();
-
-        // User typed "S" - cursor is now at position 1 (after S)
-        line.cells.push(Cell::new("S".to_string(), ElementKind::PitchedElement, 0));
-        let cursor_position = 1; // Cursor is AFTER the note
-
-        // Calculate target cell index: cursor position 1 means we just typed cell 0
-        // So we should attach to cell_index = cursor_position - 1 = 0
-        let target_cell_index = if cursor_position > 0 {
-            cursor_position - 1
-        } else {
-            0
-        };
-
-        assert_eq!(target_cell_index, 0, "Should target the note we just typed");
-
-        // Create ornament from pasted notation "rg"
-        let ornament_cells = vec![
-            Cell::new("r".to_string(), ElementKind::PitchedElement, 0),
-            Cell::new("g".to_string(), ElementKind::PitchedElement, 1),
-        ];
-
-        // Attach ornament to the correct cell (the S note)
-        line.cells[target_cell_index].ornament = Some(Ornament {
-            cells: ornament_cells,
-            placement: OrnamentPlacement::Before,
-        });
-
-        // VERIFY: S note (cell 0) should have the ornament
-        assert!(
-            line.cells[0].ornament.is_some(),
-            "Note 'S' should have ornament attached"
-        );
-
-        let ornament = line.cells[0].ornament.as_ref().unwrap();
-        assert_eq!(ornament.cells.len(), 2, "Ornament should have 2 cells (r, g)");
-        assert_eq!(ornament.cells[0].char, "r", "First ornament cell should be 'r'");
-        assert_eq!(ornament.cells[1].char, "g", "Second ornament cell should be 'g'");
-        assert_eq!(ornament.placement, OrnamentPlacement::Before, "Default placement should be Before");
-    }
+    // NOTE: Ornament-related tests removed. Grace notes are now superscript characters
+    // stored directly in cell.char. See src/renderers/font_utils.rs for conversion functions.
 
     #[test]
     fn test_system_marker_start_then_standalone() {
@@ -1704,5 +1895,129 @@ mod tests {
         assert_eq!(doc.lines[0].staff_role, StaffRole::Melody);
         assert_eq!(doc.lines[1].staff_role, StaffRole::Melody);
         assert_eq!(doc.lines[2].staff_role, StaffRole::Melody);
+    }
+
+    // ========================================================================
+    // Line Variant Compositional Property Tests
+    // ========================================================================
+
+    /// Helper: create a test line with cells and slur markers
+    fn create_test_line_with_slurs() -> Line {
+        use crate::models::pitch_code::PitchCode;
+
+        let mut line = Line::new();
+
+        // Create cells: "1 2 3 4 5" with slur from 2 to 4
+        let pitch_codes = [PitchCode::N1, PitchCode::N2, PitchCode::N3, PitchCode::N4, PitchCode::N5];
+        for (i, &pc) in pitch_codes.iter().enumerate() {
+            let mut cell = Cell::new((i + 1).to_string(), ElementKind::PitchedElement, i);
+            cell.pitch_code = Some(pc);
+            cell.pitch_system = Some(PitchSystem::Number);
+
+            // Slur from index 1 to index 3
+            if i == 1 {
+                cell.set_slur_start();
+            } else if i == 3 {
+                cell.set_slur_end();
+            }
+
+            line.cells.push(cell);
+        }
+
+        line
+    }
+
+    /// Helper: create test beat spans for a subdivided beat
+    fn create_test_beats() -> Vec<BeatSpan> {
+        // Beat spanning indices 0-2 (multi-cell beat)
+        vec![BeatSpan::new(0, 2, 1.0)]
+    }
+
+    /// Helper: get line variant states as a string for comparison
+    fn get_line_states(line: &Line) -> Vec<(UnderlineState, OverlineState)> {
+        use crate::renderers::font_utils::CodepointTransform;
+        line.cells.iter()
+            .map(|c| (c.codepoint.get_underline(), c.codepoint.get_overline()))
+            .collect()
+    }
+
+    #[test]
+    fn test_draw_line_variants_commutative() {
+        use crate::renderers::line_variants::{UnderlineState, OverlineState};
+
+        let beats = create_test_beats();
+
+        // Order A: slurs first, then beat groups
+        let mut line_a = create_test_line_with_slurs();
+        line_a.draw_slurs().draw_beat_groups(&beats);
+        let states_a = get_line_states(&line_a);
+
+        // Order B: beat groups first, then slurs
+        let mut line_b = create_test_line_with_slurs();
+        line_b.draw_beat_groups(&beats).draw_slurs();
+        let states_b = get_line_states(&line_b);
+
+        // Results must be identical (commutativity)
+        assert_eq!(states_a, states_b, "draw_slurs and draw_beat_groups should be commutative");
+
+        // Verify expected states (read from codepoint - source of truth)
+        use crate::renderers::font_utils::CodepointTransform;
+
+        // Cell 0: underline Left (beat start), overline None
+        assert_eq!(line_a.cells[0].codepoint.get_underline(), UnderlineState::Left);
+        assert_eq!(line_a.cells[0].codepoint.get_overline(), OverlineState::None);
+
+        // Cell 1: underline Middle (beat middle), overline Left (slur start)
+        assert_eq!(line_a.cells[1].codepoint.get_underline(), UnderlineState::Middle);
+        assert_eq!(line_a.cells[1].codepoint.get_overline(), OverlineState::Left);
+
+        // Cell 2: underline Right (beat end), overline Middle (inside slur)
+        assert_eq!(line_a.cells[2].codepoint.get_underline(), UnderlineState::Right);
+        assert_eq!(line_a.cells[2].codepoint.get_overline(), OverlineState::Middle);
+
+        // Cell 3: underline None, overline Right (slur end)
+        assert_eq!(line_a.cells[3].codepoint.get_underline(), UnderlineState::None);
+        assert_eq!(line_a.cells[3].codepoint.get_overline(), OverlineState::Right);
+    }
+
+    #[test]
+    fn test_draw_slurs_idempotent() {
+        let mut line = create_test_line_with_slurs();
+
+        line.draw_slurs();
+        let after_once = get_line_states(&line);
+
+        line.draw_slurs();
+        let after_twice = get_line_states(&line);
+
+        assert_eq!(after_once, after_twice, "draw_slurs should be idempotent");
+    }
+
+    #[test]
+    fn test_draw_beat_groups_idempotent() {
+        let beats = create_test_beats();
+        let mut line = create_test_line_with_slurs();
+
+        line.draw_beat_groups(&beats);
+        let after_once = get_line_states(&line);
+
+        line.draw_beat_groups(&beats);
+        let after_twice = get_line_states(&line);
+
+        assert_eq!(after_once, after_twice, "draw_beat_groups should be idempotent");
+    }
+
+    #[test]
+    fn test_full_chain_idempotent() {
+        let beats = create_test_beats();
+        let mut line = create_test_line_with_slurs();
+
+        line.draw_slurs().draw_beat_groups(&beats);
+        let after_once = get_line_states(&line);
+
+        line.draw_slurs().draw_beat_groups(&beats);
+        let after_twice = get_line_states(&line);
+
+        assert_eq!(after_once, after_twice, "full chain should be idempotent");
     }
 }

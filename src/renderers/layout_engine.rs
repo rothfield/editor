@@ -794,27 +794,23 @@ impl LayoutEngine {
         let mut slur_start: Option<usize> = None;
 
         for (idx, cell) in cells.iter().enumerate() {
-            match cell.slur_indicator {
-                SlurIndicator::SlurStart => {
-                    slur_start = Some(idx);
-                }
-                SlurIndicator::SlurEnd => {
-                    if let Some(start) = slur_start {
-                        // Mark all cells in the slur span
-                        for i in start..=idx {
-                            let role = if i == start {
-                                "slur-first"
-                            } else if i == idx {
-                                "slur-last"
-                            } else {
-                                "slur-middle"
-                            };
-                            map.insert(i, role.to_string());
-                        }
-                        slur_start = None;
+            if cell.is_slur_start() {
+                slur_start = Some(idx);
+            } else if cell.is_slur_end() {
+                if let Some(start) = slur_start {
+                    // Mark all cells in the slur span
+                    for i in start..=idx {
+                        let role = if i == start {
+                            "slur-first"
+                        } else if i == idx {
+                            "slur-last"
+                        } else {
+                            "slur-middle"
+                        };
+                        map.insert(i, role.to_string());
                     }
+                    slur_start = None;
                 }
-                SlurIndicator::None => {}
             }
         }
 
@@ -1161,19 +1157,20 @@ pub fn layout_with_collision_detection(
     let mut cumulative_x = 0.0;
 
     for (idx, cell) in cells.iter().enumerate() {
-        // Check if cell has ornament - ornament system being refactored
-        let is_ornament = cell.ornament.is_some();
+        // Check if cell is a superscript (grace note) - rendered at 50% via font
+        let is_superscript = cell.is_superscript();
 
-        // Zero width for ornaments in initial pass
-        let width = if is_ornament {
-            0.0
+        // Superscripts are narrower (font handles scaling, but we adjust width)
+        let width = if is_superscript {
+            let char_count = cell.char.chars().count();
+            base_font_size * char_count as f32 * 0.3  // 50% of normal
         } else {
             let char_count = cell.char.chars().count();
             base_font_size * char_count as f32 * 0.6
         };
 
-        let height = if is_ornament {
-            base_height * 0.75
+        let height = if is_superscript {
+            base_height * 0.5  // 50% height for superscripts
         } else {
             base_height
         };

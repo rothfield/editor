@@ -54,7 +54,6 @@ interface UI {
   updateDocumentTitle(title: string): void;
   updateCurrentPitchSystemDisplay(): void;
   updateKeySignatureCornerDisplay?(): void;
-  setupOrnamentMenu?(): void;
   updateModeToggleDisplay?(): void;
 }
 
@@ -99,9 +98,6 @@ class MusicNotationEditor {
   renderCoordinator: RenderCoordinator;
   consoleCoordinator: ConsoleCoordinator;
   musicalCoordinator: MusicalCoordinator;
-
-  // Ornament Edit Mode state
-  ornamentEditMode: boolean = false;
 
   constructor(editorElement: HTMLElement) {
     this.element = editorElement;
@@ -246,8 +242,6 @@ class MusicNotationEditor {
       // Setup event handlers
       this.setupEventHandlers();
 
-      // Setup ornament event listeners
-
       // Mark as initialized BEFORE creating document
       this.isInitialized = true;
 
@@ -287,6 +281,11 @@ class MusicNotationEditor {
 
     // Render the document from WASM
     await this.renderAndUpdate();
+
+    // Focus the first textarea so user can start typing immediately
+    if (this.renderer?.textareaRenderer?.focusFirstTextarea) {
+      this.renderer.textareaRenderer.focusFirstTextarea();
+    }
   }
 
   /**
@@ -313,8 +312,12 @@ class MusicNotationEditor {
         this.updateCursorVisualPosition();
         this.showCursor();
 
-        // Focus editor so user can type immediately
-        this.requestFocus();
+        // Focus textarea so user can type immediately
+        if (this.renderer?.textareaRenderer?.focusFirstTextarea) {
+          this.renderer.textareaRenderer.focusFirstTextarea();
+        } else {
+          this.requestFocus();
+        }
 
         // Update UI displays
         if (this.ui) {
@@ -442,7 +445,6 @@ class MusicNotationEditor {
       if (!line) return;
 
       // Use WASM editReplaceRange for deletion (delete = replace with empty string)
-      // Note: Ornament deletion protection is now handled in WASM
       // WASM already has the document internally - no need to load
       console.log('[deleteRange] Calling editReplaceRange with:', {
         start_row: start.line,
@@ -476,14 +478,9 @@ class MusicNotationEditor {
       this.updateSelectionDisplay();
     } catch (error) {
       console.error('Failed to delete range:', error);
-      // Show the WASM error message (e.g., ornament protection)
       const err = error as Error;
       const errorMsg = err?.message || err?.toString() || 'Failed to delete selection';
-      if (errorMsg.includes('ornament')) {
-        this.showWarning(errorMsg);
-      } else {
-        this.showError(errorMsg);
-      }
+      this.showError(errorMsg);
     }
   }
 
@@ -924,6 +921,13 @@ class MusicNotationEditor {
 
     // Click events - focus the editor and set line focus based on click position
     this.element.addEventListener('click', (event) => {
+      // Don't steal focus from textareas - they handle their own focus
+      const target = event.target as HTMLElement;
+      if (target.tagName === 'TEXTAREA') {
+        // Let textarea handle its own click/focus
+        return;
+      }
+
       this.element.focus({ preventScroll: true });
 
       // Check if this is a triple-click (detail === 3)
@@ -962,8 +966,8 @@ class MusicNotationEditor {
 
           // Use WASM to set cursor position (WASM owns cursor state)
           if (cursorColumn !== null && this.wasmModule && this.wasmModule.mouseDown) {
-            // TODO: mouseDown expects MousePosition, but we're passing x, y - need to fix this
-            (this.wasmModule.mouseDown as any)(x, y);
+            const pos = { line: Math.floor(lineIndex), col: Math.floor(cursorColumn) };
+            this.wasmModule.mouseDown(pos);
             this.updateCursorVisualPosition();
           }
         }
@@ -974,8 +978,9 @@ class MusicNotationEditor {
     const editorContainer = document.getElementById('editor-container');
     if (editorContainer) {
       editorContainer.addEventListener('click', (event) => {
-        // Ignore clicks on notation lines themselves (let their handlers deal with it)
-        if ((event.target as Element).closest('.notation-line')) {
+        // Ignore clicks on notation lines or textareas (let their handlers deal with it)
+        const target = event.target as Element;
+        if (target.closest('.notation-line') || target.closest('.notation-line-container') || target.tagName === 'TEXTAREA') {
           return;
         }
 
@@ -1224,40 +1229,6 @@ class MusicNotationEditor {
       this.showError('Redo failed', { details: err.message });
     }
   }
-
-  /**
-   * Toggle ornament edit mode
-   */
-  async toggleOrnamentEditMode(): Promise<void> {
-    if (!this.wasmModule) {
-      logger.warn(LOG_CATEGORIES.EDITOR, 'Cannot toggle ornament edit mode: WASM not ready');
-      return;
-    }
-
-    try {
-      // Toggle the mode in WASM
-      this.wasmModule.toggleOrnamentEditMode();
-
-      // Update local state (redundant, but good for quick checks)
-      this.ornamentEditMode = !this.ornamentEditMode;
-
-      logger.info(LOG_CATEGORIES.EDITOR, `Ornament edit mode toggled to: ${this.ornamentEditMode}`);
-
-      // Trigger a re-render to update the visual display based on the new mode
-      await this.renderAndUpdate();
-
-      // Update UI (e.g., menu item checkmark, mode toggle button)
-      if (this.ui) {
-        this.ui.setupOrnamentMenu(); // Rebuild menu to update checkmark
-        this.ui.updateModeToggleDisplay(); // Update the mode display button
-      }
-    } catch (error) {
-      const err = error as Error;
-      logger.error(LOG_CATEGORIES.EDITOR, 'Failed to toggle ornament edit mode', { error: err.message, stack: err.stack });
-      this.showError('Failed to toggle ornament edit mode', { details: err.message });
-    }
-  }
-
 
   // NOTE: deleteSelection() method is defined earlier in this class (line ~1161)
   // The WASM-first version queries selection from WASM, not from JS document state

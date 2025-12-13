@@ -1,0 +1,864 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Textarea POC - NotationFont Rendering</title>
+    <style>
+        @font-face {
+            font-family: 'NotationFont';
+            src: url('./fonts/NotationFont.woff2') format('woff2'),
+                 url('./fonts/NotationFont.ttf') format('truetype');
+            font-weight: normal;
+            font-style: normal;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background: #fafafa;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: #1f2937;
+            margin-bottom: 0.5em;
+        }
+
+        .status {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 20px;
+        }
+
+        .status.success { color: #059669; }
+        .status.error { color: #dc2626; }
+
+        .section {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        h2 {
+            margin-top: 0;
+            color: #374151;
+            font-size: 1.1rem;
+            border-bottom: 1px solid #e5e7eb;
+            padding-bottom: 0.5em;
+        }
+
+        /* Notation textarea styling */
+        .notation-textarea {
+            font-family: 'NotationFont', monospace;
+            font-size: 32px;
+            line-height: 1.5;
+            width: 100%;
+            min-height: 60px;
+            padding: 8px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            background: white;
+            resize: vertical;
+            white-space: pre;
+            overflow-x: auto;
+        }
+
+        .notation-textarea:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        /* Line container with overlays */
+        .notation-line-container {
+            position: relative;
+            margin-bottom: 30px;
+        }
+
+        .overlay-container {
+            position: absolute;
+            left: 12px;
+            right: 12px;
+            pointer-events: none;
+        }
+
+        .lyric-overlay {
+            top: 56px;
+            font-family: system-ui, sans-serif;
+            font-size: 14px;
+            color: #6b7280;
+        }
+
+        .tala-overlay {
+            top: -20px;
+            font-family: system-ui, sans-serif;
+            font-size: 12px;
+            color: #9333ea;
+            font-weight: 600;
+        }
+
+        .overlay-item {
+            position: absolute;
+            transform: translateX(-50%);
+        }
+
+        /* Mirror div for position measurement (hidden) */
+        .mirror-div {
+            position: absolute;
+            left: -9999px;
+            top: 0;
+            visibility: hidden;
+            white-space: pre;
+            overflow: hidden;
+            font-family: 'NotationFont', monospace;
+            font-size: 32px;
+            line-height: 1.5;
+            padding: 8px 12px;
+            border: 1px solid transparent;
+        }
+
+        /* Side-by-side comparison */
+        .comparison {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .comparison-item label {
+            display: block;
+            font-size: 12px;
+            color: #6b7280;
+            margin-bottom: 4px;
+        }
+
+        .span-based {
+            font-family: 'NotationFont', monospace;
+            font-size: 32px;
+            line-height: 1.5;
+            padding: 8px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            background: white;
+        }
+
+        /* Event log */
+        .event-log {
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 150px;
+            overflow-y: auto;
+            background: #f3f4f6;
+            padding: 8px;
+            border-radius: 4px;
+        }
+
+        .event-log .event {
+            padding: 2px 0;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        .event-log .event:last-child {
+            border-bottom: none;
+        }
+
+        .event-time {
+            color: #9ca3af;
+            margin-right: 8px;
+        }
+
+        .event-type {
+            color: #3b82f6;
+            font-weight: 600;
+            margin-right: 8px;
+        }
+
+        /* Test buttons */
+        .test-buttons {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 6px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            background: white;
+            cursor: pointer;
+            font-size: 13px;
+        }
+
+        button:hover {
+            background: #f9fafb;
+            border-color: #9ca3af;
+        }
+
+        button.primary {
+            background: #3b82f6;
+            border-color: #3b82f6;
+            color: white;
+        }
+
+        button.primary:hover {
+            background: #2563eb;
+        }
+
+        /* Position indicator */
+        .position-indicator {
+            position: absolute;
+            width: 2px;
+            height: 40px;
+            background: #ef4444;
+            top: 8px;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        pre {
+            background: #f3f4f6;
+            padding: 12px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 13px;
+        }
+
+        code {
+            background: #e5e7eb;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 13px;
+        }
+
+        .glyph-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .glyph-item {
+            text-align: center;
+            padding: 8px;
+            background: #f9fafb;
+            border-radius: 4px;
+            border: 1px solid #e5e7eb;
+        }
+
+        .glyph-char {
+            font-family: 'NotationFont', monospace;
+            font-size: 32px;
+            line-height: 1.2;
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        .glyph-code {
+            font-family: monospace;
+            font-size: 10px;
+            color: #6b7280;
+        }
+
+        .glyph-label {
+            font-size: 11px;
+            color: #374151;
+            margin-top: 2px;
+        }
+
+        .example-box {
+            font-family: 'NotationFont', monospace;
+            font-size: 32px;
+            line-height: 1.5;
+            padding: 12px 16px;
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 4px;
+            margin: 8px 0;
+        }
+
+        .description {
+            font-size: 13px;
+            color: #6b7280;
+            margin-top: 8px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Textarea POC - NotationFont Rendering</h1>
+    <p class="status" id="fontStatus">Checking font status...</p>
+
+    <!-- Test 1: Basic Font Rendering Comparison -->
+    <div class="section">
+        <h2>Test 1: Font Rendering Comparison</h2>
+        <p>Verify that NotationFont renders identically in textarea vs spans.</p>
+
+        <div class="comparison">
+            <div class="comparison-item">
+                <label>Textarea (editable):</label>
+                <textarea class="notation-textarea" id="compareTextarea">1 2 3 4 5 6 7 | 1 2 3 |</textarea>
+            </div>
+            <div class="comparison-item">
+                <label>Span-based (reference):</label>
+                <div class="span-based" id="compareSpan">1 2 3 4 5 6 7 | 1 2 3 |</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Test 2: Octave Dots -->
+    <div class="section">
+        <h2>Test 2: Octave Dots (PUA Glyphs)</h2>
+        <p>Notes with octave dots are pre-composed PUA glyphs. Formula: <code>codepoint = 0xE000 + (char_index × 30) + variant_index</code></p>
+        <p class="description">variant_index = (accidental × 5) + octave_idx, where octave_idx: 0=base, 1=-2, 2=-1, 3=+1, 4=+2</p>
+
+        <div class="glyph-grid" id="octaveGlyphs"></div>
+
+        <div class="test-buttons" style="margin-top: 16px;">
+            <button onclick="insertOctaveGlyph(1, 0)">1 (base)</button>
+            <button onclick="insertOctaveGlyph(1, 3)">1 +1 oct</button>
+            <button onclick="insertOctaveGlyph(1, 4)">1 +2 oct</button>
+            <button onclick="insertOctaveGlyph(1, 2)">1 -1 oct</button>
+            <button onclick="insertOctaveGlyph(1, 1)">1 -2 oct</button>
+            <button onclick="clearTextarea('octaveTextarea')">Clear</button>
+        </div>
+        <textarea class="notation-textarea" id="octaveTextarea" placeholder="Click buttons to insert..."></textarea>
+    </div>
+
+    <!-- Test 3: Underline (Beat Grouping - Lower Loop) -->
+    <div class="section">
+        <h2>Test 3: Underline / Beat Grouping (Lower Loop)</h2>
+        <p>Multi-note beats are shown with a continuous underline. PUA range: <code>0xE800</code> (3 variants per char: middle, left, right)</p>
+
+        <div class="example-box" id="underlineExample"></div>
+        <p class="description">Pattern: <code>{1234}</code> = beat with 4 notes, shown with continuous underline below</p>
+
+        <div class="test-buttons">
+            <button onclick="insertUnderlinedBeat([1,2,3,4])">Insert {1234}</button>
+            <button onclick="insertUnderlinedBeat([5,6])">Insert {56}</button>
+            <button onclick="insertUnderlinedBeat([1,2,3])">Insert {123}</button>
+            <button onclick="clearTextarea('underlineTextarea')">Clear</button>
+        </div>
+        <textarea class="notation-textarea" id="underlineTextarea" placeholder="Click buttons to insert underlined beats..."></textarea>
+    </div>
+
+    <!-- Test 4: Overline (Slur - Upper Arc) -->
+    <div class="section">
+        <h2>Test 4: Overline / Slur (Upper Arc)</h2>
+        <p>Slurred notes have a continuous overline. PUA range: <code>0xE900</code> (3 variants per char: middle, left, right)</p>
+
+        <div class="example-box" id="overlineExample"></div>
+        <p class="description">Pattern: slurred notes have overline connecting them (arc above)</p>
+
+        <div class="test-buttons">
+            <button onclick="insertOverlinedSlur([1,2,3])">Insert slur (123)</button>
+            <button onclick="insertOverlinedSlur([5,6,7,1])">Insert slur (5671)</button>
+            <button onclick="clearTextarea('overlineTextarea')">Clear</button>
+        </div>
+        <textarea class="notation-textarea" id="overlineTextarea" placeholder="Click buttons to insert slurred notes..."></textarea>
+    </div>
+
+    <!-- Test 5: Combined Underline + Overline -->
+    <div class="section">
+        <h2>Test 5: Combined Underline + Overline</h2>
+        <p>Notes can have BOTH underline (beat grouping) AND overline (slur). PUA range: <code>0xEA00</code> (9 variants: 3×3)</p>
+
+        <div class="example-box" id="combinedExample"></div>
+        <p class="description">Pattern: <code>{slurred beat}</code> = notes that are BOTH in same beat AND slurred</p>
+
+        <div class="test-buttons">
+            <button onclick="insertCombined([1,2,3])">Insert {slurred 123}</button>
+            <button onclick="insertCombined([5,6,7,1])">Insert {slurred 5671}</button>
+            <button onclick="clearTextarea('combinedTextarea')">Clear</button>
+        </div>
+        <textarea class="notation-textarea" id="combinedTextarea" placeholder="Click buttons to insert combined..."></textarea>
+    </div>
+
+    <!-- Test 6: Mirror-Div Positioning -->
+    <div class="section">
+        <h2>Test 6: Mirror-Div Overlay Positioning</h2>
+        <p>Test overlay positioning with complex glyphs.</p>
+
+        <div class="notation-line-container">
+            <div class="overlay-container tala-overlay" id="talaOverlay"></div>
+            <textarea class="notation-textarea" id="overlayTextarea">1 2 3 4 | 5 6 7 1 |</textarea>
+            <div class="overlay-container lyric-overlay" id="lyricOverlay"></div>
+            <div class="position-indicator" id="posIndicator" style="display: none;"></div>
+        </div>
+
+        <div class="mirror-div" id="mirrorDiv"></div>
+
+        <div class="test-buttons">
+            <button onclick="positionOverlays()">Position Overlays</button>
+            <button onclick="loadComplexLine()">Load Complex Line</button>
+        </div>
+    </div>
+
+    <!-- Test 7: IME Input -->
+    <div class="section">
+        <h2>Test 7: IME Composition Events</h2>
+        <p>Test IME input handling (Chinese, Japanese, Korean).</p>
+
+        <textarea class="notation-textarea" id="imeTextarea" placeholder="Try typing with an IME..."></textarea>
+
+        <div style="margin-top: 8px;">
+            <label style="font-size: 12px; color: #6b7280;">Event Log:</label>
+            <div class="event-log" id="eventLog"></div>
+        </div>
+    </div>
+
+    <script>
+        // =====================================================================
+        // PUA Constants (from atoms.yaml)
+        // =====================================================================
+        const PUA = {
+            // Note glyphs (pitch + accidental + octave)
+            NUMBER_BASE: 0xE000,
+            WESTERN_BASE: 0xE100,
+            SARGAM_BASE: 0xE300,
+            DOREMI_BASE: 0xE500,
+
+            VARIANTS_PER_CHAR: 30,  // 6 accidentals × 5 octaves
+
+            // Line variants
+            UNDERLINE_BASE: 0xE800,  // 3 variants per char (left, middle, right)
+            OVERLINE_BASE: 0xE900,   // 3 variants per char (left, middle, right)
+            COMBINED_BASE: 0xEA00,   // 9 variants per char (3 underline × 3 overline)
+
+            LINE_CAPABLE_CHARS: 37,   // chars that can have line variants
+            UNDERLINE_VARIANTS: 3,    // left, middle, right
+            OVERLINE_VARIANTS: 3,     // left, middle, right
+            COMBINED_VARIANTS: 9,     // 3 × 3
+        };
+
+        // Accidental types
+        const ACC = {
+            NATURAL: 0,
+            FLAT: 1,
+            HALF_FLAT: 2,
+            DOUBLE_FLAT: 3,
+            DOUBLE_SHARP: 4,
+            SHARP: 5
+        };
+
+        // Octave indices
+        const OCT = {
+            BASE: 0,    // No dots
+            DOWN2: 1,   // 2 dots below
+            DOWN1: 2,   // 1 dot below
+            UP1: 3,     // 1 dot above
+            UP2: 4      // 2 dots above
+        };
+
+        // Line variant positions
+        const LINE_POS = {
+            MIDDLE: 0,
+            LEFT: 1,
+            RIGHT: 2
+        };
+
+        // Character indices for Number system (1-7)
+        const NUMBER_CHARS = { 1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 6: 5, 7: 6 };
+
+        // =====================================================================
+        // PUA Codepoint Calculations
+        // =====================================================================
+
+        /**
+         * Get PUA codepoint for a number note with accidental and octave
+         * Formula: codepoint = base + (char_index × 30) + (accidental × 5) + octave_idx
+         */
+        function getNumberNotePUA(digit, accidental = ACC.NATURAL, octaveIdx = OCT.BASE) {
+            const charIndex = NUMBER_CHARS[digit];
+            if (charIndex === undefined) return null;
+            const variantIndex = (accidental * 5) + octaveIdx;
+            return PUA.NUMBER_BASE + (charIndex * PUA.VARIANTS_PER_CHAR) + variantIndex;
+        }
+
+        /**
+         * Get underline variant PUA codepoint
+         * Position: 0=middle, 1=left, 2=right
+         */
+        function getUnderlinePUA(digit, position = LINE_POS.MIDDLE) {
+            const charIndex = NUMBER_CHARS[digit];
+            if (charIndex === undefined) return null;
+            return PUA.UNDERLINE_BASE + (charIndex * PUA.UNDERLINE_VARIANTS) + position;
+        }
+
+        /**
+         * Get overline variant PUA codepoint
+         * Position: 0=middle, 1=left, 2=right
+         */
+        function getOverlinePUA(digit, position = LINE_POS.MIDDLE) {
+            const charIndex = NUMBER_CHARS[digit];
+            if (charIndex === undefined) return null;
+            return PUA.OVERLINE_BASE + (charIndex * PUA.OVERLINE_VARIANTS) + position;
+        }
+
+        /**
+         * Get combined underline+overline PUA codepoint
+         * Combined variant = (underline_pos × 3) + overline_pos
+         */
+        function getCombinedPUA(digit, underlinePos = LINE_POS.MIDDLE, overlinePos = LINE_POS.MIDDLE) {
+            const charIndex = NUMBER_CHARS[digit];
+            if (charIndex === undefined) return null;
+            const combinedVariant = (underlinePos * 3) + overlinePos;
+            return PUA.COMBINED_BASE + (charIndex * PUA.COMBINED_VARIANTS) + combinedVariant;
+        }
+
+        // =====================================================================
+        // Font Loading Detection
+        // =====================================================================
+        async function checkFontLoaded() {
+            const statusEl = document.getElementById('fontStatus');
+            const fontSpec = '32px NotationFont';
+            let attempts = 0;
+            const maxAttempts = 20;
+
+            while (attempts < maxAttempts) {
+                if (document.fonts.check(fontSpec)) {
+                    statusEl.textContent = 'NotationFont loaded successfully';
+                    statusEl.className = 'status success';
+                    return true;
+                }
+                await new Promise(r => setTimeout(r, 100));
+                attempts++;
+            }
+
+            statusEl.textContent = 'Warning: NotationFont may not be loaded properly';
+            statusEl.className = 'status error';
+            return false;
+        }
+
+        // =====================================================================
+        // Glyph Display Functions
+        // =====================================================================
+
+        function buildOctaveGlyphGrid() {
+            const container = document.getElementById('octaveGlyphs');
+            container.innerHTML = '';
+
+            const octaves = [
+                { idx: OCT.BASE, label: 'base' },
+                { idx: OCT.UP1, label: '+1 oct' },
+                { idx: OCT.UP2, label: '+2 oct' },
+                { idx: OCT.DOWN1, label: '-1 oct' },
+                { idx: OCT.DOWN2, label: '-2 oct' },
+            ];
+
+            for (let digit = 1; digit <= 7; digit++) {
+                for (const oct of octaves) {
+                    const cp = getNumberNotePUA(digit, ACC.NATURAL, oct.idx);
+                    const item = document.createElement('div');
+                    item.className = 'glyph-item';
+                    item.innerHTML = `
+                        <span class="glyph-char">${String.fromCodePoint(cp)}</span>
+                        <span class="glyph-code">U+${cp.toString(16).toUpperCase()}</span>
+                        <span class="glyph-label">${digit} ${oct.label}</span>
+                    `;
+                    container.appendChild(item);
+                }
+            }
+        }
+
+        function buildUnderlineExample() {
+            const container = document.getElementById('underlineExample');
+            // Build {1234} with underlines: left, middle, middle, right
+            const chars = [
+                String.fromCodePoint(getUnderlinePUA(1, LINE_POS.LEFT)),
+                String.fromCodePoint(getUnderlinePUA(2, LINE_POS.MIDDLE)),
+                String.fromCodePoint(getUnderlinePUA(3, LINE_POS.MIDDLE)),
+                String.fromCodePoint(getUnderlinePUA(4, LINE_POS.RIGHT)),
+            ];
+            container.textContent = '{' + chars.join('') + '} = underlined beat';
+        }
+
+        function buildOverlineExample() {
+            const container = document.getElementById('overlineExample');
+            // Build slurred 123 with overlines: left, middle, right
+            const chars = [
+                String.fromCodePoint(getOverlinePUA(1, LINE_POS.LEFT)),
+                String.fromCodePoint(getOverlinePUA(2, LINE_POS.MIDDLE)),
+                String.fromCodePoint(getOverlinePUA(3, LINE_POS.RIGHT)),
+            ];
+            container.textContent = '(' + chars.join('') + ') = slurred notes';
+        }
+
+        function buildCombinedExample() {
+            const container = document.getElementById('combinedExample');
+            // Build {slurred 123} with both underline AND overline
+            const chars = [
+                String.fromCodePoint(getCombinedPUA(1, LINE_POS.LEFT, LINE_POS.LEFT)),
+                String.fromCodePoint(getCombinedPUA(2, LINE_POS.MIDDLE, LINE_POS.MIDDLE)),
+                String.fromCodePoint(getCombinedPUA(3, LINE_POS.RIGHT, LINE_POS.RIGHT)),
+            ];
+            container.textContent = '{(' + chars.join('') + ')} = slurred beat';
+        }
+
+        // =====================================================================
+        // Insert Functions
+        // =====================================================================
+
+        function insertOctaveGlyph(digit, octaveIdx) {
+            const textarea = document.getElementById('octaveTextarea');
+            const cp = getNumberNotePUA(digit, ACC.NATURAL, octaveIdx);
+            if (cp) {
+                textarea.value += String.fromCodePoint(cp) + ' ';
+                textarea.focus();
+            }
+        }
+
+        function insertUnderlinedBeat(digits) {
+            const textarea = document.getElementById('underlineTextarea');
+            let result = '';
+            for (let i = 0; i < digits.length; i++) {
+                const pos = i === 0 ? LINE_POS.LEFT :
+                           i === digits.length - 1 ? LINE_POS.RIGHT :
+                           LINE_POS.MIDDLE;
+                const cp = getUnderlinePUA(digits[i], pos);
+                if (cp) result += String.fromCodePoint(cp);
+            }
+            textarea.value += '{' + result + '} ';
+            textarea.focus();
+        }
+
+        function insertOverlinedSlur(digits) {
+            const textarea = document.getElementById('overlineTextarea');
+            let result = '';
+            for (let i = 0; i < digits.length; i++) {
+                const pos = i === 0 ? LINE_POS.LEFT :
+                           i === digits.length - 1 ? LINE_POS.RIGHT :
+                           LINE_POS.MIDDLE;
+                const cp = getOverlinePUA(digits[i], pos);
+                if (cp) result += String.fromCodePoint(cp);
+            }
+            textarea.value += '(' + result + ') ';
+            textarea.focus();
+        }
+
+        function insertCombined(digits) {
+            const textarea = document.getElementById('combinedTextarea');
+            let result = '';
+            for (let i = 0; i < digits.length; i++) {
+                const underlinePos = i === 0 ? LINE_POS.LEFT :
+                                    i === digits.length - 1 ? LINE_POS.RIGHT :
+                                    LINE_POS.MIDDLE;
+                const overlinePos = underlinePos;  // Same positions for simplicity
+                const cp = getCombinedPUA(digits[i], underlinePos, overlinePos);
+                if (cp) result += String.fromCodePoint(cp);
+            }
+            textarea.value += '{(' + result + ')} ';
+            textarea.focus();
+        }
+
+        function clearTextarea(id) {
+            document.getElementById(id).value = '';
+        }
+
+        // =====================================================================
+        // Mirror-Div Positioning
+        // =====================================================================
+
+        function getCharacterPosition(textarea, charIndex) {
+            const mirror = document.getElementById('mirrorDiv');
+            const computed = getComputedStyle(textarea);
+
+            mirror.style.fontFamily = computed.fontFamily;
+            mirror.style.fontSize = computed.fontSize;
+            mirror.style.lineHeight = computed.lineHeight;
+            mirror.style.padding = computed.padding;
+            mirror.style.border = computed.border;
+            mirror.style.width = computed.width;
+
+            const text = textarea.value;
+            const beforeText = text.slice(0, charIndex);
+
+            mirror.innerHTML = '';
+            mirror.appendChild(document.createTextNode(beforeText));
+
+            const marker = document.createElement('span');
+            marker.id = 'pos-marker';
+            marker.textContent = '\u200B';
+            mirror.appendChild(marker);
+
+            mirror.appendChild(document.createTextNode(text.slice(charIndex)));
+
+            const markerRect = marker.getBoundingClientRect();
+            const mirrorRect = mirror.getBoundingClientRect();
+
+            return {
+                x: markerRect.left - mirrorRect.left,
+                y: markerRect.top - mirrorRect.top
+            };
+        }
+
+        function positionOverlays() {
+            const textarea = document.getElementById('overlayTextarea');
+            const talaOverlay = document.getElementById('talaOverlay');
+            const lyricOverlay = document.getElementById('lyricOverlay');
+
+            talaOverlay.innerHTML = '';
+            lyricOverlay.innerHTML = '';
+
+            const talas = [
+                { char_index: 0, content: 'X' },
+                { char_index: 10, content: '2' },
+            ];
+
+            const lyrics = [
+                { char_index: 0, content: 'sa' },
+                { char_index: 2, content: 're' },
+                { char_index: 4, content: 'ga' },
+                { char_index: 6, content: 'ma' },
+                { char_index: 10, content: 'pa' },
+                { char_index: 12, content: 'dha' },
+                { char_index: 14, content: 'ni' },
+                { char_index: 16, content: 'SA' },
+            ];
+
+            for (const tala of talas) {
+                const pos = getCharacterPosition(textarea, tala.char_index);
+                const span = document.createElement('span');
+                span.className = 'overlay-item';
+                span.style.left = pos.x + 'px';
+                span.textContent = tala.content;
+                talaOverlay.appendChild(span);
+            }
+
+            for (const lyric of lyrics) {
+                const pos = getCharacterPosition(textarea, lyric.char_index);
+                const span = document.createElement('span');
+                span.className = 'overlay-item';
+                span.style.left = pos.x + 'px';
+                span.textContent = lyric.content;
+                lyricOverlay.appendChild(span);
+            }
+        }
+
+        function loadComplexLine() {
+            const textarea = document.getElementById('overlayTextarea');
+
+            // Build a complex line with:
+            // - underlined beat {1234}
+            // - slurred notes (567)
+            // - combined {(12)}
+            let line = '';
+
+            // Beat 1: underlined {1234}
+            line += String.fromCodePoint(getUnderlinePUA(1, LINE_POS.LEFT));
+            line += String.fromCodePoint(getUnderlinePUA(2, LINE_POS.MIDDLE));
+            line += String.fromCodePoint(getUnderlinePUA(3, LINE_POS.MIDDLE));
+            line += String.fromCodePoint(getUnderlinePUA(4, LINE_POS.RIGHT));
+            line += ' ';
+
+            // Beat 2: slurred (567)
+            line += String.fromCodePoint(getOverlinePUA(5, LINE_POS.LEFT));
+            line += String.fromCodePoint(getOverlinePUA(6, LINE_POS.MIDDLE));
+            line += String.fromCodePoint(getOverlinePUA(7, LINE_POS.RIGHT));
+            line += ' ';
+
+            // Barline
+            line += '| ';
+
+            // Beat 3: combined underline+overline {(12)}
+            line += String.fromCodePoint(getCombinedPUA(1, LINE_POS.LEFT, LINE_POS.LEFT));
+            line += String.fromCodePoint(getCombinedPUA(2, LINE_POS.RIGHT, LINE_POS.RIGHT));
+            line += ' ';
+
+            // Beat 4: octave variants
+            line += String.fromCodePoint(getNumberNotePUA(3, ACC.NATURAL, OCT.UP1));
+            line += String.fromCodePoint(getNumberNotePUA(4, ACC.NATURAL, OCT.UP2));
+            line += ' |';
+
+            textarea.value = line;
+            positionOverlays();
+        }
+
+        // =====================================================================
+        // IME Event Logging
+        // =====================================================================
+
+        let isComposing = false;
+
+        function setupIMELogging() {
+            const textarea = document.getElementById('imeTextarea');
+            const log = document.getElementById('eventLog');
+
+            function logEvent(type, data = '') {
+                const time = new Date().toLocaleTimeString();
+                const div = document.createElement('div');
+                div.className = 'event';
+                div.innerHTML = `<span class="event-time">${time}</span><span class="event-type">${type}</span>${data}`;
+                log.insertBefore(div, log.firstChild);
+
+                while (log.children.length > 20) {
+                    log.removeChild(log.lastChild);
+                }
+            }
+
+            textarea.addEventListener('compositionstart', (e) => {
+                isComposing = true;
+                logEvent('compositionstart', `data="${e.data}"`);
+            });
+
+            textarea.addEventListener('compositionupdate', (e) => {
+                logEvent('compositionupdate', `data="${e.data}"`);
+            });
+
+            textarea.addEventListener('compositionend', (e) => {
+                isComposing = false;
+                logEvent('compositionend', `data="${e.data}" → SEND TO WASM`);
+            });
+
+            textarea.addEventListener('input', (e) => {
+                const action = isComposing ? 'SKIP (composing)' : 'SEND TO WASM';
+                logEvent('input', `inputType="${e.inputType}" → ${action}`);
+            });
+        }
+
+        // =====================================================================
+        // Sync comparison textarea
+        // =====================================================================
+
+        function setupComparison() {
+            const textarea = document.getElementById('compareTextarea');
+            const span = document.getElementById('compareSpan');
+
+            textarea.addEventListener('input', () => {
+                span.textContent = textarea.value;
+            });
+        }
+
+        // =====================================================================
+        // Initialize
+        // =====================================================================
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            await checkFontLoaded();
+
+            // Build glyph displays
+            buildOctaveGlyphGrid();
+            buildUnderlineExample();
+            buildOverlineExample();
+            buildCombinedExample();
+
+            // Setup event handlers
+            setupIMELogging();
+            setupComparison();
+
+            // Initial overlay positioning
+            positionOverlays();
+
+            const overlayTextarea = document.getElementById('overlayTextarea');
+            overlayTextarea.addEventListener('scroll', positionOverlays);
+            overlayTextarea.addEventListener('input', positionOverlays);
+        });
+    </script>
+</body>
+</html>

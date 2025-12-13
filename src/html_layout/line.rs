@@ -347,7 +347,7 @@ impl<'a> LayoutLineComputer<'a> {
         let mut slur_start: Option<(usize, &RenderCell)> = None;
 
         for (idx, cell) in cells.iter().enumerate() {
-            if cell.slur_indicator.is_start() {
+            if cell.is_slur_start() {
                 // If this is an ornament cell (when edit mode ON), use its anchor instead
                 let actual_idx = if let Some(&anchor_idx) = ornament_anchors.get(&idx) {
                     anchor_idx
@@ -359,7 +359,7 @@ impl<'a> LayoutLineComputer<'a> {
                 if let Some(render_cell) = render_cells.get(actual_idx) {
                     slur_start = Some((actual_idx, render_cell));
                 }
-            } else if cell.slur_indicator.is_end() {
+            } else if cell.is_slur_end() {
                 if let Some((start_idx, start_cell)) = slur_start {
                     // If this is an ornament cell (when edit mode ON), use its anchor instead
                     let actual_idx = if let Some(&anchor_idx) = ornament_anchors.get(&idx) {
@@ -441,80 +441,18 @@ impl<'a> LayoutLineComputer<'a> {
     }
 
     /// Compute ornament arcs from cell.ornaments (when edit mode is OFF)
-    /// Creates smooth frown-shaped arcs connecting parent note to ornaments
+    /// DEPRECATED: Ornament field removed. Grace notes are now superscript characters.
+    /// Superscripts are visually distinct and don't need arcs.
     fn compute_ornament_arcs_from_cells(
         &self,
-        original_cells: &[Cell],
-        render_cells: &[RenderCell],
+        _original_cells: &[Cell],
+        _render_cells: &[RenderCell],
         _effective_widths: &[f32],
-        config: &LayoutConfig,
+        _config: &LayoutConfig,
         _line_y_offset: f32,
     ) -> Vec<RenderArc> {
-        let mut arcs = Vec::new();
-
-        // Iterate through cells and create arcs for those with ornaments
-        for (cell_idx, cell) in original_cells.iter().enumerate() {
-            if cell.ornament.is_none() {
-                continue;
-            }
-
-            // Get parent cell's render info
-            let parent_cell = if let Some(rc) = render_cells.get(cell_idx) {
-                rc
-            } else {
-                continue;
-            };
-
-            // Calculate total width of ornaments (scaled down by 0.6)
-            // Use default cell width of 12.0
-            let total_ornament_width: f32 = cell.ornament.as_ref()
-                .map(|orn| orn.cells.iter().map(|_| 12.0 * 0.6).sum())
-                .unwrap_or(0.0);
-
-            // Ornaments start at RIGHT edge of parent
-            let ornament_start_x = parent_cell.x + parent_cell.w;
-            let ornament_end_x = ornament_start_x + total_ornament_width;
-
-            // Check if collision avoidance applies to this ornament
-            let has_following_notes = Self::has_significant_following_chars(original_cells, cell_idx);
-            let has_upper_octave_dot = cell.octave > 0;
-
-            // Determine arc starting Y position
-            // If collision avoidance is active, start arc ABOVE the note top
-            // Otherwise, start from the note top
-            let arc_y = if has_following_notes || has_upper_octave_dot {
-                let base_avoidance = if has_following_notes {
-                    config.font_size * 0.4  // 0.4x font size for following notes
-                } else {
-                    0.0
-                };
-
-                let octave_avoidance = if has_upper_octave_dot {
-                    12.0 * 0.5 + 2.0  // Octave dot offset (6px) + 2px margin
-                } else {
-                    0.0
-                };
-
-                // Apply the larger avoidance distance
-                let total_avoidance = base_avoidance.max(octave_avoidance);
-                parent_cell.y - total_avoidance
-            } else {
-                // Standard arc: start from top of parent note
-                parent_cell.y
-            };
-
-            // Create arc from parent to ornament span (horizontal with upward curve)
-            let arc = self.create_ornament_arc_positioned(
-                parent_cell.x + (parent_cell.w / 2.0),
-                ornament_end_x,
-                arc_y,
-                ornament_end_x,
-                arc_y,  // Same Y for start and end (horizontal)
-            );
-            arcs.push(arc);
-        }
-
-        arcs
+        // Grace notes are now superscript characters - no arcs needed
+        Vec::new()
     }
 
     /// Create a smooth frown-shaped arc for ornaments (horizontal with upward curve)
@@ -919,99 +857,18 @@ impl<'a> LayoutLineComputer<'a> {
     }
 
     /// Position ornaments from cell.ornaments (when ornament_edit_mode is OFF)
-    /// Ornaments are positioned to the RIGHT and UP from their parent note
-    /// With collision avoidance: ornaments move UP further if following cells have notes
+    /// DEPRECATED: Ornament field removed. Grace notes are now superscript characters.
+    /// Superscripts render at 50% scale via the font - no positioning needed here.
     fn position_ornaments_from_cells(
         &self,
-        original_cells: &[Cell],
-        render_cells: &[RenderCell],
+        _original_cells: &[Cell],
+        _render_cells: &[RenderCell],
         _effective_widths: &[f32],
-        config: &LayoutConfig,
-        line_y_offset: f32,
+        _config: &LayoutConfig,
+        _line_y_offset: f32,
     ) -> Vec<RenderOrnament> {
-        use super::display_list::RenderOrnament;
-
-        let mut ornaments = Vec::new();
-
-        // Calculate baseline position for parent note
-        // Baseline is approximately 75% down from top of the cell for typical fonts
-        let baseline_offset_in_cell = config.cell_height * 0.75;
-        let parent_baseline_y = line_y_offset + config.cell_y_offset + baseline_offset_in_cell;
-
-        // Position ornaments above the parent baseline (0.8x font size = 0.7 + 10%)
-        let ornament_offset_above_baseline = config.font_size * 0.8;
-        let ornament_y = parent_baseline_y - ornament_offset_above_baseline;
-
-        // Iterate through cells and render their ornaments
-        for (cell_idx, cell) in original_cells.iter().enumerate() {
-            if cell.ornament.is_none() {
-                continue;
-            }
-
-            // Get parent cell's render info
-            let parent_cell = if let Some(rc) = render_cells.get(cell_idx) {
-                rc
-            } else {
-                continue;
-            };
-
-            // Check if following cells have significant characters (collision detection)
-            let has_following_notes = Self::has_significant_following_chars(original_cells, cell_idx);
-
-            // Check if the parent note has an upper octave dot (raised above the note)
-            let has_upper_octave_dot = cell.octave > 0;
-
-            // Calculate collision avoidance distance
-            // If there are significant following characters, move up by 0.4x font size
-            // If there's also an upper octave dot, add extra spacing to avoid it (octave dot is ~6px above)
-            let adjusted_ornament_y = if has_following_notes || has_upper_octave_dot {
-                let base_avoidance = if has_following_notes {
-                    config.font_size * 0.4  // 0.4x font size for following notes
-                } else {
-                    0.0
-                };
-
-                let octave_avoidance = if has_upper_octave_dot {
-                    12.0 * 0.5 + 2.0  // Octave dot offset (6px) + 2px margin
-                } else {
-                    0.0
-                };
-
-                // Apply the larger avoidance distance
-                let total_avoidance = base_avoidance.max(octave_avoidance);
-                ornament_y - total_avoidance
-            } else {
-                ornament_y
-            };
-
-            // Position ornaments to the RIGHT of parent note
-            // Start position is at the right edge of parent
-            let mut ornament_x = parent_cell.x + parent_cell.w;
-
-            // Render ornament's cells
-            if let Some(ornament) = &cell.ornament {
-                for ornament_cell in &ornament.cells {
-                    // Use smaller width for ornaments (scaled down by 0.6)
-                    // Use default cell width of 12.0
-                    let ornament_width = 12.0 * 0.6;
-
-                    // Use display_char() to get the proper glyph (with underlines if set)
-                    let ornament_char = ornament_cell.display_char();
-
-                    ornaments.push(RenderOrnament {
-                        text: ornament_char,
-                        x: ornament_x,
-                        y: adjusted_ornament_y,
-                        classes: vec!["ornament-char".to_string()],
-                    });
-
-                    // Move X position for next ornament character
-                    ornament_x += ornament_width;
-                }
-            }
-        }
-
-        ornaments
+        // Grace notes are now superscript characters rendered inline via the font
+        Vec::new()
     }
 
     /// Calculate line height based on actual content
@@ -1247,24 +1104,31 @@ mod even_spacing_tests {
 }
 
 #[cfg(test)]
-mod combined_char_tests {
+mod line_variant_tests {
     use crate::models::core::{Cell, Document, Line};
-    use crate::models::elements::{ElementKind, SlurIndicator};
+    use crate::models::elements::ElementKind;
     use crate::models::pitch_code::PitchCode;
     use crate::models::StaffRole;
 
     fn make_pitched_cell(pitch_code: PitchCode, col: usize) -> Cell {
+        use crate::renderers::line_variants::{UnderlineState, OverlineState};
+        use crate::renderers::font_utils::glyph_for_pitch;
+        use crate::models::PitchSystem;
+
+        // Get proper glyph codepoint for the pitch
+        let glyph = glyph_for_pitch(pitch_code, 0, PitchSystem::Number).unwrap_or('X');
         Cell {
-            char: "X".to_string(), // placeholder - will be set by compute_glyphs
-            combined_char: None,
+            codepoint: glyph as u32,
+            char: glyph.to_string(),
             kind: ElementKind::PitchedElement,
             col,
             flags: 0,
             pitch_code: Some(pitch_code),
-            pitch_system: None,
+            pitch_system: Some(PitchSystem::Number),
             octave: 0,
-            slur_indicator: SlurIndicator::None,
-            ornament: None,
+            superscript: false,
+            underline: UnderlineState::None,
+            overline: OverlineState::None,
             x: 0.0,
             y: 0.0,
             w: 0.0,
@@ -1275,8 +1139,9 @@ mod combined_char_tests {
     }
 
     fn make_test_line(cells: Vec<Cell>) -> Line {
-        Line {
+        let mut line = Line {
             cells,
+            text: Vec::new(),
             label: String::new(),
             tala: String::new(),
             lyrics: String::new(),
@@ -1292,13 +1157,15 @@ mod combined_char_tests {
             staff_role: StaffRole::Melody,
             system_marker: None,
             new_system: false,
-        }
+        };
+        line.sync_text_from_cells();
+        line
     }
 
     /// Test that multi-cell beats get underlined variants in RenderCell.char
-    /// This verifies that combined_char is properly used in HTML layout output
+    /// This verifies that cell.char is set to line variant codepoints
     #[test]
-    fn test_html_layout_outputs_combined_char_for_underlined_beats() {
+    fn test_html_layout_outputs_line_variants_for_underlined_beats() {
         use crate::html_layout::{LayoutConfig, LayoutEngine};
         use crate::models::PitchSystem;
 
@@ -1312,10 +1179,7 @@ mod combined_char_tests {
         doc.lines = vec![line];
         doc.pitch_system = Some(PitchSystem::Number);
 
-        // Compute glyphs (sets cell.char to base PUA glyph)
-        doc.compute_glyphs();
-
-        // Compute line variants (should set combined_char to underlined variants)
+        // Apply line variants (underline/overline)
         doc.compute_line_variants();
 
         // Now compute layout and check RenderCell output
@@ -1342,22 +1206,52 @@ mod combined_char_tests {
 
         assert_eq!(render_cells.len(), 3, "Should have 3 render cells");
 
-        // Check that render cells have underlined PUA variants (0xE800+ range)
+        // Check that render cells have underlined PUA variants
+        // NOTE line variants are in 0x1A000+ range (Number system base)
+        // ASCII line variants are in 0xE800-0xEFFF range
         // For multi-cell beat: first=left underline, middle=middle underline, last=right underline
         for (i, rc) in render_cells.iter().enumerate() {
             let first_char = rc.char.chars().next().expect("RenderCell should have a char");
             let codepoint = first_char as u32;
 
-            println!("Cell {}: U+{:04X} '{}'", i, codepoint, first_char);
+            // Number system NOTE line variants are in 0x1A000+ range
+            // Formula: line_cp = 0x1A000 + (note_offset × 15) + variant_idx
+            // If variant_idx > 0, it has line decorations (underline/overline)
+            // Variant encoding: 0=none, 1-2=underline (M/L/R minus none), 3-5=overline, 6-14=combined
+            let is_note_line_variant = codepoint >= 0x1A000 && codepoint < 0x1F600;
+            let is_ascii_line_variant = codepoint >= 0xE800 && codepoint < 0xF000;
 
-            // Underlined variants should be in PUA range 0xE800+
-            // Expected: U+E801 (left), U+E804 (middle), U+E80A (right) for Number 1,2,3
             assert!(
-                codepoint >= 0xE800 && codepoint < 0xF000,
-                "Cell {} should have underlined variant in PUA range 0xE800-0xEFFF (got U+{:04X} '{}'). \
-                 This means combined_char is not being output to RenderCell.",
+                is_note_line_variant || is_ascii_line_variant,
+                "Cell {} should have line variant in NOTE range (0x1A000+) or ASCII range (0xE800-0xEFFF) \
+                 (got U+{:04X} '{}'). This means cell.char is not being set to line variant codepoint.",
                 i, codepoint, first_char
             );
+
+            // Verify that the underline was properly encoded
+            // The encoding in get_pua_note_line_variant_codepoint uses indices 0-14:
+            // 0-2: Underline only (Middle=0, Left=1, Right=2)
+            // So variant_idx 0-2 means underline is present
+            if is_note_line_variant {
+                let offset = codepoint - 0x1A000;
+                let variant_idx = offset % 15;
+
+                // For this test (multi-cell beat), we expect underlines:
+                // Cell 0: Left underline → variant_idx=1
+                // Cell 1: Middle underline → variant_idx=0
+                // Cell 2: Right underline → variant_idx=2
+                let expected_variant = match i {
+                    0 => 1, // Left
+                    1 => 0, // Middle
+                    2 => 2, // Right
+                    _ => unreachable!(),
+                };
+                assert_eq!(
+                    variant_idx, expected_variant,
+                    "Cell {} has variant_idx={}, expected {} for underline",
+                    i, variant_idx, expected_variant
+                );
+            }
         }
     }
 }
