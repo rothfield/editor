@@ -3308,9 +3308,10 @@ def create_15_line_variants(font, pua_bases):
     overline_y_bottom = OVERLINE_Y_BOTTOM  # 880
     overline_y_top = OVERLINE_Y_TOP  # 952
 
-    # TODO: Narrow characters may have arc endpoints that don't align perfectly with the
-    # horizontal line segment. A future fix could use a different approach (e.g., smaller
-    # arc radius for narrow chars, or bezier curves instead of quarter-circle arcs).
+    # Minimum width for line variants - ensures arcs have enough space
+    # Characters narrower than this get padded width (character centered)
+    # Dash width is ~322, so we use 400 as minimum to ensure good arc rendering
+    MIN_LINE_VARIANT_WIDTH = 400
 
     def draw_quarter_arc(pen, cx, cy, radius, start_deg, end_deg, clockwise=True):
         """Draw a quarter-circle arc (ring segment with stroke thickness)."""
@@ -3389,7 +3390,15 @@ def create_15_line_variants(font, pua_bases):
             if not base_glyph:
                 continue
 
-            char_width = base_glyph.width
+            original_width = base_glyph.width
+
+            # Pad narrow characters to ensure arcs fit properly
+            if original_width < MIN_LINE_VARIANT_WIDTH:
+                char_width = MIN_LINE_VARIANT_WIDTH
+                x_offset = (MIN_LINE_VARIANT_WIDTH - original_width) / 2  # Center the glyph
+            else:
+                char_width = original_width
+                x_offset = 0
 
             for variant_idx, underline_state, overline_state in LINE_VARIANT_TYPES:
                 # Calculate PUA codepoint based on variant type
@@ -3407,8 +3416,12 @@ def create_15_line_variants(font, pua_bases):
                 variant_glyph = font.createChar(variant_cp, glyph_name)
                 variant_glyph.clear()
 
-                # Add reference to base glyph
-                variant_glyph.addReference(base_glyph.glyphname)
+                # Add reference to base glyph (with offset for narrow chars)
+                if x_offset > 0:
+                    # Use transform matrix to center narrow glyphs: (1, 0, 0, 1, x_offset, 0)
+                    variant_glyph.addReference(base_glyph.glyphname, (1, 0, 0, 1, x_offset, 0))
+                else:
+                    variant_glyph.addReference(base_glyph.glyphname)
 
                 # Draw line geometry
                 pen = variant_glyph.glyphPen(replace=False)
@@ -3604,10 +3617,20 @@ def create_pua_note_line_variants(font, layout):
                     skipped_count += 1
                     continue
 
-                char_width = source_glyph.width
-                if char_width <= 0:
+                original_width = source_glyph.width
+                if original_width <= 0:
                     skipped_count += 1
                     continue
+
+                # Pad narrow characters to ensure arcs fit properly
+                # (same logic as create_15_line_variants)
+                MIN_LINE_VARIANT_WIDTH = 400
+                if original_width < MIN_LINE_VARIANT_WIDTH:
+                    char_width = MIN_LINE_VARIANT_WIDTH
+                    x_offset = (MIN_LINE_VARIANT_WIDTH - original_width) / 2
+                else:
+                    char_width = original_width
+                    x_offset = 0
 
                 for variant_idx, underline_state, overline_state in LINE_VARIANT_TYPES:
                     # Calculate target codepoint: line_base + (note_offset × 15) + variant_idx
@@ -3617,8 +3640,11 @@ def create_pua_note_line_variants(font, layout):
                     variant_glyph = font.createChar(target_cp, glyph_name)
                     variant_glyph.clear()
 
-                    # Add reference to source glyph
-                    variant_glyph.addReference(source_glyph.glyphname)
+                    # Add reference to source glyph (with offset for narrow chars)
+                    if x_offset > 0:
+                        variant_glyph.addReference(source_glyph.glyphname, (1, 0, 0, 1, x_offset, 0))
+                    else:
+                        variant_glyph.addReference(source_glyph.glyphname)
 
                     # Draw line geometry
                     pen = variant_glyph.glyphPen(replace=False)
