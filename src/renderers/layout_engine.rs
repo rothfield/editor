@@ -45,9 +45,9 @@ pub struct LayoutConfig {
     /// Extra spacing after word-ending syllables (pixels)
     pub word_spacing: f32,
 
-    /// Ornament edit mode: true = editable (inline), false = locked (attached to anchors)
+    /// Superscript edit mode: true = editable (inline), false = locked (attached to anchors)
     #[serde(default)]
-    pub ornament_edit_mode: bool,
+    pub superscript_edit_mode: bool,
 }
 
 /// Main layout engine for computing display lists
@@ -121,7 +121,7 @@ impl LayoutEngine {
             };
 
             // Count total characters in this line
-            let char_count: usize = line.cells.iter().map(|cell| cell.char.chars().count()).sum();
+            let char_count: usize = line.cells.iter().map(|cell| cell.get_char_string().chars().count()).sum();
 
             // Get character widths for this line
             let char_widths = if char_width_offset < config.char_widths.len() {
@@ -203,11 +203,11 @@ impl LayoutEngine {
             config,
         );
 
-        // Render cells with different strategies based on ornament edit mode
-        console::log_1(&format!("🎨 Layout engine: ornament_edit_mode={}", config.ornament_edit_mode).into());
+        // Render cells with different strategies based on superscript edit mode
+        console::log_1(&format!("🎨 Layout engine: superscript_edit_mode={}", config.superscript_edit_mode).into());
 
-        let cells = if config.ornament_edit_mode {
-            // EDITABLE MODE: Layout all cells inline (including ornaments)
+        let cells = if config.superscript_edit_mode {
+            // EDITABLE MODE: Layout all cells inline (including superscripts)
             console::log_1(&"📝 Using INLINE layout (edit mode ON)".into());
             self.layout_cells_inline(
                 &line.cells,
@@ -292,7 +292,7 @@ impl LayoutEngine {
         for (cell_idx, cell) in line_cells.iter().enumerate() {
             // Build CSS classes
             let mut classes = vec!["char-cell".to_string()];
-            classes.push(format!("kind-{}", self.element_kind_to_css(cell.kind)));
+            classes.push(format!("kind-{}", self.element_kind_to_css(cell.get_kind())));
 
             // State classes
             // Check selection state from both cell flags AND selection manager
@@ -303,7 +303,7 @@ impl LayoutEngine {
                 if let Some(sel) = selection {
                     // Check if this cell is within the selection range
                     let cell_line = line_idx;
-                    let cell_col = cell.col; // Use cell.col (physical column), not cell_idx (array index)
+                    let cell_col = cell_idx; // Use array index as column
 
                     // Selection range is [start, end) - exclusive of end
                     let in_range = cell_line >= sel.start().line && cell_line <= sel.end().line;
@@ -347,15 +347,15 @@ impl LayoutEngine {
             }
 
             // Pitch system class
-            if let Some(pitch_system) = cell.pitch_system {
+            if let Some(pitch_system) = cell.get_pitch_system() {
                 classes.push(format!("pitch-system-{}", self.pitch_system_to_css(pitch_system)));
             }
 
             // Accidental (sharp/flat) class - for music font rendering
-            if cell.char.contains('#') {
+            if cell.get_char_string().contains('#') {
                 classes.push("accidental-sharp".to_string());
             }
-            if cell.char.contains('b') {
+            if cell.get_char_string().contains('b') {
                 classes.push("accidental-flat".to_string());
             }
 
@@ -363,9 +363,9 @@ impl LayoutEngine {
             let mut dataset = HashMap::new();
             dataset.insert("lineIndex".to_string(), line_idx.to_string());
             dataset.insert("cellIndex".to_string(), cell_idx.to_string());
-            dataset.insert("column".to_string(), cell.col.to_string());
-            dataset.insert("octave".to_string(), cell.octave.to_string());
-            dataset.insert("glyphLength".to_string(), cell.char.chars().count().to_string());
+            dataset.insert("column".to_string(), cell_idx.to_string());
+            dataset.insert("octave".to_string(), cell.get_octave().to_string());
+            dataset.insert("glyphLength".to_string(), cell.get_char_string().chars().count().to_string());
             dataset.insert("continuation".to_string(), false /* REMOVED: continuation field */.to_string());
 
             // Get effective width for this cell
@@ -375,7 +375,7 @@ impl LayoutEngine {
             let actual_cell_width = cell_widths.get(cell_idx).copied().unwrap_or(12.0);
 
             // Calculate character positions for this cell
-            let char_count = cell.char.chars().count();
+            let char_count = cell.get_char_string().chars().count();
             let mut char_positions = Vec::with_capacity(char_count + 1);
             char_positions.push(cumulative_x); // Position before first character
 
@@ -403,7 +403,7 @@ impl LayoutEngine {
             let y = config.cell_y_offset;
 
             cells.push(RenderCell {
-                char: cell.char.clone(),
+                char: cell.get_char_string(),
                 x: cumulative_x,
                 y,
                 w: effective_width,
@@ -476,7 +476,7 @@ impl LayoutEngine {
 
             // Build CSS classes
             let mut classes = vec!["char-cell".to_string()];
-            classes.push(format!("kind-{}", self.element_kind_to_css(cell.kind)));
+            classes.push(format!("kind-{}", self.element_kind_to_css(cell.get_kind())));
 
             // State classes
             // Check selection state from both cell flags AND selection manager
@@ -487,7 +487,7 @@ impl LayoutEngine {
                 if let Some(sel) = selection {
                     // Check if this cell is within the selection range
                     let cell_line = line_idx;
-                    let cell_col = cell.col; // Use cell.col (physical column), not cell_idx (array index)
+                    let cell_col = cell_idx; // Use array index as column
 
                     // Selection range is [start, end) - exclusive of end
                     let in_range = cell_line >= sel.start().line && cell_line <= sel.end().line;
@@ -531,15 +531,15 @@ impl LayoutEngine {
             }
 
             // Pitch system class
-            if let Some(pitch_system) = cell.pitch_system {
+            if let Some(pitch_system) = cell.get_pitch_system() {
                 classes.push(format!("pitch-system-{}", self.pitch_system_to_css(pitch_system)));
             }
 
             // Accidental classes
-            if cell.char.contains('#') {
+            if cell.get_char_string().contains('#') {
                 classes.push("accidental-sharp".to_string());
             }
-            if cell.char.contains('b') {
+            if cell.get_char_string().contains('b') {
                 classes.push("accidental-flat".to_string());
             }
 
@@ -547,16 +547,16 @@ impl LayoutEngine {
             let mut dataset = HashMap::new();
             dataset.insert("lineIndex".to_string(), line_idx.to_string());
             dataset.insert("cellIndex".to_string(), cell_idx.to_string());
-            dataset.insert("column".to_string(), cell.col.to_string());
-            dataset.insert("octave".to_string(), cell.octave.to_string());
-            dataset.insert("glyphLength".to_string(), cell.char.chars().count().to_string());
+            dataset.insert("column".to_string(), cell_idx.to_string());
+            dataset.insert("octave".to_string(), cell.get_octave().to_string());
+            dataset.insert("glyphLength".to_string(), cell.get_char_string().chars().count().to_string());
             dataset.insert("continuation".to_string(), false /* REMOVED: continuation field */.to_string());
 
             let effective_width = effective_widths.get(cell_idx).copied().unwrap_or(12.0);
             let actual_cell_width = cell_widths.get(cell_idx).copied().unwrap_or(12.0);
 
             // Calculate character positions
-            let char_count = cell.char.chars().count();
+            let char_count = cell.get_char_string().chars().count();
             let mut char_positions = Vec::with_capacity(char_count + 1);
             char_positions.push(cumulative_x);
 
@@ -578,7 +578,7 @@ impl LayoutEngine {
             main_cell_positions.insert(cell_idx, cumulative_x);
 
             cells.push(RenderCell {
-                char: cell.char.clone(),
+                char: cell.get_char_string(),
                 x: cumulative_x,
                 y,
                 w: effective_width,
@@ -610,13 +610,13 @@ impl LayoutEngine {
             for (stack_idx, span) in spans.iter().enumerate() {
                 // Calculate base offset based on position type
                 let base_offset_x = match span.position_type {
-                    OrnamentPositionType::Before => -10.0,
-                    OrnamentPositionType::After => 10.0,
-                    OrnamentPositionType::OnTop => 0.0,
+                    SuperscriptPositionType::Before => -10.0,
+                    SuperscriptPositionType::After => 10.0,
+                    SuperscriptPositionType::OnTop => 0.0,
                 };
 
                 let base_offset_y = match span.position_type {
-                    OrnamentPositionType::OnTop => -10.0,
+                    SuperscriptPositionType::OnTop => -10.0,
                     _ => 0.0,
                 };
 
@@ -629,7 +629,7 @@ impl LayoutEngine {
 
                     // Build CSS classes for ornament cell
                     let mut classes = vec!["char-cell".to_string(), "ornament-cell".to_string()];
-                    classes.push(format!("kind-{}", self.element_kind_to_css(cell.kind)));
+                    classes.push(format!("kind-{}", self.element_kind_to_css(cell.get_kind())));
 
                     // Check selection state from both cell flags AND selection manager
                     let mut is_selected = cell.flags & 0x02 != 0;
@@ -639,7 +639,7 @@ impl LayoutEngine {
                         if let Some(sel) = selection {
                             // Check if this cell is within the selection range
                             let cell_line = line_idx;
-                            let cell_col = cell.col; // Use cell.col (physical column)
+                            let cell_col = ornament_cell_idx; // Use array index as column
 
                             // Selection range is [start, end) - exclusive of end
                             let in_range = cell_line >= sel.start().line && cell_line <= sel.end().line;
@@ -672,22 +672,22 @@ impl LayoutEngine {
                         classes.push(role.clone());
                     }
 
-                    if let Some(pitch_system) = cell.pitch_system {
+                    if let Some(pitch_system) = cell.get_pitch_system() {
                         classes.push(format!("pitch-system-{}", self.pitch_system_to_css(pitch_system)));
                     }
 
                     let mut dataset = HashMap::new();
                     dataset.insert("lineIndex".to_string(), line_idx.to_string());
                     dataset.insert("cellIndex".to_string(), ornament_cell_idx.to_string());
-                    dataset.insert("column".to_string(), cell.col.to_string());
-                    dataset.insert("octave".to_string(), cell.octave.to_string());
+                    dataset.insert("column".to_string(), ornament_cell_idx.to_string());
+                    dataset.insert("octave".to_string(), cell.get_octave().to_string());
                     dataset.insert("testid".to_string(), "ornament-cell".to_string());
 
                     let x = anchor_x + base_offset_x;
                     let y = config.cell_y_offset + base_offset_y + collision_offset_y;
 
                     cells.push(RenderCell {
-                        char: cell.char.clone(),
+                        char: cell.get_char_string(),
                         x,
                         y,
                         w: 0.0, // Zero width - ornament overlay
@@ -905,13 +905,13 @@ impl LayoutEngine {
                 // Convert ornament cells to RenderOrnamentCell
                 let ornament_cells: Vec<RenderOrnamentCell> = ornament.cells.iter().map(|cell| {
                     RenderOrnamentCell {
-                        char: cell.char.clone(),
+                        char: cell.get_char_string(),
                         accidental: if cell.accidental == crate::models::Accidental::Natural {
                             None
                         } else {
                             Some(format!("{:?}", cell.accidental))
                         },
-                        octave: cell.octave,
+                        octave: cell.get_octave(),
                     }
                 }).collect();
 
@@ -950,7 +950,7 @@ impl LayoutEngine {
             .iter()
             .enumerate()
             .filter_map(|(idx, cell)| {
-                if cell.kind.is_barline() {
+                if cell.get_kind().is_barline() {
                     render_cells.get(idx).map(|rc| rc.x)
                 } else {
                     None
@@ -1047,7 +1047,7 @@ pub struct OrnamentSpan {
     pub end_idx: usize,
 
     /// Position type: Before/After/OnTop
-    pub position_type: OrnamentPositionType,
+    pub position_type: SuperscriptPositionType,
 
     /// Cells in this ornament span (for rendering)
     pub cells: Vec<Cell>,
@@ -1059,7 +1059,7 @@ impl OrnamentSpan {
     #[allow(dead_code)]
     pub fn from_cells(cells: &[Cell], start_idx: usize, end_idx: usize) -> Self {
         // Default to Before position type - ornament system being refactored
-        let position_type = OrnamentPositionType::Before;
+        let position_type = SuperscriptPositionType::Before;
         let span_cells: Vec<Cell> = cells[start_idx..=end_idx].to_vec();
 
         Self {
@@ -1162,10 +1162,10 @@ pub fn layout_with_collision_detection(
 
         // Superscripts are narrower (font handles scaling, but we adjust width)
         let width = if is_superscript {
-            let char_count = cell.char.chars().count();
+            let char_count = cell.get_char_string().chars().count();
             base_font_size * char_count as f32 * 0.3  // 50% of normal
         } else {
-            let char_count = cell.char.chars().count();
+            let char_count = cell.get_char_string().chars().count();
             base_font_size * char_count as f32 * 0.6
         };
 

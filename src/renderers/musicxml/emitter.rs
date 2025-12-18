@@ -6,7 +6,7 @@
 use crate::ir::*;
 // PitchCode not needed in emitter (pitch info comes from IR)
 use super::builder::{MusicXmlBuilder, xml_escape};
-use super::grace_notes::ornament_position_to_placement;
+use super::grace_notes::superscript_position_to_placement;
 
 /// Emit a complete MusicXML document from export lines
 pub fn emit_musicxml(
@@ -384,6 +384,11 @@ fn emit_measure(
 
     // Write key and clef only on first measure (handled elsewhere)
 
+    // Track pending grace notes that need to be emitted before the next pitched event.
+    // VexFlow/OSMD requires grace notes to precede their anchor note.
+    // grace_notes_after from one note become grace_notes_before of the next note.
+    let mut pending_grace_notes: Vec<&GraceNoteData> = Vec::new();
+
     // Emit all events in the measure
     for event in &measure.events {
         // Track if this is a pitched event for the remaining syllables feature
@@ -394,14 +399,284 @@ fn emit_measure(
             *global_pitched_index += 1;
         }
 
-        emit_event(builder, event, measure.divisions, syllables, lyric_index, is_last_pitched_event)?;
+        emit_event_with_pending_grace_notes(
+            builder,
+            event,
+            measure.divisions,
+            syllables,
+            lyric_index,
+            is_last_pitched_event,
+            &mut pending_grace_notes,
+        )?;
+    }
+
+    // Emit any remaining pending grace notes as after-grace notes
+    // These are after-grace notes (nachschlag) that follow their anchor note.
+    // We emit them with steal-time-following marker for OSMD/VexFlow post-processing.
+    if !pending_grace_notes.is_empty() {
+        emit_trailing_grace_notes_as_after_grace(builder, &pending_grace_notes, measure.divisions)?;
     }
 
     builder.end_measure();
     Ok(())
 }
 
-/// Emit a single event (note, rest, or chord)
+/// Emit trailing grace notes as regular grace notes
+/// These are after-grace notes (nachschlag) at the end of a measure with no following anchor note.
+/// Emitted as regular grace notes, then OSMD post-processing moves them to the right position.
+/// Multiple grace notes are beamed together.
+fn emit_trailing_grace_notes_as_after_grace(
+    builder: &mut MusicXmlBuilder,
+    grace_notes: &[&GraceNoteData],
+    _measure_divisions: usize,
+) -> Result<(), String> {
+    use super::grace_notes::superscript_position_to_placement;
+
+    let count = grace_notes.len();
+
+    for (i, grace) in grace_notes.iter().enumerate() {
+        let placement = superscript_position_to_placement(&grace.position);
+
+        // Determine beam state for multiple grace notes
+        let beam_state = if count > 1 {
+            if i == 0 {
+                Some("begin")
+            } else if i == count - 1 {
+                Some("end")
+            } else {
+                Some("continue")
+            }
+        } else {
+            None // Single grace note - no beam
+        };
+
+        // Emit as after-grace note with steal-time-previous marker
+        // OSMD renders it LEFT of following note, then post-processing moves it RIGHT
+        builder.write_grace_note_beamed(
+            &grace.pitch.pitch_code,
+            grace.pitch.octave,
+            grace.slash,
+            placement,
+            true, // after-grace note - has steal-time-previous for detection
+            None,
+            beam_state,
+        )?;
+    }
+    Ok(())
+}
+
+/// Emit a single event with support for pending grace notes from previous events.
+/// This handles VexFlow/OSMD's requirement that grace notes precede their anchor note.
+fn emit_event_with_pending_grace_notes<'a>(
+    builder: &mut MusicXmlBuilder,
+    event: &'a ExportEvent,
+    measure_divisions: usize,
+    syllables: &[(String, Syllabic)],
+    lyric_index: &mut usize,
+    is_last_pitched_event: bool,
+    pending_grace_notes: &mut Vec<&'a GraceNoteData>,
+) -> Result<(), String> {
+    match event {
+        ExportEvent::Rest { divisions, tuplet, .. } => {
+            // Rests don't consume pending grace notes - they pass through to next pitched event
+            let duration_divs = *divisions;
+            let musical_duration = duration_divs as f64 / measure_divisions as f64;
+
+            if let Some(tuplet_info) = tuplet {
+                let time_modification = Some((tuplet_info.actual_notes, tuplet_info.normal_notes));
+                let tuplet_bracket = if tuplet_info.bracket_start {
+                    Some("start")
+                } else if tuplet_info.bracket_stop {
+                    Some("stop")
+                } else {
+                    None
+                };
+                builder.write_rest_with_tuplet(duration_divs, musical_duration, time_modification, tuplet_bracket);
+            } else {
+                builder.write_rest(duration_divs, musical_duration);
+            }
+        }
+
+        ExportEvent::Note(note) => {
+            // Emit any pending grace notes (from previous note's grace_notes_after) BEFORE this note
+            emit_pending_grace_notes(builder, pending_grace_notes)?;
+
+            // Emit the note (without its grace_notes_after - those go to pending)
+            emit_note_without_grace_after(builder, note, measure_divisions, syllables, lyric_index, is_last_pitched_event)?;
+
+            // Collect this note's grace_notes_after for the next pitched event
+            for grace in &note.grace_notes_after {
+                pending_grace_notes.push(grace);
+            }
+        }
+
+        ExportEvent::Chord {
+            pitches,
+            divisions,
+            lyrics,
+            slur,
+            tuplet,
+            ..
+        } => {
+            // Emit any pending grace notes BEFORE this chord
+            emit_pending_grace_notes(builder, pending_grace_notes)?;
+
+            emit_chord(builder, pitches, *divisions, measure_divisions, lyrics, slur, tuplet.as_ref(), is_last_pitched_event)?;
+            // Note: Chords don't have grace_notes_after in current model
+        }
+    }
+
+    Ok(())
+}
+
+/// Emit pending grace notes and clear the buffer
+/// These are after-grace notes from the previous note, emitted before the next note.
+/// Emitted as regular grace notes (LEFT of following note), then OSMD post-processing
+/// moves them RIGHT to position after their anchor note.
+/// Multiple grace notes are beamed together.
+fn emit_pending_grace_notes(
+    builder: &mut MusicXmlBuilder,
+    pending_grace_notes: &mut Vec<&GraceNoteData>,
+) -> Result<(), String> {
+    let count = pending_grace_notes.len();
+
+    for (i, grace) in pending_grace_notes.drain(..).enumerate() {
+        let placement = superscript_position_to_placement(&grace.position);
+
+        // Determine beam state for multiple grace notes
+        let beam_state = if count > 1 {
+            if i == 0 {
+                Some("begin")
+            } else if i == count - 1 {
+                Some("end")
+            } else {
+                Some("continue")
+            }
+        } else {
+            None // Single grace note - no beam
+        };
+
+        // Use write_grace_note_beamed to add beam information
+        // Emit as after-grace note - OSMD post-processing will move it
+        builder.write_grace_note_beamed(
+            &grace.pitch.pitch_code,
+            grace.pitch.octave,
+            grace.slash,
+            placement,
+            true,   // after-grace note - has steal-time-previous for detection
+            None,
+            beam_state,
+        )?;
+    }
+    Ok(())
+}
+
+/// Emit a note WITHOUT emitting its grace_notes_after (those go to pending for next note)
+fn emit_note_without_grace_after(
+    builder: &mut MusicXmlBuilder,
+    note: &NoteData,
+    measure_divisions: usize,
+    syllables: &[(String, Syllabic)],
+    lyric_index: &mut usize,
+    is_last_pitched_event: bool,
+) -> Result<(), String> {
+    let duration_divs = note.divisions;
+    let musical_duration = duration_divs as f64 / measure_divisions as f64;
+
+    let tie = if let Some(ref tie_data) = note.tie {
+        match tie_data.type_ {
+            TieType::Start => Some("start"),
+            TieType::Continue => Some("continue"),
+            TieType::Stop => Some("stop"),
+        }
+    } else {
+        None
+    };
+
+    let slur = if let Some(ref slur_data) = note.slur {
+        match slur_data.type_ {
+            SlurType::Start => Some("start"),
+            SlurType::Continue => None,
+            SlurType::Stop => Some("stop"),
+        }
+    } else {
+        None
+    };
+
+    let time_modification = note.tuplet.as_ref().map(|t| (t.actual_notes, t.normal_notes));
+    let tuplet_bracket = note.tuplet.as_ref().and_then(|t| {
+        if t.bracket_start {
+            Some("start")
+        } else if t.bracket_stop {
+            Some("stop")
+        } else {
+            None
+        }
+    });
+
+    // Handle lyrics
+    let lyric = if !syllables.is_empty() && *lyric_index < syllables.len() {
+        let (text, syllabic) = &syllables[*lyric_index];
+        *lyric_index += 1;
+        Some(LyricData {
+            syllable: text.clone(),
+            syllabic: *syllabic,
+            number: 1,
+        })
+    } else if is_last_pitched_event && *lyric_index < syllables.len() {
+        let remaining: Vec<_> = syllables[*lyric_index..].iter()
+            .map(|(text, _)| text.as_str())
+            .collect();
+        *lyric_index = syllables.len();
+        if !remaining.is_empty() {
+            Some(LyricData {
+                syllable: remaining.join(" "),
+                syllabic: Syllabic::Single,
+                number: 1,
+            })
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    let lyric_tuple = lyric.map(|l| (l.syllable, l.syllabic, l.number));
+
+    // Emit grace notes before the main note
+    for grace in &note.grace_notes_before {
+        let placement = superscript_position_to_placement(&grace.position);
+        builder.write_grace_note(
+            &grace.pitch.pitch_code,
+            grace.pitch.octave,
+            grace.slash,
+            placement,
+        )?;
+    }
+
+    // Emit the main note
+    builder.write_note_with_beam_from_pitch_info_and_lyric(
+        &note.pitch,
+        duration_divs,
+        musical_duration,
+        None, // beam
+        time_modification,
+        tuplet_bracket,
+        tie,
+        slur,
+        None, // articulations
+        None, // ornament_type
+        lyric_tuple,
+    )?;
+
+    // NOTE: grace_notes_after are NOT emitted here - they're collected by the caller
+    // and emitted before the next pitched event (VexFlow requirement)
+
+    Ok(())
+}
+
+/// Emit a single event (note, rest, or chord) - LEGACY, used by tests
+#[allow(dead_code)]
 fn emit_event(
     builder: &mut MusicXmlBuilder,
     event: &ExportEvent,
@@ -553,7 +828,7 @@ fn emit_note(
 
     // Emit grace notes before the main note
     for grace in &note.grace_notes_before {
-        let placement = ornament_position_to_placement(&grace.position);
+        let placement = superscript_position_to_placement(&grace.position);
         builder.write_grace_note(
             &grace.pitch.pitch_code,
             grace.pitch.octave,
@@ -579,7 +854,7 @@ fn emit_note(
 
     // Emit grace notes after the main note
     for grace in &note.grace_notes_after {
-        let placement = ornament_position_to_placement(&grace.position);
+        let placement = superscript_position_to_placement(&grace.position);
         builder.write_grace_note(
             &grace.pitch.pitch_code,
             grace.pitch.octave,
@@ -677,7 +952,7 @@ fn parse_lyrics_to_syllables(lyrics: &str) -> Vec<(String, Syllabic)> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{OrnamentPositionType, PitchCode};
+    use crate::models::{SuperscriptPositionType, PitchCode};
 
     #[test]
     fn test_parse_lyrics_single_syllable() {
@@ -840,12 +1115,12 @@ mod tests {
         let grace_notes = vec![
             GraceNoteData {
                 pitch: PitchInfo::new(PitchCode::N2, 4),
-                position: OrnamentPositionType::OnTop,
+                position: SuperscriptPositionType::OnTop,
                 slash: true,
             },
             GraceNoteData {
                 pitch: PitchInfo::new(PitchCode::N3, 4),
-                position: OrnamentPositionType::OnTop,
+                position: SuperscriptPositionType::OnTop,
                 slash: true,
             },
         ];
@@ -892,7 +1167,7 @@ mod tests {
         let grace_notes = vec![
             GraceNoteData {
                 pitch: PitchInfo::new(PitchCode::N2, 4),
-                position: OrnamentPositionType::After,
+                position: SuperscriptPositionType::After,
                 slash: false,
             },
         ];
@@ -924,23 +1199,23 @@ mod tests {
         let xml = builder.finalize();
 
         // Should contain 1 grace note without slash attribute
-        // Look for <grace (with no slash= attribute)
-        let has_grace_no_slash = xml.contains("<grace ") && !xml.contains("<grace slash");
+        // Look for <grace/> (no attributes) since slash=false and placement=After maps to None
+        let has_grace_no_slash = xml.contains("<grace/>") && !xml.contains("<grace slash");
         assert!(has_grace_no_slash, "Should have 1 grace note without slash");
 
         // Main note should come before grace note
         let main_note_pos = xml.find("<step>C</step>").expect("Main note not found");
-        let grace_pos = xml.find("<grace ").expect("Grace note not found");
+        let grace_pos = xml.find("<grace/>").expect("Grace note not found");
         assert!(main_note_pos < grace_pos, "Main note should come before after-grace note");
     }
 
     #[test]
     fn test_grace_note_placement_mapping() {
-        // Test that OrnamentPositionType::OnTop maps to placement="above"
+        // Test that SuperscriptPositionType::OnTop maps to placement="above"
         let grace_notes = vec![
             GraceNoteData {
                 pitch: PitchInfo::new(PitchCode::N2, 4),
-                position: OrnamentPositionType::OnTop,
+                position: SuperscriptPositionType::OnTop,
                 slash: true,
             },
         ];
@@ -982,7 +1257,7 @@ mod tests {
         let grace_before = vec![
             GraceNoteData {
                 pitch: PitchInfo::new(PitchCode::N3, 4),
-                position: OrnamentPositionType::Before,
+                position: SuperscriptPositionType::Before,
                 slash: true,
             },
         ];
@@ -990,7 +1265,7 @@ mod tests {
         let grace_after = vec![
             GraceNoteData {
                 pitch: PitchInfo::new(PitchCode::N2, 4),
-                position: OrnamentPositionType::After,
+                position: SuperscriptPositionType::After,
                 slash: false,
             },
         ];
@@ -1023,14 +1298,13 @@ mod tests {
 
         // Should contain both types of grace notes
         assert!(xml.contains("<grace slash=\"yes\""), "Should have before-grace note with slash");
-        // After-grace should have <grace but NOT <grace slash
-        let has_grace_no_slash = xml.matches("<grace ").count() > 1;  // At least 2 grace notes
-        assert!(has_grace_no_slash, "Should have grace note without slash");
+        // After-grace should have <grace/> (no attributes since slash=false and placement=After)
+        assert!(xml.contains("<grace/>"), "Should have grace note without slash");
 
         // Verify ordering: before-grace -> main note -> after-grace
         let before_grace_pos = xml.find("<grace slash=\"yes\"").expect("Before grace not found");
         let main_note_pos = xml.find("<step>C</step>").expect("Main note not found");
-        let after_grace_pos = xml.rfind("<grace ").expect("After grace not found");
+        let after_grace_pos = xml.rfind("<grace/>").expect("After grace not found");
 
         assert!(before_grace_pos < main_note_pos, "Before-grace should come before main note");
         assert!(main_note_pos < after_grace_pos, "Main note should come before after-grace");

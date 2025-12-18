@@ -130,9 +130,9 @@ class EventManager {
       'Ctrl+o': () => this.handleOpenFile(),
       'Ctrl+O': () => this.handleOpenFile(),
 
-      // Ornament shortcuts
-      'Alt+o': () => this.applyOrnament(),
-      'Alt+O': () => this.applyOrnament(),
+      // Superscript shortcuts
+      'Alt+o': () => this.applySuperscript(),
+      'Alt+O': () => this.applySuperscript(),
 
       // Debug shortcuts
       F12: () => this.toggleDebugMode(),
@@ -148,6 +148,9 @@ class EventManager {
       // Alt commands for musical notation
       'Alt+s', 'Alt+S', 'Alt+u', 'Alt+U', 'Alt+m', 'Alt+M',
       'Alt+l', 'Alt+L', 'Alt+t', 'Alt+T', 'Alt+o', 'Alt+O',
+      'Alt+ArrowUp', 'Alt+ArrowDown',
+      'Shift+Alt+ArrowUp', 'Shift+Alt+ArrowDown', 'Alt+Shift+ArrowUp', 'Alt+Shift+ArrowDown',
+      'Ctrl+ArrowUp', 'Ctrl+ArrowDown',
       // Alt commands for file operations
       'Alt+n', 'Alt+N',
       // Ctrl commands for file operations
@@ -159,6 +162,16 @@ class EventManager {
      * Handle global keyboard events
      */
   async handleGlobalKeyDown(event) {
+    // Debug Alt+Arrow and Ctrl+Arrow
+    if (event.altKey || event.ctrlKey) {
+      console.log('[DEBUG] Modifier combo:', event.key, event.code, { ctrl: event.ctrlKey, alt: event.altKey });
+      logger.info(LOG_CATEGORIES.EVENTS, 'handleGlobalKeyDown: Alt combo', {
+        key: event.key,
+        code: event.code,
+        altKey: event.altKey
+      });
+    }
+
     // Close any open menus when user starts typing (except for menu navigation keys)
     const menuNavigationKeys = ['Escape', 'ArrowUp', 'ArrowDown', 'Enter'];
     if (this.editor?.ui?.activeMenu && !menuNavigationKeys.includes(event.key)) {
@@ -447,15 +460,15 @@ class EventManager {
   }
 
   /**
-   * Apply ornament to selection (Alt+O)
+   * Apply superscript to selection (Alt+O)
    * Extracts pitches from selection and makes them superscript, applying after previous note
    */
-  applyOrnament() {
-    logger.info(LOG_CATEGORIES.EVENTS, 'Alt+O: Apply ornament shortcut triggered');
-    if (this.editor && this.editor.ui && this.editor.ui.selectionToOrnament) {
-      this.editor.ui.selectionToOrnament();
+  applySuperscript() {
+    logger.info(LOG_CATEGORIES.EVENTS, 'Alt+O: Apply superscript shortcut triggered');
+    if (this.editor && this.editor.ui && this.editor.ui.selectionToSuperscript) {
+      this.editor.ui.selectionToSuperscript();
     } else {
-      logger.warn(LOG_CATEGORIES.EVENTS, 'Apply ornament not available');
+      logger.warn(LOG_CATEGORIES.EVENTS, 'Apply superscript not available');
     }
   }
 
@@ -583,7 +596,7 @@ File Operations:
 Musical Notation:
 • Number System: 1-7 (with #/b for accidentals)
 • Western System: cdefgab/CDEFGAB (with #/b for accidentals)
-• Alt+O: Apply ornament indicator to selection
+• Alt+O: Apply superscript to selection
 • Alt+S: Apply slur to selection
 • Alt+U/M/L: Apply octave +1/0/-1 to selection
 • Alt+T: Enter tala notation
@@ -728,13 +741,16 @@ Focus Management:
       logger.debug(LOG_CATEGORIES.EVENTS, 'getKeyString detected Alt key issue');
       logger.debug(LOG_CATEGORIES.EVENTS, 'originalKey', { key: event.key });
       logger.debug(LOG_CATEGORIES.EVENTS, 'code', { code: event.code });
-      logger.debug(LOG_CATEGORIES.EVENTS, 'code.startsWith("Key")', { startsWithKey: code && code.startsWith('Key') });
 
       if (code && code.startsWith('Key')) {
         key = code.replace('Key', '').toLowerCase();
         logger.debug(LOG_CATEGORIES.EVENTS, 'fixedKey', { key });
+      } else if (code && code.startsWith('Arrow')) {
+        // Handle arrow keys
+        key = code;
+        logger.debug(LOG_CATEGORIES.EVENTS, 'fixedKey (arrow)', { key });
       } else {
-        logger.warn(LOG_CATEGORIES.EVENTS, 'Could not fix - code does not start with "Key"');
+        logger.warn(LOG_CATEGORIES.EVENTS, 'Could not fix - code does not start with "Key" or "Arrow"');
       }
     }
 

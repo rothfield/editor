@@ -218,6 +218,11 @@ pub trait GlyphExt {
     /// Set octave (-2 to +2). No-op on non-pitched glyphs.
     fn octave(self, oct: i8) -> Self;
 
+    /// Set accidental (None, Sharp, Flat, DoubleSharp, DoubleFlat, HalfFlat).
+    /// Preserves degree (1-7), octave, pitch_system, line variants, superscript.
+    /// No-op on non-pitched glyphs.
+    fn accidental(self, acc: crate::models::pitch_code::AccidentalType) -> Self;
+
     /// Set underline state for beat grouping.
     fn underline(self, state: UnderlineState) -> Self;
 
@@ -256,10 +261,12 @@ impl GlyphParts {
 
         // Check if superscript (0xF8000+)
         if is_superscript(cp) {
-            let line_variant = (cp % SUPERSCRIPT_LINE_VARIANTS) as u8;
-            // Get the base (non-superscript) codepoint
-            let base_cp = from_superscript(cp).unwrap_or(cp);
-            return GlyphParts { base_cp, line_variant, is_super: true };
+            if let Some(base_cp) = from_superscript(cp) {
+                let line_variant = (cp % SUPERSCRIPT_LINE_VARIANTS) as u8;
+                return GlyphParts { base_cp, line_variant, is_super: true };
+            }
+            // Invalid superscript codepoint (e.g., in gap between systems)
+            // Treat as plain codepoint
         }
 
         // Check if NOTE line variant PUA (0x1A000+)
@@ -270,28 +277,10 @@ impl GlyphParts {
         }
 
         // Check if ASCII line variant PUA (0xE800-0xEBFF)
+        // ASCII chars stay as ASCII - they have their own line variant encoding
         if let Some(decoded) = decode_line_variant(ch) {
             let line_variant = line_states_to_variant(decoded.underline, decoded.overline);
-
-            // Try to reconstruct pitch PUA from ASCII base char
-            // Line variants store ASCII chars, but we want to preserve pitch PUA semantics
-            let base_cp = pitch_from_glyph_number(decoded.base_char)
-                .and_then(|(pitch, octave)| {
-                    glyph_for_pitch(pitch, octave, crate::models::elements::PitchSystem::Number)
-                        .map(|c| c as u32)
-                })
-                .or_else(|| pitch_from_glyph_western(decoded.base_char)
-                    .and_then(|(pitch, octave)| {
-                        glyph_for_pitch(pitch, octave, crate::models::elements::PitchSystem::Western)
-                            .map(|c| c as u32)
-                    }))
-                .or_else(|| pitch_from_glyph_sargam(decoded.base_char)
-                    .and_then(|(pitch, octave)| {
-                        glyph_for_pitch(pitch, octave, crate::models::elements::PitchSystem::Sargam)
-                            .map(|c| c as u32)
-                    }))
-                .unwrap_or(decoded.base_char as u32);
-
+            let base_cp = decoded.base_char as u32;
             return GlyphParts { base_cp, line_variant, is_super: false };
         }
 
@@ -401,16 +390,19 @@ impl GlyphParts {
         } else if self.line_variant != 0 {
             // Encode with line variant
             let (underline, overline) = variant_to_line_states(self.line_variant);
-            // Try PUA note encoding first, then ASCII encoding
-            get_pua_note_line_variant_codepoint(self.base_cp, underline, overline)
-                .map(|c| c as u32)
-                .or_else(|| {
-                    // Fall back to ASCII line variant encoding
-                    char::from_u32(self.base_cp)
-                        .and_then(|ch| encode_ascii_line_variant(ch, underline, overline))
-                        .map(|c| c as u32)
-                })
-                .unwrap_or(self.base_cp)
+
+            // ASCII chars (0x20-0x7E) stay as ASCII line variants
+            if self.base_cp >= 0x20 && self.base_cp <= 0x7E {
+                char::from_u32(self.base_cp)
+                    .and_then(|ch| encode_ascii_line_variant(ch, underline, overline))
+                    .map(|c| c as u32)
+                    .unwrap_or(self.base_cp)
+            } else {
+                // Pitch PUA codepoints use NOTE line variants
+                get_pua_note_line_variant_codepoint(self.base_cp, underline, overline)
+                    .map(|c| c as u32)
+                    .unwrap_or(self.base_cp)
+            }
         } else {
             // Plain base codepoint
             self.base_cp
@@ -422,6 +414,21 @@ impl GlyphParts {
 
 impl GlyphExt for char {
     fn octave(self, oct: i8) -> Self {
+        let cp = self as u32;
+
+        // ASCII line variants (0xE800-0xED96) are system-agnostic
+        // Underline: 0xE800 + 95×3 = 0xE91D, Overline: 0xE920 + 95×3 = 0xEA3D
+        // Combined: 0xEA40 + 95×9 = 0xED97
+        // They don't support pitch transforms - return unchanged
+        if cp >= 0xE800 && cp < 0xED97 {
+            return self;
+        }
+
+        // ASCII superscripts (0xF8000-0xF85FF) are also system-agnostic
+        if cp >= 0xF8000 && cp < 0xF8600 {
+            return self;
+        }
+
         let parts = GlyphParts::decode(self);
 
         // Try to get pitch info and change octave
@@ -438,6 +445,77 @@ impl GlyphExt for char {
 
         // Not applicable - return unchanged
         self
+    }
+
+    fn accidental(self, acc: crate::models::pitch_code::AccidentalType) -> Self {
+        use crate::models::pitch_code::AccidentalType;
+
+        let self_cp = self as u32;
+
+        // ASCII line variants (0xE800-0xED96) are system-agnostic
+        // They don't support pitch transforms - return unchanged
+        if self_cp >= 0xE800 && self_cp < 0xED97 {
+            return self;
+        }
+
+        // ASCII superscripts (0xF8000-0xF85FF) are also system-agnostic
+        if self_cp >= 0xF8000 && self_cp < 0xF8600 {
+            return self;
+        }
+
+        let parts = GlyphParts::decode(self);
+        let cp = parts.base_cp;
+
+        // Only apply to codepoints that are recognized as pitch glyphs
+        // This ensures we don't corrupt non-pitch codepoints
+        if pitch_from_codepoint(cp).is_none() {
+            return self; // Not a recognized pitch - return unchanged
+        }
+
+        // Detect pitch system and compute new codepoint using atoms.yaml formula:
+        // codepoint = system_pua_base + (char_index × 30) + variant_index
+        // variant_index = (accidental_type × 5) + octave_idx
+        // accidental_type: 0=natural, 1=flat, 2=half-flat, 3=double-flat, 4=double-sharp, 5=sharp
+        // octave_idx: 0=base, 1=-2, 2=-1, 3=+1, 4=+2
+
+        let (system_base, _max_chars) = match cp {
+            0xE000..=0xE0D1 => (0xE000u32, 7),   // Number: 7 × 30 = 210
+            0xE100..=0xE1D1 => (0xE100u32, 7),   // Western: 7 × 30 = 210
+            0xE300..=0xE467 => (0xE300u32, 12),  // Sargam: 12 × 30 = 360
+            0xE500..=0xE5D1 => (0xE500u32, 7),   // Doremi: 7 × 30 = 210
+            _ => return self, // Not a pitch PUA - return unchanged
+        };
+
+        let offset = cp - system_base;
+        let char_index = offset / 30;
+        let old_variant = offset % 30;
+        let octave_idx = old_variant % 5;  // Preserve octave (0=base, 1=-2, 2=-1, 3=+1, 4=+2)
+
+        // Map AccidentalType to atoms.yaml accidental_type index
+        let new_acc_type: u32 = match acc {
+            AccidentalType::None | AccidentalType::Natural => 0,  // natural
+            AccidentalType::Flat => 1,
+            AccidentalType::HalfFlat => 2,
+            AccidentalType::DoubleFlat => 3,
+            AccidentalType::DoubleSharp => 4,
+            AccidentalType::Sharp => 5,
+        };
+
+        let new_variant = (new_acc_type * 5) + octave_idx;
+        let new_cp = system_base + (char_index * 30) + new_variant;
+
+        // Verify the new codepoint is also recognized by pitch_from_codepoint
+        // If not, return self unchanged (decode_char has incomplete coverage for some systems)
+        if pitch_from_codepoint(new_cp).is_none() {
+            return self;
+        }
+
+        let new_parts = GlyphParts {
+            base_cp: new_cp,
+            line_variant: parts.line_variant,
+            is_super: parts.is_super,
+        };
+        new_parts.encode()
     }
 
     fn underline(self, state: UnderlineState) -> Self {
@@ -913,7 +991,74 @@ pub fn decode_char(
     ch: char,
     pitch_system: crate::models::elements::PitchSystem,
 ) -> DecodedChar {
-    // 1. Check if it's a line variant PUA (0xE800-0xEBFF)
+    let cp = ch as u32;
+
+    // 0. Check if it's a superscript glyph (0xF8000+)
+    if is_superscript(cp) {
+        let line_variant = (cp % SUPERSCRIPT_LINE_VARIANTS) as u8;
+        let (underline, overline) = variant_to_line_states(line_variant);
+
+        // Get base (non-superscript) codepoint and decode it
+        if let Some(base_cp) = from_superscript(cp) {
+            if let Some(base_ch) = char::from_u32(base_cp) {
+                // Recursively decode the base char to get pitch info
+                let base_decoded = decode_char(base_ch, pitch_system);
+                return DecodedChar {
+                    base_char: base_decoded.base_char,
+                    pitch_code: base_decoded.pitch_code,
+                    octave: base_decoded.octave,
+                    underline,
+                    overline,
+                };
+            }
+        }
+        // Fallback if base conversion fails
+        return DecodedChar {
+            base_char: ch,
+            pitch_code: None,
+            octave: 0,
+            underline,
+            overline,
+        };
+    }
+
+    // 1. Check if it's a NOTE line variant PUA (0x1A000+)
+    // These encode pitch PUA codepoints with line variants and preserve octave
+    if let Some((base_pitch_cp, line_variant)) = GlyphParts::decode_note_line_variant(cp) {
+        let (underline, overline) = variant_to_line_states(line_variant);
+
+        // Decode the base pitch codepoint to get pitch info
+        // Try the specified system first, then try all systems to find the pitch
+        let base_ch = char::from_u32(base_pitch_cp);
+        let pitch_info = base_ch.and_then(|ch| {
+            pitch_from_glyph(ch, pitch_system)
+                .or_else(|| pitch_from_glyph_number(ch))
+                .or_else(|| pitch_from_glyph_western(ch))
+                .or_else(|| pitch_from_glyph_sargam(ch))
+        });
+
+        if let Some((pitch_code, octave)) = pitch_info {
+            let base_char = pitch_code_to_base_char(pitch_code, pitch_system);
+            return DecodedChar {
+                base_char,
+                pitch_code: Some(pitch_code),
+                octave,
+                underline,
+                overline,
+            };
+        }
+
+        // Even if pitch lookup fails, return line variant info
+        return DecodedChar {
+            base_char: base_ch.unwrap_or('?'),
+            pitch_code: None,
+            octave: 0,
+            underline,
+            overline,
+        };
+    }
+
+    // 2. Check if it's an ASCII line variant PUA (0xE800-0xEBFF)
     if let Some(decoded) = decode_line_variant(ch) {
         // Line variant found - extract base char and line states
         // Then try to get pitch info from the base char
@@ -923,13 +1068,13 @@ pub fn decode_char(
         return DecodedChar {
             base_char: decoded.base_char,
             pitch_code: pitch_code_opt,
-            octave: 0, // Line variants don't encode octave (known limitation)
+            octave: 0, // ASCII line variants don't encode octave (known limitation)
             underline: decoded.underline,
             overline: decoded.overline,
         };
     }
 
-    // 2. Check if it's a pitch PUA glyph (0xE000-0xE7FF range, system-dependent)
+    // 3. Check if it's a pitch PUA glyph (0xE000-0xE7FF range, system-dependent)
     if let Some((pitch_code, octave)) = pitch_from_glyph(ch, pitch_system) {
         // Pitch PUA - has pitch + octave, no lines
         // Derive base char from pitch code
@@ -944,7 +1089,7 @@ pub fn decode_char(
         };
     }
 
-    // 3. Plain ASCII or unknown - try to parse as pitch
+    // 4. Plain ASCII or unknown - try to parse as pitch
     let pitch_info = pitch_from_glyph(ch, pitch_system);
 
     DecodedChar {
@@ -1045,8 +1190,13 @@ pub fn get_superscript_overline(cp: u32) -> u8 {
 /// This is used when the user presses Alt+O to convert selected pitches to grace notes.
 /// The superscript codepoint encodes the same pitch information but renders at 50% scale.
 ///
+/// Handles all codepoint formats:
+/// - Base PUA pitches (0xE000-0xE5FF)
+/// - Line variant pitches (0x1A000+) - preserves underline/overline
+/// - ASCII pitches (0x20-0x7E)
+///
 /// # Arguments
-/// * `normal_cp` - Normal pitch codepoint (ASCII 0x20-0x7E or PUA 0xE000+)
+/// * `normal_cp` - Normal pitch codepoint (ASCII, base PUA, or line variant PUA)
 ///
 /// # Returns
 /// * `Some(superscript_cp)` - The superscript codepoint (0xF8000+)
@@ -1056,10 +1206,29 @@ pub fn get_superscript_overline(cp: u32) -> u8 {
 /// ```
 /// // Normal "1" (0xE000) → Superscript "1" (0xF8600)
 /// assert_eq!(to_superscript(0xE000), Some(0xF8600));
+/// // Line variant "1" with underline → Superscript "1" with underline
+/// assert_eq!(to_superscript(0x1A001), Some(0xF8601));
 /// ```
 pub fn to_superscript(normal_cp: u32) -> Option<u32> {
-    superscript_glyph(normal_cp, SuperscriptOverline::None)
-        .map(|c| c as u32)
+    // Decode to get base codepoint and line variant
+    if let Some(ch) = char::from_u32(normal_cp) {
+        let parts = GlyphParts::decode(ch);
+
+        // Already a superscript - return as-is
+        if parts.is_super {
+            return Some(normal_cp);
+        }
+
+        // Convert line_variant (u8) to SuperscriptOverline enum
+        let line_variant = SuperscriptOverline::from_index(parts.line_variant)
+            .unwrap_or(SuperscriptOverline::None);
+
+        // Convert base to superscript with preserved line variant
+        superscript_glyph(parts.base_cp, line_variant)
+            .map(|c| c as u32)
+    } else {
+        None
+    }
 }
 
 /// Convert a superscript codepoint back to its normal equivalent
@@ -1083,25 +1252,45 @@ pub fn from_superscript(super_cp: u32) -> Option<u32> {
 
     // Determine which system and convert back
     if without_variant >= SUPERSCRIPT_ASCII_BASE && without_variant < SUPERSCRIPT_NUMBER_BASE {
-        // ASCII superscript
+        // ASCII superscript - only 95 printable chars (0x20-0x7E)
         let source_offset = (without_variant - SUPERSCRIPT_ASCII_BASE) / SUPERSCRIPT_LINE_VARIANTS;
-        Some(0x20 + source_offset)
+        if source_offset < 95 {
+            Some(0x20 + source_offset)
+        } else {
+            None // Invalid - beyond printable ASCII range
+        }
     } else if without_variant >= SUPERSCRIPT_NUMBER_BASE && without_variant < SUPERSCRIPT_WESTERN_BASE {
-        // Number system
+        // Number system - 7 chars × 30 variants = 210
         let source_offset = (without_variant - SUPERSCRIPT_NUMBER_BASE) / SUPERSCRIPT_LINE_VARIANTS;
-        Some(0xE000 + source_offset)
+        if source_offset < 210 {
+            Some(0xE000 + source_offset)
+        } else {
+            None
+        }
     } else if without_variant >= SUPERSCRIPT_WESTERN_BASE && without_variant < SUPERSCRIPT_SARGAM_BASE {
-        // Western system
+        // Western system - 7 chars × 30 variants = 210
         let source_offset = (without_variant - SUPERSCRIPT_WESTERN_BASE) / SUPERSCRIPT_LINE_VARIANTS;
-        Some(0xE100 + source_offset)
+        if source_offset < 210 {
+            Some(0xE100 + source_offset)
+        } else {
+            None
+        }
     } else if without_variant >= SUPERSCRIPT_SARGAM_BASE && without_variant < SUPERSCRIPT_DOREMI_BASE {
-        // Sargam system
+        // Sargam system - 12 chars × 30 variants = 360
         let source_offset = (without_variant - SUPERSCRIPT_SARGAM_BASE) / SUPERSCRIPT_LINE_VARIANTS;
-        Some(0xE300 + source_offset)
+        if source_offset < 360 {
+            Some(0xE300 + source_offset)
+        } else {
+            None
+        }
     } else if without_variant >= SUPERSCRIPT_DOREMI_BASE {
-        // Doremi system
+        // Doremi system - 7 chars × 30 variants = 210
         let source_offset = (without_variant - SUPERSCRIPT_DOREMI_BASE) / SUPERSCRIPT_LINE_VARIANTS;
-        Some(0xE500 + source_offset)
+        if source_offset < 210 {
+            Some(0xE500 + source_offset)
+        } else {
+            None
+        }
     } else {
         None
     }
@@ -1469,6 +1658,28 @@ mod tests {
     }
 
     #[test]
+    fn test_to_superscript_line_variant() {
+        // Line variant "1" with underline-left (0x1A001) should convert to
+        // superscript "1" with underline-left preserved
+        let line_variant_cp = 0x1A001u32; // Number "1" with underline-left
+        let result = to_superscript(line_variant_cp);
+        assert!(result.is_some(), "Should convert line variant codepoint");
+        let super_cp = result.unwrap();
+        // Should be in superscript range
+        assert!(super_cp >= 0xF8000, "Should be superscript codepoint");
+        // Should preserve underline-left (variant 1)
+        assert_eq!(super_cp % 16, 1, "Should preserve underline-left variant");
+    }
+
+    #[test]
+    fn test_to_superscript_from_superscript() {
+        // Already superscript should return as-is
+        let super_cp = 0xF8600u32;
+        let result = to_superscript(super_cp);
+        assert_eq!(result, Some(super_cp), "Superscript should return as-is");
+    }
+
+    #[test]
     fn test_from_superscript_number_system() {
         // Superscript 0xF8600 → normal 0xE000
         let result = from_superscript(0xF8600);
@@ -1832,5 +2043,344 @@ mod tests {
 
         // Expected: 0xE920 (ASCII_OVERLINE_BASE + 0)
         assert_eq!(with_middle, pua::ASCII_OVERLINE_BASE, "Space with Middle overline should be ASCII_OVERLINE_BASE");
+    }
+
+    // ============================================================================
+    // DURABILITY TESTS - Exhaustive codepoint transformation invariant tests
+    // ============================================================================
+
+    /// Helper: get pitch system from codepoint range
+    fn system_for_cp(cp: u32) -> Option<PitchSystem> {
+        match cp {
+            0xE000..=0xE0FF | 0x1A000..=0x1AFFF | 0xF8600..=0xF93FF => Some(PitchSystem::Number),
+            0xE100..=0xE1FF | 0x1B000..=0x1BFFF | 0xF9400..=0xFA1FF => Some(PitchSystem::Western),
+            0xE300..=0xE4FF | 0x1D000..=0x1EFFF | 0xFA200..=0xFAFFF => Some(PitchSystem::Sargam),
+            // Doremi range (0xE500+) - use Number as fallback since Doremi not in PitchSystem enum
+            0xE500..=0xE6FF | 0x1F000..=0x1FFFF | 0xFB000..=0xFBFFF => Some(PitchSystem::Number),
+            _ => None,
+        }
+    }
+
+    /// EXHAUSTIVE TEST: Every codepoint, every transformation
+    /// Tests that transformations preserve all other attributes
+    #[test]
+    fn test_exhaustive_durability() {
+        use crate::models::pitch_code::AccidentalType;
+
+        let mut tested = 0;
+        let mut failures = Vec::new();
+
+        // Loop through ALL codepoints in the font's PUA ranges
+        let all_cps: Vec<u32> = (0xE000..=0xEFFFu32)           // BMP PUA (pitch, ASCII lines)
+            .chain(0x1A000..=0x1FFFFu32)                       // NOTE line variants
+            .chain(0xF8000..=0x100000u32)                      // Superscript (Supplementary PUA-A)
+            .collect();
+
+        println!("Scanning {} potential codepoints for durability...", all_cps.len());
+
+        for cp in all_cps {
+            if let Some(ch) = char::from_u32(cp) {
+                let system = system_for_cp(cp).unwrap_or(PitchSystem::Number);
+                let original = decode_char(ch, system);
+                let original_is_super = is_superscript(cp);
+
+                // Test octave transformation preserves: pitch_code, underline, overline, superscript
+                for oct in -2..=2i8 {
+                    let transformed = ch.octave(oct);
+                    let after = decode_char(transformed, system);
+                    let after_is_super = is_superscript(transformed as u32);
+
+                    // pitch_code (degree+accidental) must be preserved
+                    if after.pitch_code != original.pitch_code {
+                        failures.push(format!("octave({}) on 0x{:X} changed pitch_code: {:?} -> {:?}",
+                            oct, cp, original.pitch_code, after.pitch_code));
+                    }
+                    // underline must be preserved
+                    if after.underline != original.underline {
+                        failures.push(format!("octave({}) on 0x{:X} changed underline: {:?} -> {:?}",
+                            oct, cp, original.underline, after.underline));
+                    }
+                    // overline must be preserved
+                    if after.overline != original.overline {
+                        failures.push(format!("octave({}) on 0x{:X} changed overline: {:?} -> {:?}",
+                            oct, cp, original.overline, after.overline));
+                    }
+                    // superscript must be preserved
+                    if after_is_super != original_is_super {
+                        failures.push(format!("octave({}) on 0x{:X} changed superscript: {} -> {}",
+                            oct, cp, original_is_super, after_is_super));
+                    }
+
+                    // Octave roundtrip: ch.octave(x).octave(original) should preserve all properties
+                    // Note: We compare semantic properties, not raw codepoints, because
+                    // ASCII line variants may be canonicalized to NOTE line variants
+                    let roundtrip = transformed.octave(original.octave);
+                    let roundtrip_decoded = decode_char(roundtrip, system);
+                    let roundtrip_is_super = is_superscript(roundtrip as u32);
+                    if roundtrip_decoded.pitch_code != original.pitch_code ||
+                       roundtrip_decoded.octave != original.octave ||
+                       roundtrip_decoded.underline != original.underline ||
+                       roundtrip_decoded.overline != original.overline ||
+                       roundtrip_is_super != original_is_super {
+                        failures.push(format!(
+                            "octave roundtrip failed: 0x{:X}.octave({}).octave({}) = 0x{:X} - properties changed",
+                            cp, oct, original.octave, roundtrip as u32
+                        ));
+                    }
+                }
+
+                // Test accidental transformation preserves: degree, octave, underline, overline, superscript
+                // NOTE: Only test on codepoints that decode_char recognizes as pitches
+                // (Some Sargam PUA codepoints aren't fully supported by decode_char yet)
+                if original.pitch_code.is_some() {
+                    for acc in [AccidentalType::None, AccidentalType::Sharp, AccidentalType::Flat,
+                                AccidentalType::DoubleSharp, AccidentalType::DoubleFlat, AccidentalType::HalfFlat] {
+                        let transformed = ch.accidental(acc);
+                        let after = decode_char(transformed, system);
+                        let after_is_super = is_superscript(transformed as u32);
+
+                        // degree must be preserved (check via pitch_code.degree() if available)
+                        let orig_degree = original.pitch_code.map(|p| p.degree());
+                        let after_degree = after.pitch_code.map(|p| p.degree());
+                        if orig_degree != after_degree {
+                            failures.push(format!("accidental({:?}) on 0x{:X} changed degree: {:?} -> {:?}",
+                                acc, cp, orig_degree, after_degree));
+                        }
+                        // octave must be preserved
+                        if after.octave != original.octave {
+                            failures.push(format!("accidental({:?}) on 0x{:X} changed octave: {} -> {}",
+                                acc, cp, original.octave, after.octave));
+                        }
+                        // underline must be preserved
+                        if after.underline != original.underline {
+                            failures.push(format!("accidental({:?}) on 0x{:X} changed underline: {:?} -> {:?}",
+                                acc, cp, original.underline, after.underline));
+                        }
+                        // overline must be preserved
+                        if after.overline != original.overline {
+                            failures.push(format!("accidental({:?}) on 0x{:X} changed overline: {:?} -> {:?}",
+                                acc, cp, original.overline, after.overline));
+                        }
+                        // superscript must be preserved
+                        if after_is_super != original_is_super {
+                            failures.push(format!("accidental({:?}) on 0x{:X} changed superscript: {} -> {}",
+                                acc, cp, original_is_super, after_is_super));
+                        }
+                    }
+                }
+
+                // Test underline transformation preserves: pitch_code, octave, overline, superscript
+                for state in [UnderlineState::None, UnderlineState::Left, UnderlineState::Middle, UnderlineState::Right] {
+                    let transformed = ch.underline(state);
+                    let after = decode_char(transformed, system);
+                    let after_is_super = is_superscript(transformed as u32);
+
+                    if after.pitch_code != original.pitch_code {
+                        failures.push(format!("underline({:?}) on 0x{:X} changed pitch_code: {:?} -> {:?}",
+                            state, cp, original.pitch_code, after.pitch_code));
+                    }
+                    if after.octave != original.octave {
+                        failures.push(format!("underline({:?}) on 0x{:X} changed octave: {} -> {}",
+                            state, cp, original.octave, after.octave));
+                    }
+                    if after.overline != original.overline {
+                        failures.push(format!("underline({:?}) on 0x{:X} changed overline: {:?} -> {:?}",
+                            state, cp, original.overline, after.overline));
+                    }
+                    if after_is_super != original_is_super {
+                        failures.push(format!("underline({:?}) on 0x{:X} changed superscript: {} -> {}",
+                            state, cp, original_is_super, after_is_super));
+                    }
+                }
+
+                // Test overline transformation preserves: pitch_code, octave, underline, superscript
+                for state in [OverlineState::None, OverlineState::Left, OverlineState::Middle, OverlineState::Right] {
+                    let transformed = ch.overline(state);
+                    let after = decode_char(transformed, system);
+                    let after_is_super = is_superscript(transformed as u32);
+
+                    if after.pitch_code != original.pitch_code {
+                        failures.push(format!("overline({:?}) on 0x{:X} changed pitch_code: {:?} -> {:?}",
+                            state, cp, original.pitch_code, after.pitch_code));
+                    }
+                    if after.octave != original.octave {
+                        failures.push(format!("overline({:?}) on 0x{:X} changed octave: {} -> {}",
+                            state, cp, original.octave, after.octave));
+                    }
+                    if after.underline != original.underline {
+                        failures.push(format!("overline({:?}) on 0x{:X} changed underline: {:?} -> {:?}",
+                            state, cp, original.underline, after.underline));
+                    }
+                    if after_is_super != original_is_super {
+                        failures.push(format!("overline({:?}) on 0x{:X} changed superscript: {} -> {}",
+                            state, cp, original_is_super, after_is_super));
+                    }
+                }
+
+                // Test superscript transformation preserves: pitch_code, octave, underline, overline
+                let as_super = ch.superscript(true);
+                let after_super = decode_char(as_super, system);
+
+                if after_super.pitch_code != original.pitch_code {
+                    failures.push(format!("superscript(true) on 0x{:X} changed pitch_code: {:?} -> {:?}",
+                        cp, original.pitch_code, after_super.pitch_code));
+                }
+                if after_super.octave != original.octave {
+                    failures.push(format!("superscript(true) on 0x{:X} changed octave: {} -> {}",
+                        cp, original.octave, after_super.octave));
+                }
+                if after_super.underline != original.underline {
+                    failures.push(format!("superscript(true) on 0x{:X} changed underline: {:?} -> {:?}",
+                        cp, original.underline, after_super.underline));
+                }
+                if after_super.overline != original.overline {
+                    failures.push(format!("superscript(true) on 0x{:X} changed overline: {:?} -> {:?}",
+                        cp, original.overline, after_super.overline));
+                }
+
+                // Superscript roundtrip (if started non-super)
+                if !original_is_super {
+                    let roundtrip = as_super.superscript(false);
+                    let after_rt = decode_char(roundtrip, system);
+                    if after_rt.pitch_code != original.pitch_code ||
+                       after_rt.octave != original.octave ||
+                       after_rt.underline != original.underline ||
+                       after_rt.overline != original.overline {
+                        failures.push(format!("superscript roundtrip on 0x{:X} changed attributes", cp));
+                    }
+                }
+
+                tested += 1;
+            }
+        }
+
+        // Report results
+        if !failures.is_empty() {
+            let sample: Vec<_> = failures.iter().take(20).collect();
+            panic!("Durability failures ({} of {} tested):\n{}{}",
+                failures.len(), tested,
+                sample.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n"),
+                if failures.len() > 20 { format!("\n... and {} more", failures.len() - 20) } else { String::new() }
+            );
+        }
+        println!("Tested {} codepoints - all passed", tested);
+    }
+
+    /// Test mathematical invariants: commutativity, idempotence, roundtrip
+    #[test]
+    fn test_mathematical_invariants() {
+        let mut failures = Vec::new();
+        let mut tested = 0;
+
+        // Test on a subset of pitch codepoints for performance
+        // (Full exhaustive test is in test_exhaustive_durability)
+        let test_cps: Vec<u32> = (0xE000..=0xE0D1u32)  // Number pitch PUA
+            .chain(0xE100..=0xE1D1u32)                 // Western pitch PUA
+            .collect();
+
+        let octaves: [i8; 5] = [-2, -1, 0, 1, 2];
+        let underlines = [UnderlineState::None, UnderlineState::Left, UnderlineState::Middle, UnderlineState::Right];
+        let overlines = [OverlineState::None, OverlineState::Left, OverlineState::Middle, OverlineState::Right];
+
+        for cp in test_cps {
+            let ch = match char::from_u32(cp) {
+                Some(c) => c,
+                None => continue,
+            };
+            let system = system_for_cp(cp).unwrap_or(PitchSystem::Number);
+            let original = decode_char(ch, system);
+
+            // 1. COMMUTATIVITY: underline/overline order independence
+            for &u in &underlines {
+                for &o in &overlines {
+                    let path1 = ch.underline(u).overline(o);
+                    let path2 = ch.overline(o).underline(u);
+                    if path1 != path2 {
+                        failures.push(format!(
+                            "Commutativity failed: 0x{:X}.underline({:?}).overline({:?}) != .overline.underline",
+                            cp, u, o
+                        ));
+                    }
+                }
+            }
+
+            // 2. COMMUTATIVITY: octave/underline order independence
+            for &oct in &octaves {
+                for &u in &underlines {
+                    let path1 = ch.octave(oct).underline(u);
+                    let path2 = ch.underline(u).octave(oct);
+                    if path1 != path2 {
+                        failures.push(format!(
+                            "Commutativity failed: 0x{:X}.octave({}).underline({:?}) != .underline.octave",
+                            cp, oct, u
+                        ));
+                    }
+                }
+            }
+
+            // 3. IDEMPOTENCE: same transform twice = once
+            for &oct in &octaves {
+                let once = ch.octave(oct);
+                let twice = ch.octave(oct).octave(oct);
+                if once != twice {
+                    failures.push(format!("Idempotence failed: 0x{:X}.octave({}) twice != once", cp, oct));
+                }
+            }
+            for &u in &underlines {
+                let once = ch.underline(u);
+                let twice = ch.underline(u).underline(u);
+                if once != twice {
+                    failures.push(format!("Idempotence failed: 0x{:X}.underline({:?}) twice != once", cp, u));
+                }
+            }
+
+            // 4. MULTI-HOP OCTAVE ROUNDTRIP: ch.octave(a).octave(b).octave(c).octave(orig) == ch
+            for &a in &octaves {
+                for &b in &octaves {
+                    for &c in &octaves {
+                        let result = ch.octave(a).octave(b).octave(c).octave(original.octave);
+                        if result != ch {
+                            failures.push(format!(
+                                "3-hop octave failed: 0x{:X}.octave({}).octave({}).octave({}).octave({}) != original",
+                                cp, a, b, c, original.octave
+                            ));
+                        }
+                    }
+                }
+            }
+
+            // 5. FULL ROUNDTRIP: complex chain returning to original
+            let complex_roundtrip = ch
+                .octave(1)
+                .underline(UnderlineState::Left)
+                .overline(OverlineState::Middle)
+                .superscript(true)
+                .octave(-1)
+                .underline(UnderlineState::None)
+                .overline(OverlineState::None)
+                .superscript(false)
+                .octave(original.octave)
+                .underline(original.underline)
+                .overline(original.overline);
+
+            if complex_roundtrip != ch {
+                failures.push(format!(
+                    "Complex roundtrip failed: 0x{:X} -> 0x{:X}",
+                    cp, complex_roundtrip as u32
+                ));
+            }
+
+            tested += 1;
+        }
+
+        if !failures.is_empty() {
+            let sample: Vec<_> = failures.iter().take(20).collect();
+            panic!("Mathematical invariant failures ({}):\n{}{}",
+                failures.len(),
+                sample.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n"),
+                if failures.len() > 20 { format!("\n... and {} more", failures.len() - 20) } else { String::new() }
+            );
+        }
+        println!("Tested {} codepoints for mathematical invariants - all passed", tested);
     }
 }

@@ -181,25 +181,22 @@ pub fn convert_note(
 
     // Check for grace notes BEFORE parsing duration (grace notes don't have duration)
     let is_grace = get_child(note_node, "grace").is_some();
-    let (grace_slash, is_after_grace, steal_time_following) = if let Some(grace_node) = get_child(note_node, "grace") {
+    let (grace_slash, is_after_grace, steal_time_previous) = if let Some(grace_node) = get_child(note_node, "grace") {
         let slash = grace_node.attribute("slash").map_or(false, |s| s == "yes");
-        // Check for steal-time-following attribute (indicates unmeasured fioritura / after grace notes)
-        let has_steal_time = grace_node.attribute("steal-time-following").is_some();
-        let steal_pct = grace_node.attribute("steal-time-following")
+        // Check for steal-time-previous attribute (indicates after-grace / nachschlag)
+        // After-grace notes steal time from the PREVIOUS note
+        let has_steal_time_prev = grace_node.attribute("steal-time-previous").is_some();
+        let steal_pct = grace_node.attribute("steal-time-previous")
             .and_then(|s| s.parse::<f32>().ok());
-        (slash, has_steal_time, steal_pct)
+        (slash, has_steal_time_prev, steal_pct)
     } else {
         (false, false, None)
     };
 
     // Extract duration (or use dummy duration for grace notes)
     let duration = if is_grace {
-        // Grace notes don't have duration in MusicXML, use a dummy 16th note for before grace, 32nd for after grace
-        if is_after_grace {
-            Duration::new(5, 0, None) // 32nd note for smaller after grace notes
-        } else {
-            Duration::new(4, 0, None) // 16th note for before grace notes
-        }
+        // Grace notes don't have duration in MusicXML, use 32nd for all grace notes (Western convention)
+        Duration::new(5, 0, None) // 32nd note
     } else {
         parse_duration(note_node, divisions)?
     };
@@ -209,7 +206,7 @@ pub fn convert_note(
     note_event.is_grace = is_grace;
     note_event.grace_slash = grace_slash;
     note_event.is_after_grace = is_after_grace;
-    note_event.steal_time_following = steal_time_following;
+    note_event.steal_time_previous = steal_time_previous;
 
     // Check for ties
     for child in note_node.children() {

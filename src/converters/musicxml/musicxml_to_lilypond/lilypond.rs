@@ -326,13 +326,54 @@ fn format_lyrics_for_block(lyrics: &[String]) -> String {
 }
 
 /// Generate LilyPond code for sequential music
+/// Handles after-grace notes by wrapping them with \afterGrace
 fn generate_music(seq: &SequentialMusic, settings: &ConversionSettings, indent: usize) -> String {
     let indent_str = " ".repeat(indent);
     let mut output = String::new();
+    let elements = &seq.elements;
+    let mut i = 0;
 
-    for music in &seq.elements {
+    while i < elements.len() {
+        let music = &elements[i];
+
+        // Check if this is a regular note followed by after-grace notes
+        if let Music::Note(note) = music {
+            if !note.is_grace {
+                // Look ahead for after-grace notes
+                let mut after_graces: Vec<&NoteEvent> = Vec::new();
+                let mut j = i + 1;
+                while j < elements.len() {
+                    if let Music::Note(next_note) = &elements[j] {
+                        if next_note.is_grace && next_note.is_after_grace {
+                            after_graces.push(next_note);
+                            j += 1;
+                        } else {
+                            break;
+                        }
+                    } else {
+                        break;
+                    }
+                }
+
+                if !after_graces.is_empty() {
+                    // Emit \afterGrace mainNote { graceNotes }
+                    let main_note = note_to_lilypond_without_grace_prefix(note, settings);
+                    let grace_notes: Vec<String> = after_graces
+                        .iter()
+                        .map(|g| note_to_lilypond_without_grace_prefix(g, settings))
+                        .collect();
+                    let grace_str = grace_notes.join(" ");
+                    output.push_str(&format!("{}\\afterGrace {} {{ {} }}\n", indent_str, main_note, grace_str));
+                    i = j; // Skip the after-grace notes we just processed
+                    continue;
+                }
+            }
+        }
+
+        // Normal processing for other elements
         let line = music_to_lilypond(music, settings);
         output.push_str(&format!("{}{}\n", indent_str, line));
+        i += 1;
     }
 
     output
@@ -437,6 +478,58 @@ fn note_to_lilypond(note: &NoteEvent, settings: &ConversionSettings) -> String {
 
     // Note: Lyrics are now handled separately via \addlyrics block in the template,
     // not inline with note notation. This avoids invalid LilyPond syntax.
+
+    result
+}
+
+/// Convert note to LilyPond without grace prefix
+/// Used for notes inside \afterGrace blocks where the prefix is handled at a higher level
+fn note_to_lilypond_without_grace_prefix(note: &NoteEvent, settings: &ConversionSettings) -> String {
+    let mut result = String::new();
+
+    // No grace prefix - that's handled by the caller with \afterGrace
+
+    // Add pitch and duration
+    let pitch = note.pitch.to_lilypond_string(settings.language);
+    let duration = note.duration.to_lilypond_string();
+    result.push_str(&format!("{}{}", pitch, duration));
+
+    // Add articulations
+    for articulation in &note.articulations {
+        result.push_str(&articulation_to_lilypond(articulation));
+    }
+
+    // Add tie if present
+    if let Some(tie) = note.tie {
+        use crate::converters::musicxml::musicxml_to_lilypond::types::Tie;
+        match tie {
+            Tie::Start => result.push_str(" ~"),
+            Tie::Stop => {}, // Stop is implicit from previous start
+            Tie::Continue => result.push_str(" ~"),
+        }
+    }
+
+    // Add slur if present
+    if let Some(slur) = note.slur {
+        use crate::converters::musicxml::musicxml_to_lilypond::types::SlurDirection;
+
+        let slur_mark = match slur.direction {
+            SlurDirection::Start => "(",
+            SlurDirection::Stop => ")",
+        };
+
+        if slur.number > 1 {
+            result.push_str(&format!("\\={}{}", slur.number, slur_mark));
+        } else {
+            result.push_str(slur_mark);
+        }
+    }
+
+    // Add dynamics if present
+    if let Some(ref dynamic) = note.dynamics {
+        result.push(' ');
+        result.push_str(&dynamic_to_lilypond(dynamic));
+    }
 
     result
 }

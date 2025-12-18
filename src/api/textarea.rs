@@ -269,10 +269,8 @@ pub fn split_line(line_index: usize, cell_pos: usize) -> Result<JsValue, JsValue
     let mut new_line = crate::models::core::Line::new();
     new_line.pitch_system = Some(pitch_system);
 
-    // Renumber columns in new line cells
-    for (i, cell) in new_line_cells.into_iter().enumerate() {
-        let mut cell = cell;
-        cell.col = i;
+    // Add cells to new line (no need to renumber - col field removed)
+    for cell in new_line_cells.into_iter() {
         new_line.cells.push(cell);
     }
     new_line.sync_text_from_cells();
@@ -350,10 +348,8 @@ pub fn join_lines(line_index: usize) -> Result<JsValue, JsValue> {
     // Get cells from line to be removed
     let cells_to_append: Vec<crate::models::core::Cell> = document.lines[line_index].cells.clone();
 
-    // Append cells to previous line, renumbering columns
-    let start_col = document.lines[prev_line_index].cells.len();
-    for (i, mut cell) in cells_to_append.into_iter().enumerate() {
-        cell.col = start_col + i;
+    // Append cells to previous line (no need to renumber - col field removed)
+    for cell in cells_to_append.into_iter() {
         document.lines[prev_line_index].cells.push(cell);
     }
     document.lines[prev_line_index].sync_text_from_cells();
@@ -429,10 +425,9 @@ fn parse_text_to_cells_with_positions(text: &str, pitch_system: PitchSystem) -> 
                 .map(|g| g.to_string())
                 .unwrap_or_else(|| remaining.chars().next().unwrap().to_string());
 
-            let mut cell = Cell::new(glyph_char, ElementKind::PitchedElement, column);
-            cell.pitch_system = Some(pitch_system);
-            cell.pitch_code = Some(pitch_code);
-            cell.octave = 0;
+            let cell = Cell::new(glyph_char, ElementKind::PitchedElement);
+            // pitch_code and pitch_system are derived from codepoint via getters
+            // octave 0 is already encoded in the codepoint from glyph_for_pitch
             cells.push(cell);
 
             // Count characters consumed (for char_pos tracking)
@@ -441,7 +436,6 @@ fn parse_text_to_cells_with_positions(text: &str, pitch_system: PitchSystem) -> 
 
             // Advance past consumed bytes
             remaining = &remaining[consumed..];
-            column += 1;
         } else {
             // Not a pitch - get single character and try decode_char (for PUA glyphs)
             let c = remaining.chars().next().unwrap();
@@ -474,12 +468,11 @@ fn parse_text_to_cells_with_positions(text: &str, pitch_system: PitchSystem) -> 
                     decoded.base_char.to_string()
                 };
 
-                let mut cell = Cell::new(glyph_char, ElementKind::PitchedElement, column);
-                cell.pitch_system = Some(pitch_system);
-                cell.pitch_code = Some(final_pitch);
-                cell.octave = decoded.octave;
+                let mut cell = Cell::new(glyph_char, ElementKind::PitchedElement);
+                // pitch_code and pitch_system are derived from codepoint via getters
+                // octave is already encoded in the codepoint from glyph_for_pitch
                 // Preserve superscript status from the original codepoint
-                cell.superscript = is_superscript_cp;
+                cell.set_superscript(is_superscript_cp);
                 cells.push(cell);
 
                 // Count characters: 1 for the PUA glyph + accidental chars
@@ -489,13 +482,11 @@ fn parse_text_to_cells_with_positions(text: &str, pitch_system: PitchSystem) -> 
                 remaining = &remaining[char_len + accidental_consumed..];
             } else {
                 // Non-pitched (dash, space, barline, etc.) - use standard parser
-                let cell = parse_single(decoded.base_char, pitch_system, column, None);
+                let cell = parse_single(decoded.base_char, pitch_system, None);
                 cells.push(cell);
                 char_pos += 1;
                 remaining = &remaining[char_len..];
             }
-
-            column += 1;
         }
     }
 
@@ -758,7 +749,7 @@ fn render_cell_with_lines(
     overline: OverlineState,
 ) -> String {
     // For non-pitched elements, use simple characters
-    match cell.kind {
+    match cell.get_kind() {
         ElementKind::SingleBarline => return "|".to_string(),
         ElementKind::RepeatLeftBarline => return "|:".to_string(),
         ElementKind::RepeatRightBarline => return ":|".to_string(),
@@ -768,13 +759,13 @@ fn render_cell_with_lines(
     }
 
     // For pitched elements, use the unified to_glyph lookup (with superscript support)
-    if let Some(pitch_code) = cell.pitch_code {
-        let glyph = to_glyph(pitch_system, pitch_code, cell.octave, underline, overline, cell.is_superscript());
+    if let Some(pitch_code) = cell.get_pitch_code() {
+        let glyph = to_glyph(pitch_system, pitch_code, cell.get_octave(), underline, overline, cell.is_superscript());
         return glyph.to_string();
     }
 
     // For non-pitched elements (dash, breath mark, etc.)
-    match cell.kind {
+    match cell.get_kind() {
         ElementKind::UnpitchedElement => {
             if underline != UnderlineState::None || overline != OverlineState::None {
                 get_line_variant_codepoint('-', underline, overline)
@@ -785,7 +776,7 @@ fn render_cell_with_lines(
             }
         }
         ElementKind::BreathMark => "'".to_string(),
-        _ => cell.char.clone(),
+        _ => cell.get_char_string(),
     }
 }
 
@@ -828,7 +819,7 @@ fn build_lyric_overlays(
     // Find pitched cells (notes) to align lyrics to
     let pitched_cell_indices: Vec<usize> = cells.iter()
         .enumerate()
-        .filter(|(_, cell)| cell.pitch_code.is_some())
+        .filter(|(_, cell)| cell.get_pitch_code().is_some())
         .map(|(idx, _)| idx)
         .collect();
 
@@ -863,7 +854,7 @@ fn build_tala_overlays(
     // Find barline positions
     let barline_indices: Vec<usize> = cells.iter()
         .enumerate()
-        .filter(|(_, cell)| matches!(cell.kind,
+        .filter(|(_, cell)| matches!(cell.get_kind(),
             ElementKind::SingleBarline |
             ElementKind::DoubleBarline |
             ElementKind::RepeatLeftBarline |
@@ -998,16 +989,19 @@ mod tests {
         let cells = parse_text_to_cells("1", PitchSystem::Number);
         println!("Cells: {:?}", cells);
         assert_eq!(cells.len(), 1);
-        assert_eq!(cells[0].pitch_code, Some(crate::models::pitch_code::PitchCode::N1));
+        assert_eq!(cells[0].get_pitch_code(), Some(crate::models::pitch_code::PitchCode::N1));
     }
 
     #[test]
     fn test_render_cell_with_lines_basic() {
         use crate::models::core::Cell;
+        use crate::renderers::font_utils::glyph_for_pitch;
 
-        let mut cell = Cell::new("".to_string(), ElementKind::PitchedElement, 0);
-        cell.pitch_code = Some(crate::models::pitch_code::PitchCode::N1);
-        cell.octave = 0;
+        // Create cell with proper PUA codepoint that encodes N1 at octave 0
+        let glyph = glyph_for_pitch(crate::models::pitch_code::PitchCode::N1, 0, PitchSystem::Number)
+            .expect("Should get glyph for N1");
+        let cell = Cell::new(glyph.to_string(), ElementKind::PitchedElement);
+        // pitch_code and pitch_system are derived from codepoint via getters
 
         let rendered = render_cell_with_lines(&cell, PitchSystem::Number, UnderlineState::None, OverlineState::None);
         println!("Rendered: {:?} len={}", rendered, rendered.len());
@@ -1044,7 +1038,7 @@ mod tests {
         // Step 1: Parse "1"
         let cells1 = parse_text_to_cells("1", PitchSystem::Number);
         assert_eq!(cells1.len(), 1);
-        assert_eq!(cells1[0].pitch_code, Some(crate::models::pitch_code::PitchCode::N1));
+        assert_eq!(cells1[0].get_pitch_code(), Some(crate::models::pitch_code::PitchCode::N1));
 
         // Get the PUA character that would be returned
         let pua_char = glyph_for_pitch(crate::models::pitch_code::PitchCode::N1, 0, PitchSystem::Number)
@@ -1058,8 +1052,8 @@ mod tests {
         println!("Cells from mixed input: {:?}", cells2);
 
         assert_eq!(cells2.len(), 2, "Should have 2 cells from '{}2'", pua_char);
-        assert_eq!(cells2[0].pitch_code, Some(crate::models::pitch_code::PitchCode::N1), "First cell should be N1");
-        assert_eq!(cells2[1].pitch_code, Some(crate::models::pitch_code::PitchCode::N2), "Second cell should be N2");
+        assert_eq!(cells2[0].get_pitch_code(), Some(crate::models::pitch_code::PitchCode::N1), "First cell should be N1");
+        assert_eq!(cells2[1].get_pitch_code(), Some(crate::models::pitch_code::PitchCode::N2), "Second cell should be N2");
 
         // Step 3: Parse "PUA + PUA + 3"
         let pua_char2 = glyph_for_pitch(crate::models::pitch_code::PitchCode::N2, 0, PitchSystem::Number)
@@ -1069,9 +1063,9 @@ mod tests {
         println!("Cells from 3-char mixed: {:?}", cells3);
 
         assert_eq!(cells3.len(), 3, "Should have 3 cells");
-        assert_eq!(cells3[0].pitch_code, Some(crate::models::pitch_code::PitchCode::N1));
-        assert_eq!(cells3[1].pitch_code, Some(crate::models::pitch_code::PitchCode::N2));
-        assert_eq!(cells3[2].pitch_code, Some(crate::models::pitch_code::PitchCode::N3));
+        assert_eq!(cells3[0].get_pitch_code(), Some(crate::models::pitch_code::PitchCode::N1));
+        assert_eq!(cells3[1].get_pitch_code(), Some(crate::models::pitch_code::PitchCode::N2));
+        assert_eq!(cells3[2].get_pitch_code(), Some(crate::models::pitch_code::PitchCode::N3));
     }
 
     #[test]
@@ -1080,8 +1074,8 @@ mod tests {
         let cells = parse_text_to_cells("1#2", PitchSystem::Number);
         println!("Cells from '1#2': {:?}", cells);
         assert_eq!(cells.len(), 2, "Should have 2 cells: 1# and 2");
-        assert_eq!(cells[0].pitch_code, Some(crate::models::pitch_code::PitchCode::N1s), "First should be N1s (sharp 1)");
-        assert_eq!(cells[1].pitch_code, Some(crate::models::pitch_code::PitchCode::N2), "Second should be N2");
+        assert_eq!(cells[0].get_pitch_code(), Some(crate::models::pitch_code::PitchCode::N1s), "First should be N1s (sharp 1)");
+        assert_eq!(cells[1].get_pitch_code(), Some(crate::models::pitch_code::PitchCode::N2), "Second should be N2");
     }
 
     #[test]
@@ -1098,7 +1092,7 @@ mod tests {
         println!("Cells from '<N1>#': {:?}", cells);
 
         assert_eq!(cells.len(), 1, "Should combine PUA + # into single sharp cell");
-        assert_eq!(cells[0].pitch_code, Some(crate::models::pitch_code::PitchCode::N1s), "Should be N1s (sharp 1)");
+        assert_eq!(cells[0].get_pitch_code(), Some(crate::models::pitch_code::PitchCode::N1s), "Should be N1s (sharp 1)");
     }
 
     #[test]
@@ -1121,8 +1115,8 @@ mod tests {
         let cells2 = parse_text_to_cells(&input2, PitchSystem::Number);
         println!("<N1>#2: {:?}", cells2);
         assert_eq!(cells2.len(), 2, "Should combine N1+# and then parse 2");
-        assert_eq!(cells2[0].pitch_code, Some(crate::models::pitch_code::PitchCode::N1s));
-        assert_eq!(cells2[1].pitch_code, Some(crate::models::pitch_code::PitchCode::N2));
+        assert_eq!(cells2[0].get_pitch_code(), Some(crate::models::pitch_code::PitchCode::N1s));
+        assert_eq!(cells2[1].get_pitch_code(), Some(crate::models::pitch_code::PitchCode::N2));
     }
 
     #[test]
@@ -1132,21 +1126,16 @@ mod tests {
 
         // Create line with two adjacent pitched cells: N1s and N2
         let mut line = crate::models::core::Line::new();
-        let mut cell1 = crate::models::core::Cell::new(
-            "\u{E019}".to_string(), // N1s glyph
-            ElementKind::PitchedElement,
-            0
+        // Use codepoint directly - pitch_code/pitch_system derived via getters
+        let cell1 = crate::models::core::Cell::from_codepoint(
+            0xE019, // N1s glyph
+            ElementKind::PitchedElement
         );
-        cell1.pitch_code = Some(crate::models::pitch_code::PitchCode::N1s);
-        cell1.pitch_system = Some(PitchSystem::Number);
 
-        let mut cell2 = crate::models::core::Cell::new(
-            "\u{E01E}".to_string(), // N2 glyph
-            ElementKind::PitchedElement,
-            1
+        let cell2 = crate::models::core::Cell::from_codepoint(
+            0xE01E, // N2 glyph
+            ElementKind::PitchedElement
         );
-        cell2.pitch_code = Some(crate::models::pitch_code::PitchCode::N2);
-        cell2.pitch_system = Some(PitchSystem::Number);
 
         line.cells = vec![cell1, cell2];
         line.sync_text_from_cells();

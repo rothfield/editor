@@ -65,7 +65,7 @@ export const DOM_SELECTORS = {
   CHAR_COUNT: 'editor-char-count',
   SELECTION_INFO: 'editor-selection-status',
   PITCH_SYSTEM: 'editor-pitch-system',
-  ORNAMENT_EDIT_MODE_DISPLAY: 'ornament-edit-mode-display',
+  SUPERSCRIPT_EDIT_MODE_DISPLAY: 'superscript-edit-mode-display',
 
   // Editor
   EDITOR_CONTAINER: 'editor-container'

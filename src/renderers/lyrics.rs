@@ -134,7 +134,7 @@ pub fn distribute_lyrics(lyrics: &str, cells: &[Cell]) -> Vec<SyllableAssignment
 
     for (cell_index, cell) in cells.iter().enumerate() {
         // Only process pitched elements
-        if !matches!(cell.kind, ElementKind::PitchedElement) {
+        if !matches!(cell.get_kind(), ElementKind::PitchedElement) {
             continue;
         }
 
@@ -214,9 +214,9 @@ mod tests {
     fn test_distribute_lyrics_simple() {
         let lyrics = "do re mi";
         let cells = vec![
-            Cell::new("S".to_string(), ElementKind::PitchedElement, 0),
-            Cell::new("R".to_string(), ElementKind::PitchedElement, 1),
-            Cell::new("G".to_string(), ElementKind::PitchedElement, 2),
+            Cell::new("S".to_string(), ElementKind::PitchedElement),
+            Cell::new("R".to_string(), ElementKind::PitchedElement),
+            Cell::new("G".to_string(), ElementKind::PitchedElement),
         ];
 
         let assignments = distribute_lyrics(lyrics, &cells);

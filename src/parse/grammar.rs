@@ -17,14 +17,21 @@ fn get_dispatcher() -> PitchSystemDispatcher {
 
 /// Parse a string into a Cell (recursive descent entry point)
 /// Tries all production rules in order: MULTI-CHAR FIRST, then single-char
-pub fn parse(s: &str, pitch_system: PitchSystem, column: usize, constraint: Option<&ScaleConstraint>) -> Cell {
-    log::info!("🔍 parse('{}', {:?}, {})", s, pitch_system, column);
+pub fn parse(s: &str, pitch_system: PitchSystem, constraint: Option<&ScaleConstraint>) -> Cell {
+    log::info!("🔍 parse('{}', {:?})", s, pitch_system);
+
+    // UNICODE SUPERSCRIPT DIGITS → Grace notes (before multi-char patterns)
+    // Unicode superscripts: ¹²³⁴⁵⁶⁷ (U+00B9, U+00B2, U+00B3, U+2074-U+2077)
+    if let Some(cell) = parse_unicode_superscript(s, pitch_system) {
+        log::info!("  ✅ Parsed as unicode superscript (grace note)");
+        return cell;
+    }
 
     // MULTI-CHARACTER PATTERNS FIRST (greedy matching)
 
     // Try multi-char barlines: "|:", ":|", "||"
     if s.len() > 1 {
-        if let Some(cell) = parse_barline(s, column) {
+        if let Some(cell) = parse_barline(s) {
             log::info!("  ✅ Parsed as multi-char barline");
             return cell;
         }
@@ -32,7 +39,7 @@ pub fn parse(s: &str, pitch_system: PitchSystem, column: usize, constraint: Opti
 
     // Try notes with accidentals: "1#", "2bb", "c#", etc.
     if s.len() > 1 {
-        if let Some(cell) = parse_note(s, pitch_system, column, constraint) {
+        if let Some(cell) = parse_note(s, pitch_system, constraint) {
             log::info!("  ✅ Parsed as multi-char note");
             return cell;
         }
@@ -41,50 +48,50 @@ pub fn parse(s: &str, pitch_system: PitchSystem, column: usize, constraint: Opti
     // SINGLE-CHARACTER PATTERNS
 
     // Try single-char note: "1", "2", "c", etc.
-    if let Some(cell) = parse_note(s, pitch_system, column, constraint) {
+    if let Some(cell) = parse_note(s, pitch_system, constraint) {
         log::info!("  ✅ Parsed as note");
         return cell;
     }
 
     // Try single-char barline: "|"
-    if let Some(cell) = parse_barline(s, column) {
+    if let Some(cell) = parse_barline(s) {
         log::info!("  ✅ Parsed as barline");
         return cell;
     }
 
     // Try whitespace
-    if let Some(cell) = parse_whitespace(s, column) {
+    if let Some(cell) = parse_whitespace(s) {
         log::info!("  ✅ Parsed as whitespace");
         return cell;
     }
 
     // Try unpitched element
-    if let Some(cell) = parse_unpitched(s, column) {
+    if let Some(cell) = parse_unpitched(s) {
         log::info!("  ✅ Parsed as unpitched");
         return cell;
     }
 
     // Try breath mark
-    if let Some(cell) = parse_breath_mark(s, column) {
+    if let Some(cell) = parse_breath_mark(s) {
         log::info!("  ✅ Parsed as breath mark");
         return cell;
     }
 
     // Try symbol (single non-alphanumeric character)
-    if let Some(cell) = parse_symbol(s, column) {
+    if let Some(cell) = parse_symbol(s) {
         log::info!("  ✅ Parsed as symbol");
         return cell;
     }
 
     // Fallback to text
     log::info!("  ℹ️ Parsed as text (fallback)");
-    parse_text(s, column)
+    parse_text(s)
 }
 
 /// Parse a single character into a Cell (Case 1: tokenizer)
 /// Always succeeds - returns Text as fallback
-pub fn parse_single(c: char, pitch_system: PitchSystem, column: usize, constraint: Option<&ScaleConstraint>) -> Cell {
-    parse(&c.to_string(), pitch_system, column, constraint)
+pub fn parse_single(c: char, pitch_system: PitchSystem, constraint: Option<&ScaleConstraint>) -> Cell {
+    parse(&c.to_string(), pitch_system, constraint)
 }
 
 
@@ -94,7 +101,7 @@ pub fn parse_single(c: char, pitch_system: PitchSystem, column: usize, constrain
 
 /// Parse note (includes accidentals: "1", "1#", "2bb", "c#", etc.)
 /// Applies scale constraint transformation if active
-fn parse_note(s: &str, pitch_system: PitchSystem, column: usize, constraint: Option<&ScaleConstraint>) -> Option<Cell> {
+fn parse_note(s: &str, pitch_system: PitchSystem, constraint: Option<&ScaleConstraint>) -> Option<Cell> {
     use crate::renderers::font_utils::glyph_for_pitch;
     use crate::models::constraints::DegreeConstraint;
 
@@ -179,10 +186,9 @@ fn parse_note(s: &str, pitch_system: PitchSystem, column: usize, constraint: Opt
             s.to_string()
         };
 
-        let mut cell = Cell::new(initial_char, ElementKind::PitchedElement, column);
-        cell.pitch_system = Some(pitch_system);
-        cell.pitch_code = transformed_pitch_code;
-        cell.octave = 0; // Initialize at base octave
+        let cell = Cell::new(initial_char, ElementKind::PitchedElement);
+        // pitch_code and pitch_system are derived from codepoint via getters
+        // octave 0 is already encoded in the codepoint from glyph_for_pitch
         Some(cell)
     } else {
         None
@@ -205,7 +211,7 @@ fn accidental_to_suffix(acc: AccidentalType) -> &'static str {
 /// Parse barline (includes "|", "|:", ":|", "||", etc.)
 /// Note: ":" alone is NOT a barline - it's text
 /// Converts ASCII input to actual Unicode barline characters for direct rendering
-fn parse_barline(s: &str, column: usize) -> Option<Cell> {
+fn parse_barline(s: &str) -> Option<Cell> {
     use crate::renderers::font_utils::{
         BARLINE_SINGLE, BARLINE_DOUBLE, BARLINE_REPEAT_LEFT, BARLINE_REPEAT_RIGHT
     };
@@ -219,25 +225,25 @@ fn parse_barline(s: &str, column: usize) -> Option<Cell> {
     };
 
     // Store the actual Unicode barline character, not the ASCII placeholder
-    let cell = Cell::new(barline_char.to_string(), barline_kind, column);
+    let cell = Cell::new(barline_char.to_string(), barline_kind);
     Some(cell)
 }
 
 /// Parse whitespace
-fn parse_whitespace(s: &str, column: usize) -> Option<Cell> {
+fn parse_whitespace(s: &str) -> Option<Cell> {
     if s == " " {
         // Keep ASCII space as-is (don't convert to nbsp)
-        let cell = Cell::new(" ".to_string(), ElementKind::Whitespace, column);
+        let cell = Cell::new(" ".to_string(), ElementKind::Whitespace);
         Some(cell)
     } else {
         None
     }
 }
 
-/// Parse unpitched element (dash, underscore)
-fn parse_unpitched(s: &str, column: usize) -> Option<Cell> {
-    if s == "-" || s == "_" {
-        let cell = Cell::new(s.to_string(), ElementKind::UnpitchedElement, column);
+/// Parse unpitched element (dash only)
+fn parse_unpitched(s: &str) -> Option<Cell> {
+    if s == "-" {
+        let cell = Cell::new(s.to_string(), ElementKind::UnpitchedElement);
         Some(cell)
     } else {
         None
@@ -245,13 +251,75 @@ fn parse_unpitched(s: &str, column: usize) -> Option<Cell> {
 }
 
 /// Parse breath mark (apostrophe, comma)
-fn parse_breath_mark(s: &str, column: usize) -> Option<Cell> {
+fn parse_breath_mark(s: &str) -> Option<Cell> {
     if s == "'" || s == "," {
-        let cell = Cell::new(s.to_string(), ElementKind::BreathMark, column);
+        let cell = Cell::new(s.to_string(), ElementKind::BreathMark);
         Some(cell)
     } else {
         None
     }
+}
+
+/// Parse Unicode superscript digits as grace notes
+///
+/// Unicode superscripts ¹²³⁴⁵⁶⁷ are converted to PUA superscript glyphs,
+/// which the IR builder recognizes as grace notes.
+///
+/// Unicode codepoints:
+/// - ¹ U+00B9 → pitch 1 superscript
+/// - ² U+00B2 → pitch 2 superscript
+/// - ³ U+00B3 → pitch 3 superscript
+/// - ⁴ U+2074 → pitch 4 superscript
+/// - ⁵ U+2075 → pitch 5 superscript
+/// - ⁶ U+2076 → pitch 6 superscript
+/// - ⁷ U+2077 → pitch 7 superscript
+fn parse_unicode_superscript(s: &str, pitch_system: PitchSystem) -> Option<Cell> {
+    use crate::renderers::font_utils::{glyph_for_pitch, to_superscript};
+
+    // Must be single character
+    if s.chars().count() != 1 {
+        return None;
+    }
+
+    let ch = s.chars().next().unwrap();
+
+    // Map Unicode superscript to pitch degree (1-7)
+    let degree: u8 = match ch {
+        '¹' => 1,  // U+00B9
+        '²' => 2,  // U+00B2
+        '³' => 3,  // U+00B3
+        '⁴' => 4,  // U+2074
+        '⁵' => 5,  // U+2075
+        '⁶' => 6,  // U+2076
+        '⁷' => 7,  // U+2077
+        _ => return None,
+    };
+
+    // Get the pitch code for this degree
+    let pitch_code = match degree {
+        1 => PitchCode::N1,
+        2 => PitchCode::N2,
+        3 => PitchCode::N3,
+        4 => PitchCode::N4,
+        5 => PitchCode::N5,
+        6 => PitchCode::N6,
+        7 => PitchCode::N7,
+        _ => return None,
+    };
+
+    // Get the base glyph for this pitch
+    let base_glyph = glyph_for_pitch(pitch_code, 0, pitch_system)?;
+    let base_cp = base_glyph as u32;
+
+    // Convert to superscript codepoint
+    let super_cp = to_superscript(base_cp)?;
+    let super_char = char::from_u32(super_cp)?;
+
+    // Create cell with superscript codepoint
+    let mut cell = Cell::new(super_char.to_string(), ElementKind::UpperAnnotation);
+    cell.set_codepoint(super_cp);
+
+    Some(cell)
 }
 
 /// Parse symbol (single non-alphanumeric character)
@@ -265,7 +333,7 @@ fn parse_breath_mark(s: &str, column: usize) -> Option<Cell> {
 /// - ' (breath mark)
 /// - , (breath mark)
 /// - (space) (whitespace)
-fn parse_symbol(s: &str, column: usize) -> Option<Cell> {
+fn parse_symbol(s: &str) -> Option<Cell> {
     // Must be single character
     if s.len() != 1 {
         return None;
@@ -284,13 +352,13 @@ fn parse_symbol(s: &str, column: usize) -> Option<Cell> {
         return None;
     }
 
-    let cell = Cell::new(s.to_string(), ElementKind::Symbol, column);
+    let cell = Cell::new(s.to_string(), ElementKind::Symbol);
     Some(cell)
 }
 
 /// Parse text (fallback)
-fn parse_text(s: &str, column: usize) -> Cell {
-    Cell::new(s.to_string(), ElementKind::Text, column)
+fn parse_text(s: &str) -> Cell {
+    Cell::new(s.to_string(), ElementKind::Text)
 }
 
 // ============================================================================
@@ -307,19 +375,19 @@ mod tests {
     #[test]
     fn test_parse_single_note() {
         use crate::renderers::font_utils::glyph_for_pitch;
-        let cell = parse_single('1', PitchSystem::Number, 0, None);
-        assert_eq!(cell.kind, ElementKind::PitchedElement);
+        let cell = parse_single('1', PitchSystem::Number, None);
+        assert_eq!(cell.get_kind(), ElementKind::PitchedElement);
         // Should return Unicode glyph for Number 1 at base octave
         let expected_glyph = glyph_for_pitch(PitchCode::N1, 0, PitchSystem::Number)
             .expect("Should have glyph for N1");
-        assert_eq!(cell.char, expected_glyph.to_string());
+        assert_eq!(cell.get_char_string(), expected_glyph.to_string());
     }
 
     #[test]
     fn test_parse_single_text() {
-        let cell = parse_single('x', PitchSystem::Number, 0, None);
-        assert_eq!(cell.kind, ElementKind::Text);
-        assert_eq!(cell.char, "x");
+        let cell = parse_single('x', PitchSystem::Number, None);
+        assert_eq!(cell.get_kind(), ElementKind::Text);
+        assert_eq!(cell.get_char_string(), "x");
     }
 
 
@@ -330,89 +398,117 @@ mod tests {
     fn test_barline_single() {
         // Test single "|" should be SingleBarline with Unicode character
         use crate::renderers::font_utils::BARLINE_SINGLE;
-        let cell = parse_single('|', PitchSystem::Number, 0, None);
-        assert_eq!(cell.char, BARLINE_SINGLE.to_string());
-        assert_eq!(cell.kind, ElementKind::SingleBarline);
+        let cell = parse_single('|', PitchSystem::Number, None);
+        assert_eq!(cell.get_char_string(), BARLINE_SINGLE.to_string());
+        assert_eq!(cell.get_kind(), ElementKind::SingleBarline);
     }
 
     #[test]
     fn test_note_with_sharp() {
         use crate::renderers::font_utils::glyph_for_pitch;
         // Test "1#" should parse as single pitched element with Sharp pitch_code
-        let cell = parse("1#", PitchSystem::Number, 0, None);
+        let cell = parse("1#", PitchSystem::Number, None);
         // Should return Unicode glyph for Number 1 sharp at base octave
         let expected_glyph = glyph_for_pitch(PitchCode::N1s, 0, PitchSystem::Number)
             .expect("Should have glyph for N1s");
-        assert_eq!(cell.char, expected_glyph.to_string());
-        assert_eq!(cell.kind, ElementKind::PitchedElement);
-        assert_eq!(cell.pitch_code, Some(PitchCode::N1s));
+        assert_eq!(cell.get_char_string(), expected_glyph.to_string());
+        assert_eq!(cell.get_kind(), ElementKind::PitchedElement);
+        assert_eq!(cell.get_pitch_code(), Some(PitchCode::N1s));
     }
 
     #[test]
     fn test_double_barline() {
         use crate::renderers::font_utils::BARLINE_DOUBLE;
         // Test "||" should parse as single DoubleBarline with Unicode character
-        let cell = parse("||", PitchSystem::Number, 0, None);
-        assert_eq!(cell.char, BARLINE_DOUBLE.to_string());
-        assert_eq!(cell.kind, ElementKind::DoubleBarline);
+        let cell = parse("||", PitchSystem::Number, None);
+        assert_eq!(cell.get_char_string(), BARLINE_DOUBLE.to_string());
+        assert_eq!(cell.get_kind(), ElementKind::DoubleBarline);
     }
 
     #[test]
     fn test_repeat_left_barline() {
         use crate::renderers::font_utils::BARLINE_REPEAT_LEFT;
         // Test "|:" should parse as single RepeatLeftBarline with Unicode character
-        let cell = parse("|:", PitchSystem::Number, 0, None);
-        assert_eq!(cell.char, BARLINE_REPEAT_LEFT.to_string());
-        assert_eq!(cell.kind, ElementKind::RepeatLeftBarline);
+        let cell = parse("|:", PitchSystem::Number, None);
+        assert_eq!(cell.get_char_string(), BARLINE_REPEAT_LEFT.to_string());
+        assert_eq!(cell.get_kind(), ElementKind::RepeatLeftBarline);
     }
 
     #[test]
     fn test_repeat_right_barline() {
         use crate::renderers::font_utils::BARLINE_REPEAT_RIGHT;
         // Test ":|" should parse as single RepeatRightBarline with Unicode character
-        let cell = parse(":|", PitchSystem::Number, 0, None);
-        assert_eq!(cell.char, BARLINE_REPEAT_RIGHT.to_string());
-        assert_eq!(cell.kind, ElementKind::RepeatRightBarline);
+        let cell = parse(":|", PitchSystem::Number, None);
+        assert_eq!(cell.get_char_string(), BARLINE_REPEAT_RIGHT.to_string());
+        assert_eq!(cell.get_kind(), ElementKind::RepeatRightBarline);
     }
 
     #[test]
     fn test_colon_alone_is_symbol() {
         // Test ":" alone should be Symbol
-        let cell = parse_single(':', PitchSystem::Number, 0, None);
-        assert_eq!(cell.char, ":");
-        assert_eq!(cell.kind, ElementKind::Symbol);
+        let cell = parse_single(':', PitchSystem::Number, None);
+        assert_eq!(cell.get_char_string(), ":");
+        assert_eq!(cell.get_kind(), ElementKind::Symbol);
     }
 
     #[test]
     fn test_at_symbol() {
         // Test "@" should be Symbol
-        let cell = parse_single('@', PitchSystem::Number, 0, None);
-        assert_eq!(cell.char, "@");
-        assert_eq!(cell.kind, ElementKind::Symbol);
+        let cell = parse_single('@', PitchSystem::Number, None);
+        assert_eq!(cell.get_char_string(), "@");
+        assert_eq!(cell.get_kind(), ElementKind::Symbol);
     }
 
     #[test]
     fn test_hash_symbol_vs_accidental() {
         // Test "#" alone should be Symbol (not part of note)
-        let cell = parse_single('#', PitchSystem::Number, 0, None);
-        assert_eq!(cell.char, "#");
-        assert_eq!(cell.kind, ElementKind::Symbol);
+        let cell = parse_single('#', PitchSystem::Number, None);
+        assert_eq!(cell.get_char_string(), "#");
+        assert_eq!(cell.get_kind(), ElementKind::Symbol);
     }
 
     #[test]
     fn test_mixed_symbols_and_text() {
         // Test that symbols parse correctly before falling back to text
-        let cell1 = parse_single('!', PitchSystem::Number, 0, None);
-        assert_eq!(cell1.kind, ElementKind::Symbol);
+        let cell1 = parse_single('!', PitchSystem::Number, None);
+        assert_eq!(cell1.get_kind(), ElementKind::Symbol);
 
-        let cell2 = parse_single('?', PitchSystem::Number, 0, None);
-        assert_eq!(cell2.kind, ElementKind::Symbol);
+        let cell2 = parse_single('?', PitchSystem::Number, None);
+        assert_eq!(cell2.get_kind(), ElementKind::Symbol);
 
-        let cell3 = parse_single('~', PitchSystem::Number, 0, None);
-        assert_eq!(cell3.kind, ElementKind::Symbol);
+        let cell3 = parse_single('~', PitchSystem::Number, None);
+        assert_eq!(cell3.get_kind(), ElementKind::Symbol);
 
         // Alphanumeric should still be text (or note if valid)
-        let cell4 = parse_single('x', PitchSystem::Number, 0, None);
-        assert_eq!(cell4.kind, ElementKind::Text);
+        let cell4 = parse_single('x', PitchSystem::Number, None);
+        assert_eq!(cell4.get_kind(), ElementKind::Text);
+    }
+
+    #[test]
+    fn test_unicode_superscript_to_grace_note() {
+        use crate::renderers::font_utils::is_superscript;
+
+        // Test Unicode superscript ⁴ (U+2074) → PUA superscript grace note
+        let cell = parse_single('⁴', PitchSystem::Number, None);
+        assert_eq!(cell.get_kind(), ElementKind::UpperAnnotation,
+            "Unicode superscript should parse as UpperAnnotation (grace note)");
+
+        // Verify codepoint is in superscript range
+        let cp = cell.get_codepoint();
+        assert!(is_superscript(cp),
+            "Codepoint 0x{:X} should be in superscript range (0xF8000+)", cp);
+
+        // Test other superscripts
+        for (unicode_super, expected_degree) in [
+            ('¹', 1), ('²', 2), ('³', 3),
+            ('⁴', 4), ('⁵', 5), ('⁶', 6), ('⁷', 7),
+        ] {
+            let cell = parse_single(unicode_super, PitchSystem::Number, None);
+            assert_eq!(cell.get_kind(), ElementKind::UpperAnnotation,
+                "Unicode superscript '{}' should parse as grace note", unicode_super);
+            assert!(is_superscript(cell.get_codepoint()),
+                "Unicode superscript '{}' (degree {}) should have superscript codepoint",
+                unicode_super, expected_degree);
+        }
     }
 }

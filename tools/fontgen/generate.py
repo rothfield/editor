@@ -3308,6 +3308,10 @@ def create_15_line_variants(font, pua_bases):
     overline_y_bottom = OVERLINE_Y_BOTTOM  # 880
     overline_y_top = OVERLINE_Y_TOP  # 952
 
+    # TODO: Narrow characters may have arc endpoints that don't align perfectly with the
+    # horizontal line segment. A future fix could use a different approach (e.g., smaller
+    # arc radius for narrow chars, or bezier curves instead of quarter-circle arcs).
+
     def draw_quarter_arc(pen, cx, cy, radius, start_deg, end_deg, clockwise=True):
         """Draw a quarter-circle arc (ring segment with stroke thickness)."""
         outer_r = radius
@@ -3701,12 +3705,12 @@ def add_gpos_mark_feature(font, mark_codepoints):
 
 
 # ============================================================================
-# Superscript Ornament Variants (50% scaled for grace notes)
+# Superscript Variants (50% scaled for grace notes)
 # Uses Supplementary PUA-A (0xF0000+) - see atoms.yaml superscript_variants
 # ============================================================================
 
 # Superscript geometry constants
-SUPERSCRIPT_SCALE = 0.5  # 50% size for ornaments
+SUPERSCRIPT_SCALE = 0.5  # 50% size for grace notes
 # Position: 25% below top of font (ascender ~1000, so top at 750)
 # With 50% scale, glyph top ~350, so offset = 750 - 350 = 400
 SUPERSCRIPT_Y_OFFSET = 400  # Position 25% below font top
@@ -4555,14 +4559,14 @@ def build_font(
     # The new 15-variant system handles lines directly on PUA notes.
 
     # =========================================================================
-    # SUPERSCRIPT ORNAMENT VARIANTS (50% scaled for grace notes)
+    # SUPERSCRIPT VARIANTS (50% scaled for grace notes)
     # =========================================================================
     # Load atoms.yaml for superscript config
     atoms_yaml_path = os.path.join(os.path.dirname(__file__), "atoms.yaml")
     with open(atoms_yaml_path, 'r') as f:
         atoms_config = yaml.safe_load(f)
 
-    print(f"\n  Creating superscript ornament variants (50% scale)...")
+    print(f"\n  Creating superscript variants (50% scale)...")
     superscript_map = create_superscript_variants(font, layout, atoms_config)
     print(f"  ✓ Superscript variant map contains {len(superscript_map)} entries")
 

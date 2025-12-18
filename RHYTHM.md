@@ -97,9 +97,16 @@ Spaces separate individual **beats** within a measure:
 S--r  g-m-  P---
 │     │     │
 │     │     └─ Beat 3 (4 subdivisions)
-│     └─────── Beat 2 (4 subdivisions) 
+│     └─────── Beat 2 (4 subdivisions)
 └─────────── Beat 1 (4 subdivisions)
 ```
+
+**See `src/parse/GRAMMAR.md` for the formal beat grammar.**
+
+Key points:
+- A beat must contain at least one **timed-element** (pitch or dash)
+- Grace notes (superscripts) are **rhythm-transparent**: attached to beats but not part of them
+- Underlines span timed-elements only; superscripts don't count toward subdivisions
 
 ### 3. Subdivision Counting
 

@@ -31,7 +31,7 @@
 //!                       │               └── Vec<ExportEvent>
 //! ```
 
-use crate::models::{PitchCode, OrnamentPositionType};
+use crate::models::{PitchCode, SuperscriptPositionType};
 use serde::{Serialize, Deserialize};
 
 /// Fraction representing a duration as a portion of a beat
@@ -372,7 +372,7 @@ impl PitchInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GraceNoteData {
     pub pitch: PitchInfo,
-    pub position: OrnamentPositionType,
+    pub position: SuperscriptPositionType,
     /// Grace notes steal time from main note (slash notation)
     pub slash: bool,
 }

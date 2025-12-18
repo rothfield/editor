@@ -330,10 +330,10 @@
             background-color: rgba(59, 130, 246, 0.3); /* Blue with transparency */
         }
 
-        /* Ornament indicator spans - rendered smaller and raised */
-        .char-cell.ornament-first,
-        .char-cell.ornament-middle,
-        .char-cell.ornament-last {
+        /* Superscript indicator spans - rendered smaller and raised */
+        .char-cell.superscript-first,
+        .char-cell.superscript-middle,
+        .char-cell.superscript-last {
             font-size: 0.75em; /* 75% of base font size */
             vertical-align: super; /* Raised/superscript position */
             position: relative;
@@ -490,15 +490,6 @@
                             </ul>
                         </li>
 
-                        <!-- Ornament Menu -->
-                        <li class="relative">
-                            <button id="ornament-menu-button" class="px-3 py-1 rounded text-sm hover:bg-ui-hover">
-                                Ornament
-                            </button>
-                            <ul id="ornament-menu" class="absolute top-full left-0 bg-white border border-ui-border rounded shadow-lg hidden z-menu min-w-48">
-                                <!-- Menu items will be populated by JavaScript -->
-                            </ul>
-                        </li>
                     </ul>
                 </nav>
 

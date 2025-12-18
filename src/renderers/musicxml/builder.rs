@@ -409,7 +409,7 @@ impl MusicXmlBuilder {
     }
 
     /// Full grace note with all attributes
-    pub fn write_grace_note_full(&mut self, pitch_code: &PitchCode, octave: i8, slash: bool, placement: Option<&str>, _after_grace: bool, steal_time_pct: Option<f32>, beam_state: Option<&str>, slur_type: Option<&str>) -> Result<(), String> {
+    pub fn write_grace_note_full(&mut self, pitch_code: &PitchCode, octave: i8, slash: bool, placement: Option<&str>, after_grace: bool, steal_time_pct: Option<f32>, beam_state: Option<&str>, slur_type: Option<&str>) -> Result<(), String> {
         let (step, alter) = pitch_code_to_step_alter(pitch_code);
         let xml_octave = octave + 4; // music-text octave 0 = MIDI octave 4 (middle C)
 
@@ -426,14 +426,18 @@ impl MusicXmlBuilder {
             grace_attrs.push_str(&format!(" placement=\"{}\"", place));
         }
 
-        // Add steal-time attributes based on grace note position
-        if let Some(steal_pct) = steal_time_pct {
-            // Both before and after grace notes steal from the previous note (the main note they ornament)
-            grace_attrs.push_str(&format!(" steal-time-previous=\"{:.0}\"", steal_pct));
-        } else {
-            // Default steal time values: both use steal-time-previous
-            grace_attrs.push_str(" steal-time-previous=\"10\"");
+        // Add steal-time-previous for after-grace notes (nachschlag)
+        // MusicXML: steal-time-previous = grace steals time from the PREVIOUS note
+        // This is the correct semantic for nachschlag/after-grace notes
+        if after_grace {
+            // After-grace notes steal time from the previous note
+            let pct = steal_time_pct.unwrap_or(50.0);
+            grace_attrs.push_str(&format!(" steal-time-previous=\"{:.0}\"", pct));
+        } else if let Some(steal_pct) = steal_time_pct {
+            // Explicit steal-time-following for before-grace notes (steal from following)
+            grace_attrs.push_str(&format!(" steal-time-following=\"{:.0}\"", steal_pct));
         }
+        // No default steal-time for before-grace - VexFlow renders correctly without it
 
         if grace_attrs.is_empty() {
             self.buffer.push_str("  <grace/>\n");
@@ -454,19 +458,60 @@ impl MusicXmlBuilder {
             self.buffer.push_str(&format!("  <accidental>{}</accidental>\n", accidental_name));
         }
 
-        // Grace notes: 16th for before grace (smaller), 16th for after grace (even smaller)
-        self.buffer.push_str("  <type>sixteenth</type>\n");
+        // Grace notes: eighth notes without beams (simpler rendering)
+        self.buffer.push_str("  <type>eighth</type>\n");
 
-        // Add beam information if provided (for grouping multiple grace notes)
-        if let Some(state) = beam_state {
-            self.buffer.push_str(&format!("  <beam number=\"1\">{}</beam>\n", state));
-        }
+        // Note: beam_state is ignored - grace notes rendered without beams for simpler SVG manipulation
 
         // Add slur if provided (to connect grace notes to main note)
         if let Some(slur_dir) = slur_type {
             self.buffer.push_str("  <notations>\n");
             self.buffer.push_str(&format!("    <slur type=\"{}\" number=\"1\"/>\n", slur_dir));
             self.buffer.push_str("  </notations>\n");
+        }
+
+        self.buffer.push_str("</note>\n");
+
+        Ok(())
+    }
+
+    /// Write a cue note (small-sized note with duration)
+    /// Used for trailing grace notes that have no following anchor note
+    /// duration_divs: duration in divisions (typically 1 for minimal duration)
+    /// musical_duration: fraction of measure (e.g., 0.25 for quarter note)
+    pub fn write_cue_note(&mut self, pitch_code: &PitchCode, octave: i8, duration_divs: usize, musical_duration: f64) -> Result<(), String> {
+        let (step, alter) = pitch_code_to_step_alter(pitch_code);
+        let xml_octave = octave + 4; // music-text octave 0 = MIDI octave 4 (middle C)
+
+        self.buffer.push_str("<note>\n");
+        self.buffer.push_str("  <cue/>\n");
+
+        self.buffer.push_str("  <pitch>\n");
+        self.buffer.push_str(&format!("    <step>{}</step>\n", step));
+        if alter != 0.0 {
+            self.buffer.push_str(&format!("    <alter>{}</alter>\n", alter));
+        }
+        self.buffer.push_str(&format!("    <octave>{}</octave>\n", xml_octave));
+        self.buffer.push_str("  </pitch>\n");
+
+        self.buffer.push_str(&format!("  <duration>{}</duration>\n", duration_divs));
+
+        // Determine note type from musical duration
+        // Convert to fraction representation (numerator/1000) for the lookup
+        let numerator = (musical_duration * 1000.0) as usize;
+        let (note_type, dots) = duration_to_note_type_fraction(numerator, 1000);
+        if dots > 0 {
+            self.buffer.push_str(&format!("  <type size=\"cue\">{}</type>\n", note_type));
+            for _ in 0..dots {
+                self.buffer.push_str("  <dot/>\n");
+            }
+        } else {
+            self.buffer.push_str(&format!("  <type size=\"cue\">{}</type>\n", note_type));
+        }
+
+        // Add accidental if needed
+        if let Some(accidental_name) = pitch_code_to_accidental(pitch_code) {
+            self.buffer.push_str(&format!("  <accidental>{}</accidental>\n", accidental_name));
         }
 
         self.buffer.push_str("</note>\n");
@@ -836,15 +881,15 @@ mod tests {
         let grace_pitch_code = PitchCode::N5; // G natural
         builder.write_grace_note(&grace_pitch_code, 0, true, None).unwrap();
 
-        // Should contain grace element with slash and default steal-time attribute
-        assert!(builder.buffer.contains("<grace slash=\"yes\" steal-time-previous=\"10\"/>"));
+        // Should contain grace element with slash (no steal-time for VexFlow compatibility)
+        assert!(builder.buffer.contains("<grace slash=\"yes\"/>"));
 
         // Should contain pitch information
         assert!(builder.buffer.contains("<step>G</step>"));
         assert!(builder.buffer.contains("<octave>4</octave>"));
 
-        // Should have sixteenth note type (default for grace notes)
-        assert!(builder.buffer.contains("<type>sixteenth</type>"));
+        // Should have 32nd note type (default for grace notes)
+        assert!(builder.buffer.contains("<type>32nd</type>"));
 
         // Should NOT contain duration element (grace notes have no duration)
         assert!(!builder.buffer.contains("<duration>"));
@@ -859,8 +904,8 @@ mod tests {
         let grace_pitch_code = PitchCode::N1; // C natural
         builder.write_grace_note(&grace_pitch_code, 0, false, None).unwrap();
 
-        // Should contain grace element without slash but with default steal-time
-        assert!(builder.buffer.contains("<grace steal-time-previous=\"10\"/>"));
+        // Should contain grace element without slash (no steal-time for VexFlow compatibility)
+        assert!(builder.buffer.contains("<grace/>"));
         assert!(!builder.buffer.contains("slash=\"yes\""));
     }
 

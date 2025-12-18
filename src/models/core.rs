@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::undo::UndoStack;
 
 // Re-export from other modules
-pub use super::elements::{ElementKind, OrnamentPositionType, PitchSystem, SlurIndicator};
+pub use super::elements::{ElementKind, SuperscriptPositionType, PitchSystem, SlurIndicator};
 pub use super::notation::{BeatSpan, SlurSpan, Position, Selection, PrimarySelection, Range, CursorPosition, Pos, CaretInfo, SelectionInfo, EditorDiff, DocDiff};
 pub use super::pitch_code::PitchCode;
 
@@ -25,43 +25,17 @@ pub struct Cell {
     /// Use CodepointTransform trait for bit manipulation.
     pub codepoint: u32,
 
-    /// Legacy string field - derived from codepoint for backward compatibility
-    /// Will be deprecated once migration is complete.
-    /// TODO: Remove after full migration to codepoint-based API
-    pub char: String,
-
-    /// Type of musical element this cell represents
-    pub kind: ElementKind,
-
-    /// Physical column index (0-based) for layout calculations
-    pub col: usize,
+    // char field removed - now derived from codepoint via get_char()/get_char_string()
+    // kind field removed - now derived from codepoint via get_kind()
+    // col field removed - use array index instead
 
     /// Bit flags for various properties (head marker, selection, focus, etc.)
     pub flags: u8,
 
-    /// Canonical pitch representation (for pitched elements only)
-    /// This encodes the accidental (Sharp, Flat, Natural, etc.)
-    pub pitch_code: Option<PitchCode>,
-
-    /// Pitch system used for this element (for pitched elements only)
-    pub pitch_system: Option<PitchSystem>,
-
-    /// Octave marking for pitched elements (-1 = lower, 0 = middle/none, 1 = upper)
-    /// Note: Uses i8 instead of Option to ensure field always appears in persistent storage
-    pub octave: i8,
-
-    /// Whether this cell is a superscript (grace note / ornament)
-    /// Superscript pitches are rhythm-transparent and rendered at 50% scale
-    /// This is the semantic source of truth; cell.char is derived at render time
-    pub superscript: bool,
-
-    /// Underline state for beat grouping (derived, not saved)
-    /// Computed by draw_beat_groups() from beat spans
-    pub underline: UnderlineState,
-
-    /// Overline state for slurs (derived, not saved)
-    /// Computed by draw_slurs() from SlurIndicator markers
-    pub overline: OverlineState,
+    // pitch_code field removed - now derived from codepoint via get_pitch_code()
+    // pitch_system field removed - now derived from codepoint via get_pitch_system()
+    // octave field removed - now derived from codepoint via get_octave()
+    // underline and overline are now derived from codepoint via get_underline()/get_overline()
 
     /// Layout cache properties (calculated at render time) - ephemeral, not saved
     pub x: f32,
@@ -83,18 +57,17 @@ impl Serialize for Cell {
         S: serde::Serializer,
     {
         use serde::ser::SerializeStruct;
-        let mut state = serializer.serialize_struct("Cell", 13)?;
+        let mut state = serializer.serialize_struct("Cell", 8)?;
         state.serialize_field("codepoint", &self.codepoint)?;
-        state.serialize_field("char", &self.char)?;
-        state.serialize_field("kind", &self.kind)?;
-        state.serialize_field("col", &self.col)?;
+        // Serialize char computed from codepoint for backward compatibility
+        state.serialize_field("char", &self.get_char_string())?;
+        state.serialize_field("kind", &self.get_kind())?; // derived from codepoint
+        // col field removed - use array index
         state.serialize_field("flags", &self.flags)?;
-        state.serialize_field("pitch_code", &self.pitch_code)?;
-        state.serialize_field("pitch_system", &self.pitch_system)?;
-        state.serialize_field("octave", &self.octave)?;
-        state.serialize_field("superscript", &self.superscript)?;
-        state.serialize_field("underline", &self.underline)?;
-        state.serialize_field("overline", &self.overline)?;
+        state.serialize_field("pitch_code", &self.get_pitch_code())?; // derived from codepoint
+        state.serialize_field("pitch_system", &self.get_pitch_system())?; // derived from codepoint
+        state.serialize_field("octave", &self.get_octave())?; // derived from codepoint
+        // underline/overline derived from codepoint - not serialized
         // Computed field for debug inspection
         state.serialize_field("char_info", &self.decode_char())?;
         state.end()
@@ -112,33 +85,48 @@ impl<'de> Deserialize<'de> for Cell {
             #[serde(default)]
             codepoint: Option<u32>,
             char: String,
-            kind: ElementKind,
-            col: usize,
-            flags: u8,
-            pitch_code: Option<PitchCode>,
-            pitch_system: Option<PitchSystem>,
-            octave: i8,
+            // kind field kept for backward compatibility but not used (derived from codepoint)
             #[serde(default)]
-            superscript: bool,
+            kind: Option<ElementKind>,
+            // col field kept for backward compatibility but not used (use array index)
+            #[serde(default)]
+            col: Option<usize>,
+            flags: u8,
+            // These fields are kept for backward compatibility but not used (derived from codepoint)
+            #[serde(default)]
+            pitch_code: Option<PitchCode>,
+            #[serde(default)]
+            pitch_system: Option<PitchSystem>,
+            #[serde(default)]
+            octave: i8,
+            // superscript field removed - derived from codepoint
+            // Legacy superscript: bool field is ignored on deserialization
+            #[serde(default)]
+            superscript: bool, // For backward compatibility - will be migrated via codepoint
             // char_info is ignored on deserialization
         }
 
         let data = CellData::deserialize(deserializer)?;
         // Use codepoint if provided, otherwise derive from char
-        let codepoint = data.codepoint
+        let mut codepoint = data.codepoint
             .unwrap_or_else(|| data.char.chars().next().map(|c| c as u32).unwrap_or(0));
+
+        // Migrate legacy superscript: true to superscript codepoint
+        if data.superscript && !crate::renderers::font_utils::is_superscript(codepoint) {
+            if let Some(super_cp) = crate::renderers::font_utils::to_superscript(codepoint) {
+                codepoint = super_cp;
+            }
+        }
+
         Ok(Cell {
             codepoint,
-            char: data.char,
-            kind: data.kind,
-            col: data.col,
+            // char field removed - derived from codepoint via get_char()/get_char_string()
+            // kind field removed - derived from codepoint via get_kind()
+            // pitch_code field removed - derived from codepoint via get_pitch_code()
+            // pitch_system field removed - derived from codepoint via get_pitch_system()
+            // octave field removed - derived from codepoint via get_octave()
+            // col field removed - use array index
             flags: data.flags,
-            pitch_code: data.pitch_code,
-            pitch_system: data.pitch_system,
-            octave: data.octave,
-            superscript: data.superscript,
-            underline: UnderlineState::None,
-            overline: OverlineState::None,
             x: 0.0,
             y: 0.0,
             w: 0.0,
@@ -153,16 +141,13 @@ impl Default for Cell {
     fn default() -> Self {
         Self {
             codepoint: ' ' as u32,
-            char: " ".to_string(),
-            kind: ElementKind::Whitespace,
-            col: 0,
+            // char field removed - derived via get_char()/get_char_string()
+            // kind field removed - derived via get_kind()
+            // col field removed - use array index
             flags: 0,
-            pitch_code: None,
-            pitch_system: None,
-            octave: 0,
-            superscript: false,
-            underline: UnderlineState::None,
-            overline: OverlineState::None,
+            // pitch_code field removed - derived via get_pitch_code()
+            // pitch_system field removed - derived via get_pitch_system()
+            // octave field removed - derived via get_octave()
             x: 0.0,
             y: 0.0,
             w: 0.0,
@@ -174,21 +159,20 @@ impl Default for Cell {
 }
 
 impl Cell {
-    /// Create a new Cell from a codepoint
-    pub fn new(char: String, kind: ElementKind, col: usize) -> Self {
+    /// Create a new Cell from a character string
+    /// The char parameter is used to derive the codepoint
+    /// Note: kind parameter kept for backward compatibility but is now derived from codepoint
+    pub fn new(char: String, _kind: ElementKind) -> Self {
         let codepoint = char.chars().next().map(|c| c as u32).unwrap_or(0);
         Self {
             codepoint,
-            char,
-            kind,
-            col,
+            // char field removed - derived via get_char()/get_char_string()
+            // kind field removed - derived via get_kind() (parameter kept for backward compat)
+            // col field removed - use array index
             flags: 0,
-            pitch_code: None,
-            pitch_system: None,
-            octave: 0,
-            superscript: false,
-            underline: UnderlineState::None,
-            overline: OverlineState::None,
+            // pitch_code field removed - derived via get_pitch_code()
+            // pitch_system field removed - derived via get_pitch_system()
+            // octave field removed - derived via get_octave()
             x: 0.0,
             y: 0.0,
             w: 0.0,
@@ -199,22 +183,17 @@ impl Cell {
     }
 
     /// Create a new Cell from a u32 codepoint directly
-    pub fn from_codepoint(codepoint: u32, kind: ElementKind, col: usize) -> Self {
-        let char = char::from_u32(codepoint)
-            .map(|c| c.to_string())
-            .unwrap_or_else(|| "?".to_string());
+    /// Note: kind parameter kept for backward compatibility but is now derived from codepoint
+    pub fn from_codepoint(codepoint: u32, _kind: ElementKind) -> Self {
         Self {
             codepoint,
-            char,
-            kind,
-            col,
+            // char field removed - derived via get_char()/get_char_string()
+            // kind field removed - derived via get_kind() (parameter kept for backward compat)
+            // col field removed - use array index
             flags: 0,
-            pitch_code: None,
-            pitch_system: None,
-            octave: 0,
-            superscript: false,
-            underline: UnderlineState::None,
-            overline: OverlineState::None,
+            // pitch_code field removed - derived via get_pitch_code()
+            // pitch_system field removed - derived via get_pitch_system()
+            // octave field removed - derived via get_octave()
             x: 0.0,
             y: 0.0,
             w: 0.0,
@@ -224,13 +203,7 @@ impl Cell {
         }
     }
 
-    /// Sync char field from codepoint (call after modifying codepoint)
-    pub fn sync_char(&mut self) {
-        self.char = char::from_u32(self.codepoint)
-            .map(|c| c.to_string())
-            .unwrap_or_else(|| "?".to_string());
-    }
-
+    // sync_char() removed - char field no longer exists, derived from codepoint
 
     /// Check if this cell is currently selected
     pub fn is_selected(&self) -> bool {
@@ -262,7 +235,7 @@ impl Cell {
 
     /// Check if this cell is part of a temporal sequence
     pub fn is_temporal(&self) -> bool {
-        self.kind.is_temporal()
+        self.get_kind().is_temporal()
     }
 
     /// Get the length of this token in characters (always 1)
@@ -272,7 +245,7 @@ impl Cell {
 
     /// Check if this cell can be selected
     pub fn is_selectable(&self) -> bool {
-        self.kind.is_selectable()
+        self.get_kind().is_selectable()
     }
 
     /// Update layout cache properties
@@ -299,8 +272,6 @@ impl Cell {
         use crate::renderers::font_utils::CodepointTransform;
         use crate::renderers::line_variants::OverlineState;
         self.codepoint = self.codepoint.set_overline(OverlineState::Left);
-        self.overline = OverlineState::Left;
-        self.sync_char();
     }
 
     /// Set slur end marker in codepoint (overline Right)
@@ -308,8 +279,6 @@ impl Cell {
         use crate::renderers::font_utils::CodepointTransform;
         use crate::renderers::line_variants::OverlineState;
         self.codepoint = self.codepoint.set_overline(OverlineState::Right);
-        self.overline = OverlineState::Right;
-        self.sync_char();
     }
 
     /// Clear slur marker from codepoint
@@ -317,42 +286,65 @@ impl Cell {
         use crate::renderers::font_utils::CodepointTransform;
         use crate::renderers::line_variants::OverlineState;
         self.codepoint = self.codepoint.set_overline(OverlineState::None);
-        self.overline = OverlineState::None;
-        self.sync_char();
     }
 
-    /// Check if this cell has an ornament indicator (stub - ornament system refactored)
-    /// DEPRECATED: Ornament indicators have been replaced with cell.ornament field
+    /// Check if this cell has a superscript indicator (stub - superscript system refactored)
+    /// DEPRECATED: Superscript indicators have been replaced with cell.superscript field
     /// Returns false always for compatibility during refactoring
     #[allow(dead_code)]
-    pub fn has_ornament_indicator(&self) -> bool {
+    pub fn has_superscript_indicator(&self) -> bool {
         false
     }
 
-    /// Set ornament start (stub - ornament system refactored)
+    /// Set superscript start (stub - superscript system refactored)
     #[allow(dead_code)]
-    pub fn set_ornament_start(&mut self) {
-        // No-op: ornament_indicator field no longer exists
+    pub fn set_superscript_start(&mut self) {
+        // No-op: superscript_indicator field no longer exists
     }
 
-    /// Set ornament end (stub - ornament system refactored)
+    /// Set superscript end (stub - superscript system refactored)
     #[allow(dead_code)]
-    pub fn set_ornament_end(&mut self) {
-        // No-op: ornament_indicator field no longer exists
+    pub fn set_superscript_end(&mut self) {
+        // No-op: superscript_indicator field no longer exists
     }
 
-    /// Clear ornament (stub - ornament system refactored)
+    /// Clear superscript (stub - superscript system refactored)
     #[allow(dead_code)]
-    pub fn clear_ornament(&mut self) {
-        // No-op: ornament_indicator field no longer exists
+    pub fn clear_superscript(&mut self) {
+        // No-op: superscript_indicator field no longer exists
     }
 
     /// Check if this cell is a superscript (grace note)
     ///
     /// Superscript pitches are rhythm-transparent and attach to adjacent normal pitches.
-    /// Returns the semantic `superscript` field (not derived from codepoint).
+    /// Derived from codepoint - superscripts are in 0xF8000+ range.
     pub fn is_superscript(&self) -> bool {
-        self.superscript
+        crate::renderers::font_utils::is_superscript(self.codepoint)
+    }
+
+    /// Check if this cell is a timed element (consumes measure time)
+    ///
+    /// See `src/parse/GRAMMAR.md` - TimedElement = PitchedElement | UnpitchedElement
+    /// Timed elements define beat boundaries and get underlines.
+    /// Superscripts and breath marks are NOT timed (rhythm-transparent).
+    pub fn is_timed_element(&self) -> bool {
+        crate::renderers::font_utils::is_timed_element(self.codepoint)
+    }
+
+    /// Set or clear superscript status by converting codepoint
+    ///
+    /// Converts codepoint to/from superscript range (0xF8000+).
+    pub fn set_superscript(&mut self, is_super: bool) {
+        use crate::renderers::font_utils::{to_superscript, from_superscript};
+        if is_super && !self.is_superscript() {
+            if let Some(super_cp) = to_superscript(self.codepoint) {
+                self.codepoint = super_cp;
+            }
+        } else if !is_super && self.is_superscript() {
+            if let Some(normal_cp) = from_superscript(self.codepoint) {
+                self.codepoint = normal_cp;
+            }
+        }
     }
 
     /// Get the codepoint (direct field access)
@@ -360,10 +352,9 @@ impl Cell {
         self.codepoint
     }
 
-    /// Set codepoint and sync char field
+    /// Set codepoint directly
     pub fn set_codepoint(&mut self, cp: u32) {
         self.codepoint = cp;
-        self.sync_char();
     }
 
     /// Check if this cell has a slur marker (start or end)
@@ -384,10 +375,98 @@ impl Cell {
         self.codepoint.slur_right()
     }
 
+    /// Get underline state derived from codepoint
+    ///
+    /// Underlines indicate beat grouping (multiple notes sharing a beat).
+    /// Derived from codepoint - underline is encoded in line variant bits.
+    pub fn get_underline(&self) -> UnderlineState {
+        use crate::renderers::font_utils::CodepointTransform;
+        self.codepoint.get_underline()
+    }
+
+    /// Get overline state derived from codepoint
+    ///
+    /// Overlines indicate slurs (connected phrase markings).
+    /// Derived from codepoint - overline is encoded in line variant bits.
+    pub fn get_overline(&self) -> OverlineState {
+        use crate::renderers::font_utils::CodepointTransform;
+        self.codepoint.get_overline()
+    }
+
+    /// Get octave derived from codepoint
+    ///
+    /// Octave (-2 to +2) is encoded in the pitch PUA codepoint.
+    /// Returns 0 for non-pitched elements.
+    /// Auto-detects pitch system from codepoint range.
+    pub fn get_octave(&self) -> i8 {
+        crate::renderers::font_utils::octave_from_codepoint(self.codepoint)
+    }
+
+    /// Get pitch code derived from codepoint
+    ///
+    /// Returns the PitchCode encoded in this cell's codepoint.
+    /// Returns None for non-pitched elements.
+    /// Auto-detects pitch system from codepoint range.
+    pub fn get_pitch_code(&self) -> Option<crate::models::pitch_code::PitchCode> {
+        crate::renderers::font_utils::pitch_code_from_codepoint(self.codepoint)
+    }
+
+    /// Get pitch system derived from codepoint
+    ///
+    /// Returns the PitchSystem (Number, Western, Sargam) for this cell.
+    /// Returns None for non-pitched elements.
+    pub fn get_pitch_system(&self) -> Option<crate::models::elements::PitchSystem> {
+        crate::renderers::font_utils::pitch_system_from_codepoint(self.codepoint)
+    }
+
+    /// Derive the element kind from the codepoint
+    ///
+    /// Derives the semantic type of the cell from its codepoint.
+    /// This is the single source of truth - kind is always derived, never stored.
+    pub fn get_kind(&self) -> ElementKind {
+        crate::renderers::font_utils::derive_kind(self.codepoint)
+    }
+
+    /// Set octave by updating the codepoint
+    ///
+    /// Updates the codepoint to encode the new octave.
+    /// Requires a valid pitch codepoint.
+    /// Returns true if successful, false if not a pitched element or out of range.
+    pub fn set_octave(&mut self, target_octave: i8) -> bool {
+        use crate::renderers::font_utils::glyph_for_pitch;
+        use crate::models::PitchSystem;
+
+        let pitch_code = match self.get_pitch_code() {
+            Some(pc) => pc,
+            None => return false,
+        };
+        let system = self.get_pitch_system().unwrap_or(PitchSystem::Number);
+
+        if let Some(glyph) = glyph_for_pitch(pitch_code, target_octave, system) {
+            self.set_codepoint(glyph as u32);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Get the character derived from codepoint
+    ///
+    /// Returns the Unicode character represented by this cell's codepoint.
+    /// This is the source-of-truth derivation - the `char` field is legacy.
+    pub fn get_char(&self) -> char {
+        char::from_u32(self.codepoint).unwrap_or('?')
+    }
+
+    /// Get the character as a String, derived from codepoint
+    pub fn get_char_string(&self) -> String {
+        self.get_char().to_string()
+    }
+
     /// Get the display character for this cell
     /// Returns char which now includes line variants directly encoded as PUA codepoints
     pub fn display_char(&self) -> String {
-        self.char.clone()
+        self.get_char_string()
     }
 
     /// Decode the character into its component information
@@ -477,7 +556,7 @@ impl CharInfo {
         use crate::renderers::font_utils::decode_codepoint;
 
         let codepoint = cell.codepoint;
-        let pitch_system = cell.pitch_system;
+        let pitch_system = cell.get_pitch_system();
 
         let (underline, overline, base_cp) = if let Some(decoded) = decode_codepoint(codepoint) {
             (decoded.underline, decoded.overline, decoded.base_cp)
@@ -491,9 +570,9 @@ impl CharInfo {
         Self {
             codepoint,
             base_char,
-            pitch_code: cell.pitch_code,
+            pitch_code: cell.get_pitch_code(),
             pitch_system,
-            octave: cell.octave,
+            octave: cell.get_octave(),
             underline,
             overline,
         }
@@ -745,29 +824,25 @@ impl Line {
 
     /// Get the maximum column index
     pub fn max_column(&self) -> usize {
-        self.cells
-            .iter()
-            .map(|cell| cell.col)
-            .max()
-            .unwrap_or(0)
+        if self.cells.is_empty() {
+            0
+        } else {
+            self.cells.len() - 1
+        }
     }
 
     /// Add a Cell to the line
     pub fn add_cell(&mut self, cell: Cell) {
-        // Sync text: extract first char from cell
-        if let Some(ch) = cell.char.chars().next() {
-            self.text.push(ch);
-        }
+        // Sync text: extract char from cell
+        self.text.push(cell.get_char());
         self.cells.push(cell);
     }
 
     /// Insert a Cell at a specific position
     pub fn insert_cell(&mut self, cell: Cell, index: usize) {
         // Sync text: insert char at same position
-        if let Some(ch) = cell.char.chars().next() {
-            if index <= self.text.len() {
-                self.text.insert(index, ch);
-            }
+        if index <= self.text.len() {
+            self.text.insert(index, cell.get_char());
         }
         self.cells.insert(index, cell);
     }
@@ -794,40 +869,23 @@ impl Line {
     }
 
     /// Sync text Vec<char> from cells
-    /// Extracts base glyph from each cell's char field
+    /// Extracts glyph from each cell's codepoint
     pub fn sync_text_from_cells(&mut self) {
         self.text = self.cells.iter()
-            .filter_map(|cell| cell.char.chars().next())
+            .map(|cell| cell.get_char())
             .collect();
     }
 
     /// Sync cells from text Vec<char>
     /// Creates basic cells from glyphs (for compatibility during migration)
-    pub fn sync_cells_from_text(&mut self, pitch_system: PitchSystem) {
-        use crate::renderers::font_utils::pitch_from_glyph;
+    /// kind is derived from codepoint via get_kind(), no manual assignment needed
+    pub fn sync_cells_from_text(&mut self, _pitch_system: PitchSystem) {
         use crate::models::ElementKind;
 
         self.cells = self.text.iter()
-            .enumerate()
-            .map(|(col, &ch)| {
-                let mut cell = Cell::new(ch.to_string(), ElementKind::PitchedElement, col);
-
-                // Try to extract pitch info from glyph
-                if let Some((pitch_code, octave)) = pitch_from_glyph(ch, pitch_system) {
-                    cell.pitch_code = Some(pitch_code);
-                    cell.octave = octave;
-                    cell.pitch_system = Some(pitch_system);
-                } else {
-                    // Non-pitched element - determine kind from character
-                    cell.kind = match ch {
-                        '-' => ElementKind::UnpitchedElement,
-                        ' ' => ElementKind::Whitespace,
-                        '\'' | ',' => ElementKind::BreathMark,
-                        '|' => ElementKind::SingleBarline,
-                        _ => ElementKind::UnpitchedElement,
-                    };
-                }
-                cell
+            .map(|&ch| {
+                // kind is derived from codepoint via get_kind()
+                Cell::new(ch.to_string(), ElementKind::Unknown)
             })
             .collect();
     }
@@ -864,8 +922,7 @@ impl Line {
 
         // Reset all underlines to None first (idempotent)
         for cell in &mut self.cells {
-            cell.underline = UnderlineState::None;
-            // Also reset middle underline in codepoint (preserves Left/Right markers)
+            // Reset underline in codepoint (preserves Left/Right markers)
             cell.codepoint = cell.codepoint.underline_mid(false);
         }
 
@@ -879,49 +936,41 @@ impl Line {
                 continue;
             }
 
-            // Multi-cell beat - apply underlines to both field and codepoint
+            // Multi-cell beat - apply underlines to ALL cells in range (including superscripts)
             if start < self.cells.len() {
-                self.cells[start].underline = UnderlineState::Left;
                 self.cells[start].codepoint = self.cells[start].codepoint.set_underline(UnderlineState::Left);
             }
             if end < self.cells.len() {
-                self.cells[end].underline = UnderlineState::Right;
                 self.cells[end].codepoint = self.cells[end].codepoint.set_underline(UnderlineState::Right);
             }
             for i in (start + 1)..end {
                 if i < self.cells.len() {
-                    self.cells[i].underline = UnderlineState::Middle;
                     self.cells[i].codepoint = self.cells[i].codepoint.underline_mid(true);
                 }
             }
         }
 
-        // Sync char fields from codepoints
-        for cell in &mut self.cells {
-            cell.sync_char();
-        }
+        // char field removed - no sync needed, char derived from codepoint
 
         self
     }
 
-    /// Apply line variants to cell.char and cell.codepoint based on cell.underline and cell.overline
+    /// Apply line variants to cell.codepoint based on derived underline/overline
     ///
-    /// Call this after draw_slurs() and draw_beat_groups() to update cell.char/codepoint
+    /// Call this after draw_slurs() and draw_beat_groups() to update cell.codepoint
     /// with the combined PUA glyph.
     pub fn apply_line_variants(&mut self) -> &mut Self {
         use crate::renderers::font_utils::CharTransform;
 
         for cell in &mut self.cells {
-            if cell.superscript {
+            if cell.is_superscript() {
                 continue;
             }
-            if let Some(ch) = cell.char.chars().next() {
-                let transformed = ch
-                    .underline(cell.underline)
-                    .overline(cell.overline);
-                cell.char = transformed.to_string();
-                cell.codepoint = transformed as u32;
-            }
+            let ch = cell.get_char();
+            let transformed = ch
+                .underline(cell.get_underline())
+                .overline(cell.get_overline());
+            cell.set_codepoint(transformed as u32);
         }
 
         self
@@ -953,9 +1002,9 @@ pub struct Document {
     /// Document version
     pub version: Option<String>,
 
-    /// Ornament edit mode flag
+    /// Superscript edit mode flag
     #[serde(default)]
-    pub ornament_edit_mode: bool,
+    pub superscript_edit_mode: bool,
 
     /// Active scale constraint (mode/maqam/raga filter)
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -966,7 +1015,7 @@ pub struct Document {
 
     // === Verbose/debug fields below - displayed last in inspector ===
 
-    /// Annotation layer for slurs, ornaments, etc.
+    /// Annotation layer for slurs, superscripts, etc.
     #[serde(default)]
     pub annotation_layer: crate::text::annotations::AnnotationLayer,
 
@@ -986,7 +1035,7 @@ impl Document {
             created_at: None,  // Timestamps set by JavaScript layer
             modified_at: None,  // Timestamps set by JavaScript layer
             version: None,
-            ornament_edit_mode: false,
+            superscript_edit_mode: false,
             active_constraint: None,
             lines: Vec::new(),
             // Verbose/debug fields last
@@ -1037,34 +1086,22 @@ impl Document {
     /// Validate document structure and content
     pub fn validate(&self) -> Result<(), ValidationError> {
         // Ensure all cells have consistent column alignment
-        for (line_idx, line) in self.lines.iter().enumerate() {
-            let max_col = line.max_column();
-
-            for (cell_idx, cell) in line.cells.iter().enumerate() {
-                if cell.col > max_col {
-                    return Err(ValidationError::ColumnAlignment {
-                        line: line_idx,
-                        cell: cell_idx,
-                        cell_col: cell.col,
-                        max_col,
-                    });
-                }
-            }
-        }
-
+        // Column validation removed - col field no longer exists on Cell
+        // Cell position is now implicit from array index
+        let _ = self.lines.iter().enumerate(); // Prevent unused warning if loop was the only use
         Ok(())
     }
 
     /// Clear the document
     pub fn clear(&mut self) {
         self.lines.clear();
-        self.ornament_edit_mode = false;
+        self.superscript_edit_mode = false;
         self.state = DocumentState::new();
     }
 
-    /// Toggle ornament edit mode
-    pub fn toggle_ornament_edit_mode(&mut self) {
-        self.ornament_edit_mode = !self.ornament_edit_mode;
+    /// Toggle superscript edit mode
+    pub fn toggle_superscript_edit_mode(&mut self) {
+        self.superscript_edit_mode = !self.superscript_edit_mode;
     }
 
     /// Get the effective pitch system for a line
@@ -1643,8 +1680,9 @@ impl SelectionManager {
             if start.line == end.line {
                 if let Some(line) = document.lines.get(start.line) {
                     return line.cells.iter()
-                        .filter(|cell| cell.col >= start.col && cell.col < end.col)
-                        .map(|cell| cell.char.clone())
+                        .enumerate()
+                        .filter(|(col, _cell)| *col >= start.col && *col < end.col)
+                        .map(|(_col, cell)| cell.get_char_string())
                         .collect::<Vec<String>>()
                         .join("");
                 }
@@ -1678,19 +1716,19 @@ impl SelectionManager {
             let mut end_col = position.col;
 
             // Find start of word (go left until non-temporal character)
-            for cell in line.cells.iter().rev() {
-                if cell.col < position.col && cell.is_temporal() {
-                    start_col = cell.col;
+            for (col, cell) in line.cells.iter().enumerate().rev() {
+                if col < position.col && cell.is_temporal() {
+                    start_col = col;
                 } else {
                     break;
                 }
             }
 
             // Find end of word (go right until non-temporal character)
-            for cell in line.cells.iter() {
-                if cell.col >= position.col && cell.is_temporal() {
-                    end_col = cell.col + cell.token_length();
-                } else if cell.col > position.col {
+            for (col, cell) in line.cells.iter().enumerate() {
+                if col >= position.col && cell.is_temporal() {
+                    end_col = col + cell.token_length();
+                } else if col > position.col {
                     break;
                 }
             }
@@ -1904,15 +1942,16 @@ mod tests {
     /// Helper: create a test line with cells and slur markers
     fn create_test_line_with_slurs() -> Line {
         use crate::models::pitch_code::PitchCode;
+        use crate::renderers::font_utils::glyph_for_pitch;
 
         let mut line = Line::new();
 
         // Create cells: "1 2 3 4 5" with slur from 2 to 4
         let pitch_codes = [PitchCode::N1, PitchCode::N2, PitchCode::N3, PitchCode::N4, PitchCode::N5];
         for (i, &pc) in pitch_codes.iter().enumerate() {
-            let mut cell = Cell::new((i + 1).to_string(), ElementKind::PitchedElement, i);
-            cell.pitch_code = Some(pc);
-            cell.pitch_system = Some(PitchSystem::Number);
+            let glyph = glyph_for_pitch(pc, 0, PitchSystem::Number)
+                .expect("Should have glyph");
+            let mut cell = Cell::from_codepoint(glyph as u32, ElementKind::PitchedElement);
 
             // Slur from index 1 to index 3
             if i == 1 {

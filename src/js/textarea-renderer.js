@@ -686,7 +686,7 @@ class TextareaRenderer {
     const textareaRect = textarea.getBoundingClientRect();
     const containerRect = lineContainer.getBoundingClientRect();
 
-    overlay.style.left = `${startPos.x + textarea.offsetLeft - textarea.scrollLeft}px`;
+    overlay.style.left = `${textareaRect.left - containerRect.left + startPos.x - textarea.scrollLeft}px`;
     overlay.style.top = `${textarea.offsetTop}px`;
     overlay.style.width = `${endPos.x - startPos.x}px`;
     overlay.style.height = `${textarea.offsetHeight}px`;

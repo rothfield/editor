@@ -23,7 +23,7 @@ pub struct CharPosToCellResult {
 /// Get maximum character position for the current line
 ///
 /// Returns the total number of characters in the current line,
-/// filtering out ornament cells when in normal mode (edit mode off).
+/// filtering out superscript cells when in normal mode (edit mode off).
 #[wasm_bindgen(js_name = getMaxCharPosition)]
 pub fn get_max_char_position(doc_js: JsValue) -> Result<usize, JsValue> {
     // Deserialize document from JS
@@ -35,14 +35,14 @@ pub fn get_max_char_position(doc_js: JsValue) -> Result<usize, JsValue> {
     let line = doc.lines.get(line_index)
         .ok_or_else(|| JsValue::from_str("Current line not found"))?;
 
-    // All cells are now in the flow (ornaments are inline, not separate marker cells)
-    let _edit_mode = doc.ornament_edit_mode;
+    // All cells are now in the flow (superscripts are inline, not separate marker cells)
+    let _edit_mode = doc.superscript_edit_mode;
 
     // Sum up lengths of all navigable cell glyphs
     let mut total_chars = 0;
     for cell in &line.cells {
-        // All cells are now in the flow (ornaments are inline, not separate marker cells)
-        total_chars += cell.char.chars().count();
+        // All cells are now in the flow (superscripts are inline, not separate marker cells)
+        total_chars += cell.get_char_string().chars().count();
     }
 
     Ok(total_chars)
@@ -51,7 +51,7 @@ pub fn get_max_char_position(doc_js: JsValue) -> Result<usize, JsValue> {
 /// Convert character position to cell index and offset within cell
 ///
 /// Returns the cell index and character offset for a given character position.
-/// Filters out ornament cells when in normal mode (edit mode off).
+/// Filters out superscript cells when in normal mode (edit mode off).
 #[wasm_bindgen(js_name = charPosToCellIndex)]
 pub fn char_pos_to_cell_index(doc_js: JsValue, char_pos: usize) -> Result<JsValue, JsValue> {
     // Deserialize document from JS
@@ -63,14 +63,14 @@ pub fn char_pos_to_cell_index(doc_js: JsValue, char_pos: usize) -> Result<JsValu
     let line = doc.lines.get(line_index)
         .ok_or_else(|| JsValue::from_str("Current line not found"))?;
 
-    // All cells are now in the flow (ornaments are inline, not separate marker cells)
-    let _edit_mode = doc.ornament_edit_mode;
+    // All cells are now in the flow (superscripts are inline, not separate marker cells)
+    let _edit_mode = doc.superscript_edit_mode;
 
     // Accumulate character counts and find the target cell
     let mut accumulated_chars = 0;
     for (cell_index, cell) in line.cells.iter().enumerate() {
-        // All cells are now in the flow (ornaments are inline, not separate marker cells)
-        let cell_length = cell.char.chars().count();
+        // All cells are now in the flow (superscripts are inline, not separate marker cells)
+        let cell_length = cell.get_char_string().chars().count();
 
         if char_pos < accumulated_chars + cell_length {
             let result = CharPosToCellResult {
@@ -96,7 +96,7 @@ pub fn char_pos_to_cell_index(doc_js: JsValue, char_pos: usize) -> Result<JsValu
 /// Convert cell index to character position
 ///
 /// Returns the character position at the start of the given cell index.
-/// Filters out ornament cells when in normal mode (edit mode off).
+/// Filters out superscript cells when in normal mode (edit mode off).
 #[wasm_bindgen(js_name = cellIndexToCharPos)]
 pub fn cell_index_to_char_pos(doc_js: JsValue, cell_index: usize) -> Result<usize, JsValue> {
     // Deserialize document from JS
@@ -108,8 +108,8 @@ pub fn cell_index_to_char_pos(doc_js: JsValue, cell_index: usize) -> Result<usiz
     let line = doc.lines.get(line_index)
         .ok_or_else(|| JsValue::from_str("Current line not found"))?;
 
-    // All cells are now in the flow (ornaments are inline, not separate marker cells)
-    let _edit_mode = doc.ornament_edit_mode;
+    // All cells are now in the flow (superscripts are inline, not separate marker cells)
+    let _edit_mode = doc.superscript_edit_mode;
 
     // Handle empty cells array
     if line.cells.is_empty() {
@@ -121,8 +121,8 @@ pub fn cell_index_to_char_pos(doc_js: JsValue, cell_index: usize) -> Result<usiz
     for i in 0..=cell_index.min(line.cells.len() - 1) {
         let cell = &line.cells[i];
 
-        // All cells are now in the flow (ornaments are inline, not separate marker cells)
-        char_pos += cell.char.chars().count();
+        // All cells are now in the flow (superscripts are inline, not separate marker cells)
+        char_pos += cell.get_char_string().chars().count();
     }
 
     Ok(char_pos)
@@ -271,7 +271,7 @@ mod tests {
 
         let mut doc = Document::new();
         doc.lines = vec![line];
-        doc.ornament_edit_mode = edit_mode;
+        doc.superscript_edit_mode = edit_mode;
         doc
     }
 

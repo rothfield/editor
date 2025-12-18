@@ -171,14 +171,14 @@ pub fn distribute_lyrics(lyrics: &str, cells: &[Cell]) -> Vec<SyllableAssignment
 
     // Count pitched elements
     let pitched_count = cells.iter()
-        .filter(|c| matches!(c.kind, ElementKind::PitchedElement))
+        .filter(|c| matches!(c.get_kind(), ElementKind::PitchedElement))
         .count();
 
     // Special case: 0 or 1 pitched notes - assign entire lyrics as-is (no splitting)
     if pitched_count <= 1 {
         // Find first pitched element index, or use 0 if none exist
         let cell_index = cells.iter()
-            .position(|c| matches!(c.kind, ElementKind::PitchedElement))
+            .position(|c| matches!(c.get_kind(), ElementKind::PitchedElement))
             .unwrap_or(0);
 
         // Assign entire lyrics string unchanged
@@ -210,7 +210,7 @@ pub fn distribute_lyrics(lyrics: &str, cells: &[Cell]) -> Vec<SyllableAssignment
 
     for (cell_index, cell) in cells.iter().enumerate() {
         // Only process pitched elements
-        if !matches!(cell.kind, ElementKind::PitchedElement) {
+        if !matches!(cell.get_kind(), ElementKind::PitchedElement) {
             continue;
         }
 
@@ -337,9 +337,9 @@ mod tests {
     fn test_distribute_lyrics_simple() {
         let lyrics = "do re mi";
         let cells = vec![
-            Cell::new("S".to_string(), ElementKind::PitchedElement, 0),
-            Cell::new("R".to_string(), ElementKind::PitchedElement, 1),
-            Cell::new("G".to_string(), ElementKind::PitchedElement, 2),
+            Cell::new("S".to_string(), ElementKind::PitchedElement),
+            Cell::new("R".to_string(), ElementKind::PitchedElement),
+            Cell::new("G".to_string(), ElementKind::PitchedElement),
         ];
 
         let assignments = distribute_lyrics(lyrics, &cells);
@@ -357,8 +357,8 @@ mod tests {
         // 4 syllables but only 2 notes - last note should get remaining
         let lyrics = "hel-lo-wor-ld";
         let cells = vec![
-            Cell::new("S".to_string(), ElementKind::PitchedElement, 0),
-            Cell::new("R".to_string(), ElementKind::PitchedElement, 1),
+            Cell::new("S".to_string(), ElementKind::PitchedElement),
+            Cell::new("R".to_string(), ElementKind::PitchedElement),
         ];
 
         let assignments = distribute_lyrics(lyrics, &cells);
@@ -375,9 +375,9 @@ mod tests {
         // 4 syllables with 3 notes - last note gets remaining
         let lyrics = "hel-lo-wor-ld";
         let cells = vec![
-            Cell::new("S".to_string(), ElementKind::PitchedElement, 0),
-            Cell::new("R".to_string(), ElementKind::PitchedElement, 1),
-            Cell::new("G".to_string(), ElementKind::PitchedElement, 2),
+            Cell::new("S".to_string(), ElementKind::PitchedElement),
+            Cell::new("R".to_string(), ElementKind::PitchedElement),
+            Cell::new("G".to_string(), ElementKind::PitchedElement),
         ];
 
         let assignments = distribute_lyrics(lyrics, &cells);
@@ -393,8 +393,8 @@ mod tests {
         // Equal number of notes and syllables - normal behavior
         let lyrics = "hel-lo";
         let cells = vec![
-            Cell::new("S".to_string(), ElementKind::PitchedElement, 0),
-            Cell::new("R".to_string(), ElementKind::PitchedElement, 1),
+            Cell::new("S".to_string(), ElementKind::PitchedElement),
+            Cell::new("R".to_string(), ElementKind::PitchedElement),
         ];
 
         let assignments = distribute_lyrics(lyrics, &cells);
@@ -409,9 +409,9 @@ mod tests {
         // More notes than syllables - extra notes get no lyric
         let lyrics = "hel-lo";
         let cells = vec![
-            Cell::new("S".to_string(), ElementKind::PitchedElement, 0),
-            Cell::new("R".to_string(), ElementKind::PitchedElement, 1),
-            Cell::new("G".to_string(), ElementKind::PitchedElement, 2),
+            Cell::new("S".to_string(), ElementKind::PitchedElement),
+            Cell::new("R".to_string(), ElementKind::PitchedElement),
+            Cell::new("G".to_string(), ElementKind::PitchedElement),
         ];
 
         let assignments = distribute_lyrics(lyrics, &cells);
@@ -426,7 +426,7 @@ mod tests {
         // Single note with multiple syllables - gets all of them
         let lyrics = "hel-lo-wor-ld";
         let cells = vec![
-            Cell::new("S".to_string(), ElementKind::PitchedElement, 0),
+            Cell::new("S".to_string(), ElementKind::PitchedElement),
         ];
 
         let assignments = distribute_lyrics(lyrics, &cells);

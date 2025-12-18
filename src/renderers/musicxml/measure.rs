@@ -28,9 +28,10 @@ pub fn calculate_measure_divisions(cells: &[Cell], beat_deriver: &BeatDeriver) -
     let mut divisions = 1;
     for beat in beats.iter() {
         let beat_cells = &cells[beat.start..=beat.end];
-        // IMPORTANT: Don't count continuation cells in rhythmic calculations!
-        // Continuation cells are part of the same logical element (e.g., "#" in "C#")
-        let subdivision_count = beat_cells.iter().count();
+        // Count only timed elements - see GRAMMAR.md
+        let subdivision_count = beat_cells.iter()
+            .filter(|c| c.is_timed_element())
+            .count();
         if subdivision_count > 0 {
             divisions = lcm(divisions, subdivision_count);
         }
@@ -45,7 +46,7 @@ pub fn split_at_barlines(cells: &[Cell]) -> Vec<(usize, usize)> {
     let mut start = 0;
 
     for (i, cell) in cells.iter().enumerate() {
-        if cell.kind.is_barline() {
+        if cell.get_kind().is_barline() {
             // Add segment before barline
             if i > start {
                 segments.push((start, i));
@@ -92,9 +93,10 @@ pub fn process_segment(
     Ok(())
 }
 
-/// Check if a beat starts with "-" (division/extension)
+/// Check if a beat starts with dash (division/extension)
+/// UnpitchedElement is dash only (underscore removed, spaces are Whitespace)
 fn beat_starts_with_division(beat_cells: &[Cell]) -> bool {
     beat_cells.first()
-        .map(|cell| cell.kind == ElementKind::UnpitchedElement && cell.char == "-")
+        .map(|cell| cell.get_kind() == ElementKind::UnpitchedElement)
         .unwrap_or(false)
 }

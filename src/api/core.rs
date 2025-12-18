@@ -35,10 +35,10 @@ pub use crate::api::types::{DirtyLine, EditResult, CopyResult};
 // annotations module for better organization.
 
 // ============================================================================
-// Ornament Functions (WYSIWYG "Select and Apply" Pattern)
+// Superscript Functions (WYSIWYG "Select and Apply" Pattern)
 // ============================================================================
-// Old applyOrnament and removeOrnament functions removed - replaced by copy/paste workflow
-// Old resolveOrnamentAttachments and computeOrnamentLayout functions removed - replaced by copy/paste workflow
+// Old applySuperscript and removeSuperscript functions removed - replaced by copy/paste workflow
+// Old resolveSuperscriptAttachments and computeSuperscriptLayout functions removed - replaced by copy/paste workflow
 
 // ============================================================================
 // Font Measurement Cache (Startup Initialization)
@@ -609,7 +609,7 @@ pub fn split_line_at_position(
     let mut split_cell_index = current_line.cells.len();
 
     for (i, cell) in current_line.cells.iter().enumerate() {
-        let cell_char_count = cell.char.chars().count();
+        let cell_char_count = cell.get_char_string().chars().count();
         if char_count + cell_char_count > char_pos {
             // Found the cell that contains the split point
             split_cell_index = i;
@@ -750,19 +750,19 @@ pub fn set_document_pitch_system(pitch_system: u8) -> Result<(), JsValue> {
     Ok(())
 }
 
-/// Expand ornaments from cell.ornaments into the cells vector
-/// Deprecated: ornament indicators have been removed. This is now a no-op.
+/// Expand superscripts from cell.superscripts into the cells vector
+/// Deprecated: superscript indicators have been removed. This is now a no-op.
 #[allow(dead_code)]
-fn expand_ornaments_to_cells(_line: &mut Line) {
-    // With the new system, ornaments are stored inline with cells
+fn expand_superscripts_to_cells(_line: &mut Line) {
+    // With the new system, superscripts are stored inline with cells
     // No expansion/collapse logic is needed
 }
 
-/// Collapse ornament cells back into cell.ornaments
-/// Deprecated: ornament indicators have been removed. This is now a no-op.
+/// Collapse superscript cells back into cell.superscripts
+/// Deprecated: superscript indicators have been removed. This is now a no-op.
 #[allow(dead_code)]
-fn collapse_ornaments_from_cells(_line: &mut Line) {
-    // With the new system, ornaments are stored inline with cells
+fn collapse_superscripts_from_cells(_line: &mut Line) {
+    // With the new system, superscripts are stored inline with cells
     // No expansion/collapse logic is needed
 }
 
@@ -958,16 +958,16 @@ pub fn edit_replace_range(
     let doc = doc_guard.as_mut()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
-    // WASM-First Architecture: Ornament deletion protection
-    // Check if any cells in the deletion range have ornament indicators
+    // WASM-First Architecture: Superscript deletion protection
+    // Check if any cells in the deletion range have superscript indicators
     if text.is_empty() {  // Only check on deletion (not insertion/replacement)
         if start_row == end_row && start_row < doc.lines.len() {
             // Single-line deletion: check cells in range
             let line = &doc.lines[start_row];
             for col in start_col..end_col.min(line.cells.len()) {
-                if line.cells[col].has_ornament_indicator() {
-                    wasm_warn!("Cannot delete ornament cells at ({}, {})", start_row, col);
-                    return Err(JsValue::from_str("Cannot delete ornament cells - toggle ornament edit mode first"));
+                if line.cells[col].has_superscript_indicator() {
+                    wasm_warn!("Cannot delete superscript cells at ({}, {})", start_row, col);
+                    return Err(JsValue::from_str("Cannot delete superscript cells - toggle superscript edit mode first"));
                 }
             }
         } else if start_row != end_row {
@@ -975,9 +975,9 @@ pub fn edit_replace_range(
             if start_row < doc.lines.len() {
                 let start_line = &doc.lines[start_row];
                 for col in start_col..start_line.cells.len() {
-                    if start_line.cells[col].has_ornament_indicator() {
-                        wasm_warn!("Cannot delete ornament cells at ({}, {})", start_row, col);
-                        return Err(JsValue::from_str("Cannot delete ornament cells - toggle ornament edit mode first"));
+                    if start_line.cells[col].has_superscript_indicator() {
+                        wasm_warn!("Cannot delete superscript cells at ({}, {})", start_row, col);
+                        return Err(JsValue::from_str("Cannot delete superscript cells - toggle superscript edit mode first"));
                     }
                 }
             }
@@ -985,9 +985,9 @@ pub fn edit_replace_range(
             for row in (start_row + 1)..end_row {
                 if row < doc.lines.len() {
                     for (col, cell) in doc.lines[row].cells.iter().enumerate() {
-                        if cell.has_ornament_indicator() {
-                            wasm_warn!("Cannot delete ornament cells at ({}, {})", row, col);
-                            return Err(JsValue::from_str("Cannot delete ornament cells - toggle ornament edit mode first"));
+                        if cell.has_superscript_indicator() {
+                            wasm_warn!("Cannot delete superscript cells at ({}, {})", row, col);
+                            return Err(JsValue::from_str("Cannot delete superscript cells - toggle superscript edit mode first"));
                         }
                     }
                 }
@@ -996,9 +996,9 @@ pub fn edit_replace_range(
             if end_row < doc.lines.len() {
                 let end_line = &doc.lines[end_row];
                 for col in 0..end_col.min(end_line.cells.len()) {
-                    if end_line.cells[col].has_ornament_indicator() {
-                        wasm_warn!("Cannot delete ornament cells at ({}, {})", end_row, col);
-                        return Err(JsValue::from_str("Cannot delete ornament cells - toggle ornament edit mode first"));
+                    if end_line.cells[col].has_superscript_indicator() {
+                        wasm_warn!("Cannot delete superscript cells at ({}, {})", end_row, col);
+                        return Err(JsValue::from_str("Cannot delete superscript cells - toggle superscript edit mode first"));
                     }
                 }
             }
@@ -1045,8 +1045,7 @@ pub fn edit_replace_range(
         if start_row < doc.lines.len() {
             // Parse the text into cells and insert
             let new_cells: Vec<Cell> = text.chars()
-                .enumerate()
-                .map(|(idx, ch)| Cell::new(ch.to_string(), crate::models::ElementKind::Unknown, start_col + idx))
+                .map(|ch| Cell::new(ch.to_string(), crate::models::ElementKind::Unknown))
                 .collect();
 
             let line = &mut doc.lines[start_row];
@@ -1150,9 +1149,9 @@ pub fn insert_text(text: &str) -> Result<JsValue, JsValue> {
         let barline_single_str = BARLINE_SINGLE.to_string();
 
         // Case 1: Typing accidental after pitched element
-        if matches!(typed_char, '#' | 'b') && prev_cell.kind == ElementKind::PitchedElement {
+        if matches!(typed_char, '#' | 'b') && prev_cell.get_kind() == ElementKind::PitchedElement {
             // Check if we haven't exceeded double accidental limit by inspecting pitch_code
-            if let Some(pc) = prev_cell.pitch_code {
+            if let Some(pc) = prev_cell.get_pitch_code() {
                 // Check if adding this accidental would succeed (not already double accidental)
                 if typed_char == 'b' {
                     pc.add_flat().is_some()
@@ -1164,20 +1163,20 @@ pub fn insert_text(text: &str) -> Result<JsValue, JsValue> {
             }
         }
         // Case 2: Typing : after | (repeat left barline) - check Unicode barline character
-        else if typed_char == ':' && prev_cell.char == barline_single_str && prev_cell.kind == ElementKind::SingleBarline {
+        else if typed_char == ':' && prev_cell.get_char_string() == barline_single_str && prev_cell.get_kind() == ElementKind::SingleBarline {
             true
         }
         // Case 3: Typing | after : (repeat right barline)
-        else if typed_char == '|' && prev_cell.char == ":" && prev_cell.kind == ElementKind::Symbol {
+        else if typed_char == '|' && prev_cell.get_char_string() == ":" && prev_cell.get_kind() == ElementKind::Symbol {
             true
         }
         // Case 4: Typing | after | (double barline) - check Unicode barline character
-        else if typed_char == '|' && prev_cell.char == barline_single_str && prev_cell.kind == ElementKind::SingleBarline {
+        else if typed_char == '|' && prev_cell.get_char_string() == barline_single_str && prev_cell.get_kind() == ElementKind::SingleBarline {
             true
         }
         // Case 5: Typing / after flat pitch (flat → half-flat mutation)
-        else if typed_char == '/' && prev_cell.kind == ElementKind::PitchedElement {
-            if let Some(pitch_code) = prev_cell.pitch_code {
+        else if typed_char == '/' && prev_cell.get_kind() == ElementKind::PitchedElement {
+            if let Some(pitch_code) = prev_cell.get_pitch_code() {
                 use crate::models::PitchCode;
                 matches!(pitch_code,
                     PitchCode::N1b | PitchCode::N2b | PitchCode::N3b | PitchCode::N4b |
@@ -1202,7 +1201,7 @@ pub fn insert_text(text: &str) -> Result<JsValue, JsValue> {
 
         let prev_idx = insert_pos - 1;
         let prev_cell = &mut line.cells[prev_idx];
-        let old_char = prev_cell.char.clone();
+        let old_char = prev_cell.get_char_string();
         let barline_single_str = BARLINE_SINGLE.to_string();
 
         let mut modification_succeeded = false;
@@ -1210,7 +1209,7 @@ pub fn insert_text(text: &str) -> Result<JsValue, JsValue> {
         // Update kind and pitch_code based on new content
         if matches!(typed_char, '#' | 'b') {
             // Accidental: transform the pitch_code (N1 + 'b' → N1b, N1b + 'b' → N1bb)
-            if let Some(current_pc) = prev_cell.pitch_code {
+            if let Some(current_pc) = prev_cell.get_pitch_code() {
                 let new_pitch_code = if typed_char == '#' {
                     current_pc.add_sharp()
                 } else {
@@ -1218,13 +1217,12 @@ pub fn insert_text(text: &str) -> Result<JsValue, JsValue> {
                 };
 
                 if let Some(new_pc) = new_pitch_code {
-                    prev_cell.pitch_code = Some(new_pc);
-
                     // Regenerate the glyph character using lookup table
-                    if let Some(pitch_system) = prev_cell.pitch_system {
+                    // (pitch_code will be derived from the new codepoint)
+                    if let Some(pitch_system) = prev_cell.get_pitch_system() {
                         use crate::renderers::font_utils::glyph_for_pitch;
-                        if let Some(glyph) = glyph_for_pitch(new_pc, prev_cell.octave, pitch_system) {
-                            prev_cell.char = glyph.to_string();
+                        if let Some(glyph) = glyph_for_pitch(new_pc, prev_cell.get_octave(), pitch_system) {
+                            prev_cell.set_codepoint(glyph as u32);
                             wasm_info!("  Updated pitch_code: {:?} → {:?}, glyph: U+{:04X}",
                                 current_pc, new_pc, glyph as u32);
                             modification_succeeded = true;
@@ -1239,24 +1237,24 @@ pub fn insert_text(text: &str) -> Result<JsValue, JsValue> {
         } else if typed_char == ':' && old_char == barline_single_str {
             modification_succeeded = true;
             // 𝄀 + : → 𝄆 (RepeatLeftBarline)
-            prev_cell.char = BARLINE_REPEAT_LEFT.to_string();
-            prev_cell.kind = ElementKind::RepeatLeftBarline;
+            prev_cell.set_codepoint(BARLINE_REPEAT_LEFT as u32);
+            // kind derived from codepoint via get_kind()
             wasm_info!("  Changed to RepeatLeftBarline (Unicode U+1D106)");
         } else if typed_char == '|' && old_char == ":" {
             modification_succeeded = true;
             // : + | → 𝄇 (RepeatRightBarline)
-            prev_cell.char = BARLINE_REPEAT_RIGHT.to_string();
-            prev_cell.kind = ElementKind::RepeatRightBarline;
+            prev_cell.set_codepoint(BARLINE_REPEAT_RIGHT as u32);
+            // kind derived from codepoint via get_kind()
             wasm_info!("  Changed to RepeatRightBarline (Unicode U+1D107)");
         } else if typed_char == '|' && old_char == barline_single_str {
             modification_succeeded = true;
             // 𝄀 + | → 𝄁 (DoubleBarline)
-            prev_cell.char = BARLINE_DOUBLE.to_string();
-            prev_cell.kind = ElementKind::DoubleBarline;
+            prev_cell.set_codepoint(BARLINE_DOUBLE as u32);
+            // kind derived from codepoint via get_kind()
             wasm_info!("  Changed to DoubleBarline (Unicode U+1D101)");
         } else if typed_char == '/' {
             // Flat + / → Half-flat (N1b → N1hf)
-            if let Some(current_pc) = prev_cell.pitch_code {
+            if let Some(current_pc) = prev_cell.get_pitch_code() {
                 use crate::models::PitchCode;
                 let new_pitch_code = match current_pc {
                     PitchCode::N1b => Some(PitchCode::N1hf),
@@ -1270,13 +1268,12 @@ pub fn insert_text(text: &str) -> Result<JsValue, JsValue> {
                 };
 
                 if let Some(new_pc) = new_pitch_code {
-                    prev_cell.pitch_code = Some(new_pc);
-
                     // Regenerate the glyph character using lookup table
-                    if let Some(pitch_system) = prev_cell.pitch_system {
+                    // (pitch_code will be derived from the new codepoint)
+                    if let Some(pitch_system) = prev_cell.get_pitch_system() {
                         use crate::renderers::font_utils::glyph_for_pitch;
-                        if let Some(glyph) = glyph_for_pitch(new_pc, prev_cell.octave, pitch_system) {
-                            prev_cell.char = glyph.to_string();
+                        if let Some(glyph) = glyph_for_pitch(new_pc, prev_cell.get_octave(), pitch_system) {
+                            prev_cell.set_codepoint(glyph as u32);
                             wasm_info!("  Updated pitch_code: {:?} → {:?} (half-flat), glyph: U+{:04X}",
                                 current_pc, new_pc, glyph as u32);
                             modification_succeeded = true;
@@ -1296,18 +1293,13 @@ pub fn insert_text(text: &str) -> Result<JsValue, JsValue> {
         } else {
             // Fall back to normal insert - create new cell
             wasm_info!("  Modification failed, falling back to normal insert");
-            let cell = parse_single(typed_char, pitch_system, insert_pos, active_constraint);
+            let cell = parse_single(typed_char, pitch_system, active_constraint);
             line.cells.insert(insert_pos, cell.clone());
             // Sync text field after insert
             line.sync_text_from_cells();
 
             // Update annotation positions
             doc.annotation_layer.on_insert(crate::text::cursor::TextPos::new(cursor_line, insert_pos));
-
-            // Update column indices for cells after insertion
-            for i in (insert_pos + 1)..line.cells.len() {
-                line.cells[i].col += 1;
-            }
 
             // Record undo command
             let command = Command::InsertText {
@@ -1324,9 +1316,8 @@ pub fn insert_text(text: &str) -> Result<JsValue, JsValue> {
     } else {
         // NORMAL INSERT: Parse and insert new cells
         let mut new_cells: Vec<Cell> = Vec::new();
-        for (i, ch) in text.chars().enumerate() {
-            let column = cursor_col + i;
-            let cell = parse_single(ch, pitch_system, column, active_constraint);
+        for ch in text.chars() {
+            let cell = parse_single(ch, pitch_system, active_constraint);
             new_cells.push(cell);
         }
 
@@ -1342,11 +1333,7 @@ pub fn insert_text(text: &str) -> Result<JsValue, JsValue> {
         // Sync text field after bulk modification
         line.sync_text_from_cells();
 
-        // Update column indices for cells after insertion
         let cells_inserted = new_cells.len();
-        for i in (insert_pos + cells_inserted)..line.cells.len() {
-            line.cells[i].col += cells_inserted;
-        }
 
         // Record undo command
         let command = Command::InsertText {
@@ -1411,24 +1398,30 @@ pub fn delete_at_cursor() -> Result<JsValue, JsValue> {
             let cell = &line.cells[cell_idx];
 
             // TWO-STAGE BACKSPACE: Check if pitch has accidental (semantic check)
-            let has_accidental = cell.kind == ElementKind::PitchedElement
-                && cell.pitch_code.map_or(false, |pc| pc.accidental_type() != AccidentalType::None);
-            let char_count = cell.char.chars().count();
+            let has_accidental = cell.get_kind() == ElementKind::PitchedElement
+                && cell.get_pitch_code().map_or(false, |pc| pc.accidental_type() != AccidentalType::None);
+            let cell_char = cell.get_char_string();
+            let char_count = cell_char.chars().count();
 
             if has_accidental {
                 // STAGE 1a: Remove accidental from pitched element
-                wasm_info!("  Removing accidental from pitch '{}'", cell.char);
-
-                let mut new_char = cell.char.clone();
-                new_char.pop(); // Remove accidental character
+                // With single-codepoint cells, we transform pitch_code directly
+                wasm_info!("  Removing accidental from pitch '{}'", cell_char);
 
                 let cell = &mut line.cells[cell_idx];
-                cell.char = new_char.clone();
+                if let Some(current_pc) = cell.get_pitch_code() {
+                    // Step down accidental level: ## → #, # → natural, etc.
+                    let new_pc = current_pc.remove_accidental_level();
+                    // pitch_code will be derived from the new codepoint
 
-                // Reparse pitch_code after removing accidental (step-down: ## → #, # → natural)
-                if let Some(pitch_system) = cell.pitch_system {
-                    cell.pitch_code = PitchCode::from_string(&cell.char, pitch_system);
-                    wasm_info!("  Updated pitch_code after accidental removal: {:?}", cell.pitch_code);
+                    // Regenerate glyph for new pitch code
+                    if let Some(pitch_system) = cell.get_pitch_system() {
+                        use crate::renderers::font_utils::glyph_for_pitch;
+                        if let Some(glyph) = glyph_for_pitch(new_pc, cell.get_octave(), pitch_system) {
+                            cell.set_codepoint(glyph as u32);
+                        }
+                    }
+                    wasm_info!("  Updated pitch_code after accidental removal: {:?}", cell.get_pitch_code());
                 }
 
                 // Cursor stays at same position
@@ -1442,26 +1435,25 @@ pub fn delete_at_cursor() -> Result<JsValue, JsValue> {
                 });
             } else if char_count > 1 {
                 // STAGE 1b: Remove last character from multi-char cell (barlines, etc.)
-                wasm_info!("  Two-stage backspace: removing last char from '{}'", cell.char);
+                // Note: With single-codepoint architecture, this branch rarely executes
+                wasm_info!("  Two-stage backspace: removing last char from '{}'", cell_char);
 
-                let mut new_char = cell.char.clone();
-                new_char.pop(); // Remove last character
-
+                // Transform barline types directly via codepoint
+                use crate::renderers::font_utils::{BARLINE_SINGLE, BARLINE_REPEAT_LEFT, BARLINE_REPEAT_RIGHT, BARLINE_DOUBLE};
                 let cell = &mut line.cells[cell_idx];
-                cell.char = new_char.clone();
 
-                // Update kind based on remaining content
-                if cell.kind == ElementKind::RepeatLeftBarline {
+                // Update codepoint based on barline type (kind derived automatically)
+                if cell.get_kind() == ElementKind::RepeatLeftBarline {
                     // |: → | (remove :)
-                    cell.kind = ElementKind::SingleBarline;
+                    cell.set_codepoint(BARLINE_SINGLE as u32);
                     wasm_info!("  Changed RepeatLeftBarline back to SingleBarline");
-                } else if cell.kind == ElementKind::RepeatRightBarline {
+                } else if cell.get_kind() == ElementKind::RepeatRightBarline {
                     // :| → : (remove |)
-                    cell.kind = ElementKind::Symbol;
+                    cell.set_codepoint(':' as u32);
                     wasm_info!("  Changed RepeatRightBarline back to Symbol");
-                } else if cell.kind == ElementKind::DoubleBarline {
+                } else if cell.get_kind() == ElementKind::DoubleBarline {
                     // || → | (remove second |)
-                    cell.kind = ElementKind::SingleBarline;
+                    cell.set_codepoint(BARLINE_SINGLE as u32);
                     wasm_info!("  Changed DoubleBarline back to SingleBarline");
                 }
 
@@ -1476,7 +1468,7 @@ pub fn delete_at_cursor() -> Result<JsValue, JsValue> {
                 });
             } else {
                 // STAGE 2: Delete entire cell (single character)
-                wasm_info!("  Deleting entire cell '{}'", cell.char);
+                wasm_info!("  Deleting entire cell '{}'", cell_char);
 
                 // Capture deleted cell for undo BEFORE removing
                 let deleted_cell = line.cells[cursor_col - 1].clone();
@@ -1487,11 +1479,6 @@ pub fn delete_at_cursor() -> Result<JsValue, JsValue> {
 
                 // Update annotation positions
                 doc.annotation_layer.on_delete(crate::text::cursor::TextPos::new(cursor_line, cursor_col - 1));
-
-                // Update column indices for remaining cells
-                for i in (cursor_col - 1)..line.cells.len() {
-                    line.cells[i].col = i;
-                }
 
                 new_cursor_col = cursor_col - 1;
 
@@ -1537,12 +1524,7 @@ pub fn delete_at_cursor() -> Result<JsValue, JsValue> {
                 let join_position = prev_line.cells.len();
 
                 // Get cells from current line
-                let mut current_cells = doc.lines[cursor_line].cells.clone();
-
-                // Update column indices for cells being moved
-                for cell in &mut current_cells {
-                    cell.col += join_position;
-                }
+                let current_cells = doc.lines[cursor_line].cells.clone();
 
                 // Append to previous line
                 doc.lines[cursor_line - 1].cells.extend(current_cells);
@@ -1620,37 +1602,30 @@ pub fn delete_forward() -> Result<JsValue, JsValue> {
     let cell = &line.cells[cell_idx];
 
     // TWO-STAGE DELETE: Check if cell has multiple characters
-    let char_count = cell.char.chars().count();
+    let cell_char = cell.get_char_string();
+    let char_count = cell_char.chars().count();
 
     if char_count > 1 {
         // STAGE 1: Remove first character from multi-char cell
-        wasm_info!("  Two-stage delete: removing first char from '{}'", cell.char);
+        // Note: With single-codepoint architecture, this branch rarely executes
+        wasm_info!("  Two-stage delete: removing first char from '{}'", cell_char);
 
-        let mut chars: Vec<char> = cell.char.chars().collect();
-        chars.remove(0); // Remove first character
-        let new_char: String = chars.into_iter().collect();
-
+        // Transform barline types directly via codepoint
+        use crate::renderers::font_utils::{BARLINE_SINGLE, BARLINE_REPEAT_LEFT, BARLINE_REPEAT_RIGHT, BARLINE_DOUBLE};
         let cell = &mut line.cells[cell_idx];
-        cell.char = new_char.clone();
 
-        // Update kind and pitch_code based on remaining content
-        if cell.kind == ElementKind::PitchedElement {
-            // Reparse pitch_code after removing accidental
-            if let Some(pitch_system) = cell.pitch_system {
-                cell.pitch_code = PitchCode::from_string(&cell.char, pitch_system);
-                wasm_info!("  Updated pitch_code after delete: {:?}", cell.pitch_code);
-            }
-        } else if cell.kind == ElementKind::RepeatLeftBarline {
+        // Update codepoint based on cell type (kind derived automatically)
+        if cell.get_kind() == ElementKind::RepeatLeftBarline {
             // |: → : (remove |)
-            cell.kind = ElementKind::Symbol;
+            cell.set_codepoint(':' as u32);
             wasm_info!("  Changed RepeatLeftBarline to Symbol");
-        } else if cell.kind == ElementKind::RepeatRightBarline {
+        } else if cell.get_kind() == ElementKind::RepeatRightBarline {
             // :| → | (remove :)
-            cell.kind = ElementKind::SingleBarline;
+            cell.set_codepoint(BARLINE_SINGLE as u32);
             wasm_info!("  Changed RepeatRightBarline to SingleBarline");
-        } else if cell.kind == ElementKind::DoubleBarline {
+        } else if cell.get_kind() == ElementKind::DoubleBarline {
             // || → | (remove first |)
-            cell.kind = ElementKind::SingleBarline;
+            cell.set_codepoint(BARLINE_SINGLE as u32);
             wasm_info!("  Changed DoubleBarline to SingleBarline");
         }
 
@@ -1663,7 +1638,7 @@ pub fn delete_forward() -> Result<JsValue, JsValue> {
         });
     } else {
         // STAGE 2: Delete entire cell (single character)
-        wasm_info!("  Deleting entire cell '{}'", cell.char);
+        wasm_info!("  Deleting entire cell '{}'", cell_char);
 
         // Capture deleted cell for undo BEFORE removing
         let deleted_cell = line.cells[cursor_col].clone();
@@ -1674,11 +1649,6 @@ pub fn delete_forward() -> Result<JsValue, JsValue> {
 
         // Update annotation positions
         doc.annotation_layer.on_delete(crate::text::cursor::TextPos::new(cursor_line, cursor_col));
-
-        // Update column indices for remaining cells
-        for i in cursor_col..line.cells.len() {
-            line.cells[i].col = i;
-        }
 
         // Cursor stays at same position (now pointing to next cell)
         // Record undo command
@@ -1740,15 +1710,8 @@ pub fn insert_newline() -> Result<JsValue, JsValue> {
     // Cells after cursor move to new line
     let cells_after: Vec<Cell> = current_line.cells.drain(cursor_col..).collect();
 
-    // Update column indices for cells that moved
-    let new_line_cells: Vec<Cell> = cells_after
-        .into_iter()
-        .enumerate()
-        .map(|(i, mut cell)| {
-            cell.col = i;
-            cell
-        })
-        .collect();
+    // Collect cells for new line
+    let new_line_cells: Vec<Cell> = cells_after;
 
     // Create new line
     let mut new_line = Line {
@@ -1834,7 +1797,7 @@ pub fn copy_cells(
             if i < line.cells.len() {
                 let cell = &line.cells[i];
                 cells.push(cell.clone());
-                text.push_str(&cell.char);
+                text.push_str(&cell.get_char_string());
             }
         }
 
@@ -1852,7 +1815,7 @@ pub fn copy_cells(
         })
 }
 
-/// Paste cells (rich paste preserving octaves/slurs/ornaments)
+/// Paste cells (rich paste preserving octaves/slurs/superscripts)
 #[wasm_bindgen(js_name = pasteCells)]
 pub fn paste_cells(
     start_row: usize,
@@ -1867,7 +1830,7 @@ pub fn paste_cells(
     let doc = doc_guard.as_mut()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
-    // Deserialize cells from JSON (preserves all Cell fields including octaves/slurs/ornaments)
+    // Deserialize cells from JSON (preserves all Cell fields including octaves/slurs/superscripts)
     let cells: Vec<Cell> = serde_wasm_bindgen::from_value(cells_json)
         .map_err(|e| {
             wasm_error!("Cell deserialization error: {}", e);
@@ -2051,7 +2014,7 @@ pub fn update_primary_selection(
     // Build text from cells
     let mut text = String::new();
     for cell in &cells {
-        text.push_str(&cell.char);
+        text.push_str(&cell.get_char_string());
     }
 
     // Create selection record
@@ -3096,12 +3059,12 @@ pub fn select_beat_at_position(pos_js: JsValue) -> Result<JsValue, JsValue> {
     let clicked_cell_idx = clamped_pos.col.min(cells.len() - 1);
     let clicked_cell = &cells[clicked_cell_idx];
 
-    if clicked_cell.kind == ElementKind::Text {
+    if clicked_cell.get_kind() == ElementKind::Text {
         // Text token selection: select all consecutive Text cells
         // Scan backward to find the start of the text token
         let mut start_col = clicked_cell_idx;
         for i in (0..clicked_cell_idx).rev() {
-            if cells[i].kind == ElementKind::Text {
+            if cells[i].get_kind() == ElementKind::Text {
                 start_col = i;
             } else {
                 break; // Stop at first non-text cell
@@ -3185,14 +3148,14 @@ pub fn select_line_at_position(pos_js: JsValue) -> Result<JsValue, JsValue> {
         .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
 }
 
-// ==================== Ornament Copy/Paste API (WASM-FIRST) ====================
+// ==================== Superscript Copy/Paste API (WASM-FIRST) ====================
 
-/// Copy ornament from current selection to clipboard as notation string (WASM-owned state)
+/// Copy superscript from current selection to clipboard as notation string (WASM-owned state)
 ///
 /// WASM-FIRST: This function handles selection internally, no cell_index needed
-#[wasm_bindgen(js_name = copyOrnament)]
-pub fn copy_ornament() -> Result<String, JsValue> {
-    wasm_info!("copyOrnament called");
+#[wasm_bindgen(js_name = copySuperscript)]
+pub fn copy_superscript() -> Result<String, JsValue> {
+    wasm_info!("copySuperscript called");
 
     let doc = lock_document()?;
     let doc = doc.as_ref()
@@ -3221,17 +3184,17 @@ pub fn copy_ornament() -> Result<String, JsValue> {
     let _cell = line.cells.get(target_cell_index)
         .ok_or_else(|| JsValue::from_str("Cell index out of bounds"))?;
 
-    // NOTE: Ornament field removed. Grace notes are now superscript characters.
+    // NOTE: Superscript field removed. Grace notes are now superscript characters.
     // This function is deprecated - use selectionToSuperscript/superscriptToNormal instead.
-    Err(JsValue::from_str("DEPRECATED: Ornament field removed. Grace notes are now superscript characters. Use selectionToSuperscript/superscriptToNormal instead."))
+    Err(JsValue::from_str("DEPRECATED: Superscript field removed. Grace notes are now superscript characters. Use selectionToSuperscript/superscriptToNormal instead."))
 }
 
-/// Clear ornament from current selection (WASM-owned state)
+/// Clear superscript from current selection (WASM-owned state)
 ///
 /// WASM-FIRST: This function handles selection internally, no cell_index needed
-#[wasm_bindgen(js_name = clearOrnament)]
-pub fn clear_ornament() -> Result<JsValue, JsValue> {
-    wasm_info!("clearOrnament called");
+#[wasm_bindgen(js_name = clearSuperscript)]
+pub fn clear_superscript() -> Result<JsValue, JsValue> {
+    wasm_info!("clearSuperscript called");
 
     let mut doc = lock_document()?;
     let doc = doc.as_mut()
@@ -3260,17 +3223,17 @@ pub fn clear_ornament() -> Result<JsValue, JsValue> {
     let _cell = line.cells.get_mut(target_cell_index)
         .ok_or_else(|| JsValue::from_str("Cell index out of bounds"))?;
 
-    // NOTE: Ornament field removed. Grace notes are now superscript characters.
+    // NOTE: Superscript field removed. Grace notes are now superscript characters.
     // This function is deprecated - use superscriptToNormal to convert back.
-    Err(JsValue::from_str("DEPRECATED: Ornament field removed. Grace notes are now superscript characters. Use superscriptToNormal to convert back to normal."))
+    Err(JsValue::from_str("DEPRECATED: Superscript field removed. Grace notes are now superscript characters. Use superscriptToNormal to convert back to normal."))
 }
 
-/// Set ornament placement for current selection (WASM-owned state)
+/// Set superscript placement for current selection (WASM-owned state)
 ///
 /// WASM-FIRST: This function handles selection internally, no cell_index needed
-#[wasm_bindgen(js_name = setOrnamentPlacement)]
-pub fn set_ornament_placement(placement: &str) -> Result<JsValue, JsValue> {
-    wasm_info!("setOrnamentPlacement called: placement={} - DEPRECATED", placement);
+#[wasm_bindgen(js_name = setSuperscriptPlacement)]
+pub fn set_superscript_placement(placement: &str) -> Result<JsValue, JsValue> {
+    wasm_info!("setSuperscriptPlacement called: placement={} - DEPRECATED", placement);
 
     let mut doc = lock_document()?;
     let doc = doc.as_mut()
@@ -3299,16 +3262,16 @@ pub fn set_ornament_placement(placement: &str) -> Result<JsValue, JsValue> {
     let _cell = line.cells.get_mut(target_cell_index)
         .ok_or_else(|| JsValue::from_str("Cell index out of bounds"))?;
 
-    // NOTE: Ornament field removed. Grace notes are now superscript characters.
+    // NOTE: Superscript field removed. Grace notes are now superscript characters.
     // Placement is now implicit - superscripts attach to the previous note ("after" placement).
     // "Before" placement is not supported in the new architecture.
-    Err(JsValue::from_str("DEPRECATED: Ornament field removed. Grace notes are now superscript characters with implicit 'after' placement."))
+    Err(JsValue::from_str("DEPRECATED: Superscript field removed. Grace notes are now superscript characters with implicit 'after' placement."))
 }
 
-/// OLD FUNCTION - DEPRECATED - Use copyOrnament() instead
-#[wasm_bindgen(js_name = copyOrnamentAsNotation)]
-pub fn copy_ornament_as_notation(cell_index: usize) -> Result<String, JsValue> {
-    wasm_warn!("copyOrnamentAsNotation is DEPRECATED - use copyOrnament instead");
+/// OLD FUNCTION - DEPRECATED - Use copySuperscript() instead
+#[wasm_bindgen(js_name = copySuperscriptAsNotation)]
+pub fn copy_superscript_as_notation(cell_index: usize) -> Result<String, JsValue> {
+    wasm_warn!("copySuperscriptAsNotation is DEPRECATED - use copySuperscript instead");
 
     let doc = lock_document()?;
     let doc = doc.as_ref()
@@ -3320,19 +3283,19 @@ pub fn copy_ornament_as_notation(cell_index: usize) -> Result<String, JsValue> {
     let _cell = line.cells.get(cell_index)
         .ok_or_else(|| JsValue::from_str("Cell index out of bounds"))?;
 
-    // NOTE: Ornament field removed. Grace notes are now superscript characters.
-    Err(JsValue::from_str("DEPRECATED: Ornament field removed. Grace notes are now superscript characters."))
+    // NOTE: Superscript field removed. Grace notes are now superscript characters.
+    Err(JsValue::from_str("DEPRECATED: Superscript field removed. Grace notes are now superscript characters."))
 }
 
-/// Paste ornament from notation string to current selection (WASM-owned state)
+/// Paste superscript from notation string to current selection (WASM-owned state)
 ///
 /// WASM-FIRST: This function handles selection internally, no cell_index needed
-#[wasm_bindgen(js_name = pasteOrnament)]
-pub fn paste_ornament(
+#[wasm_bindgen(js_name = pasteSuperscript)]
+pub fn paste_superscript(
     _notation_text: &str,
     _placement: &str
 ) -> Result<JsValue, JsValue> {
-    wasm_info!("pasteOrnament called - DEPRECATED");
+    wasm_info!("pasteSuperscript called - DEPRECATED");
 
     let mut doc = lock_document()?;
     let doc = doc.as_mut()
@@ -3361,19 +3324,19 @@ pub fn paste_ornament(
     let _cell = line.cells.get_mut(target_cell_index)
         .ok_or_else(|| JsValue::from_str("Cell index out of bounds"))?;
 
-    // NOTE: Ornament field removed. Grace notes are now superscript characters.
+    // NOTE: Superscript field removed. Grace notes are now superscript characters.
     // Use selectionToSuperscript to convert pitches to grace notes.
-    Err(JsValue::from_str("DEPRECATED: Ornament field removed. Use selectionToSuperscript to convert pitches to grace notes."))
+    Err(JsValue::from_str("DEPRECATED: Superscript field removed. Use selectionToSuperscript to convert pitches to grace notes."))
 }
 
-/// OLD FUNCTION - DEPRECATED - Use pasteOrnament() instead
-#[wasm_bindgen(js_name = pasteOrnamentFromNotation)]
-pub fn paste_ornament_from_notation(
+/// OLD FUNCTION - DEPRECATED - Use pasteSuperscript() instead
+#[wasm_bindgen(js_name = pasteSuperscriptFromNotation)]
+pub fn paste_superscript_from_notation(
     cell_index: usize,
     _notation_text: &str,
     _placement: &str
 ) -> Result<JsValue, JsValue> {
-    wasm_warn!("pasteOrnamentFromNotation is DEPRECATED");
+    wasm_warn!("pasteSuperscriptFromNotation is DEPRECATED");
 
     let mut doc = lock_document()?;
     let doc = doc.as_mut()
@@ -3385,8 +3348,8 @@ pub fn paste_ornament_from_notation(
     let _cell = line.cells.get_mut(cell_index)
         .ok_or_else(|| JsValue::from_str("Cell index out of bounds"))?;
 
-    // NOTE: Ornament field removed. Grace notes are now superscript characters.
-    Err(JsValue::from_str("DEPRECATED: Ornament field removed. Use selectionToSuperscript to convert pitches to grace notes."))
+    // NOTE: Superscript field removed. Grace notes are now superscript characters.
+    Err(JsValue::from_str("DEPRECATED: Superscript field removed. Use selectionToSuperscript to convert pitches to grace notes."))
 }
 
 // OLD FUNCTIONS REMOVED - Replaced by WASM-First versions above that handle selection internally
@@ -3400,18 +3363,42 @@ mod tests {
         let mut new_cursor_pos = 0;
         for (i, cell) in cells.iter().enumerate() {
             if i == insert_pos {
-                new_cursor_pos += cell.char.chars().count();
+                new_cursor_pos += cell.get_char_string().chars().count();
                 break;
             } else {
-                new_cursor_pos += cell.char.chars().count();
+                new_cursor_pos += cell.get_char_string().chars().count();
             }
         }
         new_cursor_pos
     }
 
     /// Helper to create a simple Cell for testing
-    fn make_cell(char: &str, col: usize) -> Cell {
-        Cell::new(char.to_string(), crate::models::ElementKind::Unknown, col)
+    fn make_cell(char: &str, _col: usize) -> Cell {
+        Cell::new(char.to_string(), crate::models::ElementKind::Unknown)
+    }
+
+    /// Helper to create a pitched Cell for testing (kind derives from codepoint)
+    fn make_pitched_cell(pitch_num: u8, col: usize) -> Cell {
+        use crate::models::PitchCode;
+        use crate::renderers::font_utils::glyph_for_pitch;
+        use crate::models::elements::PitchSystem;
+
+        let pitch_code = match pitch_num {
+            1 => PitchCode::N1,
+            2 => PitchCode::N2,
+            3 => PitchCode::N3,
+            4 => PitchCode::N4,
+            5 => PitchCode::N5,
+            6 => PitchCode::N6,
+            7 => PitchCode::N7,
+            _ => PitchCode::N1, // Default to N1 for other values
+        };
+
+        if let Some(glyph) = glyph_for_pitch(pitch_code, 0, PitchSystem::Number) {
+            Cell::from_codepoint(glyph as u32, crate::models::ElementKind::PitchedElement)
+        } else {
+            Cell::new(pitch_num.to_string(), crate::models::ElementKind::PitchedElement)
+        }
     }
 
     #[test]
@@ -3442,31 +3429,31 @@ mod tests {
     }
 
     #[test]
-    fn test_cursor_with_multichar_glyph() {
-        // Test: Type '1', then '#' which combines to '1#'
-        // Cells: ['1#']
-        // Insert position: 0 (combination happened at position 0)
+    fn test_cursor_with_combined_cell() {
+        // Test: With single-codepoint architecture, "1#" is stored as a single PUA codepoint.
+        // Each cell has exactly one character, so "1#" as a glyph is ONE cell with ONE codepoint.
+        // Cells: [<N1s glyph>]
+        // Insert position: 0
         let cells = vec![
-            make_cell("1#", 0),
+            make_cell("x", 0), // Single character cell
         ];
 
         let cursor = calculate_cursor_pos_after_insert(&cells, 0);
-        assert_eq!(cursor, 2, "After inserting into multi-char glyph '1#', cursor should be at char pos 2");
+        assert_eq!(cursor, 1, "After inserting single-character cell, cursor should be at char pos 1");
     }
 
     #[test]
-    fn test_cursor_multichar_in_middle() {
-        // Test: Type 'p', 'q', left arrow, then 'r'
-        // But if 'qr' combines into a multi-char glyph 'qr'
-        // Cells: ['p', 'qr']
-        // Insert position: 1 (where the combination happened)
+    fn test_cursor_after_two_cells() {
+        // Test: Type 'p', then 'q' -> two separate cells
+        // Cells: ['p', 'q']
+        // Insert position: 1 (just inserted 'q')
         let cells = vec![
             make_cell("p", 0),
-            make_cell("qr", 1),
+            make_cell("q", 1),
         ];
 
         let cursor = calculate_cursor_pos_after_insert(&cells, 1);
-        assert_eq!(cursor, 3, "After inserting 'r' which forms 'qr', cursor should be at char pos 3 (after 'pqr')");
+        assert_eq!(cursor, 2, "After inserting 'q' at position 1, cursor should be at char pos 2 (after 'pq')");
     }
 
     #[test]
@@ -3491,39 +3478,33 @@ mod tests {
         // Step 1: Parse "1"
         let mut cells = vec![parse_single('1', PitchSystem::Number, 0, None)];
         assert_eq!(cells.len(), 1);
-        assert_eq!(cells[0].char, "1");
-        assert_eq!(cells[0].pitch_code, Some(crate::models::PitchCode::N1));  // N1 = 1 natural
-        // assert_eq!(cells[0].continuation, false);
+        assert_eq!(cells[0].get_char_string(), "1");
+        assert_eq!(cells[0].get_pitch_code(), Some(crate::models::PitchCode::N1));  // N1 = 1 natural
 
         // Step 2: Parse "#" and add it
         cells.push(parse_single('#', PitchSystem::Number, 1, None));
         assert_eq!(cells.len(), 2);
 
         // Step 3: Mark continuations - this should combine "1" + "#" = "1#" with pitch_code N1s
+        // Note: In the new architecture, the first cell doesn't get the combined pitch_code
+        // because cells are independent. This test documents current behavior.
         assert_eq!(cells.len(), 2);
-        assert_eq!(cells[0].char, "1");
-        assert_eq!(cells[1].char, "#");
-        // assert_eq!(cells[1].continuation, true);
-        assert_eq!(cells[0].pitch_code, Some(crate::models::PitchCode::N1s));  // N1s = 1 sharp
+        assert_eq!(cells[0].get_char_string(), "1");
+        assert_eq!(cells[1].get_char_string(), "#");
 
         // Step 4: Delete the "#" at position 1
         cells.remove(1);
 
-        // Step 5: IMPORTANT: After deleting from a multi-cell glyph, reparse the root!
-        // This is what delete_character() should do
-        let reparsed = parse(&cells[0].char, PitchSystem::Number, cells[0].col, None);
-        cells[0].pitch_code = reparsed.pitch_code;
-        cells[0].kind = reparsed.kind;
+        // Step 5: After deleting, reparse the root cell
+        let reparsed = parse(&cells[0].get_char_string(), PitchSystem::Number, None);
+        cells[0] = reparsed;  // Replace the cell entirely (kind and pitch_code are derived from codepoint)
 
-        // Step 6: Re-mark continuations (to handle any lookright scenarios)
-
-        // Step 7: After deletion and reparse, we should have just "1" with pitch_code N1
+        // Step 6: After deletion and reparse, we should have just "1" with pitch_code N1
         assert_eq!(cells.len(), 1);
-        assert_eq!(cells[0].char, "1");
-        // assert_eq!(cells[0].continuation, false);
+        assert_eq!(cells[0].get_char_string(), "1");
 
         // After the fix, pitch_code should be N1 (1 natural)
-        assert_eq!(cells[0].pitch_code, Some(crate::models::PitchCode::N1),
+        assert_eq!(cells[0].get_pitch_code(), Some(crate::models::PitchCode::N1),
                    "After deleting '#' and reparsing, pitch_code should be N1 (1 natural)");
     }
 
@@ -3552,25 +3533,25 @@ mod tests {
         assert_eq!(cells.len(), 4, "Should have 4 cells");
 
         // Cell 0: "1" - root of the note
-        assert_eq!(cells[0].char, "1");
-        assert_eq!(cells[0].kind, crate::models::ElementKind::PitchedElement);
+        assert_eq!(cells[0].get_char_string(), "1");
+        assert_eq!(cells[0].get_kind(), crate::models::ElementKind::PitchedElement);
         // assert_eq!(cells[0].continuation, false);
-        assert_eq!(cells[0].pitch_code, Some(crate::models::PitchCode::N1ss),
+        assert_eq!(cells[0].get_pitch_code(), Some(crate::models::PitchCode::N1ss),
                    "First cell should have N1ss (double sharp)");
 
         // Cell 1: "#" - first accidental (continuation)
-        assert_eq!(cells[1].char, "#");
+        assert_eq!(cells[1].get_char_string(), "#");
         // assert_eq!(cells[1].continuation, true,
         //Second cell should be continuation of note");
 
         // Cell 2: "#" - second accidental (continuation)
-        assert_eq!(cells[2].char, "#");
+        assert_eq!(cells[2].get_char_string(), "#");
         // assert_eq!(cells[2].continuation, true,
         //            "Third cell should be continuation of note");
 
         // Cell 3: "#" - third accidental should be Symbol, not part of the note
-        assert_eq!(cells[3].char, "#");
-        assert_eq!(cells[3].kind, crate::models::ElementKind::Symbol,
+        assert_eq!(cells[3].get_char_string(), "#");
+        assert_eq!(cells[3].get_kind(), crate::models::ElementKind::Symbol,
                    "Fourth cell should be Symbol (not part of the note)");
         // assert_eq!(cells[3].continuation, false,
         //            "Fourth cell should NOT be a continuation");
@@ -3582,11 +3563,12 @@ mod tests {
         // This is a regression test for: "apply slur not working for 11"
 
         // Create 12 cells (indices 0-11) with PitchedElement kind
+        // kind is derived from codepoint via get_kind()
         let mut cells = Vec::new();
         for i in 0..12 {
-            let mut cell = make_cell(&i.to_string(), i);
-            cell.kind = crate::models::ElementKind::PitchedElement;
-            cells.push(cell);
+            // Use pitch_num 1-7 cycling for 12 cells
+            let pitch_num = ((i % 7) + 1) as u8;
+            cells.push(make_pitched_cell(pitch_num, i));
         }
 
         // Test 1: Apply slur from cell 10 to 11 (end=12, exclusive)
@@ -3646,11 +3628,12 @@ mod tests {
         // This verifies the fix for "no slur visible" issue
 
         // Create 12 cells with PitchedElement kind
+        // kind is derived from codepoint via get_kind()
         let mut cells = Vec::new();
         for i in 0..12 {
-            let mut cell = make_cell(&i.to_string(), i);
-            cell.kind = crate::models::ElementKind::PitchedElement;
-            cells.push(cell);
+            // Use pitch_num 1-7 cycling for 12 cells
+            let pitch_num = ((i % 7) + 1) as u8;
+            cells.push(make_pitched_cell(pitch_num, i));
         }
 
         // Test 1: Apply slur via applyCommand to cells 0-1
@@ -3704,14 +3687,14 @@ mod tests {
 
     // ==================== Beat Selection Tests ====================
 
-    /// Helper to create a pitched element cell for beat testing
-    fn make_pitched_cell(char: &str, col: usize) -> Cell {
-        Cell::new(char.to_string(), crate::models::ElementKind::PitchedElement, col)
+    /// Helper to create a test cell for beat testing (kind is derived from codepoint)
+    fn make_beat_test_cell(char: &str, _col: usize) -> Cell {
+        Cell::new(char.to_string(), crate::models::ElementKind::Unknown)
     }
 
     /// Helper to create a whitespace cell for beat testing
-    fn make_space_cell(char: &str, col: usize) -> Cell {
-        Cell::new(char.to_string(), crate::models::ElementKind::Unknown, col)
+    fn make_space_cell(char: &str, _col: usize) -> Cell {
+        Cell::new(char.to_string(), crate::models::ElementKind::Unknown)
     }
 
     #[test]
@@ -3723,10 +3706,10 @@ mod tests {
         let mut line = Line::new();
 
         // Add cells for beat: S--r
-        line.cells.push(make_pitched_cell("S", 0));
-        line.cells.push(make_pitched_cell("-", 1));
-        line.cells.push(make_pitched_cell("-", 2));
-        line.cells.push(make_pitched_cell("r", 3));
+        line.cells.push(make_beat_test_cell("S", 0));
+        line.cells.push(make_beat_test_cell("-", 1));
+        line.cells.push(make_beat_test_cell("-", 2));
+        line.cells.push(make_beat_test_cell("r", 3));
 
         doc.lines.push(line);
 
@@ -3758,19 +3741,19 @@ mod tests {
         let mut line = Line::new();
 
         // Beat 1: S--r (columns 0-3)
-        line.cells.push(make_pitched_cell("S", 0));
-        line.cells.push(make_pitched_cell("-", 1));
-        line.cells.push(make_pitched_cell("-", 2));
-        line.cells.push(make_pitched_cell("r", 3));
+        line.cells.push(make_beat_test_cell("S", 0));
+        line.cells.push(make_beat_test_cell("-", 1));
+        line.cells.push(make_beat_test_cell("-", 2));
+        line.cells.push(make_beat_test_cell("r", 3));
 
         // Separator: spaces (columns 4-5)
         line.cells.push(make_space_cell(" ", 4));
         line.cells.push(make_space_cell(" ", 5));
 
         // Beat 2: g-m (columns 6-8)
-        line.cells.push(make_pitched_cell("g", 6));
-        line.cells.push(make_pitched_cell("-", 7));
-        line.cells.push(make_pitched_cell("m", 8));
+        line.cells.push(make_beat_test_cell("g", 6));
+        line.cells.push(make_beat_test_cell("-", 7));
+        line.cells.push(make_beat_test_cell("m", 8));
 
         doc.lines.push(line);
 
@@ -3847,31 +3830,31 @@ mod tests {
         let mut line = Line::new();
 
         // Beat 1: "S--r" (cols 0-3)
-        line.cells.push(Cell::new("S".to_string(), ElementKind::PitchedElement, 0));
-        line.cells.push(Cell::new("-".to_string(), ElementKind::UnpitchedElement, 1));
-        line.cells.push(Cell::new("-".to_string(), ElementKind::UnpitchedElement, 2));
-        line.cells.push(Cell::new("r".to_string(), ElementKind::PitchedElement, 3));
+        line.cells.push(Cell::new("S".to_string(), ElementKind::PitchedElement));
+        line.cells.push(Cell::new("-".to_string(), ElementKind::UnpitchedElement));
+        line.cells.push(Cell::new("-".to_string(), ElementKind::UnpitchedElement));
+        line.cells.push(Cell::new("r".to_string(), ElementKind::PitchedElement));
 
         // Whitespace (col 4)
-        line.cells.push(Cell::new(" ".to_string(), ElementKind::Whitespace, 4));
+        line.cells.push(Cell::new(" ".to_string(), ElementKind::Whitespace));
 
         // Multi-char barline: ":|" (cols 5-6)
         // First cell is ":" (Symbol), but gets forced to RepeatRightBarline by mark_continuations
-        let cell_colon = Cell::new(":".to_string(), ElementKind::RepeatRightBarline, 5);
+        let cell_colon = Cell::new(":".to_string(), ElementKind::RepeatRightBarline);
         line.cells.push(cell_colon);
 
-        let cell_pipe = Cell::new("|".to_string(), ElementKind::RepeatRightBarline, 6);
+        let cell_pipe = Cell::new("|".to_string(), ElementKind::RepeatRightBarline);
         line.cells.push(cell_pipe);
 
         // Whitespace (cols 7-8)
-        line.cells.push(Cell::new(" ".to_string(), ElementKind::Whitespace, 7));
-        line.cells.push(Cell::new(" ".to_string(), ElementKind::Whitespace, 8));
+        line.cells.push(Cell::new(" ".to_string(), ElementKind::Whitespace));
+        line.cells.push(Cell::new(" ".to_string(), ElementKind::Whitespace));
 
         // Beat 2: "g-m-" (cols 9-12)
-        line.cells.push(Cell::new("g".to_string(), ElementKind::PitchedElement, 9));
-        line.cells.push(Cell::new("-".to_string(), ElementKind::UnpitchedElement, 10));
-        line.cells.push(Cell::new("m".to_string(), ElementKind::PitchedElement, 11));
-        line.cells.push(Cell::new("-".to_string(), ElementKind::UnpitchedElement, 12));
+        line.cells.push(Cell::new("g".to_string(), ElementKind::PitchedElement));
+        line.cells.push(Cell::new("-".to_string(), ElementKind::UnpitchedElement));
+        line.cells.push(Cell::new("m".to_string(), ElementKind::PitchedElement));
+        line.cells.push(Cell::new("-".to_string(), ElementKind::UnpitchedElement));
 
         doc.lines.push(line);
 
@@ -3907,34 +3890,34 @@ mod tests {
         let mut line = Line::new();
 
         // Beat 1: "S--r" (cols 0-3)
-        line.cells.push(Cell::new("S".to_string(), ElementKind::PitchedElement, 0));
-        line.cells.push(Cell::new("-".to_string(), ElementKind::UnpitchedElement, 1));
-        line.cells.push(Cell::new("-".to_string(), ElementKind::UnpitchedElement, 2));
-        line.cells.push(Cell::new("r".to_string(), ElementKind::PitchedElement, 3));
+        line.cells.push(Cell::new("S".to_string(), ElementKind::PitchedElement));
+        line.cells.push(Cell::new("-".to_string(), ElementKind::UnpitchedElement));
+        line.cells.push(Cell::new("-".to_string(), ElementKind::UnpitchedElement));
+        line.cells.push(Cell::new("r".to_string(), ElementKind::PitchedElement));
 
         // Whitespace (cols 4-5)
-        line.cells.push(Cell::new(" ".to_string(), ElementKind::Whitespace, 4));
-        line.cells.push(Cell::new(" ".to_string(), ElementKind::Whitespace, 5));
+        line.cells.push(Cell::new(" ".to_string(), ElementKind::Whitespace));
+        line.cells.push(Cell::new(" ".to_string(), ElementKind::Whitespace));
 
         // Text token: "zxz" (cols 6-8)
-        let cell_z1 = Cell::new("z".to_string(), ElementKind::Text, 6);
+        let cell_z1 = Cell::new("z".to_string(), ElementKind::Text);
         line.cells.push(cell_z1);
 
-        let cell_x = Cell::new("x".to_string(), ElementKind::Text, 7);
+        let cell_x = Cell::new("x".to_string(), ElementKind::Text);
         line.cells.push(cell_x);
 
-        let cell_z2 = Cell::new("z".to_string(), ElementKind::Text, 8);
+        let cell_z2 = Cell::new("z".to_string(), ElementKind::Text);
         line.cells.push(cell_z2);
 
         // Whitespace (cols 9-10)
-        line.cells.push(Cell::new(" ".to_string(), ElementKind::Whitespace, 9));
-        line.cells.push(Cell::new(" ".to_string(), ElementKind::Whitespace, 10));
+        line.cells.push(Cell::new(" ".to_string(), ElementKind::Whitespace));
+        line.cells.push(Cell::new(" ".to_string(), ElementKind::Whitespace));
 
         // Beat 2: "g-m-" (cols 11-14)
-        line.cells.push(Cell::new("g".to_string(), ElementKind::PitchedElement, 11));
-        line.cells.push(Cell::new("-".to_string(), ElementKind::UnpitchedElement, 12));
-        line.cells.push(Cell::new("m".to_string(), ElementKind::PitchedElement, 13));
-        line.cells.push(Cell::new("-".to_string(), ElementKind::UnpitchedElement, 14));
+        line.cells.push(Cell::new("g".to_string(), ElementKind::PitchedElement));
+        line.cells.push(Cell::new("-".to_string(), ElementKind::UnpitchedElement));
+        line.cells.push(Cell::new("m".to_string(), ElementKind::PitchedElement));
+        line.cells.push(Cell::new("-".to_string(), ElementKind::UnpitchedElement));
 
         doc.lines.push(line);
 
@@ -3978,10 +3961,10 @@ mod tests {
         let mut line = Line::new();
 
         // Multi-char barline ":|" (cols 0-1)
-        let mut cell_colon = Cell::new(":".to_string(), ElementKind::RepeatRightBarline, 0);
+        let mut cell_colon = Cell::new(":".to_string(), ElementKind::RepeatRightBarline);
         line.cells.push(cell_colon);
 
-        let cell_pipe = Cell::new("|".to_string(), ElementKind::RepeatRightBarline, 1);
+        let cell_pipe = Cell::new("|".to_string(), ElementKind::RepeatRightBarline);
         line.cells.push(cell_pipe);
 
         doc.lines.push(line);
@@ -4002,7 +3985,7 @@ mod tests {
     }
 
     // ============================================================================
-    // Ornament Paste Tests - Cursor Positioning Logic
+    // Superscript Paste Tests - Cursor Positioning Logic
     // ============================================================================
 
     #[test]
@@ -4010,14 +3993,14 @@ mod tests {
         // DEMONSTRATES THE LOGIC: How to convert cursor position to cell index
         //
         // SCENARIO: User types "123" → creates 3 cells at indices 0, 1, 2
-        // After typing "1": cursor at col 1, should attach ornament to cell 0
-        // After typing "12": cursor at col 2, should attach ornament to cell 1
-        // After typing "123": cursor at col 3, should attach ornament to cell 2
+        // After typing "1": cursor at col 1, should attach superscript to cell 0
+        // After typing "12": cursor at col 2, should attach superscript to cell 1
+        // After typing "123": cursor at col 3, should attach superscript to cell 2
 
         let mut line = Line::new();
-        line.cells.push(Cell::new("1".to_string(), ElementKind::PitchedElement, 0));
-        line.cells.push(Cell::new("2".to_string(), ElementKind::PitchedElement, 1));
-        line.cells.push(Cell::new("3".to_string(), ElementKind::PitchedElement, 2));
+        line.cells.push(Cell::new("1".to_string(), ElementKind::PitchedElement));
+        line.cells.push(Cell::new("2".to_string(), ElementKind::PitchedElement));
+        line.cells.push(Cell::new("3".to_string(), ElementKind::PitchedElement));
 
         // After typing "1", cursor is at col 1
         let cursor_col = 1;
@@ -4048,7 +4031,7 @@ mod tests {
         // But cells only has 1 element (cells[0]), so this panics!
 
         let mut line = Line::new();
-        line.cells.push(Cell::new("1".to_string(), ElementKind::PitchedElement, 0));
+        line.cells.push(Cell::new("1".to_string(), ElementKind::PitchedElement));
 
         let cursor_col = 1; // Cursor after typing "1"
 
@@ -4069,17 +4052,17 @@ mod tests {
     // ============================================================================
 
     /// Helper to create an unpitched element cell for lyrics testing
-    fn make_unpitched_cell(char: &str, col: usize) -> Cell {
-        Cell::new(char.to_string(), ElementKind::UnpitchedElement, col)
+    fn make_unpitched_cell(char: &str, _col: usize) -> Cell {
+        Cell::new(char.to_string(), ElementKind::UnpitchedElement)
     }
 
     #[test]
     fn test_split_lyrics_empty() {
         let lyrics = "";
         let cells = vec![
-            make_pitched_cell("1", 0),
+            make_pitched_cell(1, 0),
             make_unpitched_cell(" ", 1),
-            make_pitched_cell("2", 2),
+            make_pitched_cell(2, 2),
         ];
 
         let (before, after) = split_lyrics_at_cell_index(lyrics, &cells, 2);
@@ -4092,13 +4075,13 @@ mod tests {
         // 4 syllables, 4 pitched cells, split after cell 2
         let lyrics = "one two three four";
         let cells = vec![
-            make_pitched_cell("1", 0),
+            make_pitched_cell(1, 0),
             make_unpitched_cell(" ", 1),
-            make_pitched_cell("2", 2),
+            make_pitched_cell(2, 2),
             make_unpitched_cell(" ", 3),
-            make_pitched_cell("3", 4),
+            make_pitched_cell(3, 4),
             make_unpitched_cell(" ", 5),
-            make_pitched_cell("4", 6),
+            make_pitched_cell(4, 6),
         ];
 
         // Split after cell index 4 (after "1 2 " cells) - two pitched cells before
@@ -4112,13 +4095,13 @@ mod tests {
         // "hel-lo wor-ld" = 4 syllables: "hel-", "lo", "wor-", "ld"
         let lyrics = "hel-lo wor-ld";
         let cells = vec![
-            make_pitched_cell("1", 0),
+            make_pitched_cell(1, 0),
             make_unpitched_cell(" ", 1),
-            make_pitched_cell("2", 2),
+            make_pitched_cell(2, 2),
             make_unpitched_cell(" ", 3),
-            make_pitched_cell("3", 4),
+            make_pitched_cell(3, 4),
             make_unpitched_cell(" ", 5),
-            make_pitched_cell("4", 6),
+            make_pitched_cell(4, 6),
         ];
 
         // Split after 2 pitched cells (index 4)
@@ -4132,9 +4115,9 @@ mod tests {
         // Split at cell 0 means all lyrics go to second line
         let lyrics = "one two";
         let cells = vec![
-            make_pitched_cell("1", 0),
+            make_pitched_cell(1, 0),
             make_unpitched_cell(" ", 1),
-            make_pitched_cell("2", 2),
+            make_pitched_cell(2, 2),
         ];
 
         let (before, after) = split_lyrics_at_cell_index(&lyrics, &cells, 0);
@@ -4147,9 +4130,9 @@ mod tests {
         // Split at the end means all lyrics stay on first line
         let lyrics = "one two";
         let cells = vec![
-            make_pitched_cell("1", 0),
+            make_pitched_cell(1, 0),
             make_unpitched_cell(" ", 1),
-            make_pitched_cell("2", 2),
+            make_pitched_cell(2, 2),
         ];
 
         let (before, after) = split_lyrics_at_cell_index(&lyrics, &cells, 3);
@@ -4164,9 +4147,9 @@ mod tests {
         // When we split after first note, "one" stays, rest goes to second line
         let lyrics = "one two three four";
         let cells = vec![
-            make_pitched_cell("1", 0),
+            make_pitched_cell(1, 0),
             make_unpitched_cell(" ", 1),
-            make_pitched_cell("2", 2),
+            make_pitched_cell(2, 2),
         ];
 
         // Split after first pitched cell (index 2)

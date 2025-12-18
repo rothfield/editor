@@ -8,7 +8,7 @@
 //! - **measure**: Measure and segment processing (barline splitting, divisions calculation)
 //! - **beat**: Beat processing, normalization, and tuplet detection
 //! - **fsm**: Finite state machine for beat-level rhythm processing (explicit pattern)
-//! - **grace_notes**: Grace note and ornament type detection
+//! - **grace_notes**: Grace note and superscript type detection
 //! - **builder**: MusicXML XML structure building
 //! - **emitter**: MusicXML document emitter (consumes IR from `crate::ir`)
 //! - **pitch**: Pitch code to MusicXML conversion
@@ -38,6 +38,6 @@ pub use duration::*;
 pub use pitch::*;
 pub use builder::*;
 pub use converter::to_musicxml;
-pub use grace_notes::{detect_grace_note_ornament_type, ornament_position_to_placement};
+pub use grace_notes::{detect_grace_note_superscript_type, superscript_position_to_placement};
 pub use helpers::log_musicxml;
 pub use emitter::emit_musicxml;

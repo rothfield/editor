@@ -13,10 +13,10 @@ class ArcRenderer {
     this.svgOverlay = null;
     this.slurPaths = new Map(); // Map of slur ID to SVG path element
     this.beatLoopPaths = new Map(); // Map of beat loop ID to SVG path element
-    this.ornamentArcPaths = new Map(); // Map of ornament arc ID to SVG path element
+    this.superscriptArcPaths = new Map(); // Map of superscript arc ID to SVG path element
     this.slurData = []; // Current slur data for comparison
     this.beatLoopData = []; // Current beat loop data for comparison
-    this.ornamentArcData = []; // Current ornament arc data for comparison
+    this.superscriptArcData = []; // Current superscript arc data for comparison
 
     // Configuration options
     this.options = {
@@ -55,10 +55,10 @@ class ArcRenderer {
     this.beatLoopGroup.setAttribute('id', 'beat-loops');
     this.svgOverlay.appendChild(this.beatLoopGroup);
 
-    // Create group for ornament arcs (above cells, shallow arcs)
-    this.ornamentArcGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    this.ornamentArcGroup.setAttribute('id', 'ornament-arcs');
-    this.svgOverlay.appendChild(this.ornamentArcGroup);
+    // Create group for superscript arcs (above cells, shallow arcs)
+    this.superscriptArcGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    this.superscriptArcGroup.setAttribute('id', 'superscript-arcs');
+    this.svgOverlay.appendChild(this.superscriptArcGroup);
 
     // Append to container
     this.container.appendChild(this.svgOverlay);
@@ -105,7 +105,7 @@ class ArcRenderer {
       this.renderBeatLoops(displayList);
     }
 
-    // Ornament arcs are always SVG (not part of 19-variant system)
+    // Superscript arcs are always SVG (not part of 19-variant system)
     this.renderOrnamentArcs(displayList);
   }
 
@@ -203,7 +203,7 @@ class ArcRenderer {
   }
 
   /**
-   * Render ornament arcs from DisplayList
+   * Render superscript arcs from DisplayList
    *
    * @param {Object} displayList - DisplayList from Rust layout engine
    */
@@ -212,7 +212,7 @@ class ArcRenderer {
       return;
     }
 
-    const ornamentArcs = [];
+    const superscriptArcs = [];
     const lineElements = Array.from(document.querySelectorAll('.notation-line'));
 
     let cumulativeY = 0;
@@ -226,7 +226,7 @@ class ArcRenderer {
         const gutterOffset = lineContent ? lineContent.offsetLeft : 0;
 
         for (const arc of line.ornament_arcs) {
-          ornamentArcs.push({
+          superscriptArcs.push({
             ...arc,
             // Add gutter offset to X-coordinates
             start_x: arc.start_x + gutterOffset,
@@ -245,8 +245,8 @@ class ArcRenderer {
       cumulativeY += line.height;
     }
 
-    this.updateArcPathsFromData(ornamentArcs, this.ornamentArcPaths, this.ornamentArcGroup);
-    this.ornamentArcData = ornamentArcs;
+    this.updateArcPathsFromData(superscriptArcs, this.superscriptArcPaths, this.superscriptArcGroup);
+    this.superscriptArcData = superscriptArcs;
   }
 
   /**
@@ -409,7 +409,7 @@ class ArcRenderer {
         path.setAttribute('fill', 'none');
         path.setAttribute('stroke', arc.color);
 
-        // Check if this is an ornament arc (by ID)
+        // Check if this is an superscript arc (by ID)
         const isOrnamentArc = arc.id && arc.id.includes('ornament');
 
         // Set stroke properties
@@ -421,7 +421,7 @@ class ArcRenderer {
 
         // Add appropriate class
         if (isOrnamentArc) {
-          path.classList.add('ornament-arc-path');
+          path.classList.add('superscript-arc-path');
         } else {
           path.classList.add(`${arc.direction === 'up' ? 'slur' : 'beat-loop'}-path`);
         }
@@ -613,15 +613,15 @@ class ArcRenderer {
   }
 
   /**
-   * Clear all ornament arcs from the overlay
+   * Clear all superscript arcs from the overlay
    */
   clearOrnamentArcs() {
     // Remove all path elements
-    for (const path of this.ornamentArcPaths.values()) {
-      this.ornamentArcGroup.removeChild(path);
+    for (const path of this.superscriptArcPaths.values()) {
+      this.superscriptArcGroup.removeChild(path);
     }
-    this.ornamentArcPaths.clear();
-    this.ornamentArcData = [];
+    this.superscriptArcPaths.clear();
+    this.superscriptArcData = [];
   }
 
   /**
@@ -635,7 +635,7 @@ class ArcRenderer {
     this.svgOverlay = null;
     this.slurGroup = null;
     this.beatLoopGroup = null;
-    this.ornamentArcGroup = null;
+    this.superscriptArcGroup = null;
   }
 }
 

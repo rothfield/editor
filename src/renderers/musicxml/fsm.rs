@@ -295,13 +295,13 @@ pub fn beat_transition(
     cell: &Cell,
     accum: &mut BeatAccumulator,
 ) -> BeatProcessingState {
-    match (state, cell.kind) {
-        // DASHES
-        (BeatProcessingState::InBeat, ElementKind::UnpitchedElement) if cell.char == "-" => {
+    match (state, cell.get_kind()) {
+        // DASHES (UnpitchedElement is dash only)
+        (BeatProcessingState::InBeat, ElementKind::UnpitchedElement) => {
             accum.start_dash();
             BeatProcessingState::CollectingDashesInBeat
         }
-        (BeatProcessingState::CollectingDashesInBeat, ElementKind::UnpitchedElement) if cell.char == "-" => {
+        (BeatProcessingState::CollectingDashesInBeat, ElementKind::UnpitchedElement) => {
             accum.increment_dash();
             BeatProcessingState::CollectingDashesInBeat
         }
@@ -309,8 +309,8 @@ pub fn beat_transition(
         // PITCH → transition from CollectingDashes to pitch, or within pitch
         (BeatProcessingState::CollectingDashesInBeat, ElementKind::PitchedElement) => {
             accum.finish_dashes();
-            if let Some(pitch_code) = &cell.pitch_code {
-                accum.start_pitch(*pitch_code, cell.octave);
+            if let Some(pitch_code) = cell.get_pitch_code() {
+                accum.start_pitch(pitch_code, cell.get_octave());
                 BeatProcessingState::CollectingPitchInBeat
             } else {
                 BeatProcessingState::InBeat  // No pitch, skip
@@ -319,23 +319,23 @@ pub fn beat_transition(
         // SUPERSCRIPT = grace note (rhythm-transparent)
         (BeatProcessingState::InBeat, ElementKind::PitchedElement) if cell.is_superscript() => {
             // Grace note before any main element
-            if let Some(pitch_code) = &cell.pitch_code {
-                accum.add_grace_note(*pitch_code, cell.octave);
+            if let Some(pitch_code) = cell.get_pitch_code() {
+                accum.add_grace_note(pitch_code, cell.get_octave());
             }
             BeatProcessingState::InBeat
         }
         (BeatProcessingState::CollectingPitchInBeat, ElementKind::PitchedElement) if cell.is_superscript() => {
             // Grace note after main element (trailing ornament)
-            if let Some(pitch_code) = &cell.pitch_code {
-                accum.add_grace_note(*pitch_code, cell.octave);
+            if let Some(pitch_code) = cell.get_pitch_code() {
+                accum.add_grace_note(pitch_code, cell.get_octave());
             }
             BeatProcessingState::CollectingTrailingGraceNotes
         }
 
         // NORMAL PITCHED ELEMENT (not superscript)
         (BeatProcessingState::InBeat, ElementKind::PitchedElement) => {
-            if let Some(pitch_code) = &cell.pitch_code {
-                accum.start_pitch(*pitch_code, cell.octave);
+            if let Some(pitch_code) = cell.get_pitch_code() {
+                accum.start_pitch(pitch_code, cell.get_octave());
                 BeatProcessingState::CollectingPitchInBeat
             } else {
                 BeatProcessingState::InBeat
@@ -344,16 +344,16 @@ pub fn beat_transition(
         (BeatProcessingState::CollectingPitchInBeat, ElementKind::PitchedElement) => {
             // New pitch → finish previous and start new
             accum.finish_pitch();
-            if let Some(pitch_code) = &cell.pitch_code {
-                accum.start_pitch(*pitch_code, cell.octave);
+            if let Some(pitch_code) = cell.get_pitch_code() {
+                accum.start_pitch(pitch_code, cell.get_octave());
                 BeatProcessingState::CollectingPitchInBeat
             } else {
                 BeatProcessingState::InBeat
             }
         }
 
-        // DASHES after PITCH → extend current note
-        (BeatProcessingState::CollectingPitchInBeat, ElementKind::UnpitchedElement) if cell.char == "-" => {
+        // DASHES after PITCH → extend current note (UnpitchedElement is dash only)
+        (BeatProcessingState::CollectingPitchInBeat, ElementKind::UnpitchedElement) => {
             accum.increment_dash();
             BeatProcessingState::CollectingPitchInBeat
         }
@@ -424,8 +424,8 @@ pub fn transition(
     measure_tracker: &mut MeasureTracker,
 ) -> MusicXMLState {
     // Handle barlines at any beat state
-    if cell.kind.is_barline() {
-        if let Some(_barline_type) = element_kind_to_barline_type(cell.kind) {
+    if cell.get_kind().is_barline() {
+        if let Some(_barline_type) = element_kind_to_barline_type(cell.get_kind()) {
             // End current measure and prepare for next
             measure_tracker.end_measure_and_advance();
             return MusicXMLState::MeasureOpen;
@@ -454,23 +454,23 @@ pub fn transition(
     match current_state {
         // Beat-level states (existing logic)
         MusicXMLState::InBeat => {
-            match cell.kind {
-                ElementKind::UnpitchedElement if cell.char == "-" => {
+            match cell.get_kind() {
+                ElementKind::UnpitchedElement => {
                     let _ = measure_tracker.add_duration(1);
                     beat_accum.start_dash();
                     MusicXMLState::CollectingDashesInBeat
                 }
                 ElementKind::PitchedElement if cell.is_superscript() => {
                     // Grace note (superscript) - rhythm transparent
-                    if let Some(pitch_code) = &cell.pitch_code {
-                        beat_accum.add_grace_note(*pitch_code, cell.octave);
+                    if let Some(pitch_code) = cell.get_pitch_code() {
+                        beat_accum.add_grace_note(pitch_code, cell.get_octave());
                     }
                     MusicXMLState::InBeat
                 }
                 ElementKind::PitchedElement => {
                     let _ = measure_tracker.add_duration(1);
-                    if let Some(pitch_code) = &cell.pitch_code {
-                        beat_accum.start_pitch(*pitch_code, cell.octave);
+                    if let Some(pitch_code) = cell.get_pitch_code() {
+                        beat_accum.start_pitch(pitch_code, cell.get_octave());
                         MusicXMLState::CollectingPitchInBeat
                     } else {
                         MusicXMLState::InBeat
@@ -481,8 +481,8 @@ pub fn transition(
         }
 
         MusicXMLState::CollectingDashesInBeat => {
-            match cell.kind {
-                ElementKind::UnpitchedElement if cell.char == "-" => {
+            match cell.get_kind() {
+                ElementKind::UnpitchedElement => {
                     let _ = measure_tracker.add_duration(1);
                     beat_accum.increment_dash();
                     MusicXMLState::CollectingDashesInBeat
@@ -490,8 +490,8 @@ pub fn transition(
                 ElementKind::PitchedElement => {
                     let _ = measure_tracker.add_duration(1);
                     beat_accum.finish_dashes();
-                    if let Some(pitch_code) = &cell.pitch_code {
-                        beat_accum.start_pitch(*pitch_code, cell.octave);
+                    if let Some(pitch_code) = cell.get_pitch_code() {
+                        beat_accum.start_pitch(pitch_code, cell.get_octave());
                         MusicXMLState::CollectingPitchInBeat
                     } else {
                         MusicXMLState::InBeat
@@ -502,16 +502,16 @@ pub fn transition(
         }
 
         MusicXMLState::CollectingPitchInBeat => {
-            match cell.kind {
-                ElementKind::UnpitchedElement if cell.char == "-" => {
+            match cell.get_kind() {
+                ElementKind::UnpitchedElement => {
                     let _ = measure_tracker.add_duration(1);
                     beat_accum.increment_dash();
                     MusicXMLState::CollectingPitchInBeat
                 }
                 ElementKind::PitchedElement if cell.is_superscript() => {
                     // Grace note (superscript) after main element
-                    if let Some(pitch_code) = &cell.pitch_code {
-                        beat_accum.add_grace_note(*pitch_code, cell.octave);
+                    if let Some(pitch_code) = cell.get_pitch_code() {
+                        beat_accum.add_grace_note(pitch_code, cell.get_octave());
                     }
                     MusicXMLState::CollectingTrailingGraceNotes
                 }
@@ -519,8 +519,8 @@ pub fn transition(
                     // New pitch → finish previous and start new
                     let _ = measure_tracker.add_duration(1);
                     beat_accum.finish_pitch();
-                    if let Some(pitch_code) = &cell.pitch_code {
-                        beat_accum.start_pitch(*pitch_code, cell.octave);
+                    if let Some(pitch_code) = cell.get_pitch_code() {
+                        beat_accum.start_pitch(pitch_code, cell.get_octave());
                         MusicXMLState::CollectingPitchInBeat
                     } else {
                         MusicXMLState::InBeat
@@ -651,7 +651,7 @@ mod tests {
 
         // Start with MeasureReady
         let mut state = MusicXMLState::MeasureReady;
-        let dash = Cell::new("-".to_string(), ElementKind::UnpitchedElement, 0);
+        let dash = Cell::new("-".to_string(), ElementKind::UnpitchedElement);
 
         // First dash: MeasureReady → MeasureOpen → InBeat → CollectingDashesInBeat
         // (FSM auto-transitions to InBeat and processes the dash in a single call)
@@ -665,7 +665,7 @@ mod tests {
         assert_eq!(measure_tracker.beat_count, 2);
 
         // Barline: closes measure 1, opens measure 2
-        let barline = Cell::new("|".to_string(), ElementKind::SingleBarline, 0);
+        let barline = Cell::new("|".to_string(), ElementKind::SingleBarline);
         state = transition(state, &barline, &mut beat_accum, &mut measure_tracker);
         assert_eq!(state, MusicXMLState::MeasureOpen);
         assert_eq!(measure_tracker.measure_number, 2);
@@ -700,8 +700,8 @@ mod tests {
         let mut completed_measures = Vec::new();
 
         // Create test cells
-        let dash = Cell::new("-".to_string(), ElementKind::UnpitchedElement, 0);
-        let barline = Cell::new("|".to_string(), ElementKind::SingleBarline, 4);
+        let dash = Cell::new("-".to_string(), ElementKind::UnpitchedElement);
+        let barline = Cell::new("|".to_string(), ElementKind::SingleBarline);
 
         // Measure 1: 4 dashes
         for _ in 0..4 {
@@ -746,8 +746,8 @@ mod tests {
         let mut measure = MeasureTracker::new();
         let mut completed_measures = Vec::new();
 
-        let dash = Cell::new("-".to_string(), ElementKind::UnpitchedElement, 0);
-        let barline = Cell::new("|".to_string(), ElementKind::SingleBarline, 0);
+        let dash = Cell::new("-".to_string(), ElementKind::UnpitchedElement);
+        let barline = Cell::new("|".to_string(), ElementKind::SingleBarline);
 
         // Process 3 full measures
         for measure_count in 1..=3 {
@@ -815,22 +815,26 @@ mod tests {
         let mut current_note_count = 0;
 
         // Create cells
+        use crate::renderers::font_utils::glyph_for_pitch;
+        use crate::models::elements::PitchSystem;
         let mut cells = Vec::new();
 
-        // First measure: 1 2 3 4
-        for pitch_char in &["1", "2", "3", "4"] {
-            let mut cell = Cell::new(pitch_char.to_string(), ElementKind::PitchedElement, 0);
-            cell.pitch_code = Some(PitchCode::N1); // Simplified to N1
+        // First measure: 1 2 3 4 - use proper codepoints
+        let pitch_codes_1 = [PitchCode::N1, PitchCode::N2, PitchCode::N3, PitchCode::N4];
+        for pc in pitch_codes_1.iter() {
+            let glyph = glyph_for_pitch(*pc, 0, PitchSystem::Number).expect("Should have glyph");
+            let cell = Cell::from_codepoint(glyph as u32, ElementKind::PitchedElement);
             cells.push(cell);
         }
 
         // Barline
-        cells.push(Cell::new("|".to_string(), ElementKind::SingleBarline, 4));
+        cells.push(Cell::new("|".to_string(), ElementKind::SingleBarline));
 
-        // Second measure: 5 6 7 8
-        for pitch_char in &["5", "6", "7", "8"] {
-            let mut cell = Cell::new(pitch_char.to_string(), ElementKind::PitchedElement, 0);
-            cell.pitch_code = Some(PitchCode::N1); // Simplified to N1
+        // Second measure: 5 6 7 8 - use proper codepoints
+        let pitch_codes_2 = [PitchCode::N5, PitchCode::N6, PitchCode::N7, PitchCode::N1];
+        for pc in pitch_codes_2.iter() {
+            let glyph = glyph_for_pitch(*pc, 0, PitchSystem::Number).expect("Should have glyph");
+            let cell = Cell::from_codepoint(glyph as u32, ElementKind::PitchedElement);
             cells.push(cell);
         }
 
@@ -840,11 +844,11 @@ mod tests {
 
             state = transition(state, cell, &mut beat_accum, &mut measure);
 
-            if cell.kind.is_barline() {
+            if cell.get_kind().is_barline() {
                 // Barline detected - record completed measure
                 completed_measures.push((prev_measure, current_note_count));
                 current_note_count = 0;
-            } else if cell.kind == ElementKind::PitchedElement {
+            } else if cell.get_kind() == ElementKind::PitchedElement {
                 current_note_count += 1;
             }
         }

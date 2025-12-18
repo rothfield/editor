@@ -64,28 +64,32 @@ impl BeatDeriver {
 
 impl BeatDeriver {
     /// Extract implicit beats from cells based on line grammar rules
-    /// Grammar: beat-element = pitched-element | unpitched-element | breath-mark
-    /// Beats are separated by anything that is NOT a beat-element (whitespace, text, barline, etc.)
-    /// Note: Rhythm-transparent cells (ornaments) are skipped - they don't count toward beats
+    ///
+    /// See `src/parse/GRAMMAR.md` for formal grammar specification.
+    ///
+    /// Beat = TimedElement (BreathMark? TimedElement)*
+    /// TimedElement = PitchedElement | UnpitchedElement
+    ///
+    /// Superscripts (grace notes) attach to beats but are NOT part of beats.
+    /// Beats are separated by whitespace, barlines, symbols, text.
     pub fn extract_implicit_beats(&self, cells: &[Cell]) -> Vec<BeatSpan> {
         let mut beats = Vec::new();
         let mut beat_start = None;
-        let mut beat_end = None; // Track actual last beat-element cell
+        let mut beat_end = None; // Track actual last TIMED element cell (for underlines)
         let mut current_duration = 1.0;
 
         for (index, cell) in cells.iter().enumerate() {
-            // Check if this cell is a beat element
-            let is_beat = self.is_beat_element(cell);
-
-            if is_beat {
-                // This cell is part of a beat
+            if self.is_timed_element(cell) {
+                // Timed element: defines beat boundaries and gets underlines
                 if beat_start.is_none() {
                     beat_start = Some(index);
                 }
-                beat_end = Some(index); // Track the actual end position
+                beat_end = Some(index); // Update end to this timed element
+            } else if self.is_inside_beat(cell) {
+                // Inside-beat element (superscript): doesn't end beat, doesn't affect underline
+                // Just continue - beat_start/beat_end unchanged
             } else {
-                // This cell is NOT a beat-element (separator: whitespace, text, barline, etc.)
-                // End current beat if one is active
+                // Separator (whitespace, barline, etc.): ends the beat
                 if let Some(start) = beat_start {
                     if let Some(end) = beat_end {
                         beats.push(BeatSpan::new(start, end, current_duration));
@@ -107,16 +111,28 @@ impl BeatDeriver {
         beats
     }
 
-    /// Check if element is a beat-element per grammar
-    /// beat-element = pitched-element | unpitched-element | breath-mark
-    /// Note: Whitespace acts as a beat DELIMITER, not a beat element
-    fn is_beat_element(&self, cell: &Cell) -> bool {
+    /// Check if element is a timed-element (gets underlines)
+    ///
+    /// See `src/parse/GRAMMAR.md` - TimedElement = PitchedElement | UnpitchedElement
+    fn is_timed_element(&self, cell: &Cell) -> bool {
+        // Superscripts are NOT timed elements (rhythm-transparent, no underlines)
+        if cell.is_superscript() {
+            return false;
+        }
+
         matches!(
-            cell.kind,
+            cell.get_kind(),
             ElementKind::PitchedElement
             | ElementKind::UnpitchedElement
             | ElementKind::BreathMark
         )
+    }
+
+    /// Check if element is inside a beat but not a timed element
+    ///
+    /// Superscripts are inside beats (don't end them) but don't get underlines
+    fn is_inside_beat(&self, cell: &Cell) -> bool {
+        cell.is_superscript()
     }
 }
 

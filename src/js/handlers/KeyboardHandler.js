@@ -30,11 +30,26 @@ export class KeyboardHandler {
     logger.debug(LOG_CATEGORIES.KEYBOARD, 'Modifiers', { modifiers });
 
     // Fix for browsers that return "alt" instead of the actual key when Alt is pressed
-    // Use event.code as fallback (e.g., "KeyL" -> "l")
+    // Use event.code as fallback (e.g., "KeyL" -> "l", "ArrowUp" -> "ArrowUp")
+    if (modifiers.alt) {
+      logger.info(LOG_CATEGORIES.KEYBOARD, 'Alt key combo detected', {
+        key,
+        code: event.code,
+        altKey: event.altKey
+      });
+    }
     if (modifiers.alt && (key === 'alt' || key === 'Alt')) {
       const code = event.code;
+      logger.info(LOG_CATEGORIES.KEYBOARD, 'Browser returned "alt" as key, fixing from code', { code });
       if (code && code.startsWith('Key')) {
         key = code.replace('Key', '').toLowerCase();
+        logger.info(LOG_CATEGORIES.KEYBOARD, 'Fixed to letter key', { key });
+      } else if (code && code.startsWith('Arrow')) {
+        // Handle arrow keys
+        key = code;
+        logger.info(LOG_CATEGORIES.KEYBOARD, 'Fixed to arrow key', { key });
+      } else {
+        logger.warn(LOG_CATEGORIES.KEYBOARD, 'Could not fix key from code', { code });
       }
     }
 
@@ -43,7 +58,7 @@ export class KeyboardHandler {
 
     // Handle Ctrl key combinations (copy/paste/undo/redo)
     if (modifiers.ctrl && !modifiers.alt) {
-      this.handleCtrlCommand(key);
+      await this.handleCtrlCommand(key);
       return;
     }
 
@@ -76,6 +91,7 @@ export class KeyboardHandler {
    */
   async handleAltCommand(key) {
     // Log command for debugging
+    logger.info(LOG_CATEGORIES.KEYBOARD, 'handleAltCommand called', { key, keyLower: key.toLowerCase() });
     this.editor.addToConsoleLog(`Musical command: Alt+${key.toLowerCase()}`);
 
     switch (key.toLowerCase()) {
@@ -106,16 +122,32 @@ export class KeyboardHandler {
         break;
       case '0':
       case 'o':
-        // Convert selection to ornament (Alt+O or Alt+0)
-        if (this.editor.ui && this.editor.ui.selectionToOrnament) {
-          await this.editor.ui.selectionToOrnament();
+        // Convert selection to superscript (Alt+O or Alt+0)
+        if (this.editor.ui && this.editor.ui.selectionToSuperscript) {
+          await this.editor.ui.selectionToSuperscript();
+        }
+        break;
+      case 'arrowup':
+        // Add superscript (grace note)
+        logger.info(LOG_CATEGORIES.KEYBOARD, 'Alt+ArrowUp: Adding superscripts');
+        if (this.editor.ui && this.editor.ui.selectionToSuperscript) {
+          await this.editor.ui.selectionToSuperscript();
+        }
+        break;
+      case 'arrowdown':
+        // Remove superscript (back to normal)
+        logger.info(LOG_CATEGORIES.KEYBOARD, 'Alt+ArrowDown: Removing superscripts');
+        if (this.editor.ui && this.editor.ui.removeSuperscripts) {
+          await this.editor.ui.removeSuperscripts();
+        } else {
+          logger.warn(LOG_CATEGORIES.KEYBOARD, 'removeSuperscripts not available', { ui: !!this.editor.ui });
         }
         break;
       default:
         logger.warn(LOG_CATEGORIES.KEYBOARD, 'Unknown Alt command', { key });
         this.editor.showWarning(`Unknown musical command: Alt+${key}`, {
           important: false,
-          details: `Available commands: Alt+N (new), Alt+S (slur), Alt+U (upper octave), Alt+M (middle octave), Alt+L (lower octave), Alt+T (tala), Alt+O (ornament)`
+          details: `Available commands: Alt+N (new), Alt+S (slur), Alt+U (upper octave), Alt+M (middle octave), Alt+L (lower octave), Alt+T (tala), Alt+O (superscript), Alt+Up (add superscript), Alt+Down (remove superscript)`
         });
         return;
     }
@@ -201,11 +233,25 @@ export class KeyboardHandler {
         // Remove slur using layered API
         await this._removeSlurLayered();
         break;
+      case 'arrowup':
+        // Add superscript (also works with Shift held)
+        logger.info(LOG_CATEGORIES.KEYBOARD, 'Alt+Shift+ArrowUp: Adding superscripts');
+        if (this.editor.ui && this.editor.ui.selectionToSuperscript) {
+          await this.editor.ui.selectionToSuperscript();
+        }
+        break;
+      case 'arrowdown':
+        // Remove superscript (also works with Shift held)
+        logger.info(LOG_CATEGORIES.KEYBOARD, 'Alt+Shift+ArrowDown: Removing superscripts');
+        if (this.editor.ui && this.editor.ui.removeSuperscripts) {
+          await this.editor.ui.removeSuperscripts();
+        }
+        break;
       default:
         logger.warn(LOG_CATEGORIES.KEYBOARD, 'Unknown Alt+Shift command', { key });
         this.editor.showWarning(`Unknown mode command: Alt+Shift+${key.toUpperCase()}`, {
           important: false,
-          details: `Available commands: Alt+Shift+S (remove slur)`
+          details: `Available commands: Alt+Shift+S (remove slur), Alt+Shift+Up (add superscript), Alt+Shift+Down (remove superscript)`
         });
         return;
     }
@@ -245,7 +291,8 @@ export class KeyboardHandler {
    * Handle Ctrl+key commands (copy/paste/undo/redo)
    * @param {string} key - Key name
    */
-  handleCtrlCommand(key) {
+  async handleCtrlCommand(key) {
+    console.log('[DEBUG] handleCtrlCommand:', key, key.toLowerCase());
     this.editor.addToConsoleLog(`Edit command: Ctrl+${key.toUpperCase()}`);
 
     switch (key.toLowerCase()) {
@@ -266,6 +313,18 @@ export class KeyboardHandler {
         break;
       case 'y':
         this.editor.handleRedo();
+        break;
+      case 'arrowup':
+        // Add superscript (grace note)
+        if (this.editor.ui && this.editor.ui.selectionToSuperscript) {
+          await this.editor.ui.selectionToSuperscript();
+        }
+        break;
+      case 'arrowdown':
+        // Remove superscript (back to normal)
+        if (this.editor.ui && this.editor.ui.removeSuperscripts) {
+          await this.editor.ui.removeSuperscripts();
+        }
         break;
       default:
         logger.warn(LOG_CATEGORIES.KEYBOARD, 'Unknown Ctrl command', { key });

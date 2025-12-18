@@ -11,7 +11,107 @@ export class OSMDRenderer {
         this.renderToken = 0;
         this.cache = null; // IndexedDB cache for rendered staff notation
         this.lastMusicXmlHash = null; // Track last rendered content to skip unnecessary re-renders
+        this.vexflowPatched = false; // Track if we've patched VexFlow
         this.initCache();
+    }
+
+    /**
+     * Monkey-patch VexFlow's GraceNoteGroup to support RIGHT positioning.
+     * Must be called BEFORE osmd.load()/osmd.render().
+     *
+     * Based on: https://github.com/0xfe/vexflow
+     * VexFlow's GraceNoteGroup only supports LEFT positioning by default.
+     */
+    patchVexFlowGraceNoteGroup() {
+        if (this.vexflowPatched) return;
+
+        // Access VexFlow through OSMD's bundled version
+        const VF = window.Vex?.Flow || window.VexFlow || opensheetmusicdisplay?.VexFlowPatch;
+        if (!VF) {
+            logger.warn(LOG_CATEGORIES.OSMD, 'Cannot find VexFlow to patch');
+            return;
+        }
+
+        const GraceNoteGroup = VF.GraceNoteGroup;
+        const Modifier = VF.Modifier;
+
+        if (!GraceNoteGroup || !Modifier) {
+            logger.warn(LOG_CATEGORIES.OSMD, 'GraceNoteGroup or Modifier not found');
+            return;
+        }
+
+        logger.info(LOG_CATEGORIES.OSMD, 'Patching VexFlow GraceNoteGroup for RIGHT positioning');
+
+        // 1) Patch format(): allocate RIGHT spacing if position is RIGHT
+        const oldFormat = GraceNoteGroup.format;
+        if (oldFormat) {
+            GraceNoteGroup.format = function(groups, state) {
+                const left = [];
+                const right = [];
+                for (const g of (groups || [])) {
+                    (g.position === Modifier.Position.RIGHT ? right : left).push(g);
+                }
+
+                // Existing behavior for LEFT groups
+                const didLeft = oldFormat.call(GraceNoteGroup, left, state);
+
+                // New behavior for RIGHT groups
+                if (right.length) {
+                    const spacing = 4;
+                    let groupShift = 0;
+                    for (const g of right) {
+                        if (g.preFormat) g.preFormat();
+                        groupShift = Math.max(groupShift, (g.getWidth?.() || 0) + spacing);
+                    }
+                    state.right_shift = (state.right_shift || 0) + groupShift;
+                    for (const g of right) {
+                        if (g.setSpacingFromNextModifier) g.setSpacingFromNextModifier(0);
+                    }
+                    return true;
+                }
+                return didLeft;
+            };
+        }
+
+        // 2) Patch draw(): if RIGHT, anchor to tickContext X + right extras
+        const oldDraw = GraceNoteGroup.prototype.draw;
+        if (oldDraw) {
+            GraceNoteGroup.prototype.draw = function() {
+                if (this.position !== Modifier.Position.RIGHT) {
+                    return oldDraw.call(this);
+                }
+
+                this.checkContext();
+                const note = this.getNote();
+                if (!(note && (this.index !== null))) {
+                    throw new Error("GraceNoteGroup: missing parent note");
+                }
+
+                const tickContext = note.getTickContext();
+                const extraPx = tickContext.getExtraPx?.() || { right: 0, extraRight: 0 };
+                const baseX =
+                    tickContext.getX() +
+                    (extraPx.right || 0) +
+                    (extraPx.extraRight || 0) +
+                    (this.getSpacingFromNextModifier?.() || 0);
+
+                // Move each grace note tick context to the right side
+                if (this.grace_notes) {
+                    this.grace_notes.forEach(graceNote => {
+                        const tc = graceNote.getTickContext();
+                        const xOffset = tc.getX();
+                        graceNote.setStave(note.stave);
+                        tc.setX(baseX + xOffset);
+                    });
+                }
+
+                // Draw like normal
+                return oldDraw.call(this);
+            };
+        }
+
+        this.vexflowPatched = true;
+        logger.info(LOG_CATEGORIES.OSMD, 'VexFlow GraceNoteGroup patched successfully');
     }
 
     // Initialize IndexedDB cache for staff notation renders
@@ -39,6 +139,13 @@ export class OSMDRenderer {
         }
     }
 
+    // Cache version - bump this to invalidate all cached renders
+    // v16: Parse MusicXML to detect after-grace notes (steal-time-previous)
+    static CACHE_VERSION = 'v16';
+
+    // Track which grace notes are after-grace (from MusicXML parsing)
+    afterGraceNoteCount = 0;
+
     // Simple hash function for MusicXML content (FR-032b)
     hashMusicXml(musicxml) {
         let hash = 0;
@@ -47,7 +154,7 @@ export class OSMDRenderer {
             hash = ((hash << 5) - hash) + char;
             hash = hash & hash; // Convert to 32-bit integer
         }
-        return hash.toString(36); // Base36 for shorter keys
+        return `${OSMDRenderer.CACHE_VERSION}_${hash.toString(36)}`;
     }
 
     // Get cached SVG from IndexedDB
@@ -117,6 +224,9 @@ export class OSMDRenderer {
     }
 
     async init() {
+        // Patch VexFlow before creating OSMD instance
+        this.patchVexFlowGraceNoteGroup();
+
         if (!this.osmd) {
             this.osmd = new opensheetmusicdisplay.OpenSheetMusicDisplay(this.containerId, {
                 backend: 'svg',
@@ -197,6 +307,12 @@ export class OSMDRenderer {
             this.osmd.Zoom = 0.75;  // Increased from 0.5 (1.5x bigger)
             await this.osmd.render();
 
+            // Parse MusicXML to detect which grace notes are after-grace (have steal-time-previous)
+            this.parseAfterGraceNotes(musicxml);
+
+            // Post-process: move after-grace notes to RIGHT of their anchor note via SVG manipulation
+            this.moveAfterGraceNotesRight();
+
             // Store rendered SVG in cache
             // (container already obtained above before clearing)
             const renderedSvg = container.innerHTML;
@@ -223,6 +339,334 @@ export class OSMDRenderer {
                 logger.warn(LOG_CATEGORIES.OSMD, 'Failed to reload audio player', { error: e });
             }
         }
+    }
+
+    /**
+     * Reposition grace notes by directly manipulating SVG transforms.
+     * This approach works because VexFlow objects are recreated on re-render.
+     */
+    repositionAfterGraceNotesSVG() {
+        if (!this.osmd || !this.osmd.graphic) {
+            return;
+        }
+
+        try {
+            const graphic = this.osmd.graphic;
+            const measureList = graphic.measureList;
+            if (!measureList) return;
+
+            // Iterate through all measures to find grace notes and their anchor notes
+            for (let m = 0; m < measureList.length; m++) {
+                const measureStaves = measureList[m];
+                if (!measureStaves) continue;
+
+                for (let p = 0; p < measureStaves.length; p++) {
+                    const staffMeasure = measureStaves[p];
+                    if (!staffMeasure || !staffMeasure.staffEntries) continue;
+
+                    for (let s = 0; s < staffMeasure.staffEntries.length; s++) {
+                        const staffEntry = staffMeasure.staffEntries[s];
+                        if (!staffEntry || !staffEntry.graphicalVoiceEntries) continue;
+
+                        for (let v = 0; v < staffEntry.graphicalVoiceEntries.length; v++) {
+                            const voiceEntry = staffEntry.graphicalVoiceEntries[v];
+                            if (!voiceEntry) continue;
+
+                            const vfStaveNote = voiceEntry.vfStaveNote;
+                            if (!vfStaveNote) continue;
+
+                            // Find grace note modifiers
+                            for (const modifier of (vfStaveNote.modifiers || [])) {
+                                const isGrace = modifier.getCategory?.() === 'gracenotegroups';
+                                console.log('[OSMD Grace SVG] Checking modifier:', {
+                                    category: modifier.getCategory?.(),
+                                    isGrace,
+                                    constructorName: modifier.constructor.name,
+                                });
+
+                                if (isGrace) {
+                                    // Get SVG elements for grace notes and main note
+                                    const graceNotes = modifier.grace_notes || [];
+                                    console.log('[OSMD Grace SVG] Grace notes count:', graceNotes.length);
+                                    if (graceNotes.length === 0) continue;
+
+                                    // TEMP: Force all to right for testing
+                                    const forceRight = true;
+
+                                    // Get the main note's SVG element position
+                                    const mainNoteSVG = vfStaveNote.attrs?.el;
+                                    console.log('[OSMD Grace SVG] Main note SVG:', {
+                                        exists: !!mainNoteSVG,
+                                        attrsKeys: vfStaveNote.attrs ? Object.keys(vfStaveNote.attrs) : [],
+                                    });
+                                    if (!mainNoteSVG) {
+                                        console.log('[OSMD Grace SVG] No main note SVG, skipping');
+                                        continue;
+                                    }
+
+                                    const mainBBox = mainNoteSVG.getBBox();
+                                    console.log('[OSMD Grace SVG] Main note bbox:', mainBBox);
+
+                                    // Try to find the grace note group's SVG elements
+                                    // The GraceNoteGroup modifier may have a reference to the SVG group
+                                    console.log('[OSMD Grace SVG] modifier keys:', Object.keys(modifier));
+
+                                    // Calculate offset based on main note position
+                                    // We want grace notes to appear AFTER (right of) the main note
+                                    const mainNoteX = mainBBox.x + mainBBox.width;
+
+                                    // Get the first grace note to determine current position
+                                    const firstGrace = graceNotes[0];
+                                    const firstGraceSVG = firstGrace?.attrs?.el;
+                                    if (firstGraceSVG) {
+                                        const firstGraceBBox = firstGraceSVG.getBBox();
+                                        const offsetX = mainNoteX - firstGraceBBox.x + 10; // 10px gap
+
+                                        console.log('[OSMD Grace SVG] Offset calculation:', {
+                                            mainNoteX,
+                                            graceX: firstGraceBBox.x,
+                                            offsetX
+                                        });
+
+                                        // Move ALL grace notes in the group together
+                                        for (const graceNote of graceNotes) {
+                                            const graceSVG = graceNote.attrs?.el;
+                                            if (!graceSVG) continue;
+
+                                            // Get current transform and add translation
+                                            const current = graceSVG.getAttribute('transform') || '';
+                                            // If already has a translate, we need to modify it
+                                            if (current.includes('translate')) {
+                                                // Parse existing translate and add offset
+                                                const match = current.match(/translate\(([^,]+),\s*([^)]+)\)/);
+                                                if (match) {
+                                                    const existingX = parseFloat(match[1]);
+                                                    const existingY = parseFloat(match[2]);
+                                                    graceSVG.setAttribute('transform',
+                                                        `translate(${existingX + offsetX}, ${existingY})`);
+                                                }
+                                            } else {
+                                                graceSVG.setAttribute('transform',
+                                                    `${current} translate(${offsetX}, 0)`.trim());
+                                            }
+                                            console.log('[OSMD Grace SVG] Applied transform to grace note');
+                                        }
+
+                                        // Also try to move the beams and slurs if they exist
+                                        if (modifier.beam) {
+                                            console.log('[OSMD Grace SVG] Found beam, would need to adjust');
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            console.log('[OSMD Grace SVG] Error:', e.message);
+        }
+    }
+
+    /**
+     * Parse MusicXML to detect which grace notes are after-grace (have steal-time-previous).
+     * Stores an array of booleans, one per grace note in document order.
+     */
+    parseAfterGraceNotes(musicxml) {
+        this.afterGraceFlags = [];
+
+        // Find all <grace> elements and check for steal-time-previous
+        // Regex to match <grace.../> or <grace...> tags
+        const graceRegex = /<grace[^>]*>/g;
+        let match;
+
+        while ((match = graceRegex.exec(musicxml)) !== null) {
+            const graceTag = match[0];
+            const isAfterGrace = graceTag.includes('steal-time-previous');
+            this.afterGraceFlags.push(isAfterGrace);
+            console.log('[Grace] Parsed grace note:', { graceTag, isAfterGrace });
+        }
+
+        console.log('[Grace] Total grace notes parsed:', this.afterGraceFlags.length,
+                    'after-grace:', this.afterGraceFlags.filter(x => x).length);
+    }
+
+    /**
+     * Move after-grace notes to the RIGHT of their anchor note via SVG manipulation.
+     *
+     * The problem: Grace notes are attached to the FOLLOWING note in MusicXML/VexFlow,
+     * so they appear LEFT of that note. But for after-grace (nachschlag), they should
+     * appear RIGHT of the PREVIOUS note (their logical anchor).
+     *
+     * Solution: Find the GraceNoteGroup modifier and move the entire group's SVG.
+     */
+    moveAfterGraceNotesRight() {
+        if (!this.osmd || !this.osmd.graphic) return;
+
+        try {
+            // Track which grace note we're on (to match with parsed afterGraceFlags)
+            let graceNoteIndex = 0;
+
+            // Collect all main notes first, then process grace notes
+            const mainNotes = [];
+
+            for (const measureStaves of this.osmd.graphic.measureList || []) {
+                for (const staffMeasure of measureStaves || []) {
+                    for (const staffEntry of staffMeasure?.staffEntries || []) {
+                        for (const voiceEntry of staffEntry?.graphicalVoiceEntries || []) {
+                            const vfNote = voiceEntry.vfStaveNote;
+                            if (!vfNote) continue;
+
+                            const pve = voiceEntry.parentVoiceEntry;
+                            const isGrace = pve?.Notes?.[0]?.IsGraceNote || pve?.IsGrace || false;
+
+                            if (!isGrace) {
+                                const svgEl = vfNote.attrs?.el;
+                                if (svgEl) {
+                                    const bbox = svgEl.getBBox();
+                                    mainNotes.push({
+                                        vfNote,
+                                        staffEntry,
+                                        x: bbox.x,
+                                        width: bbox.width,
+                                        rightEdge: bbox.x + bbox.width
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Now find grace notes and position them after the PREVIOUS main note
+            for (let i = 0; i < mainNotes.length; i++) {
+                const noteInfo = mainNotes[i];
+                const prevNoteInfo = i > 0 ? mainNotes[i - 1] : null;
+
+                for (const modifier of (noteInfo.vfNote.modifiers || [])) {
+                    const category = modifier.getCategory?.() || '';
+
+                    if (category === 'gracenotegroups' && modifier.grace_notes?.length > 0 && prevNoteInfo) {
+                        const graceCount = modifier.grace_notes.length;
+
+                        // Check if ALL grace notes in this group are after-grace
+                        // by looking at the parsed flags from MusicXML
+                        let isAfterGrace = true;
+                        for (let g = 0; g < graceCount; g++) {
+                            const flagIndex = graceNoteIndex + g;
+                            if (flagIndex >= (this.afterGraceFlags?.length || 0)) {
+                                console.log('[Grace] No more flags, assuming before-grace');
+                                isAfterGrace = false;
+                                break;
+                            }
+                            if (!this.afterGraceFlags[flagIndex]) {
+                                isAfterGrace = false;
+                                break;
+                            }
+                        }
+
+                        console.log('[Grace] Group detection:', {
+                            graceCount,
+                            graceNoteIndex,
+                            flags: this.afterGraceFlags?.slice(graceNoteIndex, graceNoteIndex + graceCount),
+                            isAfterGrace
+                        });
+
+                        // Advance the index past this group
+                        graceNoteIndex += graceCount;
+
+                        // Skip before-grace notes (they should stay left of following note)
+                        if (!isAfterGrace) {
+                            console.log('[Grace] Skipping before-grace note group');
+                            continue;
+                        }
+
+                        // Get first grace note element to find the container
+                        const firstGraceEl = modifier.grace_notes[0]?.attrs?.el;
+                        if (!firstGraceEl) continue;
+
+                        // Find the vf-modifiers container
+                        const modifiersContainer = firstGraceEl.closest('.vf-modifiers');
+                        if (!modifiersContainer) continue;
+
+                        // Get bounding box of container and calculate offset
+                        const bbox = modifiersContainer.getBBox();
+                        const targetX = prevNoteInfo.rightEdge + 5; // Small gap after anchor note
+                        const offsetX = targetX - bbox.x;
+
+                        console.log('[Grace] Position debug:', {
+                            prevNoteRightEdge: prevNoteInfo.rightEdge,
+                            graceBoxX: bbox.x,
+                            graceBoxWidth: bbox.width,
+                            targetX,
+                            offsetX
+                        });
+
+                        // Move the entire vf-modifiers container (contains grace note heads and stems)
+                        const transformValue = `translate(${offsetX}, 0)`;
+                        modifiersContainer.setAttribute('transform', transformValue);
+                        console.log('[Grace] Set transform:', transformValue); // Used by test
+                    }
+                }
+            }
+        } catch (e) {
+            logger.error(LOG_CATEGORIES.OSMD, 'Error moving grace notes:', { error: e.message });
+        }
+    }
+
+    /**
+     * Determine if a GraceNoteGroup should be positioned on the RIGHT (after-grace/nachschlag).
+     *
+     * Detection strategy:
+     * 1. Check staffEntry for grace VoiceEntries marked with graceAfterMainNote
+     * 2. Check the anchor note's GraceNotesAfter array
+     * 3. Check VexFlow grace notes for after-grace indicators
+     *
+     * NOTE: Currently returns false because OSMD doesn't parse steal-time-previous
+     * into graceAfterMainNote. See repositionAfterGraceNotes() for details.
+     *
+     * @param {Object} graceGroup - VexFlow GraceNoteGroup modifier
+     * @param {Object} voiceEntry - OSMD GraphicalVoiceEntry containing the anchor note
+     * @param {Object} staffEntry - OSMD StaffEntry containing the voiceEntries
+     * @returns {boolean} true if should be positioned RIGHT
+     */
+    isAfterGraceGroup(graceGroup, voiceEntry, staffEntry) {
+        try {
+            // Strategy 1: Check if any grace VE in the same staffEntry is marked as after-grace
+            if (staffEntry?.graphicalVoiceEntries) {
+                for (const ve of staffEntry.graphicalVoiceEntries) {
+                    const pve = ve.parentVoiceEntry;
+                    const isGrace = pve?.Notes?.[0]?.IsGraceNote || pve?.IsGrace;
+
+                    if (isGrace && pve?.graceAfterMainNote) {
+                        return true;
+                    }
+                }
+            }
+
+            // Strategy 2: Check anchor note's grace properties
+            if (voiceEntry?.notes) {
+                for (const graphicalNote of voiceEntry.notes) {
+                    const sourceNote = graphicalNote?.sourceNote;
+                    if (sourceNote?.GraceNotesAfter?.length > 0) {
+                        return true;
+                    }
+                }
+            }
+
+            // Strategy 3: Check VexFlow grace notes for after-grace indicators
+            if (graceGroup?.grace_notes) {
+                for (const gn of graceGroup.grace_notes) {
+                    if (gn.stealTimePrevious || gn.isAfterGrace || gn.afterGrace) {
+                        return true;
+                    }
+                }
+            }
+        } catch (e) {
+            logger.debug(LOG_CATEGORIES.OSMD, 'Error checking after-grace:', { error: e.message });
+        }
+
+        return false;
     }
 
     // Initialize audio player (called on first play, requires user gesture)

@@ -617,29 +617,29 @@ pub struct Ornament {
     pub placement: OrnamentPlacement,
 }
 
-/// Position type for ornaments relative to their parent note
+/// Position type for superscripts relative to their parent note
 #[wasm_bindgen]
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum OrnamentPositionType {
-    /// Ornament positioned before the parent note (grace note before)
+pub enum SuperscriptPositionType {
+    /// Superscript positioned before the parent note (grace note before)
     Before = 0,
 
-    /// Ornament positioned after the parent note (grace note after)
+    /// Superscript positioned after the parent note (grace note after)
     After = 1,
 
-    /// Ornament positioned on top of the parent note (e.g., trill, mordent)
+    /// Superscript positioned on top of the parent note (e.g., trill, mordent)
     OnTop = 2,
 }
 
 // Custom serialization to show both name and value
-impl Serialize for OrnamentPositionType {
+impl Serialize for SuperscriptPositionType {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
         use serde::ser::SerializeStruct;
-        let mut state = serializer.serialize_struct("OrnamentPositionType", 2)?;
+        let mut state = serializer.serialize_struct("SuperscriptPositionType", 2)?;
         state.serialize_field("name", &self.snake_case_name())?;
         state.serialize_field("value", &(*self as u8))?;
         state.end()
@@ -647,40 +647,40 @@ impl Serialize for OrnamentPositionType {
 }
 
 // Custom deserialization - accepts either number or object format
-impl<'de> Deserialize<'de> for OrnamentPositionType {
+impl<'de> Deserialize<'de> for SuperscriptPositionType {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
-        struct OrnamentPositionTypeVisitor;
+        struct SuperscriptPositionTypeVisitor;
 
-        impl<'de> serde::de::Visitor<'de> for OrnamentPositionTypeVisitor {
-            type Value = OrnamentPositionType;
+        impl<'de> serde::de::Visitor<'de> for SuperscriptPositionTypeVisitor {
+            type Value = SuperscriptPositionType;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                formatter.write_str("an OrnamentPositionType number or object")
+                formatter.write_str("an SuperscriptPositionType number or object")
             }
 
-            fn visit_u64<E>(self, value: u64) -> Result<OrnamentPositionType, E>
+            fn visit_u64<E>(self, value: u64) -> Result<SuperscriptPositionType, E>
             where
                 E: serde::de::Error,
             {
                 match value {
-                    0 => Ok(OrnamentPositionType::Before),
-                    1 => Ok(OrnamentPositionType::After),
-                    2 => Ok(OrnamentPositionType::OnTop),
-                    _ => Err(E::custom(format!("invalid OrnamentPositionType value: {}", value))),
+                    0 => Ok(SuperscriptPositionType::Before),
+                    1 => Ok(SuperscriptPositionType::After),
+                    2 => Ok(SuperscriptPositionType::OnTop),
+                    _ => Err(E::custom(format!("invalid SuperscriptPositionType value: {}", value))),
                 }
             }
 
-            fn visit_i64<E>(self, value: i64) -> Result<OrnamentPositionType, E>
+            fn visit_i64<E>(self, value: i64) -> Result<SuperscriptPositionType, E>
             where
                 E: serde::de::Error,
             {
                 self.visit_u64(value as u64)
             }
 
-            fn visit_map<A>(self, mut map: A) -> Result<OrnamentPositionType, A::Error>
+            fn visit_map<A>(self, mut map: A) -> Result<SuperscriptPositionType, A::Error>
             where
                 A: serde::de::MapAccess<'de>,
             {
@@ -693,60 +693,60 @@ impl<'de> Deserialize<'de> for OrnamentPositionType {
                     }
                 }
                 match value {
-                    Some(0) => Ok(OrnamentPositionType::Before),
-                    Some(1) => Ok(OrnamentPositionType::After),
-                    Some(2) => Ok(OrnamentPositionType::OnTop),
-                    Some(v) => Err(serde::de::Error::custom(format!("invalid OrnamentPositionType value: {}", v))),
+                    Some(0) => Ok(SuperscriptPositionType::Before),
+                    Some(1) => Ok(SuperscriptPositionType::After),
+                    Some(2) => Ok(SuperscriptPositionType::OnTop),
+                    Some(v) => Err(serde::de::Error::custom(format!("invalid SuperscriptPositionType value: {}", v))),
                     None => Err(serde::de::Error::missing_field("value")),
                 }
             }
         }
 
-        deserializer.deserialize_any(OrnamentPositionTypeVisitor)
+        deserializer.deserialize_any(SuperscriptPositionTypeVisitor)
     }
 }
 
-impl OrnamentPositionType {
+impl SuperscriptPositionType {
     /// Get the human-readable name for this position type
     pub fn name(&self) -> &'static str {
         match self {
-            OrnamentPositionType::Before => "Before",
-            OrnamentPositionType::After => "After",
-            OrnamentPositionType::OnTop => "On Top",
+            SuperscriptPositionType::Before => "Before",
+            SuperscriptPositionType::After => "After",
+            SuperscriptPositionType::OnTop => "On Top",
         }
     }
 
     /// Get snake_case name for JSON serialization
     pub fn snake_case_name(&self) -> &'static str {
         match self {
-            OrnamentPositionType::Before => "before",
-            OrnamentPositionType::After => "after",
-            OrnamentPositionType::OnTop => "on_top",
+            SuperscriptPositionType::Before => "before",
+            SuperscriptPositionType::After => "after",
+            SuperscriptPositionType::OnTop => "on_top",
         }
     }
 
     /// Get CSS class name for this position type
     pub fn css_class(&self) -> &'static str {
         match self {
-            OrnamentPositionType::Before => "ornament-position-before",
-            OrnamentPositionType::After => "ornament-position-after",
-            OrnamentPositionType::OnTop => "ornament-position-on-top",
+            SuperscriptPositionType::Before => "superscript-position-before",
+            SuperscriptPositionType::After => "superscript-position-after",
+            SuperscriptPositionType::OnTop => "superscript-position-on-top",
         }
     }
 
     /// Get MusicXML placement attribute value
     pub fn musicxml_placement(&self) -> &'static str {
         match self {
-            OrnamentPositionType::Before => "before",
-            OrnamentPositionType::After => "after",
-            OrnamentPositionType::OnTop => "above",
+            SuperscriptPositionType::Before => "before",
+            SuperscriptPositionType::After => "after",
+            SuperscriptPositionType::OnTop => "above",
         }
     }
 }
 
-impl Default for OrnamentPositionType {
+impl Default for SuperscriptPositionType {
     fn default() -> Self {
-        OrnamentPositionType::Before
+        SuperscriptPositionType::Before
     }
 }
 

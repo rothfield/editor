@@ -65,7 +65,7 @@ pub fn export_musicxml() -> Result<String, JsValue> {
 ///
 /// The IR captures all document structure (measures, beats, events) with
 /// proper rhythm analysis (LCM-based division calculation) and preserves
-/// all musical information (slurs, lyrics, ornaments, chords, etc.).
+/// all musical information (slurs, lyrics, superscripts, chords, etc.).
 ///
 /// # Returns
 /// JSON string representation of the IR structure
@@ -543,12 +543,12 @@ fn compute_text_line_layout(
 
         note_positions.push(display_width(&note_line));
 
-        // Ornament underline depends on position in rendered line:
+        // Superscript underline depends on position in rendered line:
         // - Before first pitch or after last pitch in beat → no underline
         // - Between pitches → underlined
 
-        // NOTE: Ornament field removed. Grace notes are now superscript characters
-        // stored directly in cell.char. The font renders them at 50% scale automatically.
+        // NOTE: Grace notes are now superscript characters stored directly in cell.char.
+        // The font renders them at 50% scale automatically.
         // Superscript cells are rendered inline like any other cell.
 
         // Render main cell with computed underline/overline
@@ -582,7 +582,7 @@ fn render_cell_with_lines(
     use crate::renderers::font_utils::glyph_for_pitch;
 
     // For non-pitched elements, use simple characters
-    match cell.kind {
+    match cell.get_kind() {
         ElementKind::SingleBarline => return "|".to_string(),
         ElementKind::RepeatLeftBarline => return "|:".to_string(),
         ElementKind::RepeatRightBarline => return ":|".to_string(),
@@ -592,7 +592,7 @@ fn render_cell_with_lines(
     }
 
     // Get base character for line variants
-    let base_char = if let Some(pitch_code) = cell.pitch_code {
+    let base_char = if let Some(pitch_code) = cell.get_pitch_code() {
         // For pitched elements, get the display character from pitch
         let degree = pitch_code.degree();
         match pitch_system {
@@ -615,18 +615,18 @@ fn render_cell_with_lines(
         }
     } else {
         // Non-pitched: dash, breath mark, etc.
-        match cell.kind {
+        match cell.get_kind() {
             ElementKind::UnpitchedElement => '-',
             ElementKind::BreathMark => '\'',
-            _ => return cell.char.clone(),
+            _ => return cell.get_char_string(),
         }
     };
 
     // If no lines needed, return the base glyph (with octave if pitched)
     if underline == UnderlineState::None && overline == OverlineState::None {
         // For pitched elements, use the full glyph with octave
-        if let Some(pitch_code) = cell.pitch_code {
-            if let Some(glyph) = glyph_for_pitch(pitch_code, cell.octave, pitch_system) {
+        if let Some(pitch_code) = cell.get_pitch_code() {
+            if let Some(glyph) = glyph_for_pitch(pitch_code, cell.get_octave(), pitch_system) {
                 return glyph.to_string();
             }
         }
@@ -638,8 +638,8 @@ fn render_cell_with_lines(
         variant_char.to_string()
     } else {
         // Fallback: return base glyph with octave
-        if let Some(pitch_code) = cell.pitch_code {
-            if let Some(glyph) = glyph_for_pitch(pitch_code, cell.octave, pitch_system) {
+        if let Some(pitch_code) = cell.get_pitch_code() {
+            if let Some(glyph) = glyph_for_pitch(pitch_code, cell.get_octave(), pitch_system) {
                 return glyph.to_string();
             }
         }
@@ -647,16 +647,16 @@ fn render_cell_with_lines(
     }
 }
 
-/// Render ornament cells inline as superscript glyphs
+/// Render superscript cells inline as superscript glyphs
 /// Returns a string of superscript characters with appropriate underlines/overlines
 ///
 /// # Arguments
-/// * `ornament_cells` - The cells containing the ornament notes
+/// * `superscript_cells` - The cells containing the grace notes
 /// * `pitch_system` - The pitch system to use for glyph lookup
 /// * `parent_in_slur` - Whether the parent cell is inside a slur (needs overline)
-/// * `needs_underline` - Whether ornament is between pitches in a multi-cell beat (needs underline)
-fn render_ornament_inline(
-    ornament_cells: &[crate::models::core::Cell],
+/// * `needs_underline` - Whether superscript is between pitches in a multi-cell beat (needs underline)
+fn render_superscript_inline(
+    superscript_cells: &[crate::models::core::Cell],
     pitch_system: crate::models::PitchSystem,
     parent_in_slur: bool,
     needs_underline: bool,
@@ -664,23 +664,23 @@ fn render_ornament_inline(
     use crate::renderers::font_utils::{glyph_for_pitch, superscript_glyph, SuperscriptOverline};
 
     let mut result = String::new();
-    let _ornament_count = ornament_cells.len();
+    let _superscript_count = superscript_cells.len();
 
-    for (_orn_idx, orn_cell) in ornament_cells.iter().enumerate() {
-        if let Some(ref pitch_code) = orn_cell.pitch_code {
+    for (_sup_idx, sup_cell) in superscript_cells.iter().enumerate() {
+        if let Some(pitch_code) = sup_cell.get_pitch_code() {
             // Get base glyph with octave encoded
             if let Some(base_glyph) = glyph_for_pitch(
-                *pitch_code,
-                orn_cell.octave,
+                pitch_code,
+                sup_cell.get_octave(),
                 pitch_system,
             ) {
                 // Determine line variant based on:
-                // 1. needs_underline - whether ornament is between pitches in a multi-cell beat
+                // 1. needs_underline - whether superscript is between pitches in a multi-cell beat
                 // 2. parent_in_slur - whether parent cell is inside a slur (needs overline)
                 // 3. Combined variants when both underline AND overline are needed
                 let line_variant = if needs_underline {
-                    // Ornament is between pitches in beat - needs underline
-                    // All ornament notes get middle underline (continuous line)
+                    // Superscript is between pitches in beat - needs underline
+                    // All superscript notes get middle underline (continuous line)
                     if parent_in_slur {
                         // Combined: underline for beat grouping + overline for slur
                         SuperscriptOverline::CombinedMiddleMiddle
@@ -689,7 +689,7 @@ fn render_ornament_inline(
                         SuperscriptOverline::UnderlineMiddle
                     }
                 } else {
-                    // Ornament is outside pitch span - no underline
+                    // Superscript is outside pitch span - no underline
                     if parent_in_slur {
                         SuperscriptOverline::OverlineMiddle
                     } else {
@@ -706,8 +706,8 @@ fn render_ornament_inline(
                 }
             } else {
                 // Fallback to ASCII if glyph not found
-                let ornament_char = pitch_code.to_string(pitch_system);
-                result.push_str(&ornament_char);
+                let superscript_char = pitch_code.to_string(pitch_system);
+                result.push_str(&superscript_char);
             }
         }
     }
@@ -733,7 +733,7 @@ fn build_tala_line(
     let mut current_col = 0;
 
     for (cell_idx, cell) in cells.iter().enumerate() {
-        if matches!(cell.kind, ElementKind::SingleBarline | ElementKind::DoubleBarline) {
+        if matches!(cell.get_kind(), ElementKind::SingleBarline | ElementKind::DoubleBarline) {
             if let Some(tala_char) = tala_chars.next() {
                 if cell_idx < note_positions.len() {
                     let target_col = note_positions[cell_idx];
@@ -805,7 +805,7 @@ fn build_lyric_line(
 fn cell_to_text_char(cell: &crate::models::core::Cell, _pitch_system: crate::models::PitchSystem) -> String {
     use crate::models::ElementKind;
 
-    match cell.kind {
+    match cell.get_kind() {
         ElementKind::PitchedElement => {
             // Use display_char() - returns char with line variants encoded directly
             cell.display_char()
@@ -921,21 +921,12 @@ mod tests {
         StaffRole, PitchSystem,
     };
 
-    fn make_cell(char: &str, pitch_code: Option<PitchCode>, col: usize, octave: i8, kind: ElementKind) -> Cell {
-        use crate::renderers::line_variants::{UnderlineState, OverlineState};
+    fn make_cell(char: &str, _pitch_code: Option<PitchCode>, col: usize, _octave: i8, _kind: ElementKind) -> Cell {
+        // kind is derived from codepoint via get_kind()
         let codepoint = char.chars().next().map(|c| c as u32).unwrap_or(0);
         Cell {
             codepoint,
-            char: char.to_string(),
-            kind,
-            col,
             flags: 0,
-            pitch_code,
-            pitch_system: None,
-            octave,
-            superscript: false,
-            underline: UnderlineState::None,
-            overline: OverlineState::None,
             x: 0.0,
             y: 0.0,
             w: 1.0,
@@ -982,9 +973,9 @@ mod tests {
         doc
     }
 
-    // NOTE: Ornament field tests removed. Grace notes are now superscript characters
-    // stored directly in cell.char. The IR builder detects superscripts and converts
-    // them to grace notes. See src/renderers/font_utils.rs for conversion functions.
+    // NOTE: Grace notes are now superscript characters stored directly in cell.char.
+    // The IR builder detects superscripts and converts them to grace notes.
+    // See src/renderers/font_utils.rs for conversion functions.
 
     #[test]
     fn test_text_export_multi_cell_beat_has_bracket_caps() {

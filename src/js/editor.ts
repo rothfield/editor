@@ -1124,53 +1124,6 @@ class MusicNotationEditor {
     return String(obj);
   }
 
-  /**
-   * Create a display-friendly version of the document with string pitch systems
-   */
-  createDisplayDocument(doc: Document): Document {
-    // Deep clone the document
-    const displayDoc: any = JSON.parse(JSON.stringify(doc));
-
-    // Ensure all document-level metadata fields are present (even if empty/null)
-    displayDoc.title = displayDoc.title ?? null;
-    displayDoc.composer = displayDoc.composer ?? null;
-    displayDoc.tonic = displayDoc.tonic ?? null;
-    displayDoc.key_signature = displayDoc.key_signature ?? null;
-    displayDoc.created_at = displayDoc.created_at ?? null;
-    displayDoc.modified_at = displayDoc.modified_at ?? null;
-    displayDoc.version = displayDoc.version ?? null;
-
-    // Convert document-level pitch_system to string
-    displayDoc.pitch_system = displayDoc.pitch_system ?? null;
-    if (typeof displayDoc.pitch_system === 'number') {
-      const systemNum = displayDoc.pitch_system;
-      displayDoc.pitch_system = `${this.getPitchSystemName(systemNum)} (${systemNum})`;
-    }
-
-    // Ensure all Line metadata fields are present (even if empty)
-    if (displayDoc.lines && Array.isArray(displayDoc.lines)) {
-      displayDoc.lines.forEach((line: any) => {
-        // Ensure all metadata fields exist with empty string defaults
-        line.label = line.label ?? '';
-        line.tala = line.tala ?? '';
-        line.lyrics = line.lyrics ?? '';
-        line.tonic = line.tonic ?? '';
-        line.pitch_system = line.pitch_system ?? 0;
-        line.key_signature = line.key_signature ?? '';
-        line.tempo = line.tempo ?? '';
-        line.time_signature = line.time_signature ?? '';
-
-        // Convert line pitch_system to string for display
-        if (typeof line.pitch_system === 'number') {
-          const systemNum = line.pitch_system;
-          line.pitch_system = systemNum === 0 ? '(not set)' : `${this.getPitchSystemName(systemNum)} (${systemNum})`;
-        }
-      });
-    }
-
-    return displayDoc;
-  }
-
   async handleUndo(): Promise<void> {
     if (!this.wasmModule) {
       console.warn('Cannot undo: WASM not ready');

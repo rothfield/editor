@@ -228,13 +228,15 @@ class UI {
       { id: 'menu-cut', label: 'Cut (Ctrl+X)', action: 'cut', testid: 'menu-cut' },
       { id: 'menu-paste', label: 'Paste (Ctrl+V)', action: 'paste', testid: 'menu-paste' },
       { id: 'menu-separator-1', label: null, separator: true },
-      { id: 'menu-apply-slur', label: 'Apply Slur (Alt+S)', action: 'apply-slur' },
-      { id: 'menu-make-ornament', label: 'Make Ornament (Alt+O)', action: 'make-ornament', testid: 'menu-make-ornament' },
-      { id: 'menu-octave-highest', label: 'Highest Octave (Alt+H)', action: 'octave-highest' },
-      { id: 'menu-octave-upper', label: 'Upper Octave (Alt+U)', action: 'octave-upper' },
-      { id: 'menu-octave-middle', label: 'Middle Octave (Alt+M)', action: 'octave-middle' },
-      { id: 'menu-octave-lower', label: 'Lower Octave (Alt+L)', action: 'octave-lower' },
-      { id: 'menu-octave-lowest', label: 'Lowest Octave (Alt+K)', action: 'octave-lowest' }
+      { id: 'menu-apply-slur', label: 'Apply Slur (Alt+S)', action: 'slur' },
+      { id: 'menu-remove-slur', label: 'Remove Slurs (Alt+Shift+S)', action: 'no_slur' },
+      { id: 'menu-make-superscript', label: 'Make Superscript (Alt+O)', action: 'superscript', testid: 'menu-make-superscript' },
+      { id: 'menu-remove-superscript', label: 'Remove Superscripts', action: 'no_superscript', testid: 'menu-remove-superscript' },
+      { id: 'menu-octave-highest', label: 'Highest Octave (Alt+H)', action: 'octave_highest' },
+      { id: 'menu-octave-upper', label: 'Upper Octave (Alt+U)', action: 'octave_upper' },
+      { id: 'menu-octave-middle', label: 'Middle Octave (Alt+M)', action: 'octave_middle' },
+      { id: 'menu-octave-lower', label: 'Lower Octave (Alt+L)', action: 'octave_lower' },
+      { id: 'menu-octave-lowest', label: 'Lowest Octave (Alt+K)', action: 'octave_lowest' }
     ];
 
     const editMenu = document.getElementById('edit-menu');
@@ -640,26 +642,17 @@ class UI {
       case 'paste':
         this.editor.handlePaste();
         break;
-      case 'apply-slur':
-        await this.applySlur();
-        break;
-      case 'make-ornament':
-        await this.selectionToOrnament();
-        break;
-      case 'octave-highest':
-        await this.applyOctave(2);
-        break;
-      case 'octave-upper':
-        await this.applyOctave(1);
-        break;
-      case 'octave-middle':
-        await this.applyOctave(0);
-        break;
-      case 'octave-lower':
-        await this.applyOctave(-1);
-        break;
-      case 'octave-lowest':
-        await this.applyOctave(-2);
+      // Selection-based commands routed through unified dispatcher
+      case 'slur':
+      case 'no_slur':
+      case 'superscript':
+      case 'no_superscript':
+      case 'octave_highest':
+      case 'octave_upper':
+      case 'octave_middle':
+      case 'octave_lower':
+      case 'octave_lowest':
+        await this.applyCommand(action);
         break;
       case 'select-all':
         this.selectAll();
@@ -876,7 +869,7 @@ class UI {
           await this.editor.wasmModule.setDocumentPitchSystem(newSystem);
           logger.debug(LOG_CATEGORIES.WASM, 'WASM setDocumentPitchSystem completed');
 
-          logger.info(LOG_CATEGORIES.WASM, `Document pitch system set to: ${this.getPitchSystemName(newSystem)}`);
+          logger.info(LOG_CATEGORIES.WASM, `Document pitch system set to: ${this.editor.getPitchSystemName(newSystem)}`);
           logger.debug(LOG_CATEGORIES.UI, 'Rendering after document pitch system change...');
           await this.editor.renderAndUpdate();
           logger.debug(LOG_CATEGORIES.UI, 'Render complete');
@@ -1137,7 +1130,7 @@ class UI {
           const lineIdx = this.getCurrentLineIndex();
           this.editor.wasmModule.setLinePitchSystem(lineIdx, newSystem);
 
-          logger.info(LOG_CATEGORIES.WASM, `Line pitch system set to: ${this.getPitchSystemName(newSystem)}`);
+          logger.info(LOG_CATEGORIES.WASM, `Line pitch system set to: ${this.editor.getPitchSystemName(newSystem)}`);
           logger.debug(LOG_CATEGORIES.UI, 'Rendering after line pitch system change...');
           await this.editor.renderAndUpdate();
           logger.debug(LOG_CATEGORIES.UI, 'Render complete');
@@ -1496,7 +1489,7 @@ class UI {
 
   updateLinePitchSystemDisplay(system) {
     // This would update UI to show line pitch system
-    logger.debug(LOG_CATEGORIES.UI, `Line pitch system updated: ${this.getPitchSystemName(system)}`);
+    logger.debug(LOG_CATEGORIES.UI, `Line pitch system updated: ${this.editor.getPitchSystemName(system)}`);
   }
 
   updateLyricsDisplay(lyrics) {
@@ -1735,18 +1728,6 @@ class UI {
   }
 
   /**
-     * Helper: Get pitch system name
-     */
-  getPitchSystemName(system) {
-    const names = {
-      1: 'Number',
-      2: 'Western',
-      3: 'Sargam'
-    };
-    return names[system] || 'Unknown';
-  }
-
-  /**
      * Helper: Convert string to snake_case
      */
   toSnakeCase(str) {
@@ -1766,8 +1747,8 @@ class UI {
    * Superscripts are rhythm-transparent and attach to the previous normal pitch.
    * The codepoint change (normal → superscript) is the only change needed.
    */
-  async selectionToOrnament() {
-    console.log('[UI] selectionToOrnament (superscript-based)');
+  async selectionToSuperscript() {
+    console.log('[UI] selectionToSuperscript');
 
     if (!this.editor) {
       alert('No editor available');
@@ -1799,7 +1780,7 @@ class UI {
       console.log('[UI] selectionToSuperscript result:', result);
 
       if (!result.success) {
-        alert(`Failed to convert to ornament: ${result.error || 'Unknown error'}`);
+        alert(`Failed to convert to superscript: ${result.error || 'Unknown error'}`);
         return;
       }
 
@@ -1808,15 +1789,169 @@ class UI {
         return;
       }
 
-      // Clear selection after conversion
-      this.editor.wasmModule.clearSelection();
+      // Render the updated document
+      await this.editor.renderAndUpdate();
+
+      // Restore selection after operation (same pattern as slur/octave)
+      this.editor.wasmModule.setSelection(selection.anchor, selection.head);
+      await this.editor.render();
+
+      this.editor.addToConsoleLog(`Converted ${result.cells_converted} note(s) to superscript`);
+    } catch (error) {
+      console.error('[UI] Selection to superscript error:', error);
+      alert(`Failed to convert selection to superscript: ${error.message || error}`);
+    }
+  }
+
+  /**
+   * Remove superscripts from selected text (convert back to normal notes)
+   *
+   * Converts superscript grace notes back to normal pitched characters.
+   */
+  async removeSuperscripts() {
+    console.log('[UI] removeSuperscripts');
+
+    if (!this.editor) {
+      alert('No editor available');
+      return;
+    }
+
+    try {
+      const doc = this.editor.getDocument();
+      const cursor = doc.state.cursor;
+      const selection = doc.state.selection_manager?.current_selection;
+
+      // Must have a selection
+      if (!selection || !selection.anchor || !selection.head) {
+        alert('No text selected');
+        return;
+      }
+
+      console.log('[UI] Selection detected');
+
+      const line = cursor.line;
+      const start = Math.min(selection.anchor.col, selection.head.col);
+      const end = Math.max(selection.anchor.col, selection.head.col);
+
+      console.log(`[UI] Converting cols ${start}-${end} from superscript to normal on line ${line}`);
+
+      // Call WASM to convert selection from superscript to normal
+      const result = this.editor.wasmModule.superscriptToNormal(line, start, end);
+
+      console.log('[UI] superscriptToNormal result:', result);
+
+      if (!result.success) {
+        alert(`Failed to remove superscripts: ${result.error || 'Unknown error'}`);
+        return;
+      }
+
+      if (result.cells_converted === 0) {
+        return;
+      }
 
       // Render the updated document
       await this.editor.renderAndUpdate();
-      this.editor.addToConsoleLog(`Converted ${result.cells_converted} note(s) to grace notes`);
+
+      // Restore selection after operation (same pattern as slur/octave)
+      this.editor.wasmModule.setSelection(selection.anchor, selection.head);
+      await this.editor.render();
+
+      this.editor.addToConsoleLog(`Converted ${result.cells_converted} superscript(s) to normal notes`);
     } catch (error) {
-      console.error('[UI] Selection to ornament error:', error);
-      alert(`Failed to convert selection to ornament: ${error.message || error}`);
+      console.error('[UI] Remove superscripts error:', error);
+      alert(`Failed to remove superscripts: ${error.message || error}`);
+    }
+  }
+
+  /**
+   * Get the current selection range
+   * @returns {{line: number, start: number, end: number}|null} Selection range or null if no selection
+   */
+  getSelectionRange() {
+    if (!this.editor) return null;
+
+    const selection = this.editor.getSelection();
+    if (!selection || selection.start.col === selection.end.col) {
+      return null;
+    }
+
+    return {
+      line: selection.start.line,
+      start: selection.start.col,
+      end: selection.end.col,
+      // Keep original for restoring selection
+      anchor: selection.anchor,
+      head: selection.head
+    };
+  }
+
+  /**
+   * Unified command dispatcher for selection-based operations
+   * @param {string} cmd - Command name (slur, no_slur, superscript, no_superscript, octave_*)
+   */
+  async applyCommand(cmd) {
+    if (!this.editor || !this.editor.wasmModule) {
+      alert('Editor not ready');
+      return;
+    }
+
+    const sel = this.getSelectionRange();
+    if (!sel) {
+      alert('No text selected');
+      return;
+    }
+
+    const { line, start, end, anchor, head } = sel;
+
+    try {
+      switch (cmd) {
+        case 'slur':
+          this.editor.wasmModule.toggleSlur(line, start, end);
+          break;
+        case 'no_slur':
+          this.editor.wasmModule.removeSlurLayered(line, start, end);
+          break;
+        case 'superscript':
+          this.editor.wasmModule.selectionToSuperscript(line, start, end);
+          break;
+        case 'no_superscript':
+          this.editor.wasmModule.superscriptToNormal(line, start, end);
+          break;
+        case 'octave_highest':
+          this.editor.wasmModule.setOctave(line, start, end, 2);
+          break;
+        case 'octave_upper':
+          this.editor.wasmModule.setOctave(line, start, end, 1);
+          break;
+        case 'octave_middle':
+          this.editor.wasmModule.setOctave(line, start, end, 0);
+          break;
+        case 'octave_lower':
+          this.editor.wasmModule.setOctave(line, start, end, -1);
+          break;
+        case 'octave_lowest':
+          this.editor.wasmModule.setOctave(line, start, end, -2);
+          break;
+        default:
+          logger.warn(LOG_CATEGORIES.UI, 'Unknown selection command', { cmd });
+          return;
+      }
+
+      await this.editor.renderAndUpdate();
+
+      // Restore selection after operation
+      if (anchor && head) {
+        this.editor.wasmModule.setSelection(anchor, head);
+        await this.editor.render();
+      }
+
+      // Trigger staff notation update if on staff notation tab
+      if (this.activeTab === 'staff-notation') {
+        await this.editor.renderStaffNotation();
+      }
+    } catch (error) {
+      logger.error(LOG_CATEGORIES.UI, 'Failed to apply command', { cmd, error });
+      alert(`Failed to apply ${cmd}: ${error.message || error}`);
     }
   }
 }

@@ -7,30 +7,29 @@
 use editor_wasm::models::{Cell, ElementKind, PitchCode, SlurIndicator};
 use editor_wasm::renderers::musicxml::beat::process_beat;
 use editor_wasm::renderers::musicxml::builder::MusicXmlBuilder;
+use editor_wasm::renderers::font_utils::glyph_for_pitch;
 
-/// Helper to create a pitched cell
-fn make_pitched_cell(char: &str, pitch_code: PitchCode, col: usize, slur: SlurIndicator) -> Cell {
-    let codepoint = char.chars().next().map(|c| c as u32).unwrap_or(0);
-    Cell {
-        codepoint,
-        char: char.to_string(),
-        kind: ElementKind::PitchedElement,
-        col,
-        flags: 0,
-        pitch_code: Some(pitch_code),
-        pitch_system: None,
-        octave: 4,
-        superscript: false,
-        slur_indicator: slur,
-        underline: editor_wasm::renderers::line_variants::UnderlineState::None,
-        overline: editor_wasm::renderers::line_variants::OverlineState::None,
-        x: 0.0,
-        y: 0.0,
-        w: 1.0,
-        h: 1.0,
-        bbox: (0.0, 0.0, 1.0, 1.0),
-        hit: (0.0, 0.0, 1.0, 1.0),
+/// Helper to create a pitched cell with optional slur
+fn make_pitched_cell(char: &str, pitch_code: PitchCode, _col: usize, slur: SlurIndicator) -> Cell {
+    // Use glyph_for_pitch to get proper codepoint that encodes the pitch
+    let mut cell = if let Some(glyph) = glyph_for_pitch(pitch_code, 0, editor_wasm::models::elements::PitchSystem::Number) {
+        Cell::from_codepoint(glyph as u32, ElementKind::PitchedElement)
+    } else {
+        Cell::new(char.to_string(), ElementKind::PitchedElement)
+    };
+
+    // Set slur indicator using the Cell methods
+    match slur {
+        SlurIndicator::SlurStart => cell.set_slur_start(),
+        SlurIndicator::SlurEnd => cell.set_slur_end(),
+        SlurIndicator::None => {}
     }
+
+    cell.w = 1.0;
+    cell.h = 1.0;
+    cell.bbox = (0.0, 0.0, 1.0, 1.0);
+    cell.hit = (0.0, 0.0, 1.0, 1.0);
+    cell
 }
 
 #[test]

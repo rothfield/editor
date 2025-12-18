@@ -106,27 +106,72 @@ Whitespace        = " "
 Symbol            = /[^A-Za-z0-9\s#b',-_|]/   ; Non-alphanumeric, non-reserved characters
 Text              = /[A-Za-z0-9]+/            ; typically lyrics or annotations
                          ; Text is non-temporal and rendered differently
-5. Implicit beat segmentation
+## 5. Implicit beat segmentation
+
 Beats are not explicitly stored — they are derived from the character sequence.
 
-Rule summary
-Each contiguous run of Pitched and Unpitched elements (non-space, non-barline characters)
-forms one implicit beat.
+### Rule summary
 
-Dashes (-) and underscores (_) stay inside beats.
+Each contiguous run of **timed elements** (pitched and unpitched) forms one implicit beat.
 
-Whitespace, all Barline types (SingleBarline, RepeatLeftBarline, RepeatRightBarline, DoubleBarline),
-Symbols, and Text always end a beat.
+- **Timed elements** (pitched, unpitched) consume measure time and define beat boundaries
+- **Breath marks** belong inside a beat (do not split it) but reset pitch context
+- **Superscript elements** attach to adjacent beats but are NOT part of the beat
+- **Whitespace, barlines, symbols, text** always end a beat (separators)
 
-Breath marks (', ,) belong inside a beat (do not split it).
+### Formal grammar
 
-Formal grammar
-ebnf
-Copy code
-Beat          = BeatElement+
-BeatElement   = PitchedElement | UnpitchedElement | BreathMark
-BeatSeparator = Whitespace | SingleBarline | RepeatLeftBarline | RepeatRightBarline | DoubleBarline | Symbol | Text
-Each Beat is a contiguous sequence of BeatElements with no BeatSeparator between them.
+```ebnf
+(* Beat grammar - defines what constitutes a beat for underlining/grouping *)
+Beat            = TimedElement (BreathMark? TimedElement)*
+                  (* beat = sequence of timed-elements with optional breath marks between *)
+
+TimedElement    = PitchedElement | UnpitchedElement
+                  (* elements that consume measure time *)
+
+BeatSeparator   = Whitespace | Barline | Symbol | Text
+                  (* elements that end a beat *)
+
+(* Superscript elements - attached to beats but NOT part of beats *)
+SuperscriptElement = GracePitch | GraceUnpitched | NonPitchSuperscript
+
+GracePitch         = Superscript(PitchedElement)
+                     (* grace note - exports as MusicXML <grace/>, LilyPond \grace *)
+
+GraceUnpitched     = Superscript(UnpitchedElement)
+                     (* grace rest - if needed for export *)
+
+NonPitchSuperscript = Superscript(Other)
+                      (* no export semantics, visual only *)
+```
+
+### Key distinctions
+
+| Element Type | Consumes Time | Part of Beat | Underlined |
+|--------------|---------------|--------------|------------|
+| PitchedElement | Yes | Yes | Yes |
+| UnpitchedElement (dash) | Yes | Yes | Yes |
+| BreathMark | No | Inside beat | No |
+| SuperscriptElement | No (rhythm-transparent) | Attached to beat | No |
+| Whitespace/Barline | No | Separator | No |
+
+### Superscript attachment
+
+Superscripts are processed separately from beat derivation:
+- Superscripts before a beat → `grace_notes_before` on first note
+- Superscripts after a beat → `grace_notes_after` on last note
+- Superscripts between timed-elements → `grace_notes_before` on next note
+
+### Examples
+
+| Input | Timed Elements | Beat | Superscripts |
+|-------|----------------|------|--------------|
+| `1` | 1 | `1` | none |
+| `12` | 1, 2 | `12` | none |
+| `1'2` | 1, 2 | `1'2` | none (breath mark inside) |
+| `⁵1` | 1 | `1` | ⁵ attached before |
+| `1⁵2` | 1, 2 | `12` | ⁵ attached to 2 (grace_before) |
+| `¹²3⁴` (1,2,4 super) | 3 | `3` | 1,2 before; 4 after |
 
 6. Parsing rules
 Algorithm for deriving beats (pseudo-Rust):

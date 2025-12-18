@@ -249,6 +249,65 @@ impl PitchCode {
         }
     }
 
+    /// Remove one level of accidental from this pitch
+    /// - Double sharp → Sharp (N1ss → N1s)
+    /// - Sharp → Natural (N1s → N1)
+    /// - Double flat → Flat (N1bb → N1b)
+    /// - Flat → Natural (N1b → N1)
+    /// - Half-flat → Natural (N1hf → N1)
+    /// - Natural → Natural (no change)
+    pub fn remove_accidental_level(&self) -> PitchCode {
+        match self {
+            // Double sharps → Sharps
+            PitchCode::N1ss => PitchCode::N1s,
+            PitchCode::N2ss => PitchCode::N2s,
+            PitchCode::N3ss => PitchCode::N3s,
+            PitchCode::N4ss => PitchCode::N4s,
+            PitchCode::N5ss => PitchCode::N5s,
+            PitchCode::N6ss => PitchCode::N6s,
+            PitchCode::N7ss => PitchCode::N7s,
+
+            // Sharps → Naturals
+            PitchCode::N1s => PitchCode::N1,
+            PitchCode::N2s => PitchCode::N2,
+            PitchCode::N3s => PitchCode::N3,
+            PitchCode::N4s => PitchCode::N4,
+            PitchCode::N5s => PitchCode::N5,
+            PitchCode::N6s => PitchCode::N6,
+            PitchCode::N7s => PitchCode::N7,
+
+            // Double flats → Flats
+            PitchCode::N1bb => PitchCode::N1b,
+            PitchCode::N2bb => PitchCode::N2b,
+            PitchCode::N3bb => PitchCode::N3b,
+            PitchCode::N4bb => PitchCode::N4b,
+            PitchCode::N5bb => PitchCode::N5b,
+            PitchCode::N6bb => PitchCode::N6b,
+            PitchCode::N7bb => PitchCode::N7b,
+
+            // Flats → Naturals
+            PitchCode::N1b => PitchCode::N1,
+            PitchCode::N2b => PitchCode::N2,
+            PitchCode::N3b => PitchCode::N3,
+            PitchCode::N4b => PitchCode::N4,
+            PitchCode::N5b => PitchCode::N5,
+            PitchCode::N6b => PitchCode::N6,
+            PitchCode::N7b => PitchCode::N7,
+
+            // Half-flats → Naturals
+            PitchCode::N1hf => PitchCode::N1,
+            PitchCode::N2hf => PitchCode::N2,
+            PitchCode::N3hf => PitchCode::N3,
+            PitchCode::N4hf => PitchCode::N4,
+            PitchCode::N5hf => PitchCode::N5,
+            PitchCode::N6hf => PitchCode::N6,
+            PitchCode::N7hf => PitchCode::N7,
+
+            // Naturals stay natural
+            _ => *self,
+        }
+    }
+
     /// Transpose this pitch code by a number of semitones
     /// Positive values go up, negative go down
     /// e.g., N1 transposed by 2 (D interval) becomes N2 (E)

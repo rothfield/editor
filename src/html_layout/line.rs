@@ -93,7 +93,7 @@ impl<'a> LayoutLineComputer<'a> {
         config: &LayoutConfig,
         line_y_offset: f32,
         syllable_widths: &[f32],
-        ornament_edit_mode: bool,
+        superscript_edit_mode: bool,
         selection: Option<&crate::models::notation::Selection>,
     ) -> RenderLine {
         // Build cell_widths from cache by computing display_char() for each cell
@@ -123,7 +123,7 @@ impl<'a> LayoutLineComputer<'a> {
         let cell_style_builder = CellStyleBuilder::new();
         let beat_roles = cell_style_builder.build_beat_role_map(&beats, &line.cells);
         let slur_roles = cell_style_builder.build_slur_role_map(&line.cells);
-        let ornament_roles = cell_style_builder.build_ornament_role_map(&line.cells);
+        let superscript_roles = cell_style_builder.build_superscript_role_map(&line.cells);
 
         // Distribute lyrics to cells
         let syllable_assignments = if !line.lyrics.is_empty() {
@@ -140,15 +140,15 @@ impl<'a> LayoutLineComputer<'a> {
             config,
         );
 
-        // Build ornament anchor map (ornament_index -> anchor_cell_index)
-        // Only needed when ornament edit mode is OFF
-        let ornament_anchors = if !ornament_edit_mode {
-            self.find_ornament_anchors(&line.cells, &ornament_roles)
+        // Build superscript anchor map (superscript_index -> anchor_cell_index)
+        // Only needed when superscript edit mode is OFF
+        let superscript_anchors = if !superscript_edit_mode {
+            self.find_superscript_anchors(&line.cells, &superscript_roles)
         } else {
             HashMap::new()
         };
 
-        // NOTE: ornament_indicator removed - ornaments now stored directly in cell.ornament field
+        // NOTE: superscript_indicator removed - superscripts now stored directly in cell.superscript field
         // Always use identity mapping (no extraction needed)
         let working_cells = line.cells.to_vec();
         let cell_index_map: Vec<usize> = (0..working_cells.len()).collect();
@@ -225,7 +225,7 @@ impl<'a> LayoutLineComputer<'a> {
                 &mut char_width_offset,
                 &beat_roles,
                 &slur_roles,
-                &ornament_roles,
+                &superscript_roles,
                 selection,
             );
 
@@ -266,21 +266,21 @@ impl<'a> LayoutLineComputer<'a> {
         let octave_dots = Vec::new();
 
         // Compute slur arcs from slur indicators in cells
-        let slurs = self.compute_slur_arcs(&line.cells, &cells, &ornament_anchors, config);
+        let slurs = self.compute_slur_arcs(&line.cells, &cells, &superscript_anchors, config);
 
         // Calculate line height based on content
         let has_beats = beats.iter().any(|b| b.end - b.start >= 1);
         let has_slurs = slurs.len() > 0;  // Check if any slurs were computed
-        let has_octave_dots = line.cells.iter().any(|c| c.octave != 0);
+        let has_octave_dots = line.cells.iter().any(|c| c.get_octave() != 0);
         let height = self.calculate_line_height(!line.lyrics.is_empty(), has_beats, has_slurs, has_octave_dots, config);
 
         // Compute beat loop arcs from beat indicators
         let beat_loops = self.compute_beat_loop_arcs(&beats, &cells, &line.cells, config);
 
-        // Compute ornament arcs (shallow arcs connecting parent note to ornaments)
-        // Only when ornament edit mode is OFF
-        let ornament_arcs = if !ornament_edit_mode {
-            self.compute_ornament_arcs_from_cells(
+        // Compute superscript arcs (shallow arcs connecting parent note to superscripts)
+        // Only when superscript edit mode is OFF
+        let superscript_arcs = if !superscript_edit_mode {
+            self.compute_superscript_arcs_from_cells(
                 &line.cells,
                 &cells,
                 &effective_widths,
@@ -291,9 +291,9 @@ impl<'a> LayoutLineComputer<'a> {
             Vec::new()
         };
 
-        // Position ornaments separately when edit mode is OFF
-        let ornaments = if !ornament_edit_mode {
-            self.position_ornaments_from_cells(
+        // Position superscripts separately when edit mode is OFF
+        let superscripts = if !superscript_edit_mode {
+            self.position_superscripts_from_cells(
                 &working_cells,
                 &cells,
                 &effective_widths,
@@ -327,20 +327,20 @@ impl<'a> LayoutLineComputer<'a> {
             y: line_y_offset,
             slurs,
             beat_loops,
-            ornament_arcs,
-            ornaments,
+            superscript_arcs,
+            superscripts,
             octave_dots,
         }
     }
 
     /// Compute slur arcs from slur indicators in cells
-    /// When ornament edit mode is ON, slurs on ornament cells redirect to anchor note
-    /// When ornament edit mode is OFF, ornament cells don't exist in the vector
+    /// When superscript edit mode is ON, slurs on superscript cells redirect to anchor note
+    /// When superscript edit mode is OFF, superscript cells don't exist in the vector
     fn compute_slur_arcs(
         &self,
         cells: &[Cell],
         render_cells: &[RenderCell],
-        ornament_anchors: &HashMap<usize, usize>,
+        superscript_anchors: &HashMap<usize, usize>,
         config: &LayoutConfig,
     ) -> Vec<RenderArc> {
         let mut arcs = Vec::new();
@@ -348,8 +348,8 @@ impl<'a> LayoutLineComputer<'a> {
 
         for (idx, cell) in cells.iter().enumerate() {
             if cell.is_slur_start() {
-                // If this is an ornament cell (when edit mode ON), use its anchor instead
-                let actual_idx = if let Some(&anchor_idx) = ornament_anchors.get(&idx) {
+                // If this is a superscript cell (when edit mode ON), use its anchor instead
+                let actual_idx = if let Some(&anchor_idx) = superscript_anchors.get(&idx) {
                     anchor_idx
                 } else {
                     idx
@@ -361,8 +361,8 @@ impl<'a> LayoutLineComputer<'a> {
                 }
             } else if cell.is_slur_end() {
                 if let Some((start_idx, start_cell)) = slur_start {
-                    // If this is an ornament cell (when edit mode ON), use its anchor instead
-                    let actual_idx = if let Some(&anchor_idx) = ornament_anchors.get(&idx) {
+                    // If this is a superscript cell (when edit mode ON), use its anchor instead
+                    let actual_idx = if let Some(&anchor_idx) = superscript_anchors.get(&idx) {
                         anchor_idx
                     } else {
                         idx
@@ -409,7 +409,7 @@ impl<'a> LayoutLineComputer<'a> {
             let rhythm_element_count = (beat.start..=beat.end)
                 .filter(|&idx| {
                     if let Some(cell) = _original_cells.get(idx) {
-                        matches!(cell.kind,
+                        matches!(cell.get_kind(),
                             ElementKind::PitchedElement | ElementKind::UnpitchedElement)
                     } else {
                         false
@@ -440,10 +440,10 @@ impl<'a> LayoutLineComputer<'a> {
         arcs
     }
 
-    /// Compute ornament arcs from cell.ornaments (when edit mode is OFF)
-    /// DEPRECATED: Ornament field removed. Grace notes are now superscript characters.
+    /// Compute superscript arcs from cell.superscripts (when edit mode is OFF)
+    /// DEPRECATED: Grace notes are now superscript characters.
     /// Superscripts are visually distinct and don't need arcs.
-    fn compute_ornament_arcs_from_cells(
+    fn compute_superscript_arcs_from_cells(
         &self,
         _original_cells: &[Cell],
         _render_cells: &[RenderCell],
@@ -455,9 +455,9 @@ impl<'a> LayoutLineComputer<'a> {
         Vec::new()
     }
 
-    /// Create a smooth frown-shaped arc for ornaments (horizontal with upward curve)
-    /// Arc goes from parent note top to ornament position
-    fn create_ornament_arc_positioned(
+    /// Create a smooth frown-shaped arc for superscripts (horizontal with upward curve)
+    /// Arc goes from parent note top to superscript position
+    fn create_superscript_arc_positioned(
         &self,
         start_x: f32,
         end_x: f32,
@@ -480,7 +480,7 @@ impl<'a> LayoutLineComputer<'a> {
         let cp2_y = end_y - arch_height;
 
         RenderArc {
-            id: format!("arc-ornament-{:.0}-{:.0}", start_x, end_x),
+            id: format!("arc-superscript-{:.0}-{:.0}", start_x, end_x),
             start_x,
             start_y,
             end_x,
@@ -489,7 +489,7 @@ impl<'a> LayoutLineComputer<'a> {
             cp1_y,
             cp2_x,
             cp2_y,
-            color: "#1e40af".to_string(), // Dark blue color for ornaments
+            color: "#1e40af".to_string(), // Dark blue color for superscripts
             direction: "up".to_string(),
         }
     }
@@ -646,42 +646,42 @@ impl<'a> LayoutLineComputer<'a> {
         effective
     }
 
-    /// Find anchor cells for ornament spans
-    /// Returns a map: ornament_cell_index -> anchor_cell_index
+    /// Find anchor cells for superscript spans
+    /// Returns a map: superscript_cell_index -> anchor_cell_index
     ///
     /// Priority: Left PITCHED → Right PITCHED → Left LINE element
-    fn find_ornament_anchors(
+    fn find_superscript_anchors(
         &self,
         cells: &[Cell],
-        ornament_roles: &HashMap<usize, String>,
+        superscript_roles: &HashMap<usize, String>,
     ) -> HashMap<usize, usize> {
         let mut anchors = HashMap::new();
 
-        // Find ornament spans
-        let mut ornament_spans = Vec::new();
+        // Find superscript spans
+        let mut superscript_spans = Vec::new();
         let mut span_start: Option<usize> = None;
 
         for (idx, _cell) in cells.iter().enumerate() {
-            if ornament_roles.contains_key(&idx) {
+            if superscript_roles.contains_key(&idx) {
                 if span_start.is_none() {
                     span_start = Some(idx);
                 }
             } else if let Some(start) = span_start {
-                ornament_spans.push((start, idx - 1));
+                superscript_spans.push((start, idx - 1));
                 span_start = None;
             }
         }
         // Handle trailing span
         if let Some(start) = span_start {
-            ornament_spans.push((start, cells.len() - 1));
+            superscript_spans.push((start, cells.len() - 1));
         }
 
-        // For each ornament span, find anchor
-        for (start_idx, end_idx) in ornament_spans {
+        // For each superscript span, find anchor
+        for (start_idx, end_idx) in superscript_spans {
             // Priority 1: Look left for PITCHED element
             let mut anchor = None;
             for i in (0..start_idx).rev() {
-                if cells[i].kind == ElementKind::PitchedElement {
+                if cells[i].get_kind() == ElementKind::PitchedElement {
                     anchor = Some(i);
                     break;
                 }
@@ -690,7 +690,7 @@ impl<'a> LayoutLineComputer<'a> {
             // Priority 2: Look right for PITCHED element
             if anchor.is_none() {
                 for i in (end_idx + 1)..cells.len() {
-                    if cells[i].kind == ElementKind::PitchedElement {
+                    if cells[i].get_kind() == ElementKind::PitchedElement {
                         anchor = Some(i);
                         break;
                     }
@@ -700,15 +700,15 @@ impl<'a> LayoutLineComputer<'a> {
             // Priority 3: Look left for any LINE element (pitched or unpitched)
             if anchor.is_none() {
                 for i in (0..start_idx).rev() {
-                    if cells[i].kind == ElementKind::PitchedElement
-                        || cells[i].kind == ElementKind::UnpitchedElement {
+                    if cells[i].get_kind() == ElementKind::PitchedElement
+                        || cells[i].get_kind() == ElementKind::UnpitchedElement {
                         anchor = Some(i);
                         break;
                     }
                 }
             }
 
-            // Map all ornament cells in this span to the anchor
+            // Map all superscript cells in this span to the anchor
             if let Some(anchor_idx) = anchor {
                 for idx in start_idx..=end_idx {
                     anchors.insert(idx, anchor_idx);
@@ -750,7 +750,7 @@ impl<'a> LayoutLineComputer<'a> {
 
         let cell_bottom = config.cell_y_offset + config.cell_height;
         let has_beats = beats.iter().any(|b| b.end - b.start >= 1);
-        let has_octave_dots = original_cells.iter().any(|c| c.octave != 0);
+        let has_octave_dots = original_cells.iter().any(|c| c.get_octave() != 0);
 
         // Add line_y_offset to calculate absolute Y position for the document
         let lyrics_y = line_y_offset + if has_beats {
@@ -762,7 +762,7 @@ impl<'a> LayoutLineComputer<'a> {
         };
 
         // Check if line has any pitched elements
-        let has_pitched_elements = original_cells.iter().any(|c| matches!(c.kind, ElementKind::PitchedElement));
+        let has_pitched_elements = original_cells.iter().any(|c| matches!(c.get_kind(), ElementKind::PitchedElement));
 
         // Special case: 0 pitched elements - just render entire lyrics as-is
         if !has_pitched_elements {
@@ -812,7 +812,7 @@ impl<'a> LayoutLineComputer<'a> {
             .iter()
             .enumerate()
             .filter_map(|(idx, cell)| {
-                if cell.kind.is_barline() {
+                if cell.get_kind().is_barline() {
                     render_cells.get(idx).map(|rc| rc.x)
                 } else {
                     None
@@ -856,17 +856,17 @@ impl<'a> LayoutLineComputer<'a> {
         false
     }
 
-    /// Position ornaments from cell.ornaments (when ornament_edit_mode is OFF)
-    /// DEPRECATED: Ornament field removed. Grace notes are now superscript characters.
+    /// Position superscripts from cell.superscripts (when superscript_edit_mode is OFF)
+    /// DEPRECATED: Grace notes are now superscript characters.
     /// Superscripts render at 50% scale via the font - no positioning needed here.
-    fn position_ornaments_from_cells(
+    fn position_superscripts_from_cells(
         &self,
         _original_cells: &[Cell],
         _render_cells: &[RenderCell],
         _effective_widths: &[f32],
         _config: &LayoutConfig,
         _line_y_offset: f32,
-    ) -> Vec<RenderOrnament> {
+    ) -> Vec<RenderSuperscript> {
         // Grace notes are now superscript characters rendered inline via the font
         Vec::new()
     }
@@ -1111,24 +1111,15 @@ mod line_variant_tests {
     use crate::models::StaffRole;
 
     fn make_pitched_cell(pitch_code: PitchCode, col: usize) -> Cell {
-        use crate::renderers::line_variants::{UnderlineState, OverlineState};
         use crate::renderers::font_utils::glyph_for_pitch;
         use crate::models::PitchSystem;
 
         // Get proper glyph codepoint for the pitch
+        // kind is derived from codepoint via get_kind()
         let glyph = glyph_for_pitch(pitch_code, 0, PitchSystem::Number).unwrap_or('X');
         Cell {
             codepoint: glyph as u32,
-            char: glyph.to_string(),
-            kind: ElementKind::PitchedElement,
-            col,
             flags: 0,
-            pitch_code: Some(pitch_code),
-            pitch_system: Some(PitchSystem::Number),
-            octave: 0,
-            superscript: false,
-            underline: UnderlineState::None,
-            overline: OverlineState::None,
             x: 0.0,
             y: 0.0,
             w: 0.0,

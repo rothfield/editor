@@ -223,7 +223,7 @@ impl UndoStack {
         // Break on whitespace insertion
         if let Command::InsertText { cells, .. } = command {
             if cells.len() == 1 {
-                let ch = &cells[0].char;
+                let ch = cells[0].get_char_string();
                 if ch == " " || ch == "\n" || ch == "\t" {
                     return true;
                 }
@@ -331,20 +331,11 @@ mod tests {
     use crate::models::elements::ElementKind;
 
     fn create_test_cell(ch: &str) -> Cell {
-        use crate::renderers::line_variants::{UnderlineState, OverlineState};
+        // kind is derived from codepoint via get_kind()
         let codepoint = ch.chars().next().map(|c| c as u32).unwrap_or(0);
         Cell {
             codepoint,
-            char: ch.to_string(),
-            kind: ElementKind::PitchedElement,
-            col: 0,
             flags: 0,
-            pitch_code: None,
-            pitch_system: None,
-            octave: 0,
-            superscript: false,
-            underline: UnderlineState::None,
-            overline: OverlineState::None,
             x: 0.0,
             y: 0.0,
             w: 0.0,
@@ -393,7 +384,7 @@ mod tests {
 
         cmd.execute(&mut doc.lines).unwrap();
         assert_eq!(doc.lines[0].cells.len(), 1);
-        assert_eq!(doc.lines[0].cells[0].char, "S");
+        assert_eq!(doc.lines[0].cells[0].get_char_string(), "S");
     }
 
     #[test]
@@ -426,7 +417,7 @@ mod tests {
 
         cmd.execute(&mut doc.lines).unwrap();
         assert_eq!(doc.lines[0].cells.len(), 1);
-        assert_eq!(doc.lines[0].cells[0].char, "r");
+        assert_eq!(doc.lines[0].cells[0].get_char_string(), "r");
     }
 
     #[test]
@@ -447,7 +438,7 @@ mod tests {
 
         cmd.undo(&mut doc.lines).unwrap();
         assert_eq!(doc.lines[0].cells.len(), 1);
-        assert_eq!(doc.lines[0].cells[0].char, "S");
+        assert_eq!(doc.lines[0].cells[0].get_char_string(), "S");
     }
 
     #[test]

@@ -1,11 +1,11 @@
-//! MusicXML grace note and ornament handling
+//! MusicXML grace note and superscript handling
 //!
-//! Handles detection and classification of grace notes and ornaments.
+//! Handles detection and classification of grace notes and superscripts.
 
-use crate::models::{PitchCode, OrnamentPositionType};
+use crate::models::{PitchCode, SuperscriptPositionType};
 
-/// Detect ornament type from grace note characteristics
-/// Returns the MusicXML ornament type name as a string
+/// Detect superscript type from grace note characteristics
+/// Returns the MusicXML superscript type name as a string
 ///
 /// Detection heuristic:
 /// - 1-2 grace notes: appoggiatura/acciaccatura (slash handled separately)
@@ -13,15 +13,15 @@ use crate::models::{PitchCode, OrnamentPositionType};
 /// - Different notes in sequence: turn or other
 ///
 /// Note: This is a simplified heuristic. For more accurate detection,
-/// ornament type should be stored in the Ornament struct.
-pub fn detect_grace_note_ornament_type(grace_notes: &[(PitchCode, i8, OrnamentPositionType)]) -> Option<&'static str> {
+/// superscript type should be stored in the Ornament struct.
+pub fn detect_grace_note_superscript_type(grace_notes: &[(PitchCode, i8, SuperscriptPositionType)]) -> Option<&'static str> {
     if grace_notes.is_empty() {
         return None;
     }
 
     // For single grace note, it's typically an appoggiatura/acciaccatura (handled by slash param)
     if grace_notes.len() == 1 {
-        return None; // Not a "typed" ornament, just a grace note
+        return None; // Not a "typed" superscript, just a grace note
     }
 
     // For multiple grace notes, check if they're repeated (trill) or different (turn)
@@ -44,11 +44,11 @@ pub fn detect_grace_note_ornament_type(grace_notes: &[(PitchCode, i8, OrnamentPo
     None
 }
 
-/// Map OrnamentPositionType to MusicXML placement attribute
-pub fn ornament_position_to_placement(position: &OrnamentPositionType) -> Option<&'static str> {
+/// Map SuperscriptPositionType to MusicXML placement attribute
+pub fn superscript_position_to_placement(position: &SuperscriptPositionType) -> Option<&'static str> {
     match position {
-        OrnamentPositionType::OnTop => Some("above"),
-        OrnamentPositionType::Before | OrnamentPositionType::After => None, // Default placement
+        SuperscriptPositionType::OnTop => Some("above"),
+        SuperscriptPositionType::Before | SuperscriptPositionType::After => None, // Default placement
     }
 }
 

@@ -4,8 +4,8 @@
 //! linked by positions. Annotations automatically track position changes
 //! when text is edited.
 //!
-//! Note: Ornaments/grace notes are now stored directly on cells via the
-//! `superscript` flag. See `cell.superscript` and `selectionToSuperscript()`.
+//! Note: Grace notes are now stored directly on cells via the
+//! superscript flag. See `cell.superscript` and `selectionToSuperscript()`.
 
 use super::cursor::{TextPos, TextRange};
 use serde::{Deserialize, Serialize};

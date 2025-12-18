@@ -85,13 +85,13 @@ pub struct RenderLine {
     #[serde(default)]
     pub beat_loops: Vec<RenderArc>,
 
-    /// Ornament arcs to render (very shallow, connecting anchor note to ornaments)
+    /// Superscript arcs to render (very shallow, connecting anchor note to superscripts)
     #[serde(default)]
-    pub ornament_arcs: Vec<RenderArc>,
+    pub superscript_arcs: Vec<RenderArc>,
 
-    /// Positioned ornaments (when ornament_edit_mode is OFF)
+    /// Positioned superscripts (when superscript_edit_mode is OFF)
     #[serde(default)]
-    pub ornaments: Vec<RenderOrnament>,
+    pub superscripts: Vec<RenderSuperscript>,
 
     /// Positioned octave dots
     #[serde(default)]
@@ -223,10 +223,10 @@ pub struct RenderOctaveDot {
     pub letter_spacing: f32,
 }
 
-/// A positioned ornament (when ornament_edit_mode is OFF)
+/// A positioned superscript (when superscript_edit_mode is OFF)
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct RenderOrnament {
-    /// Ornament character text
+pub struct RenderSuperscript {
+    /// Superscript character text
     pub text: String,
 
     /// X position (positioned relative to anchor note)

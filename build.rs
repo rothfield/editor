@@ -415,6 +415,238 @@ pub fn underlined_bracket_glyph_for_pitch(
         _ => bracket_variant_for_underlined(underlined, position),
     }
 }
+
+/// Extract octave from a codepoint (auto-detects pitch system)
+///
+/// Returns the octave (-2 to +2) encoded in the codepoint.
+/// Returns 0 for non-pitched codepoints.
+///
+/// This function tries all notation systems to find a match,
+/// so it doesn't require knowing the pitch system in advance.
+pub fn octave_from_codepoint(cp: u32) -> i8 {
+    let ch = match char::from_u32(cp) {
+        Some(c) => c,
+        None => return 0,
+    };
+
+    // Try each system's reverse lookup
+    if let Some((_, octave)) = pitch_from_glyph_number(ch) {
+        return octave;
+    }
+    if let Some((_, octave)) = pitch_from_glyph_western(ch) {
+        return octave;
+    }
+    if let Some((_, octave)) = pitch_from_glyph_sargam(ch) {
+        return octave;
+    }
+
+    // Not a pitched codepoint
+    0
+}
+
+/// Extract pitch code from a codepoint (auto-detects pitch system)
+///
+/// Returns the PitchCode encoded in the codepoint.
+/// Returns None for non-pitched codepoints.
+///
+/// This function tries all notation systems to find a match,
+/// so it doesn't require knowing the pitch system in advance.
+/// Handles superscript codepoints (0xF8000+) by first converting to base codepoint.
+pub fn pitch_code_from_codepoint(cp: u32) -> Option<crate::models::pitch_code::PitchCode> {
+    // If superscript, convert to base codepoint first
+    let effective_cp = if is_superscript(cp) {
+        match from_superscript(cp) {
+            Some(base_cp) => base_cp,
+            None => return None,
+        }
+    } else {
+        cp
+    };
+
+    let ch = match char::from_u32(effective_cp) {
+        Some(c) => c,
+        None => return None,
+    };
+
+    // Try each system's reverse lookup
+    if let Some((pitch_code, _)) = pitch_from_glyph_number(ch) {
+        return Some(pitch_code);
+    }
+    if let Some((pitch_code, _)) = pitch_from_glyph_western(ch) {
+        return Some(pitch_code);
+    }
+    if let Some((pitch_code, _)) = pitch_from_glyph_sargam(ch) {
+        return Some(pitch_code);
+    }
+
+    // Not a pitched codepoint
+    None
+}
+
+/// Extract pitch system from a codepoint
+///
+/// Returns the PitchSystem (Number, Western, Sargam) for the codepoint.
+/// Returns None for non-pitched codepoints.
+///
+/// This function checks which PUA range the codepoint falls into.
+pub fn pitch_system_from_codepoint(cp: u32) -> Option<crate::models::elements::PitchSystem> {
+    let ch = match char::from_u32(cp) {
+        Some(c) => c,
+        None => return None,
+    };
+
+    // Try each system's reverse lookup and return the matching system
+    if pitch_from_glyph_number(ch).is_some() {
+        return Some(crate::models::elements::PitchSystem::Number);
+    }
+    if pitch_from_glyph_western(ch).is_some() {
+        return Some(crate::models::elements::PitchSystem::Western);
+    }
+    if pitch_from_glyph_sargam(ch).is_some() {
+        return Some(crate::models::elements::PitchSystem::Sargam);
+    }
+
+    // Not a pitched codepoint
+    None
+}
+
+/// Derive ElementKind from a codepoint
+///
+/// This function determines the semantic type of a codepoint based on its value.
+/// It examines PUA ranges for pitched elements, notation elements, and ASCII characters.
+///
+/// Returns the ElementKind that should be associated with this codepoint.
+pub fn derive_kind(cp: u32) -> crate::models::elements::ElementKind {
+    use crate::models::elements::ElementKind;
+
+    // Check Unicode musical barline characters FIRST (U+1D100-U+1D107)
+    // These must be checked before the note line variant ranges which overlap!
+    match cp {
+        0x1D100 => return ElementKind::SingleBarline,     // Musical symbol single barline
+        0x1D101 => return ElementKind::DoubleBarline,     // Musical symbol double barline
+        0x1D106 => return ElementKind::RepeatLeftBarline, // Musical symbol left repeat sign
+        0x1D107 => return ElementKind::RepeatRightBarline,// Musical symbol right repeat sign
+        _ => {}
+    }
+
+    // Check superscript ranges (0xF8000+) - these are ornaments/annotations
+    if cp >= 0xF8000 && cp <= 0xFE03F {
+        return ElementKind::UpperAnnotation;
+    }
+
+    // Check note line variant ranges (0x1A000+) - these are pitched elements with underlines/overlines
+    // Number lines: 0x1A000-0x1AC4D
+    // Western lines: 0x1B000-0x1BC4D
+    // Sargam lines: 0x1D000-0x1E517
+    // Doremi lines: 0x1F000-0x1FC4D
+    if (cp >= 0x1A000 && cp <= 0x1AC4D)
+        || (cp >= 0x1B000 && cp <= 0x1BC4D)
+        || (cp >= 0x1D000 && cp <= 0x1E517)
+        || (cp >= 0x1F000 && cp <= 0x1FC4D)
+    {
+        return ElementKind::PitchedElement;
+    }
+
+    // Check ASCII line variant ranges (0xE800-0xEDB3)
+    // These preserve the base character's kind
+    if cp >= 0xE800 && cp <= 0xEDB3 {
+        // Decode the base ASCII character from line variant
+        // underline_only: 0xE800 + (char_offset * 3) + variant
+        // overline_only: 0xE920 + (char_offset * 3) + variant
+        // combined: 0xEA40 + (char_offset * 9) + variant
+        let base_char = if cp < 0xE920 {
+            // underline_only range
+            let offset = (cp - 0xE800) / 3;
+            (0x20 + offset) as u8 as char
+        } else if cp < 0xEA40 {
+            // overline_only range
+            let offset = (cp - 0xE920) / 3;
+            (0x20 + offset) as u8 as char
+        } else {
+            // combined range
+            let offset = (cp - 0xEA40) / 9;
+            (0x20 + offset) as u8 as char
+        };
+        // Recurse on the base ASCII character
+        return derive_kind(base_char as u32);
+    }
+
+    // Check pitch PUA ranges (0xE000-0xE5D1) - pitched elements
+    if (cp >= 0xE000 && cp <= 0xE0D1)  // Number system
+        || (cp >= 0xE100 && cp <= 0xE1D1)  // Western system
+        || (cp >= 0xE300 && cp <= 0xE467)  // Sargam system
+        || (cp >= 0xE500 && cp <= 0xE5D1)  // Doremi system
+    {
+        return ElementKind::PitchedElement;
+    }
+
+    // Check notation element PUA codepoints
+    match cp {
+        0xE750 => return ElementKind::UnpitchedElement,  // Dash
+        0xE751 => return ElementKind::BreathMark,         // Breath mark
+        0xE752 => return ElementKind::Whitespace,         // Space (PUA)
+        0xE753 => return ElementKind::SingleBarline,      // Single barline
+        0xE754 => return ElementKind::DoubleBarline,      // Double barline
+        0xE755 => return ElementKind::RepeatLeftBarline,  // Repeat left
+        0xE756 => return ElementKind::RepeatRightBarline, // Repeat right
+        _ => {}
+    }
+
+    // Check notation element line variants (0x1E000+)
+    // dash_line_base: 0x1E000, breath_line_base: 0x1E00F, space_line_base: 0x1E01E
+    // barline_line_base: 0x1E02D, double_line_base: 0x1E03C
+    // repeat_left_line_base: 0x1E04B, repeat_right_line_base: 0x1E05A
+    if cp >= 0x1E000 && cp < 0x1E069 {
+        // Each notation element has 15 line variants
+        let element_idx = (cp - 0x1E000) / 15;
+        return match element_idx {
+            0 => ElementKind::UnpitchedElement,  // Dash variants
+            1 => ElementKind::BreathMark,         // Breath mark variants
+            2 => ElementKind::Whitespace,         // Space variants
+            3 => ElementKind::SingleBarline,      // Single barline variants
+            4 => ElementKind::DoubleBarline,      // Double barline variants
+            5 => ElementKind::RepeatLeftBarline,  // Repeat left variants
+            6 => ElementKind::RepeatRightBarline, // Repeat right variants
+            _ => ElementKind::Symbol,
+        };
+    }
+
+    // Check base ASCII characters
+    match cp {
+        0x0020 => return ElementKind::Whitespace,        // Space
+        0x00A0 => return ElementKind::Nbsp,              // Non-breaking space
+        0x002D => return ElementKind::UnpitchedElement,  // '-' dash
+        0x0027 | 0x2019 => return ElementKind::BreathMark, // ' and right single quote
+        0x002C => return ElementKind::BreathMark,        // ',' comma (breath mark)
+        0x007C => return ElementKind::SingleBarline,     // '|' pipe
+        _ => {}
+    }
+
+    // Check if it's a pitched character in ASCII range (for base characters like 1-7, CDEFGAB)
+    if let Some(ch) = char::from_u32(cp) {
+        // Number system: 1-7
+        if ch >= '1' && ch <= '7' {
+            return ElementKind::PitchedElement;
+        }
+        // Western system: A-G (uppercase)
+        if ch >= 'A' && ch <= 'G' {
+            return ElementKind::PitchedElement;
+        }
+        // Sargam: S, r, R, g, G, m, M, P, d, D, n, N
+        if matches!(ch, 'S' | 'r' | 'R' | 'g' | 'G' | 'm' | 'M' | 'P' | 'd' | 'D' | 'n' | 'N') {
+            return ElementKind::PitchedElement;
+        }
+        // Doremi: d, r, m, f, s, l, t (lowercase) - overlaps with Sargam, handled by PitchSystem context
+
+        // Non-pitch alphanumeric characters are Text (letters, digits 8-9, 0)
+        if ch.is_alphanumeric() {
+            return ElementKind::Text;
+        }
+    }
+
+    // Default to Symbol for punctuation, special characters, and unknown codepoints
+    ElementKind::Symbol
+}
 "#);
 
     let dest_file = out_dir.join("font_lookup_tables.rs");
@@ -1464,6 +1696,27 @@ pub fn is_breath_mark(cp: u32) -> bool {
 #[inline]
 pub fn is_beat_element(cp: u32) -> bool {
     is_pitched_note(cp) || is_dash(cp) || is_breath_mark(cp)
+}
+
+"#);
+
+    // is_timed_element
+    code.push_str(r#"/// Check if codepoint is a timed element (consumes measure time)
+///
+/// Timed elements define beat boundaries and get underlines.
+/// See `src/parse/GRAMMAR.md` - TimedElement = PitchedElement | UnpitchedElement
+///
+/// Includes:
+/// - Pitched notes (all notation systems, including line variants)
+/// - Dash (rhythmic placeholder / rest)
+///
+/// Excludes:
+/// - Superscripts (rhythm-transparent grace notes, in 0xF8000+ range)
+/// - Breath marks (inside beats but don't consume time)
+/// - Spaces, barlines (beat separators)
+#[inline]
+pub fn is_timed_element(cp: u32) -> bool {
+    is_pitched_note(cp) || is_dash(cp)
 }
 
 "#);

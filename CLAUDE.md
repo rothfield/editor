@@ -56,8 +56,10 @@ See **[@RHYTHM.md](RHYTHM.md)** for spatial rhythm, beat grouping, tuplets.
 0xE800-0xE8FF: Underline variants (beat grouping)
 0xE900-0xE9FF: Overline variants (slurs)
 0xEA00-0xEBFF: Combined underline + overline
-0xF8000+:      Superscript variants (ornaments, 16 line variants each)
+0xF8000+:      Superscript variants (grace notes, 16 line variants each)
 ```
+
+**Note:** Even though 50,000+ codepoints seems excessive, they form the **input alphabet** for parsing. Pitched codepoints encode pitch + octave + accidental + line variant. Non-pitch elements (barlines, whitespace, breath marks, dashes) are also part of the alphabet with semantic significance. See `src/parse/GRAMMAR.md` for the formal grammar.
 
 **Formula:** `codepoint = PUA_START + (char_index × CHARS_PER_VARIANT) + variant_index`
 
@@ -203,7 +205,7 @@ See `TONIC_KEY_SIGNATURE_RESEARCH.md` for design rationale.
 
 - `buffer.rs` - Line-based storage (insert, delete, get_line, set_line)
 - `cursor.rs` - TextPos { line, col }, TextRange { start, end }
-- `annotations.rs` - Ornaments, slurs; auto-track position changes on edits
+- `annotations.rs` - Superscripts, slurs; auto-track position changes on edits
 
 **Annotation tracking:** `on_insert()`, `on_delete()`, `on_replace()` shift positions automatically.
 
@@ -213,7 +215,7 @@ Underline (beat grouping): None, Middle, Left, Right, Both
 Overline (slurs): None, Middle, Left, Right
 Combined: 5 × 4 = 20 variants (19 excluding None/None)
 
-**Superscripts:** `SuperscriptLineVariant` enum (0-15) for ornament decorations
+**Superscripts:** `SuperscriptLineVariant` enum (0-15) for superscript decorations
 ```rust
 None = 0,
 UnderlineLeft = 1, UnderlineMiddle = 2, UnderlineRight = 3,

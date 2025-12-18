@@ -21,10 +21,11 @@ pub fn process_beat_with_context(
     process_beat(builder, beat_cells, measure_divisions, next_beat_starts_with_div)
 }
 
-/// Check if a beat starts with "-" (division/extension)
+/// Check if a beat starts with dash (division/extension)
+/// UnpitchedElement is dash only (underscore removed, spaces are Whitespace)
 pub fn beat_starts_with_division(beat_cells: &[Cell]) -> bool {
     beat_cells.first()
-        .map(|cell| cell.kind == ElementKind::UnpitchedElement && cell.char == "-")
+        .map(|cell| cell.get_kind() == ElementKind::UnpitchedElement)
         .unwrap_or(false)
 }
 
@@ -48,16 +49,16 @@ fn normalize_beat(beat_cells: &[Cell]) -> (Vec<usize>, usize) {
     while i < beat_cells.len() {
         let cell = &beat_cells[i];
 
-        if cell.kind == ElementKind::PitchedElement {
+        if cell.get_kind() == ElementKind::PitchedElement {
             seen_pitched_element = true; // FSM: Transition to AFTER_PITCHED state
             // Count this note + following extensions
             let mut slot_count = 1;
             // NEW ARCHITECTURE: No continuation cells, proceed directly to checking for dashes
             let mut j = i + 1;
 
-            // Look for extension "-" characters
+            // Look for extension dash characters (UnpitchedElement is dash only)
             while j < beat_cells.len() {
-                if beat_cells[j].kind == ElementKind::UnpitchedElement && beat_cells[j].char == "-" {
+                if beat_cells[j].get_kind() == ElementKind::UnpitchedElement {
                     slot_count += 1;
                     j += 1;
                 } else {
@@ -66,30 +67,23 @@ fn normalize_beat(beat_cells: &[Cell]) -> (Vec<usize>, usize) {
             }
             slot_counts.push(slot_count);
             i = j;
-        } else if cell.kind == ElementKind::UnpitchedElement {
-            // FSM: Distinguish between "-" at START (rest) vs "-" after note (extension)
-            if cell.char == "-" {
-                // Dash: leading dash in START state is a rest, dash in AFTER_PITCHED is extension (already handled above)
-                if !seen_pitched_element {
-                    // Leading dash(es) before any pitched note → treat as ONE rest
-                    // Count consecutive leading dashes together (like we do for trailing dashes)
-                    let mut rest_count = 1;
-                    let mut j = i + 1;
-                    while j < beat_cells.len() &&
-                          beat_cells[j].kind == ElementKind::UnpitchedElement &&
-                          beat_cells[j].char == "-" {
-                        rest_count += 1;
-                        j += 1;
-                    }
-                    slot_counts.push(rest_count);
-                    i = j;  // Skip all consumed dashes
-                } else {
-                    // Orphaned dash after extensions, skip it
-                    i += 1;
+        } else if cell.get_kind() == ElementKind::UnpitchedElement {
+            // FSM: Distinguish between dash at START (rest) vs dash after note (extension)
+            // UnpitchedElement is dash only (underscore removed, spaces are Whitespace)
+            if !seen_pitched_element {
+                // Leading dash(es) before any pitched note → treat as ONE rest
+                // Count consecutive leading dashes together (like we do for trailing dashes)
+                let mut rest_count = 1;
+                let mut j = i + 1;
+                while j < beat_cells.len() &&
+                      beat_cells[j].get_kind() == ElementKind::UnpitchedElement {
+                    rest_count += 1;
+                    j += 1;
                 }
+                slot_counts.push(rest_count);
+                i = j;  // Skip all consumed dashes
             } else {
-                // Other unpitched elements (not dash) are rests
-                slot_counts.push(1);
+                // Orphaned dash after extensions, skip it
                 i += 1;
             }
         } else {
@@ -139,11 +133,10 @@ pub fn process_beat(
     // Handle leading divisions (tied note from previous beat)
     if beat_starts_with_division(beat_cells) {
         if let Some((prev_pitch_code, prev_octave)) = builder.last_note.clone() {
-            // Count leading "-" symbols
+            // Count leading dash symbols (UnpitchedElement is dash only)
             let mut leading_div_count = 0;
             while i < beat_cells.len() &&
-                  beat_cells[i].kind == ElementKind::UnpitchedElement &&
-                  beat_cells[i].char == "-" {
+                  beat_cells[i].get_kind() == ElementKind::UnpitchedElement {
                 leading_div_count += 1;
                 i += 1;
             }
@@ -237,13 +230,13 @@ pub fn process_beat(
     while i < beat_cells.len() {
         let cell = &beat_cells[i];
 
-        match cell.kind {
+        match cell.get_kind() {
             ElementKind::PitchedElement => {
-                // Count following "-" extenders
+                // Count following dash extenders (UnpitchedElement is dash only)
                 let mut extension_count = 0;
                 let mut j = i + 1;
                 while j < beat_cells.len() {
-                    if beat_cells[j].kind == ElementKind::UnpitchedElement && beat_cells[j].char == "-" {
+                    if beat_cells[j].get_kind() == ElementKind::UnpitchedElement {
                         extension_count += 1;
                         j += 1;
                     } else {
@@ -264,13 +257,13 @@ pub fn process_beat(
                 let musical_duration = normalized_slot_count as f64 / subdivisions as f64;
 
                 // Extract pitch using PitchCode (system-agnostic)
-                if let Some(pitch_code) = &cell.pitch_code {
+                if let Some(pitch_code) = cell.get_pitch_code() {
                     // Check if this is the last note in beat and next beat starts with "-"
                     let is_last_note = {
                         let mut k = i + 1 + extension_count;
                         // NEW ARCHITECTURE: No continuation cells, just find next pitched element
                         while k < beat_cells.len() {
-                            if beat_cells[k].kind == ElementKind::PitchedElement {
+                            if beat_cells[k].get_kind() == ElementKind::PitchedElement {
                                 break;
                             }
                             k += 1;
@@ -279,8 +272,8 @@ pub fn process_beat(
                     };
 
                     elements.push(BeatElement::Note {
-                        pitch_code: *pitch_code,
-                        octave: cell.octave,
+                        pitch_code,
+                        octave: cell.get_octave(),
                         duration_divs,
                         musical_duration,
                         is_last_note,
@@ -292,7 +285,7 @@ pub fn process_beat(
                 // Skip the main note and extensions
                 i += 1 + extension_count;
             }
-            ElementKind::UnpitchedElement if cell.char != "-" => {
+            ElementKind::UnpitchedElement if cell.get_char_string() != "-" => {
                 // Standalone unpitched element (rest, not extension)
                 if slot_index >= normalized_slots.len() {
                     i += 1;

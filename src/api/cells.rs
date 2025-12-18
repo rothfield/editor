@@ -93,26 +93,11 @@ pub fn insert_character(
     };
 
     // Parse the character into a Cell
-    let column = if cursor_pos == 0 {
-        0
-    } else if cursor_pos <= cells.len() {
-        cells.get(cursor_pos.saturating_sub(1))
-            .map(|c| c.col + 1)
-            .unwrap_or(cursor_pos)
-    } else {
-        cells.last().map(|c| c.col + 1).unwrap_or(0)
-    };
-
-    let new_cell = parse_single(c, pitch_system, column, None);
+    let new_cell = parse_single(c, pitch_system, None);
 
     // Insert the new cell at the cursor position
     let insert_pos = cursor_pos.min(cells.len());
     cells.insert(insert_pos, new_cell);
-
-    // Update column indices for cells after insertion
-    for i in (insert_pos + 1)..cells.len() {
-        cells[i].col += 1;
-    }
 
     // Check for accidental mutations
     // 1. Natural + "b" -> Flat
@@ -121,7 +106,7 @@ pub fn insert_character(
 
     // Handle "b" mutation: Natural -> Flat
     if c == 'b' && insert_pos > 0 {
-        if let Some(pitch_code) = cells[insert_pos - 1].pitch_code {
+        if let Some(pitch_code) = cells[insert_pos - 1].get_pitch_code() {
             let is_natural = matches!(pitch_code,
                 PitchCode::N1 | PitchCode::N2 | PitchCode::N3 | PitchCode::N4 |
                 PitchCode::N5 | PitchCode::N6 | PitchCode::N7
@@ -141,22 +126,16 @@ pub fn insert_character(
                     PitchCode::N7 => PitchCode::N7b,
                     _ => pitch_code,
                 };
-
-                cells[insert_pos - 1].pitch_code = Some(new_pitch_code);
+                // pitch_code will be derived from the new codepoint
 
                 // Update glyph for new pitch code
                 use crate::renderers::font_utils::glyph_for_pitch;
-                if let Some(new_glyph) = glyph_for_pitch(new_pitch_code, cells[insert_pos - 1].octave, pitch_system) {
-                    cells[insert_pos - 1].char = new_glyph.to_string();
+                if let Some(new_glyph) = glyph_for_pitch(new_pitch_code, cells[insert_pos - 1].get_octave(), pitch_system) {
+                    cells[insert_pos - 1].set_codepoint(new_glyph as u32);
                 }
 
                 // Remove the "b" cell
                 cells.remove(insert_pos);
-
-                // Renumber columns
-                for i in insert_pos..cells.len() {
-                    cells[i].col = i;
-                }
 
                 wasm_log!("  Mutation complete: {:?} -> {:?}", pitch_code, new_pitch_code);
             }
@@ -165,7 +144,7 @@ pub fn insert_character(
 
     // Handle "/" mutation: Flat -> Half-flat
     else if c == '/' && insert_pos > 0 {
-        if let Some(pitch_code) = cells[insert_pos - 1].pitch_code {
+        if let Some(pitch_code) = cells[insert_pos - 1].get_pitch_code() {
             let is_flat = matches!(pitch_code,
                 PitchCode::N1b | PitchCode::N2b | PitchCode::N3b | PitchCode::N4b |
                 PitchCode::N5b | PitchCode::N6b | PitchCode::N7b
@@ -185,22 +164,16 @@ pub fn insert_character(
                     PitchCode::N7b => PitchCode::N7hf,
                     _ => pitch_code,
                 };
-
-                cells[insert_pos - 1].pitch_code = Some(new_pitch_code);
+                // pitch_code will be derived from the new codepoint
 
                 // Update glyph for new pitch code
                 use crate::renderers::font_utils::glyph_for_pitch;
-                if let Some(new_glyph) = glyph_for_pitch(new_pitch_code, cells[insert_pos - 1].octave, pitch_system) {
-                    cells[insert_pos - 1].char = new_glyph.to_string();
+                if let Some(new_glyph) = glyph_for_pitch(new_pitch_code, cells[insert_pos - 1].get_octave(), pitch_system) {
+                    cells[insert_pos - 1].set_codepoint(new_glyph as u32);
                 }
 
                 // Remove the "/" cell we just inserted
                 cells.remove(insert_pos);
-
-                // Renumber columns after removal
-                for i in insert_pos..cells.len() {
-                    cells[i].col = i;
-                }
 
                 wasm_log!("  Mutation complete: {:?} -> {:?}", pitch_code, new_pitch_code);
             }
@@ -216,16 +189,17 @@ pub fn insert_character(
     let mut new_cursor_pos = 0;
     wasm_log!("  Calculating cursor position: insert_pos={}, cells.len()={}", insert_pos, cells.len());
     for (i, cell) in cells.iter().enumerate() {
+        let cell_char = cell.get_char_string();
         if i == insert_pos {
             // Add this cell's length and stop
-            new_cursor_pos += cell.char.chars().count();
+            new_cursor_pos += cell_char.chars().count();
             wasm_log!("    Cell[{}] = '{}' (len={}), cumulative={} [INSERTED HERE, STOPPING]",
-                     i, cell.char, cell.char.chars().count(), new_cursor_pos);
+                     i, cell_char, cell_char.chars().count(), new_cursor_pos);
             break;
         } else {
-            new_cursor_pos += cell.char.chars().count();
+            new_cursor_pos += cell_char.chars().count();
             wasm_log!("    Cell[{}] = '{}' (len={}), cumulative={}",
-                     i, cell.char, cell.char.chars().count(), new_cursor_pos);
+                     i, cell_char, cell_char.chars().count(), new_cursor_pos);
         }
     }
 
@@ -289,13 +263,11 @@ pub fn parse_text(text: &str, pitch_system: u8) -> Result<js_sys::Array, JsValue
     };
 
     let mut cells = Vec::new();
-    let mut column = 0;
 
     wasm_log!("  Parsing {} characters...", text.chars().count());
     for c in text.chars() {
-        let cell = parse_single(c, pitch_system, column, None);
+        let cell = parse_single(c, pitch_system, None);
         cells.push(cell);
-        column += 1;
     }
 
     wasm_log!("  Parsed {} cells", cells.len());
@@ -305,7 +277,7 @@ pub fn parse_text(text: &str, pitch_system: u8) -> Result<js_sys::Array, JsValue
     use crate::renderers::font_utils::glyph_for_pitch;
     let mut i = 0;
     while i < cells.len().saturating_sub(1) {
-        if let Some(pitch_code) = cells[i].pitch_code {
+        if let Some(pitch_code) = cells[i].get_pitch_code() {
             // Check if this is a flat note
             let is_flat = matches!(pitch_code,
                 PitchCode::N1b | PitchCode::N2b | PitchCode::N3b | PitchCode::N4b |
@@ -313,7 +285,7 @@ pub fn parse_text(text: &str, pitch_system: u8) -> Result<js_sys::Array, JsValue
             );
 
             // Check if next cell is "/"
-            let next_is_slash = cells.get(i + 1).map(|c| c.char.as_str()) == Some("/");
+            let next_is_slash = cells.get(i + 1).map(|c| c.get_char_string()) == Some("/".to_string());
 
             if is_flat && next_is_slash {
                 wasm_log!("  Mutating flat + '/' to half-flat at position {}", i);
@@ -329,21 +301,15 @@ pub fn parse_text(text: &str, pitch_system: u8) -> Result<js_sys::Array, JsValue
                     PitchCode::N7b => PitchCode::N7hf,
                     _ => pitch_code, // Should not happen
                 };
-
-                cells[i].pitch_code = Some(new_pitch_code);
+                // pitch_code will be derived from the new codepoint
 
                 // Update glyph for new pitch code
-                if let Some(new_glyph) = glyph_for_pitch(new_pitch_code, cells[i].octave, pitch_system) {
-                    cells[i].char = new_glyph.to_string();
+                if let Some(new_glyph) = glyph_for_pitch(new_pitch_code, cells[i].get_octave(), pitch_system) {
+                    cells[i].set_codepoint(new_glyph as u32);
                 }
 
                 // Remove the "/" cell
                 cells.remove(i + 1);
-
-                // Renumber columns for cells after removal
-                for j in (i + 1)..cells.len() {
-                    cells[j].col = j;
-                }
 
                 wasm_log!("  Mutation complete: {:?} -> {:?}", pitch_code, new_pitch_code);
             }
@@ -405,28 +371,21 @@ pub fn delete_character(
         return Err(JsValue::from_str("Cursor position out of bounds"));
     }
 
-    // WASM-First Architecture: Ornament deletion protection
-    // Check if cell has ornament indicator - ornaments cannot be deleted in normal mode
-    if cells[cursor_pos].has_ornament_indicator() {
-        wasm_warn!("Cannot delete ornament cell at position {} - ornaments are non-editable", cursor_pos);
-        return Err(JsValue::from_str("Cannot delete ornament cells - toggle ornament edit mode first"));
+    // WASM-First Architecture: Superscript deletion protection
+    // Check if cell has superscript indicator - superscripts cannot be deleted in normal mode
+    if cells[cursor_pos].has_superscript_indicator() {
+        wasm_warn!("Cannot delete superscript cell at position {} - superscripts are non-editable", cursor_pos);
+        return Err(JsValue::from_str("Cannot delete superscript cells - toggle superscript edit mode first"));
     }
 
     // NEW ARCHITECTURE: No continuation cells
     // Multi-character glyphs (like "1#", "||") are stored as single cells
     // Deletion simply removes the cell
 
-    wasm_log!("  Cell at position {}: char='{}'", cursor_pos, cells[cursor_pos].char);
+    wasm_log!("  Cell at position {}: char='{}'", cursor_pos, cells[cursor_pos].get_char_string());
 
     // Delete the cell at cursor_pos
     cells.remove(cursor_pos);
-
-    // Update column indices for cells after deletion
-    for i in cursor_pos..cells.len() {
-        if cells[i].col > 0 {
-            cells[i].col -= 1;
-        }
-    }
 
     // No reparsing needed - each cell is self-contained
 
@@ -453,72 +412,68 @@ pub fn delete_character(
 // NOTE: Old applyCommand function removed - use layered API instead
 // - For slurs: Use applySlurLayered/removeSlurLayered in src/api/layered.rs
 // - For octaves: Use shiftOctave in src/api/layered.rs
-// - For ornaments: Use ornament_indicator command (kept for backward compatibility)
+// - For superscripts: Use selectionToSuperscript/superscriptToNormal
 // ============================================================================
 
 // ============================================================================
-// Ornament Copy/Paste Operations (cells-array pattern, like applyCommand)
+// Superscript Copy/Paste Operations (cells-array pattern, like applyCommand)
+// DEPRECATED: These functions are deprecated. Use selectionToSuperscript() instead.
 // ============================================================================
 
-/// Copy ornament from a specific cell
+/// Copy superscript from a specific cell
 ///
 /// # Parameters
 /// - `cells_js`: JavaScript array of Cell objects
 /// - `cell_index`: Index of the cell to copy ornament from
 ///
 /// # Returns
-/// Ornament notation string (e.g., "rg" for two grace notes)
-/// DEPRECATED: Ornament field removed. Grace notes are now superscript characters.
-/// Use selectionToSuperscript() instead.
-#[wasm_bindgen(js_name = copyOrnamentFromCell)]
-pub fn copy_ornament_from_cell(
+/// Superscript notation string (e.g., "rg" for two grace notes)
+/// DEPRECATED: Use selectionToSuperscript() instead.
+#[wasm_bindgen(js_name = copySuperscriptFromCell)]
+pub fn copy_superscript_from_cell(
     _cells_js: JsValue,
     _cell_index: usize,
 ) -> Result<String, JsValue> {
-    Err(JsValue::from_str("DEPRECATED: Ornament field removed. Grace notes are now superscript characters. Use selectionToSuperscript() instead."))
+    Err(JsValue::from_str("DEPRECATED: Use selectionToSuperscript() instead."))
 }
 
-/// DEPRECATED: Ornament field removed. Grace notes are now superscript characters.
-/// Use selectionToSuperscript() instead.
-#[wasm_bindgen(js_name = pasteOrnamentToCell)]
-pub fn paste_ornament_to_cell(
+/// DEPRECATED: Use selectionToSuperscript() instead.
+#[wasm_bindgen(js_name = pasteSuperscriptToCell)]
+pub fn paste_superscript_to_cell(
     _cells_js: JsValue,
     _cell_index: usize,
     _notation_text: &str,
     _placement: &str,
 ) -> Result<js_sys::Array, JsValue> {
-    Err(JsValue::from_str("DEPRECATED: Ornament field removed. Grace notes are now superscript characters. Use selectionToSuperscript() instead."))
+    Err(JsValue::from_str("DEPRECATED: Use selectionToSuperscript() instead."))
 }
 
-/// DEPRECATED: Ornament field removed. Grace notes are now superscript characters.
-/// Use selectionToSuperscript() instead.
-#[wasm_bindgen(js_name = pasteOrnamentCells)]
-pub fn paste_ornament_cells(
+/// DEPRECATED: Use selectionToSuperscript() instead.
+#[wasm_bindgen(js_name = pasteSuperscriptCells)]
+pub fn paste_superscript_cells(
     _cells_js: JsValue,
     _cell_index: usize,
-    _ornament_cells_js: JsValue,
+    _superscript_cells_js: JsValue,
     _placement: &str,
 ) -> Result<js_sys::Array, JsValue> {
-    Err(JsValue::from_str("DEPRECATED: Ornament field removed. Grace notes are now superscript characters. Use selectionToSuperscript() instead."))
+    Err(JsValue::from_str("DEPRECATED: Use selectionToSuperscript() instead."))
 }
 
-/// DEPRECATED: Ornament field removed. Grace notes are now superscript characters.
-/// Use superscriptToNormal() instead.
-#[wasm_bindgen(js_name = clearOrnamentFromCell)]
-pub fn clear_ornament_from_cell(
+/// DEPRECATED: Use superscriptToNormal() instead.
+#[wasm_bindgen(js_name = clearSuperscriptFromCell)]
+pub fn clear_superscript_from_cell(
     _cells_js: JsValue,
     _cell_index: usize,
 ) -> Result<js_sys::Array, JsValue> {
-    Err(JsValue::from_str("DEPRECATED: Ornament field removed. Grace notes are now superscript characters. Use superscriptToNormal() instead."))
+    Err(JsValue::from_str("DEPRECATED: Use superscriptToNormal() instead."))
 }
 
-/// DEPRECATED: Ornament field removed. Grace notes are now superscript characters.
-/// Placement is implicit - superscripts always attach to the previous pitch.
-#[wasm_bindgen(js_name = setOrnamentPlacementOnCell)]
-pub fn set_ornament_placement_on_cell(
+/// DEPRECATED: Placement is implicit - superscripts always attach to the previous pitch.
+#[wasm_bindgen(js_name = setSuperscriptPlacementOnCell)]
+pub fn set_superscript_placement_on_cell(
     _cells_js: JsValue,
     _cell_index: usize,
     _placement: &str,
 ) -> Result<js_sys::Array, JsValue> {
-    Err(JsValue::from_str("DEPRECATED: Ornament field removed. Grace notes are now superscript characters. Placement is implicit - superscripts always attach to the previous pitch."))
+    Err(JsValue::from_str("DEPRECATED: Placement is implicit - superscripts always attach to the previous pitch."))
 }

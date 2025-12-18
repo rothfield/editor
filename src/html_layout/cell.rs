@@ -32,12 +32,12 @@ impl CellStyleBuilder {
         char_width_offset: &mut usize,
         beat_roles: &HashMap<usize, String>,
         slur_roles: &HashMap<usize, String>,
-        ornament_roles: &HashMap<usize, String>,
+        superscript_roles: &HashMap<usize, String>,
         selection: Option<&crate::models::notation::Selection>,
     ) -> RenderCell {
         // Build CSS classes
         let mut classes = vec!["char-cell".to_string()];
-        classes.push(format!("kind-{}", self.element_kind_to_css(cell.kind)));
+        classes.push(format!("kind-{}", self.element_kind_to_css(cell.get_kind())));
 
         // State classes - check both cell flags AND selection manager
         let mut is_selected = cell.flags & 0x02 != 0;
@@ -47,7 +47,7 @@ impl CellStyleBuilder {
             if let Some(sel) = selection {
                 // Check if this cell is within the selection range
                 let cell_line = line_idx;
-                let cell_col = cell.col; // Use cell.col (physical column)
+                let cell_col = cell_idx; // Use cell_idx (array position)
 
                 // Selection range is [start, end) - exclusive of end
                 let in_range = cell_line >= sel.start().line && cell_line <= sel.end().line;
@@ -79,14 +79,14 @@ impl CellStyleBuilder {
             classes.push("head-marker".to_string());
         }
 
-        // Beat/slur/ornament role classes
+        // Beat/slur/superscript role classes
         if let Some(role) = beat_roles.get(&cell_idx) {
             classes.push(role.clone());
         }
         if let Some(role) = slur_roles.get(&cell_idx) {
             classes.push(role.clone());
         }
-        if let Some(role) = ornament_roles.get(&cell_idx) {
+        if let Some(role) = superscript_roles.get(&cell_idx) {
             classes.push(role.clone());
         }
 
@@ -94,10 +94,10 @@ impl CellStyleBuilder {
         let mut dataset = HashMap::new();
         dataset.insert("lineIndex".to_string(), line_idx.to_string());
         dataset.insert("cellIndex".to_string(), cell_idx.to_string());
-        dataset.insert("column".to_string(), cell.col.to_string());
+        dataset.insert("column".to_string(), cell_idx.to_string());
 
         // Pitch system class
-        if let Some(pitch_system) = cell.pitch_system {
+        if let Some(pitch_system) = cell.get_pitch_system() {
             classes.push(format!("pitch-system-{}", self.pitch_system_to_css(pitch_system)));
         }
 
@@ -107,7 +107,7 @@ impl CellStyleBuilder {
         // Get actual cell width (for cursor positioning)
         // Whitespace cells need a minimum width so cursor advances
         let actual_cell_width = cell_widths.get(cell_idx).copied().unwrap_or(12.0);
-        let actual_cell_width = if cell.kind == ElementKind::Whitespace {
+        let actual_cell_width = if cell.get_kind() == ElementKind::Whitespace {
             actual_cell_width.max(8.0) // Whitespace minimum 8px
         } else {
             actual_cell_width
@@ -134,7 +134,7 @@ impl CellStyleBuilder {
         let y = line_y_offset + config.cell_y_offset;
 
         // Get barline type from ElementKind for SMuFL rendering (CSS class name)
-        let barline_type = match cell.kind {
+        let barline_type = match cell.get_kind() {
             ElementKind::SingleBarline => "single-bar".to_string(),
             ElementKind::RepeatLeftBarline => "repeat-left-start".to_string(),
             ElementKind::RepeatRightBarline => "repeat-right-start".to_string(),
@@ -217,10 +217,10 @@ impl CellStyleBuilder {
         map
     }
 
-    /// Build map of cell index to ornament role class
-    /// Deprecated: ornament indicators have been removed
-    pub fn build_ornament_role_map(&self, _cells: &[Cell]) -> HashMap<usize, String> {
-        // With the new system, ornaments are stored inline with cells, not as separate indicator cells
+    /// Build map of cell index to superscript role class
+    /// Deprecated: superscript indicators have been removed
+    pub fn build_superscript_role_map(&self, _cells: &[Cell]) -> HashMap<usize, String> {
+        // With the new system, superscripts are stored inline with cells, not as separate indicator cells
         HashMap::new()
     }
 

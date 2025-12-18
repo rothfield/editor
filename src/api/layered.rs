@@ -180,7 +180,7 @@ pub fn select_whole_beat(line: usize, col: usize) -> JsValue {
     // Get text from the line (extracting from Cells for now)
     // TODO: In full implementation, text buffer would be the source
     let cells = &doc.lines[line].cells;
-    let text: String = cells.iter().map(|c| c.char.as_str()).collect();
+    let text: String = cells.iter().map(|c| c.get_char_string()).collect();
 
     drop(doc_guard); // Release lock
 
@@ -312,7 +312,7 @@ pub fn shift_octave(line: usize, start_col: usize, end_col: usize, delta: i8) ->
 
     // Get text from the line
     let cells = &doc.lines[line].cells;
-    let text: String = cells.iter().map(|c| c.char.as_str()).collect();
+    let text: String = cells.iter().map(|c| c.get_char_string()).collect();
 
     // Layer 2: Shift octaves in range
     let range = TextRange::new(TextPos::new(line, start_col), TextPos::new(line, end_col));
@@ -322,21 +322,12 @@ pub fn shift_octave(line: usize, start_col: usize, end_col: usize, delta: i8) ->
 
     // Layer 0: Update document with new text
     // Convert new text back to cells
+    // kind is derived from codepoint via get_kind(), no manual assignment needed
     let new_cells: Vec<crate::models::Cell> = shift_result
         .new_text
         .chars()
-        .enumerate()
-        .map(|(col, ch)| {
-            let mut cell = crate::models::Cell::new(ch.to_string(), crate::models::ElementKind::Unknown, col);
-
-            // Try to decode as pitch to set kind and pitch_code
-            if let Some((pitch_code, octave)) = crate::renderers::font_utils::pitch_from_glyph(ch, pitch_system) {
-                cell.kind = crate::models::ElementKind::PitchedElement;
-                cell.pitch_code = Some(pitch_code);
-                cell.octave = octave;
-            }
-
-            cell
+        .map(|ch| {
+            crate::models::Cell::new(ch.to_string(), crate::models::ElementKind::Unknown)
         })
         .collect();
 
@@ -915,7 +906,7 @@ pub fn apply_annotation_slurs_to_cells() -> JsValue {
             #[cfg(target_arch = "wasm32")]
             web_sys::console::log_1(&format!(
                 "[applyAnnotationSlursToCells] Set SlurStart on line {} col {} (char: '{}')",
-                line_idx, slur.start.col, line.cells[slur.start.col].char
+                line_idx, slur.start.col, line.cells[slur.start.col].get_char_string()
             ).into());
         } else {
             log::warn!("Slur start column {} out of bounds on line {}", slur.start.col, line_idx);
@@ -931,7 +922,7 @@ pub fn apply_annotation_slurs_to_cells() -> JsValue {
             #[cfg(target_arch = "wasm32")]
             web_sys::console::log_1(&format!(
                 "[applyAnnotationSlursToCells] Set SlurEnd on line {} col {} (char: '{}')",
-                line_idx, end_col, line.cells[end_col].char
+                line_idx, end_col, line.cells[end_col].get_char_string()
             ).into());
         } else {
             log::warn!("Slur end column {} out of bounds on line {}", end_col, line_idx);
@@ -1051,26 +1042,14 @@ pub fn selection_to_superscript(
     for col in start_col..end_col.min(cells_len) {
         let cell = &mut document.lines[line].cells[col];
 
-        // Only convert pitched elements
-        if cell.kind != crate::models::ElementKind::PitchedElement {
-            continue;
-        }
-
-        // Set superscript flag and update codepoint
-        if !cell.superscript {
-            cell.superscript = true;
-
-            // Convert codepoint to superscript variant
-            if let Some(super_cp) = crate::renderers::font_utils::to_superscript(cell.codepoint) {
-                cell.codepoint = super_cp;
-                cell.char = char::from_u32(super_cp).map(|c| c.to_string()).unwrap_or(cell.char.clone());
-            }
-
+        // Convert any codepoint to superscript (no restriction on element kind)
+        if !cell.is_superscript() {
+            cell.set_superscript(true);
             cells_converted += 1;
 
             #[cfg(target_arch = "wasm32")]
             web_sys::console::log_1(&format!(
-                "[WASM] Set superscript=true for col {}",
+                "[WASM] Set superscript for col {}",
                 col
             ).into());
         }
@@ -1157,14 +1136,14 @@ pub fn superscript_to_normal(
     for col in start_col..end_col.min(cells_len) {
         let cell = &mut document.lines[line].cells[col];
 
-        // Clear superscript flag if set
-        if cell.superscript {
-            cell.superscript = false;
+        // Clear superscript via codepoint conversion
+        if cell.is_superscript() {
+            cell.set_superscript(false);
             cells_converted += 1;
 
             #[cfg(target_arch = "wasm32")]
             web_sys::console::log_1(&format!(
-                "[WASM] Set superscript=false for col {}",
+                "[WASM] Cleared superscript for col {}",
                 col
             ).into());
         }
@@ -1197,27 +1176,33 @@ mod tests {
     use crate::models::{Document, Line, Cell, ElementKind};
 
     fn setup_test_document(text: &str) {
+        use crate::models::PitchCode;
+        use crate::renderers::font_utils::glyph_for_pitch;
+        use crate::models::elements::PitchSystem;
+
         // Create cells from text for testing
+        // kind and pitch_code are derived from codepoint via getters
         let cells: Vec<Cell> = text
             .chars()
             .enumerate()
             .map(|(col, ch)| {
-                let mut cell = Cell::new(ch.to_string(), ElementKind::Unknown, col);
-                // Set pitch code for numbers
+                // For number pitches (1-7), use proper pitch codepoints
                 if ('1'..='7').contains(&ch) {
-                    cell.kind = ElementKind::PitchedElement;
-                    cell.pitch_code = Some(match ch {
-                        '1' => crate::models::PitchCode::N1,
-                        '2' => crate::models::PitchCode::N2,
-                        '3' => crate::models::PitchCode::N3,
-                        '4' => crate::models::PitchCode::N4,
-                        '5' => crate::models::PitchCode::N5,
-                        '6' => crate::models::PitchCode::N6,
-                        '7' => crate::models::PitchCode::N7,
+                    let pitch_code = match ch {
+                        '1' => PitchCode::N1,
+                        '2' => PitchCode::N2,
+                        '3' => PitchCode::N3,
+                        '4' => PitchCode::N4,
+                        '5' => PitchCode::N5,
+                        '6' => PitchCode::N6,
+                        '7' => PitchCode::N7,
                         _ => unreachable!(),
-                    });
+                    };
+                    if let Some(glyph) = glyph_for_pitch(pitch_code, 0, PitchSystem::Number) {
+                        return Cell::from_codepoint(glyph as u32, ElementKind::PitchedElement);
+                    }
                 }
-                cell
+                Cell::new(ch.to_string(), ElementKind::Unknown)
             })
             .collect();
 

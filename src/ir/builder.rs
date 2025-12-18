@@ -54,6 +54,9 @@ pub struct BeatAccumulator {
     pub pending_grace_notes_before: Vec<GraceNoteData>,
     /// Pending grace notes to attach after the main element (ornaments with After placement)
     pub pending_grace_notes_after: Vec<GraceNoteData>,
+    /// Superscripts awaiting placement decision (will become grace_notes_before if followed
+    /// by a pitch, or grace_notes_after/orphan if followed by dash or end of beat)
+    pub pending_superscripts: Vec<GraceNoteData>,
     /// Pitch being collected (if in CollectingPitchInBeat)
     pub pending_pitch: Option<PitchInfo>,
     /// Whether we've seen a main element (pitch or rest) in this beat
@@ -77,6 +80,7 @@ impl BeatAccumulator {
             beat_subdivisions: 1, // Default to 1, will be set properly in group_cells_into_events
             pending_grace_notes_before: Vec::new(),
             pending_grace_notes_after: Vec::new(),
+            pending_superscripts: Vec::new(),
             pending_pitch: None,
             has_main_element: false,
             pending_slur_indicator: SlurIndicator::None,
@@ -93,6 +97,7 @@ impl BeatAccumulator {
             beat_subdivisions,
             pending_grace_notes_before: Vec::new(),
             pending_grace_notes_after: Vec::new(),
+            pending_superscripts: Vec::new(),
             pending_pitch: None,
             has_main_element: false,
             pending_slur_indicator: SlurIndicator::None,
@@ -130,26 +135,47 @@ impl BeatAccumulator {
         self.pending_pitch = Some(pitch);
     }
 
-    /// Add grace note to pending list
-    #[allow(dead_code)]
+    /// Add grace note to pending superscripts (placement will be determined later)
+    /// Superscripts attach to the pitch BEFORE them (grace_notes_after) UNLESS
+    /// they are directly before the following pitch (grace_notes_before).
     fn add_grace_note(&mut self, pitch: PitchInfo) {
-        // Default to After placement for ornaments
         let grace = GraceNoteData {
             pitch,
-            position: crate::models::OrnamentPositionType::After,
+            position: crate::models::SuperscriptPositionType::After,  // Will be adjusted based on final placement
             slash: false, // TODO: wire up slash notation
         };
+        self.pending_superscripts.push(grace);
+    }
 
-        if self.has_main_element {
-            // Grace notes after main element - will be attached when finalizing pitch
-            // For now, accumulate them
-            if let Some(ExportEvent::Note(ref mut note_data)) = self.events.last_mut() {
-                note_data.grace_notes_after.push(grace);
-            }
-        } else {
-            // Grace notes before main element
-            self.pending_grace_notes_before.push(grace);
+    /// Flush pending superscripts to grace_notes_before of the upcoming pitch
+    /// Called when a pitch immediately follows superscripts
+    fn flush_superscripts_to_before(&mut self) {
+        // Change position to Before since they'll precede the next pitch
+        for grace in &mut self.pending_superscripts {
+            grace.position = crate::models::SuperscriptPositionType::Before;
         }
+        self.pending_grace_notes_before.append(&mut self.pending_superscripts);
+    }
+
+    /// Flush pending superscripts to grace_notes_after of the previous pitch
+    /// Called when a dash follows superscripts, or when a pitch is being finished
+    fn flush_superscripts_to_after(&mut self) {
+        if self.pending_superscripts.is_empty() {
+            return;
+        }
+        // Attach to the last note in events (if any)
+        if let Some(ExportEvent::Note(ref mut note_data)) = self.events.last_mut() {
+            // Position is already After (default)
+            note_data.grace_notes_after.append(&mut self.pending_superscripts);
+        } else {
+            // No previous note to attach to - these become orphans
+            // Keep them in pending_superscripts to be returned at end of beat
+        }
+    }
+
+    /// Take orphan superscripts (those with no pitch to attach to in this beat)
+    fn take_orphan_superscripts(&mut self) -> Vec<GraceNoteData> {
+        std::mem::take(&mut self.pending_superscripts)
     }
 
     /// Process ornament cells and convert them to grace notes
@@ -158,16 +184,16 @@ impl BeatAccumulator {
 
         // Determine the position based on ornament placement
         let position = match ornament.placement {
-            OrnamentPlacement::Before => crate::models::OrnamentPositionType::Before,
-            OrnamentPlacement::After => crate::models::OrnamentPositionType::After,
-            OrnamentPlacement::OnTop => crate::models::OrnamentPositionType::OnTop,
+            OrnamentPlacement::Before => crate::models::SuperscriptPositionType::Before,
+            OrnamentPlacement::After => crate::models::SuperscriptPositionType::After,
+            OrnamentPlacement::OnTop => crate::models::SuperscriptPositionType::OnTop,
         };
 
         // Extract pitches from ornament cells
         for cell in &ornament.cells {
-            if let Some(pitch_code) = cell.pitch_code {
+            if let Some(pitch_code) = cell.get_pitch_code() {
                 // Use PitchInfo::with_tonic to compute western_pitch
-                let pitch = PitchInfo::with_tonic(pitch_code, cell.octave, self.tonic);
+                let pitch = PitchInfo::with_tonic(pitch_code, cell.get_octave(), self.tonic);
                 let grace = GraceNoteData {
                     pitch,
                     position,
@@ -176,11 +202,11 @@ impl BeatAccumulator {
 
                 // Add to appropriate grace notes list based on placement
                 match position {
-                    crate::models::OrnamentPositionType::Before => {
+                    crate::models::SuperscriptPositionType::Before => {
                         // Grace notes before main element - add to pending
                         self.pending_grace_notes_before.push(grace);
                     }
-                    crate::models::OrnamentPositionType::After | crate::models::OrnamentPositionType::OnTop => {
+                    crate::models::SuperscriptPositionType::After | crate::models::SuperscriptPositionType::OnTop => {
                         // Grace notes after main element - add to pending after list
                         // These will be attached to the note when finish_pitch() is called
                         self.pending_grace_notes_after.push(grace);
@@ -208,6 +234,12 @@ impl BeatAccumulator {
     /// Finalize pitch element
     fn finish_pitch(&mut self) {
         if let Some(pitch) = self.pending_pitch.take() {
+            // Any pending superscripts that came after the pitch but before the next element
+            // (like a dash) should become grace_notes_after of this pitch
+            if !self.pending_superscripts.is_empty() {
+                self.pending_grace_notes_after.append(&mut self.pending_superscripts);
+            }
+
             // Store beat-relative fraction
             // This will be scaled to measure divisions later
             let fraction = Fraction::new(self.current_divisions, self.beat_subdivisions).simplify();
@@ -230,18 +262,10 @@ impl BeatAccumulator {
             let slur_indicator = self.take_slur_indicator();
 
             // Create a temporary cell for the attach_slur_to_note function
+            // kind is derived from codepoint via get_kind()
             let mut temp_cell = Cell {
                 codepoint: 0,
-                char: "".to_string(),
-                kind: ElementKind::PitchedElement,
-                col: 0,
                 flags: 0,
-                pitch_code: Some(pitch.pitch_code),
-                pitch_system: None,
-                octave: pitch.octave,
-                superscript: false,
-                underline: crate::renderers::line_variants::UnderlineState::None,
-                overline: crate::renderers::line_variants::OverlineState::None,
                 x: 0.0,
                 y: 0.0,
                 w: 0.0,
@@ -381,31 +405,43 @@ pub fn beat_transition(
     // SUPERSCRIPT HANDLING: Grace notes are rhythm-transparent
     // They attach to the previous normal pitch (after placement by default)
     if cell.is_superscript() {
-        if let Some(pitch_code) = cell.pitch_code {
-            let pitch = PitchInfo::with_tonic(pitch_code, cell.octave, tonic);
+        #[cfg(test)]
+        println!("  DEBUG: Cell is superscript, codepoint=0x{:X}", cell.codepoint);
+
+        if let Some(pitch_code) = cell.get_pitch_code() {
+            #[cfg(test)]
+            println!("  DEBUG: Got pitch_code={:?}, adding grace note", pitch_code);
+
+            let pitch = PitchInfo::with_tonic(pitch_code, cell.get_octave(), tonic);
             accum.add_grace_note(pitch);
+        } else {
+            #[cfg(test)]
+            println!("  DEBUG: Failed to get pitch_code from superscript cell!");
         }
         // Stay in current state - superscripts don't affect FSM state
         return state;
     }
 
-    match (state, cell.kind) {
-        // DASHES
-        (CellGroupingState::InBeat, ElementKind::UnpitchedElement) if cell.char == "-" => {
+    match (state, cell.get_kind()) {
+        // DASHES (UnpitchedElement is dash only)
+        (CellGroupingState::InBeat, ElementKind::UnpitchedElement) => {
+            // Dash seen without preceding pitch in this beat - flush any superscripts
+            // to the previous note's grace_notes_after (they'll become orphans if no previous note)
+            accum.flush_superscripts_to_after();
             accum.start_dash();
             CellGroupingState::CollectingDashesInBeat
         }
-        (CellGroupingState::CollectingDashesInBeat, ElementKind::UnpitchedElement)
-            if cell.char == "-" =>
-        {
+        (CellGroupingState::CollectingDashesInBeat, ElementKind::UnpitchedElement) => {
             accum.increment_dash();
             CellGroupingState::CollectingDashesInBeat
         }
 
         // PITCH → transition from InBeat or CollectingDashes
         (CellGroupingState::InBeat, ElementKind::PitchedElement) => {
-            if let Some(pitch_code) = cell.pitch_code {
-                let pitch = PitchInfo::with_tonic(pitch_code, cell.octave, tonic);
+            if let Some(pitch_code) = cell.get_pitch_code() {
+                // Flush pending superscripts to grace_notes_before of this pitch
+                accum.flush_superscripts_to_before();
+                let pitch = PitchInfo::with_tonic(pitch_code, cell.get_octave(), tonic);
                 accum.start_pitch(pitch);
                 // Set slur indicator for THIS note (from current cell)
                 if cell.is_slur_start() {
@@ -428,8 +464,10 @@ pub fn beat_transition(
         (CellGroupingState::CollectingDashesInBeat, ElementKind::PitchedElement) => {
             // Finish the dash rest, then start the pitch
             accum.finish_dashes();
-            if let Some(pitch_code) = cell.pitch_code {
-                let pitch = PitchInfo::with_tonic(pitch_code, cell.octave, tonic);
+            if let Some(pitch_code) = cell.get_pitch_code() {
+                // Flush pending superscripts to grace_notes_before of this pitch
+                accum.flush_superscripts_to_before();
+                let pitch = PitchInfo::with_tonic(pitch_code, cell.get_octave(), tonic);
                 accum.start_pitch(pitch);
                 // Set slur indicator for THIS note (from current cell)
                 if cell.is_slur_start() {
@@ -449,8 +487,10 @@ pub fn beat_transition(
             // New pitch → finish previous and start new
             // IMPORTANT: finish_pitch() FIRST, so it uses the PREVIOUS note's slur indicator
             accum.finish_pitch();
-            if let Some(pitch_code) = cell.pitch_code {
-                let pitch = PitchInfo::with_tonic(pitch_code, cell.octave, tonic);
+            if let Some(pitch_code) = cell.get_pitch_code() {
+                // Flush pending superscripts to grace_notes_before of this pitch
+                accum.flush_superscripts_to_before();
+                let pitch = PitchInfo::with_tonic(pitch_code, cell.get_octave(), tonic);
                 accum.start_pitch(pitch);
                 // Set slur indicator for THIS note AFTER finishing previous
                 if cell.is_slur_start() {
@@ -470,10 +510,8 @@ pub fn beat_transition(
             }
         }
 
-        // DASHES after PITCH → extend current note
-        (CellGroupingState::CollectingPitchInBeat, ElementKind::UnpitchedElement)
-            if cell.char == "-" =>
-        {
+        // DASHES after PITCH → extend current note (UnpitchedElement is dash only)
+        (CellGroupingState::CollectingPitchInBeat, ElementKind::UnpitchedElement) => {
             accum.increment_dash();
             CellGroupingState::CollectingPitchInBeat
         }
@@ -508,13 +546,16 @@ pub fn beat_transition(
 /// Process cells in a beat using explicit FSM
 /// This is the main entry point for grouping cells into events
 ///
-/// Returns: (events, final_pitch_context_reset_flag)
+/// Returns: (events, final_pitch_context_reset_flag, orphan_grace_notes)
 /// The pitch_context_reset flag tracks whether we've seen a breath mark since the last pitch.
 /// This flag must be carried forward across beats to correctly handle patterns like "1  '  ---"
 /// where the breath mark appears in a separate beat from both the note and the dashes.
-pub fn group_cells_into_events(beat_cells: &[&Cell], initial_pitch_context_reset: bool, tonic: crate::models::Tonic) -> (Vec<ExportEvent>, bool) {
+///
+/// Orphan grace notes are superscripts in a beat with no following pitch to attach to.
+/// They should be attached to the previous beat's last pitch as grace_notes_after.
+pub fn group_cells_into_events(beat_cells: &[&Cell], initial_pitch_context_reset: bool, tonic: crate::models::Tonic) -> (Vec<ExportEvent>, bool, Vec<GraceNoteData>) {
     if beat_cells.is_empty() {
-        return (Vec::new(), initial_pitch_context_reset);
+        return (Vec::new(), initial_pitch_context_reset, Vec::new());
     }
 
     // Calculate beat subdivisions FIRST to preserve semantic meaning
@@ -546,7 +587,13 @@ pub fn group_cells_into_events(beat_cells: &[&Cell], initial_pitch_context_reset
         }
     }
 
-    (accum.events, accum.pitch_context_reset)
+    // At end of beat, try to flush any remaining superscripts to the last note in this beat
+    accum.flush_superscripts_to_after();
+
+    // Take any remaining orphan superscripts (those with no note to attach to)
+    let orphan_grace_notes = accum.take_orphan_superscripts();
+
+    (accum.events, accum.pitch_context_reset, orphan_grace_notes)
 }
 
 /// Parse lyrics string into syllables with syllabic types
@@ -609,13 +656,15 @@ pub fn parse_lyrics_to_syllables(lyrics: &str) -> Vec<(String, Syllabic)> {
 }
 
 /// Collect cells at the same column (column-based chords)
+/// Note: Since col is now implicit (array index), each cell is at a unique column.
+/// This function now wraps each cell in its own Vec.
 pub fn collect_chord_notes(cells: &[Cell]) -> Vec<Vec<&Cell>> {
     use std::collections::BTreeMap;
 
     let mut by_column: BTreeMap<usize, Vec<&Cell>> = BTreeMap::new();
 
-    for cell in cells {
-        by_column.entry(cell.col).or_insert_with(Vec::new).push(cell);
+    for (col, cell) in cells.iter().enumerate() {
+        by_column.entry(col).or_insert_with(Vec::new).push(cell);
     }
 
     by_column.into_values().collect()
@@ -963,7 +1012,7 @@ pub fn calculate_beat_subdivisions(beat_cells_refs: &[&Cell]) -> usize {
         let cell = beat_cells_refs[i];
 
         // Skip breath marks - they don't contribute to subdivisions
-        if cell.kind == ElementKind::BreathMark {
+        if cell.get_kind() == ElementKind::BreathMark {
             i += 1;
             continue;
         }
@@ -974,7 +1023,7 @@ pub fn calculate_beat_subdivisions(beat_cells_refs: &[&Cell]) -> usize {
             continue;
         }
 
-        if cell.kind == ElementKind::PitchedElement {
+        if cell.get_kind() == ElementKind::PitchedElement {
             seen_pitched_element = true;
             // Count this note + following dash extensions
             // NOTE: cells with ornaments are treated as regular pitched elements for rhythm calculation
@@ -986,13 +1035,13 @@ pub fn calculate_beat_subdivisions(beat_cells_refs: &[&Cell]) -> usize {
             // IMPORTANT: Skip over breath marks when looking for dash extensions
             // A breath mark resets pitch context (dashes become rests) but does NOT
             // create a beat boundary for subdivision counting
-            while j < beat_cells_refs.len() && beat_cells_refs[j].kind == ElementKind::BreathMark {
+            while j < beat_cells_refs.len() && beat_cells_refs[j].get_kind() == ElementKind::BreathMark {
                 j += 1;
             }
 
             // Count dash extensions (which become rests after breath mark, but still count as subdivisions)
             while j < beat_cells_refs.len() {
-                if beat_cells_refs[j].kind == ElementKind::UnpitchedElement && beat_cells_refs[j].char == "-" {
+                if beat_cells_refs[j].get_kind() == ElementKind::UnpitchedElement {
                     slot_count += 1;
                     j += 1;
                 } else {
@@ -1001,29 +1050,22 @@ pub fn calculate_beat_subdivisions(beat_cells_refs: &[&Cell]) -> usize {
             }
             slot_counts.push(slot_count);
             i = j;
-        } else if cell.kind == ElementKind::UnpitchedElement {
-            // Standalone dash = rest
-            if cell.char == "-" {
-                if !seen_pitched_element {
-                    // Leading dash(es) before any pitch = ONE rest
-                    // Count consecutive leading dashes together (like we do for trailing dashes after notes)
-                    let mut rest_count = 1;
-                    let mut j = i + 1;
-                    while j < beat_cells_refs.len() &&
-                          beat_cells_refs[j].kind == ElementKind::UnpitchedElement &&
-                          beat_cells_refs[j].char == "-" {
-                        rest_count += 1;
-                        j += 1;
-                    }
-                    slot_counts.push(rest_count);
-                    i = j;  // Skip all consumed dashes
-                } else {
-                    // Orphaned dash after extensions, skip it
-                    i += 1;
+        } else if cell.get_kind() == ElementKind::UnpitchedElement {
+            // Standalone dash = rest (UnpitchedElement is dash only)
+            if !seen_pitched_element {
+                // Leading dash(es) before any pitch = ONE rest
+                // Count consecutive leading dashes together (like we do for trailing dashes after notes)
+                let mut rest_count = 1;
+                let mut j = i + 1;
+                while j < beat_cells_refs.len() &&
+                      beat_cells_refs[j].get_kind() == ElementKind::UnpitchedElement {
+                    rest_count += 1;
+                    j += 1;
                 }
+                slot_counts.push(rest_count);
+                i = j;  // Skip all consumed dashes
             } else {
-                // Other unpitched = rest
-                slot_counts.push(1);
+                // Orphaned dash after extensions, skip it
                 i += 1;
             }
         } else {
@@ -1062,7 +1104,7 @@ pub fn find_barlines(cells: &[Cell]) -> Vec<usize> {
     let mut barlines = vec![0]; // Implicit start
 
     for (i, cell) in cells.iter().enumerate() {
-        if cell.kind.is_barline() {
+        if cell.get_kind().is_barline() {
             barlines.push(i + 1);
         }
     }
@@ -1074,24 +1116,33 @@ pub fn find_barlines(cells: &[Cell]) -> Vec<usize> {
     barlines
 }
 
-/// Find beat boundaries by whitespace or non-beat elements
-/// Beat elements: PitchedElement or dash ("-")
-/// Everything else separates beats
-/// Returns indices where beats start
+/// Find beat boundaries for export processing
+///
+/// See `src/parse/GRAMMAR.md` for formal grammar.
+///
+/// For export, we include superscripts as beat-elements so they stay in the same
+/// beat as their host timed-element. Superscripts are rhythm-transparent and don't
+/// count toward subdivisions, but need to be processed with their host beat.
+///
+/// Returns indices where beats start. Separators (whitespace, barlines, etc.) end beats.
 pub fn find_beat_boundaries(cells: &[Cell]) -> Vec<usize> {
     let mut boundaries = vec![0];
 
     for (i, cell) in cells.iter().enumerate() {
-        // Beat elements: pitched elements, dashes, AND breath marks
+        // Beat elements: pitched elements, dashes, breath marks, AND superscripts (grace notes)
+        // Superscripts are rhythm-transparent but should stay within the same beat as their host note
         // Breath marks reset pitch context (dashes become rests) but stay within the beat
-        let is_beat_element = matches!(cell.kind, ElementKind::PitchedElement)
-            || (matches!(cell.kind, ElementKind::UnpitchedElement) && cell.char == "-")
-            || matches!(cell.kind, ElementKind::BreathMark);
+        // UnpitchedElement is dash only (underscore removed, spaces are Whitespace)
+        let is_beat_element = matches!(cell.get_kind(), ElementKind::PitchedElement)
+            || matches!(cell.get_kind(), ElementKind::UnpitchedElement)
+            || matches!(cell.get_kind(), ElementKind::BreathMark)
+            || matches!(cell.get_kind(), ElementKind::UpperAnnotation)  // Superscripts/grace notes
+            || cell.is_superscript();  // Double-check via codepoint
 
         // Everything else is a separator
         let is_separator = !is_beat_element;
 
-        if is_separator && !false /* REMOVED: continuation field */ {
+        if is_separator {
             // Found a beat separator
             if i + 1 < cells.len() {
                 boundaries.push(i + 1);
@@ -1107,23 +1158,33 @@ pub fn find_beat_boundaries(cells: &[Cell]) -> Vec<usize> {
     boundaries
 }
 
-/// Find beat boundaries in a slice of cell references
-/// Beat elements: PitchedElement or dash ("-")
-/// Everything else separates beats
+/// Find beat boundaries in a slice of cell references (for export processing)
+///
+/// See `src/parse/GRAMMAR.md` for formal grammar.
+///
+/// For export, we include superscripts as beat-elements so they stay in the same
+/// beat as their host timed-element. Superscripts are rhythm-transparent and don't
+/// count toward subdivisions, but need to be processed with their host beat.
+///
+/// Returns indices where beats start. Separators (whitespace, barlines, etc.) end beats.
 pub fn find_beat_boundaries_refs(cells: &[&Cell]) -> Vec<usize> {
     let mut boundaries = vec![0];
 
     for (i, cell) in cells.iter().enumerate() {
-        // Beat elements: pitched elements, dashes, AND breath marks
+        // Beat elements: pitched elements, dashes, breath marks, AND superscripts (grace notes)
+        // Superscripts are rhythm-transparent but should stay within the same beat as their host note
         // Breath marks reset pitch context (dashes become rests) but stay within the beat
-        let is_beat_element = matches!(cell.kind, ElementKind::PitchedElement)
-            || (matches!(cell.kind, ElementKind::UnpitchedElement) && cell.char == "-")
-            || matches!(cell.kind, ElementKind::BreathMark);
+        // UnpitchedElement is dash only (underscore removed, spaces are Whitespace)
+        let is_beat_element = matches!(cell.get_kind(), ElementKind::PitchedElement)
+            || matches!(cell.get_kind(), ElementKind::UnpitchedElement)
+            || matches!(cell.get_kind(), ElementKind::BreathMark)
+            || matches!(cell.get_kind(), ElementKind::UpperAnnotation)  // Superscripts/grace notes
+            || cell.is_superscript();  // Double-check via codepoint
 
         // Everything else is a separator
         let is_separator = !is_beat_element;
 
-        if is_separator && !false /* REMOVED: continuation field */ {
+        if is_separator {
             // Found a beat separator
             if i + 1 < cells.len() {
                 boundaries.push(i + 1);
@@ -1153,7 +1214,7 @@ fn transfer_slur_indicators_from_separators(cells: &mut [&Cell]) {
 
     // First pass: find separators with slur indicators
     for i in 0..cells.len() {
-        if cells[i].char.trim().is_empty() && cells[i].has_slur() {
+        if cells[i].get_char_string().trim().is_empty() && cells[i].has_slur() {
             let is_start = cells[i].is_slur_start();
             let is_end = cells[i].is_slur_end();
 
@@ -1161,7 +1222,7 @@ fn transfer_slur_indicators_from_separators(cells: &mut [&Cell]) {
                 // SlurStart on separator: transfer to PREVIOUS pitched cell (the note that starts the slur)
                 let mut found_prev = false;
                 for j in (0..i).rev() {
-                    if !cells[j].char.trim().is_empty() && cells[j].kind == ElementKind::PitchedElement {
+                    if !cells[j].get_char_string().trim().is_empty() && cells[j].get_kind() == ElementKind::PitchedElement {
                         slur_transfers.push((j, true)); // true = slur start
                         found_prev = true;
                         break;
@@ -1174,7 +1235,7 @@ fn transfer_slur_indicators_from_separators(cells: &mut [&Cell]) {
                 // SlurEnd on separator: transfer to PREVIOUS pitched cell (the note that ends the slur)
                 let mut found_prev = false;
                 for j in (0..i).rev() {
-                    if !cells[j].char.trim().is_empty() && cells[j].kind == ElementKind::PitchedElement {
+                    if !cells[j].get_char_string().trim().is_empty() && cells[j].get_kind() == ElementKind::PitchedElement {
                         slur_transfers.push((j, false)); // false = slur end
                         found_prev = true;
                         break;
@@ -1249,7 +1310,7 @@ pub fn build_export_measures_from_line(line: &Line, document: Option<&Document>)
                 current_group = Vec::new();
             }
             current_measure_num = measure_tracker.measure_number;
-        } else if !cell.kind.is_barline() {
+        } else if !cell.get_kind().is_barline() {
             // Add non-barline cells to current measure
             current_group.push(cell);
         }
@@ -1305,7 +1366,7 @@ pub fn build_export_measures_from_line(line: &Line, document: Option<&Document>)
                 .filter(|c| {
                     // Filter out whitespace only
                     // Breath marks need to be included so FSM can see them and set breath_mark_after flag
-                    !c.char.trim().is_empty()
+                    !c.get_char_string().trim().is_empty()
                 })
                 .copied()
                 .collect();
@@ -1317,7 +1378,7 @@ pub fn build_export_measures_from_line(line: &Line, document: Option<&Document>)
             // Check if this beat contains any breath marks
             // This is important even for beats with beat_div=0 (empty beats with only breath marks)
             // because we need to track pitch_context_reset across the measure
-            let has_breath_mark = beat_cells_refs.iter().any(|c| c.kind == ElementKind::BreathMark);
+            let has_breath_mark = beat_cells_refs.iter().any(|c| c.get_kind() == ElementKind::BreathMark);
             if has_breath_mark {
                 measure_pitch_context_reset = true;
             }
@@ -1330,10 +1391,10 @@ pub fn build_export_measures_from_line(line: &Line, document: Option<&Document>)
 
                 // Check if this beat starts with a breath mark
                 let had_initial_breath_mark = beat_cells_refs.first()
-                    .map(|c| c.kind == ElementKind::BreathMark)
+                    .map(|c| c.get_kind() == ElementKind::BreathMark)
                     .unwrap_or(false);
 
-                let (beat_events, new_pitch_context_reset) = group_cells_into_events(&beat_cells_refs, measure_pitch_context_reset, effective_tonic);
+                let (beat_events, new_pitch_context_reset, orphan_grace_notes) = group_cells_into_events(&beat_cells_refs, measure_pitch_context_reset, effective_tonic);
 
                 // If this beat starts with a REST and measure_pitch_context_reset is true,
                 // it means there was a breath mark between the previous note and this rest.
@@ -1346,6 +1407,18 @@ pub fn build_export_measures_from_line(line: &Line, document: Option<&Document>)
                                 note.breath_mark_after = true;
                                 break;
                             }
+                        }
+                    }
+                }
+
+                // Handle orphan grace notes from this beat - attach them to the previous note
+                // These are superscripts that had no following pitch in their beat
+                if !orphan_grace_notes.is_empty() {
+                    // Find the last note in all_events (from previous beats)
+                    for event in all_events.iter_mut().rev() {
+                        if let ExportEvent::Note(ref mut note) = event {
+                            note.grace_notes_after.extend(orphan_grace_notes.clone());
+                            break;
                         }
                     }
                 }
@@ -1484,22 +1557,12 @@ mod tests {
     use crate::models::pitch_code::PitchCode;
     use crate::ir::types::TieType;
 
-    /// Helper to create a Cell
-    fn make_cell(kind: ElementKind, char: &str, pitch_code: Option<PitchCode>) -> Cell {
-        use crate::renderers::line_variants::{UnderlineState, OverlineState};
-        let codepoint = char.chars().next().map(|c| c as u32).unwrap_or(0);
+    /// Helper to create a Cell from codepoint
+    /// kind is derived from codepoint via get_kind()
+    fn make_cell_cp(_kind: ElementKind, codepoint: u32) -> Cell {
         Cell {
             codepoint,
-            char: char.to_string(),
-            kind,
-            col: 0,
             flags: 0,
-            pitch_code,
-            pitch_system: None,
-            octave: 4,
-            superscript: false,
-            underline: UnderlineState::None,
-            overline: OverlineState::None,
             x: 0.0,
             y: 0.0,
             w: 0.0,
@@ -1509,11 +1572,27 @@ mod tests {
         }
     }
 
+    /// Helper to create a Cell from a char string (for unpitched elements)
+    fn make_cell(kind: ElementKind, char: &str) -> Cell {
+        let codepoint = char.chars().next().map(|c| c as u32).unwrap_or(0);
+        make_cell_cp(kind, codepoint)
+    }
+
+    /// Helper to create a pitched Cell with proper codepoint
+    fn make_pitched_cell(pitch_code: PitchCode) -> Cell {
+        use crate::renderers::font_utils::glyph_for_pitch;
+        use crate::models::elements::PitchSystem;
+        let codepoint = glyph_for_pitch(pitch_code, 0, PitchSystem::Number)
+            .map(|c| c as u32)
+            .unwrap_or(0);
+        make_cell_cp(ElementKind::PitchedElement, codepoint)
+    }
+
     #[test]
     fn test_single_dash_is_rest() {
-        let cells = vec![make_cell(ElementKind::UnpitchedElement, "-", None)];
+        let cells = vec![make_cell(ElementKind::UnpitchedElement, "-")];
         let cell_refs: Vec<&Cell> = cells.iter().collect();
-        let (events, _) = group_cells_into_events(&cell_refs, false, crate::models::Tonic::C);
+        let (events, _, _) = group_cells_into_events(&cell_refs, false, crate::models::Tonic::C);
 
         assert_eq!(events.len(), 1);
         match &events[0] {
@@ -1525,11 +1604,11 @@ mod tests {
     #[test]
     fn test_multiple_consecutive_dashes_single_rest() {
         let cells = vec![
-            make_cell(ElementKind::UnpitchedElement, "-", None),
-            make_cell(ElementKind::UnpitchedElement, "-", None),
+            make_cell(ElementKind::UnpitchedElement, "-"),
+            make_cell(ElementKind::UnpitchedElement, "-"),
         ];
         let cell_refs: Vec<&Cell> = cells.iter().collect();
-        let (events, _) = group_cells_into_events(&cell_refs, false, crate::models::Tonic::C);
+        let (events, _, _) = group_cells_into_events(&cell_refs, false, crate::models::Tonic::C);
 
         // Two consecutive dashes should be ONE rest with 2 divisions
         assert_eq!(events.len(), 1);
@@ -1542,13 +1621,13 @@ mod tests {
     #[test]
     fn test_four_dashes_rest() {
         let cells = vec![
-            make_cell(ElementKind::UnpitchedElement, "-", None),
-            make_cell(ElementKind::UnpitchedElement, "-", None),
-            make_cell(ElementKind::UnpitchedElement, "-", None),
-            make_cell(ElementKind::UnpitchedElement, "-", None),
+            make_cell(ElementKind::UnpitchedElement, "-"),
+            make_cell(ElementKind::UnpitchedElement, "-"),
+            make_cell(ElementKind::UnpitchedElement, "-"),
+            make_cell(ElementKind::UnpitchedElement, "-"),
         ];
         let cell_refs: Vec<&Cell> = cells.iter().collect();
-        let (events, _) = group_cells_into_events(&cell_refs, false, crate::models::Tonic::C);
+        let (events, _, _) = group_cells_into_events(&cell_refs, false, crate::models::Tonic::C);
 
         // -- bug: four dashes should be ONE rest with 4 divisions, not 1
         assert_eq!(events.len(), 1);
@@ -1566,11 +1645,11 @@ mod tests {
         // Should produce Rest { divisions: 2 }, which in a 4-division beat
         // = 2/4 of a beat = quarter note duration = r4 in LilyPond
         let cells = vec![
-            make_cell(ElementKind::UnpitchedElement, "-", None),
-            make_cell(ElementKind::UnpitchedElement, "-", None),
+            make_cell(ElementKind::UnpitchedElement, "-"),
+            make_cell(ElementKind::UnpitchedElement, "-"),
         ];
         let cell_refs: Vec<&Cell> = cells.iter().collect();
-        let (events, _) = group_cells_into_events(&cell_refs, false, crate::models::Tonic::C);
+        let (events, _, _) = group_cells_into_events(&cell_refs, false, crate::models::Tonic::C);
 
         assert_eq!(events.len(), 1, "Two dashes should create one rest element");
         match &events[0] {
@@ -1583,7 +1662,7 @@ mod tests {
 
     #[test]
     fn test_empty_beat() {
-        let (events, _) = group_cells_into_events(&[], false, crate::models::Tonic::C);
+        let (events, _, _) = group_cells_into_events(&[], false, crate::models::Tonic::C);
         assert_eq!(events.len(), 0);
     }
 
@@ -1595,13 +1674,13 @@ mod tests {
         // Create a beat with: rest (1 dash) + two notes (1 cell each)
         // In this beat: 3 total subdivisions
         let cells = vec![
-            make_cell(ElementKind::UnpitchedElement, "-", None), // Rest: 1 subdivision
-            make_cell(ElementKind::PitchedElement, "1", Some(PitchCode::N1)), // Note: 1 subdivision
-            make_cell(ElementKind::PitchedElement, "2", Some(PitchCode::N2)), // Note: 1 subdivision
+            make_cell(ElementKind::UnpitchedElement, "-"), // Rest: 1 subdivision
+            make_pitched_cell(PitchCode::N1), // Note: 1 subdivision
+            make_pitched_cell(PitchCode::N2), // Note: 1 subdivision
         ];
 
         let cell_refs: Vec<&Cell> = cells.iter().collect();
-        let (beat_events, _) = group_cells_into_events(&cell_refs, false, crate::models::Tonic::C);
+        let (beat_events, _, _) = group_cells_into_events(&cell_refs, false, crate::models::Tonic::C);
 
         // At beat level (before scaling):
         // - Rest should have divisions=1 (1 subdivision out of 3)
@@ -1773,7 +1852,7 @@ mod tests {
     #[test]
     fn test_collect_chord_notes_single_column() {
         let cells = vec![
-            make_cell(ElementKind::PitchedElement, "1", Some(PitchCode::N1)),
+            make_pitched_cell(PitchCode::N1),
         ];
         let groups = collect_chord_notes(&cells);
         assert_eq!(groups.len(), 1);
@@ -1781,34 +1860,30 @@ mod tests {
     }
 
     #[test]
-    fn test_collect_chord_notes_multiple_at_same_col() {
-        let mut cells = vec![
-            make_cell(ElementKind::PitchedElement, "1", Some(PitchCode::N1)),
-            make_cell(ElementKind::PitchedElement, "2", Some(PitchCode::N2)),
+    fn test_collect_chord_notes_two_cells() {
+        // Each cell at its own array index gets its own group
+        let cells = vec![
+            make_pitched_cell(PitchCode::N1),
+            make_pitched_cell(PitchCode::N2),
         ];
-        // Set both to same column
-        cells[0].col = 0;
-        cells[1].col = 0;
 
         let groups = collect_chord_notes(&cells);
-        assert_eq!(groups.len(), 1);
-        assert_eq!(groups[0].len(), 2);
-    }
-
-    #[test]
-    fn test_collect_chord_notes_different_columns() {
-        let mut cells = vec![
-            make_cell(ElementKind::PitchedElement, "1", Some(PitchCode::N1)),
-            make_cell(ElementKind::PitchedElement, "2", Some(PitchCode::N2)),
-        ];
-        // Set to different columns
-        cells[0].col = 0;
-        cells[1].col = 1;
-
-        let groups = collect_chord_notes(&cells);
+        // Two cells at indices 0 and 1 -> two separate groups
         assert_eq!(groups.len(), 2);
         assert_eq!(groups[0].len(), 1);
         assert_eq!(groups[1].len(), 1);
+    }
+
+    #[test]
+    fn test_collect_chord_notes_single_cell() {
+        // Single cell forms single group
+        let cells = vec![
+            make_pitched_cell(PitchCode::N1),
+        ];
+
+        let groups = collect_chord_notes(&cells);
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].len(), 1);
     }
 
     #[test]
@@ -1828,7 +1903,7 @@ mod tests {
             breath_mark_after: false,
         };
 
-        let mut cell = make_cell(ElementKind::PitchedElement, "1", Some(PitchCode::N1));
+        let mut cell = make_pitched_cell(PitchCode::N1);
         cell.set_slur_start();
 
         attach_slur_to_note(&mut note, &cell, false);
@@ -1854,7 +1929,7 @@ mod tests {
             breath_mark_after: false,
         };
 
-        let mut cell = make_cell(ElementKind::PitchedElement, "1", Some(PitchCode::N1));
+        let mut cell = make_pitched_cell(PitchCode::N1);
         cell.set_slur_end();
 
         attach_slur_to_note(&mut note, &cell, false);
@@ -1880,7 +1955,7 @@ mod tests {
             breath_mark_after: false,
         };
 
-        let cell = make_cell(ElementKind::PitchedElement, "1", Some(PitchCode::N1));
+        let cell = make_pitched_cell(PitchCode::N1);
         // Note: cell has no slur indicator, but we're inside a slur
 
         attach_slur_to_note(&mut note, &cell, true);
@@ -1970,8 +2045,8 @@ mod tests {
     #[test]
     fn test_find_barlines_no_barlines() {
         let cells = vec![
-            make_cell(ElementKind::PitchedElement, "1", Some(PitchCode::N1)),
-            make_cell(ElementKind::PitchedElement, "2", Some(PitchCode::N2)),
+            make_pitched_cell(PitchCode::N1),
+            make_pitched_cell(PitchCode::N2),
         ];
         let barlines = find_barlines(&cells);
         // Should have implicit start and end
@@ -1983,9 +2058,9 @@ mod tests {
     #[test]
     fn test_find_barlines_with_barline() {
         let cells = vec![
-            make_cell(ElementKind::PitchedElement, "1", Some(PitchCode::N1)),
-            make_cell(ElementKind::SingleBarline, "|", None),
-            make_cell(ElementKind::PitchedElement, "2", Some(PitchCode::N2)),
+            make_pitched_cell(PitchCode::N1),
+            make_cell(ElementKind::SingleBarline, "|"),
+            make_pitched_cell(PitchCode::N2),
         ];
         let barlines = find_barlines(&cells);
         // Should have: start, after barline at index 2, and end
@@ -1998,11 +2073,11 @@ mod tests {
     #[test]
     fn test_find_barlines_multiple_barlines() {
         let cells = vec![
-            make_cell(ElementKind::PitchedElement, "1", Some(PitchCode::N1)),
-            make_cell(ElementKind::SingleBarline, "|", None),
-            make_cell(ElementKind::PitchedElement, "2", Some(PitchCode::N2)),
-            make_cell(ElementKind::SingleBarline, "|", None),
-            make_cell(ElementKind::PitchedElement, "3", Some(PitchCode::N3)),
+            make_pitched_cell(PitchCode::N1),
+            make_cell(ElementKind::SingleBarline, "|"),
+            make_pitched_cell(PitchCode::N2),
+            make_cell(ElementKind::SingleBarline, "|"),
+            make_pitched_cell(PitchCode::N3),
         ];
         let barlines = find_barlines(&cells);
         assert_eq!(barlines.len(), 4);
@@ -2015,8 +2090,8 @@ mod tests {
     #[test]
     fn test_find_beat_boundaries_no_spaces() {
         let cells = vec![
-            make_cell(ElementKind::PitchedElement, "1", Some(PitchCode::N1)),
-            make_cell(ElementKind::PitchedElement, "2", Some(PitchCode::N2)),
+            make_pitched_cell(PitchCode::N1),
+            make_pitched_cell(PitchCode::N2),
         ];
         let boundaries = find_beat_boundaries(&cells);
         // Should have start and end only
@@ -2028,12 +2103,10 @@ mod tests {
     #[test]
     fn test_find_beat_boundaries_with_space() {
         let mut cells = vec![
-            make_cell(ElementKind::PitchedElement, "1", Some(PitchCode::N1)),
-            make_cell(ElementKind::UnpitchedElement, " ", None),
-            make_cell(ElementKind::PitchedElement, "2", Some(PitchCode::N2)),
+            make_pitched_cell(PitchCode::N1),
+            make_cell(ElementKind::Whitespace, " "),
+            make_pitched_cell(PitchCode::N2),
         ];
-        // Mark the space cell
-        cells[1].char = " ".to_string();
 
         let boundaries = find_beat_boundaries(&cells);
         assert_eq!(boundaries.len(), 3);
@@ -2048,12 +2121,12 @@ mod tests {
         let mut cells = Vec::new();
 
         // Add cells for "1 2 3 4 | 5 6 7 8"
-        for ch in &["1", "2", "3", "4"] {
-            cells.push(make_cell(ElementKind::PitchedElement, ch, Some(PitchCode::N1)));
+        for _ in 0..4 {
+            cells.push(make_pitched_cell(PitchCode::N1));
         }
-        cells.push(make_cell(ElementKind::SingleBarline, "|", None));
-        for ch in &["5", "6", "7", "8"] {
-            cells.push(make_cell(ElementKind::PitchedElement, ch, Some(PitchCode::N1)));
+        cells.push(make_cell(ElementKind::SingleBarline, "|"));
+        for _ in 0..4 {
+            cells.push(make_pitched_cell(PitchCode::N1));
         }
 
         // Split by barlines (copied from refactored build_export_measures_from_line)
@@ -2061,7 +2134,7 @@ mod tests {
         let mut current_group: Vec<&Cell> = Vec::new();
 
         for cell in &cells {
-            if cell.kind.is_barline() {
+            if cell.get_kind().is_barline() {
                 if !current_group.is_empty() {
                     measure_cell_groups.push(current_group);
                     current_group = Vec::new();
@@ -2089,21 +2162,18 @@ mod tests {
         let mut cells = Vec::new();
 
         // Measure 1: 1 2 3 4
-        for pitch_char in &["1", "2", "3", "4"] {
-            let mut cell = make_cell(ElementKind::PitchedElement, pitch_char, Some(PitchCode::N1));
-            cell.col = cells.len();
+        for _ in 0..4 {
+            let cell = make_pitched_cell(PitchCode::N1);
             cells.push(cell);
         }
 
         // Barline
-        let mut barline = make_cell(ElementKind::SingleBarline, "|", None);
-        barline.col = cells.len();
+        let barline = make_cell(ElementKind::SingleBarline, "|");
         cells.push(barline);
 
         // Measure 2: 5 6 7 8
-        for pitch_char in &["5", "6", "7", "8"] {
-            let mut cell = make_cell(ElementKind::PitchedElement, pitch_char, Some(PitchCode::N1));
-            cell.col = cells.len();
+        for _ in 0..4 {
+            let cell = make_pitched_cell(PitchCode::N1);
             cells.push(cell);
         }
 
@@ -2137,18 +2207,15 @@ mod tests {
         let mut cells = Vec::new();
 
         // Beat 1: "1"
-        let mut cell1 = make_cell(ElementKind::PitchedElement, "1", Some(PitchCode::N1));
-        cell1.col = 0;
+        let cell1 = make_pitched_cell(PitchCode::N1);
         cells.push(cell1);
 
         // Space separator
-        let mut space = make_cell(ElementKind::UnpitchedElement, " ", None);
-        space.col = 1;
+        let space = make_cell(ElementKind::Whitespace, " ");
         cells.push(space);
 
         // Beat 2: "-"
-        let mut dash = make_cell(ElementKind::UnpitchedElement, "-", None);
-        dash.col = 2;
+        let dash = make_cell(ElementKind::UnpitchedElement, "-");
         cells.push(dash);
 
         let mut line = Line::new();
@@ -2189,18 +2256,21 @@ mod breath_mark_export_tests {
 
     #[test]
     fn test_breath_mark_exports_as_rest() {
+        use crate::renderers::font_utils::glyph_for_pitch;
+        use crate::models::elements::PitchSystem;
+
         // Create a simple document: pitch, breath mark, pitch
         let mut doc = Document::new();
         let mut line = Line::new();
 
         // Create cells: "1" (C pitch), "," (breath mark), "3" (E pitch)
-        let mut cell1 = Cell::new("\u{e000}".to_string(), ElementKind::PitchedElement, 0);
-        cell1.pitch_code = Some(PitchCode::N1);
+        let glyph1 = glyph_for_pitch(PitchCode::N1, 0, PitchSystem::Number).unwrap();
+        let cell1 = Cell::from_codepoint(glyph1 as u32, ElementKind::PitchedElement);
 
-        let cell2 = Cell::new(",".to_string(), ElementKind::BreathMark, 1);
+        let cell2 = Cell::new(",".to_string(), ElementKind::BreathMark);
 
-        let mut cell3 = Cell::new("\u{e03c}".to_string(), ElementKind::PitchedElement, 2);
-        cell3.pitch_code = Some(PitchCode::N3);
+        let glyph3 = glyph_for_pitch(PitchCode::N3, 0, PitchSystem::Number).unwrap();
+        let cell3 = Cell::from_codepoint(glyph3 as u32, ElementKind::PitchedElement);
 
         line.cells = vec![cell1, cell2, cell3];
 
@@ -2235,6 +2305,9 @@ mod breath_mark_export_tests {
 
     #[test]
     fn test_dash_after_breath_mark_becomes_rest() {
+        use crate::renderers::font_utils::glyph_for_pitch;
+        use crate::models::elements::PitchSystem;
+
         // Test pattern: "- 1' -" should convert to: Rest, Note, Rest
         // This tests that a breath mark resets pitch context so following dashes become rests
 
@@ -2242,14 +2315,14 @@ mod breath_mark_export_tests {
         let mut line = Line::new();
 
         // Create cells: "-" (rest), "1" (C pitch), "'" (breath mark), "-" (should be rest, not extension)
-        let cell1 = Cell::new("-".to_string(), ElementKind::UnpitchedElement, 0);
+        let cell1 = Cell::new("-".to_string(), ElementKind::UnpitchedElement);
 
-        let mut cell2 = Cell::new("\u{e000}".to_string(), ElementKind::PitchedElement, 1);
-        cell2.pitch_code = Some(PitchCode::N1);
+        let glyph2 = glyph_for_pitch(PitchCode::N1, 0, PitchSystem::Number).unwrap();
+        let cell2 = Cell::from_codepoint(glyph2 as u32, ElementKind::PitchedElement);
 
-        let cell3 = Cell::new("'".to_string(), ElementKind::BreathMark, 2);
+        let cell3 = Cell::new("'".to_string(), ElementKind::BreathMark);
 
-        let cell4 = Cell::new("-".to_string(), ElementKind::UnpitchedElement, 3);
+        let cell4 = Cell::new("-".to_string(), ElementKind::UnpitchedElement);
 
         line.cells = vec![cell1, cell2, cell3, cell4];
         doc.lines.push(line);
@@ -2288,6 +2361,9 @@ mod breath_mark_export_tests {
 
     #[test]
     fn test_pitch_space_breath_mark_dash_produces_note_and_rest() {
+        use crate::renderers::font_utils::glyph_for_pitch;
+        use crate::models::elements::PitchSystem;
+
         // Test pattern: "1 '-" should convert to: Note, Rest
         // Beat 1: "1" → Note
         // Beat 2: "'-" → The breath mark and dash
@@ -2298,14 +2374,14 @@ mod breath_mark_export_tests {
         let mut line = Line::new();
 
         // Create cells: "1" (C pitch), " " (space), "'" (breath mark), "-" (should be rest)
-        let mut cell1 = Cell::new("\u{e000}".to_string(), ElementKind::PitchedElement, 0);
-        cell1.pitch_code = Some(PitchCode::N1);
+        let glyph1 = glyph_for_pitch(PitchCode::N1, 0, PitchSystem::Number).unwrap();
+        let cell1 = Cell::from_codepoint(glyph1 as u32, ElementKind::PitchedElement);
 
-        let cell2 = Cell::new(" ".to_string(), ElementKind::Whitespace, 1);
+        let cell2 = Cell::new(" ".to_string(), ElementKind::Whitespace);
 
-        let cell3 = Cell::new("'".to_string(), ElementKind::BreathMark, 2);
+        let cell3 = Cell::new("'".to_string(), ElementKind::BreathMark);
 
-        let cell4 = Cell::new("-".to_string(), ElementKind::UnpitchedElement, 3);
+        let cell4 = Cell::new("-".to_string(), ElementKind::UnpitchedElement);
 
         line.cells = vec![cell1, cell2, cell3, cell4];
         doc.lines.push(line);
@@ -2342,6 +2418,9 @@ mod breath_mark_export_tests {
 
     #[test]
     fn test_pitch_spaces_breath_mark_spaces_dashes() {
+        use crate::renderers::font_utils::glyph_for_pitch;
+        use crate::models::elements::PitchSystem;
+
         // Test pattern: "1  '  ---" should convert to: Note, Rest
         // This is the most complex case - breath mark in a separate beat from both note and dashes
         // Beat 1: "1"
@@ -2354,17 +2433,17 @@ mod breath_mark_export_tests {
         let mut line = Line::new();
 
         // Pattern: 1  '  ---
-        let mut cell1 = Cell::new("\u{e000}".to_string(), ElementKind::PitchedElement, 0);
-        cell1.pitch_code = Some(PitchCode::N1);
+        let glyph1 = glyph_for_pitch(PitchCode::N1, 0, PitchSystem::Number).unwrap();
+        let cell1 = Cell::from_codepoint(glyph1 as u32, ElementKind::PitchedElement);
 
-        let cell2 = Cell::new(" ".to_string(), ElementKind::Whitespace, 1);
-        let cell3 = Cell::new(" ".to_string(), ElementKind::Whitespace, 2);
-        let cell4 = Cell::new("'".to_string(), ElementKind::BreathMark, 3);
-        let cell5 = Cell::new(" ".to_string(), ElementKind::Whitespace, 4);
-        let cell6 = Cell::new(" ".to_string(), ElementKind::Whitespace, 5);
-        let cell7 = Cell::new("-".to_string(), ElementKind::UnpitchedElement, 6);
-        let cell8 = Cell::new("-".to_string(), ElementKind::UnpitchedElement, 7);
-        let cell9 = Cell::new("-".to_string(), ElementKind::UnpitchedElement, 8);
+        let cell2 = Cell::new(" ".to_string(), ElementKind::Whitespace);
+        let cell3 = Cell::new(" ".to_string(), ElementKind::Whitespace);
+        let cell4 = Cell::new("'".to_string(), ElementKind::BreathMark);
+        let cell5 = Cell::new(" ".to_string(), ElementKind::Whitespace);
+        let cell6 = Cell::new(" ".to_string(), ElementKind::Whitespace);
+        let cell7 = Cell::new("-".to_string(), ElementKind::UnpitchedElement);
+        let cell8 = Cell::new("-".to_string(), ElementKind::UnpitchedElement);
+        let cell9 = Cell::new("-".to_string(), ElementKind::UnpitchedElement);
 
         line.cells = vec![cell1, cell2, cell3, cell4, cell5, cell6, cell7, cell8, cell9];
         doc.lines.push(line);
@@ -2401,6 +2480,9 @@ mod breath_mark_export_tests {
 
     #[test]
     fn test_single_element_beat_not_looped() {
+        use crate::renderers::font_utils::glyph_for_pitch;
+        use crate::models::elements::PitchSystem;
+
         // Test pattern: "'1   " (breath mark + pitch, followed by spaces)
         // Rule: Only loop/process a beat if it contains more than one unpitched/pitched element
         // A beat with a single pitched element should NOT create tuplets or special processing
@@ -2409,12 +2491,12 @@ mod breath_mark_export_tests {
         let mut line = Line::new();
 
         // Create cells: "'" (breath mark), "1" (pitch), " " (space/beat separator)
-        let cell1 = Cell::new("'".to_string(), ElementKind::BreathMark, 0);
+        let cell1 = Cell::new("'".to_string(), ElementKind::BreathMark);
 
-        let mut cell2 = Cell::new("\u{e000}".to_string(), ElementKind::PitchedElement, 1);
-        cell2.pitch_code = Some(PitchCode::N1);
+        let glyph2 = glyph_for_pitch(PitchCode::N1, 0, PitchSystem::Number).unwrap();
+        let cell2 = Cell::from_codepoint(glyph2 as u32, ElementKind::PitchedElement);
 
-        let cell3 = Cell::new(" ".to_string(), ElementKind::UnpitchedElement, 2);
+        let cell3 = Cell::new(" ".to_string(), ElementKind::Whitespace);
 
         line.cells = vec![cell1, cell2, cell3];
         doc.lines.push(line);
@@ -2447,6 +2529,134 @@ mod breath_mark_export_tests {
             assert_eq!(note.pitch.pitch_code, PitchCode::N1, "Should be pitch 1 (C)");
             assert!(note.tuplet.is_none(),
                 "Single element beat should NOT have tuplet information (not looped/processed)");
+        }
+    }
+
+    #[test]
+    fn test_superscript_creates_grace_note() {
+        use crate::renderers::font_utils::{glyph_for_pitch, to_superscript};
+        use crate::models::elements::PitchSystem;
+
+        // Test pattern: superscript "5" followed by regular "1"
+        // The superscript should become a grace_notes_before on the "1" note
+
+        let mut doc = Document::new();
+        let mut line = Line::new();
+
+        // Create superscript cell for "5"
+        let glyph_5 = glyph_for_pitch(PitchCode::N5, 0, PitchSystem::Number).unwrap();
+        let super_5 = to_superscript(glyph_5 as u32).expect("Should convert to superscript");
+        let cell_super = Cell::from_codepoint(super_5, ElementKind::PitchedElement);
+
+        // Create regular cell for "1"
+        let glyph_1 = glyph_for_pitch(PitchCode::N1, 0, PitchSystem::Number).unwrap();
+        let cell_1 = Cell::from_codepoint(glyph_1 as u32, ElementKind::PitchedElement);
+
+        line.cells = vec![cell_super, cell_1];
+        doc.lines.push(line);
+
+        // Verify the cells are set up correctly
+        println!("Cell 0 codepoint: 0x{:X}, is_superscript: {}", doc.lines[0].cells[0].codepoint, doc.lines[0].cells[0].is_superscript());
+        println!("Cell 1 codepoint: 0x{:X}, is_superscript: {}", doc.lines[0].cells[1].codepoint, doc.lines[0].cells[1].is_superscript());
+
+        assert!(doc.lines[0].cells[0].is_superscript(), "First cell should be superscript");
+        assert!(!doc.lines[0].cells[1].is_superscript(), "Second cell should NOT be superscript");
+
+        // Export to IR
+        let export_lines = build_export_measures_from_document(&doc);
+
+        assert_eq!(export_lines.len(), 1, "Should have 1 export line");
+        assert_eq!(export_lines[0].measures.len(), 1, "Should have 1 measure");
+
+        let measure = &export_lines[0].measures[0];
+        println!("Number of events: {}", measure.events.len());
+        for (i, event) in measure.events.iter().enumerate() {
+            match event {
+                ExportEvent::Note(note) => {
+                    println!("Event {}: Note pitch={:?}, grace_before={}, grace_after={}",
+                        i, note.pitch.pitch_code,
+                        note.grace_notes_before.len(),
+                        note.grace_notes_after.len());
+                }
+                ExportEvent::Rest { .. } => {
+                    println!("Event {}: Rest", i);
+                }
+                _ => {
+                    println!("Event {}: Other", i);
+                }
+            }
+        }
+
+        assert!(!measure.events.is_empty(), "Should have at least 1 event");
+
+        // The measure should have 1 note event (the "1") with grace_notes_before (the "5")
+        let mut found_main_note = false;
+        for event in &measure.events {
+            if let ExportEvent::Note(ref note) = event {
+                if note.pitch.pitch_code == PitchCode::N1 {
+                    assert!(!note.grace_notes_before.is_empty(),
+                        "Main note should have grace notes before, got {} before and {} after",
+                        note.grace_notes_before.len(), note.grace_notes_after.len());
+                    assert_eq!(note.grace_notes_before[0].pitch.pitch_code, PitchCode::N5,
+                        "Grace note should be pitch 5");
+                    found_main_note = true;
+                }
+            }
+        }
+        assert!(found_main_note, "Should have found the main note with grace notes");
+    }
+
+    #[test]
+    fn test_group_cells_superscript_direct() {
+        use crate::renderers::font_utils::{glyph_for_pitch, to_superscript};
+        use crate::models::elements::PitchSystem;
+
+        // Create cells directly: superscript "5" followed by regular "1"
+        let glyph_5 = glyph_for_pitch(PitchCode::N5, 0, PitchSystem::Number).unwrap();
+        let super_5 = to_superscript(glyph_5 as u32).expect("Should convert to superscript");
+        let cell_super = Cell::from_codepoint(super_5, ElementKind::PitchedElement);
+
+        let glyph_1 = glyph_for_pitch(PitchCode::N1, 0, PitchSystem::Number).unwrap();
+        let cell_1 = Cell::from_codepoint(glyph_1 as u32, ElementKind::PitchedElement);
+
+        // Debug: print cell details
+        println!("cell_super codepoint: 0x{:X}, is_superscript: {}, get_kind: {:?}",
+            cell_super.codepoint, cell_super.is_superscript(), cell_super.get_kind());
+        println!("cell_1 codepoint: 0x{:X}, is_superscript: {}, get_kind: {:?}",
+            cell_1.codepoint, cell_1.is_superscript(), cell_1.get_kind());
+
+        // Call group_cells_into_events directly
+        let cells = vec![cell_super, cell_1];
+        let cell_refs: Vec<&Cell> = cells.iter().collect();
+        let (events, _, orphans) = group_cells_into_events(&cell_refs, false, crate::models::Tonic::C);
+
+        println!("Number of events: {}", events.len());
+        println!("Number of orphan grace notes: {}", orphans.len());
+        for (i, event) in events.iter().enumerate() {
+            match event {
+                ExportEvent::Note(note) => {
+                    println!("Event {}: Note pitch={:?}, grace_before={}, grace_after={}",
+                        i, note.pitch.pitch_code,
+                        note.grace_notes_before.len(),
+                        note.grace_notes_after.len());
+                }
+                ExportEvent::Rest { .. } => {
+                    println!("Event {}: Rest", i);
+                }
+                _ => {
+                    println!("Event {}: Other", i);
+                }
+            }
+        }
+
+        assert_eq!(events.len(), 1, "Should have 1 event (the note)");
+        if let ExportEvent::Note(ref note) = events[0] {
+            assert_eq!(note.pitch.pitch_code, PitchCode::N1, "Note should be N1");
+            assert_eq!(note.grace_notes_before.len(), 1, "Note should have 1 grace note before");
+            assert_eq!(note.grace_notes_before[0].pitch.pitch_code, PitchCode::N5,
+                "Grace note should be N5");
+        } else {
+            panic!("Expected Note event");
         }
     }
 }

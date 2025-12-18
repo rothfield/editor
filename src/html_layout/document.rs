@@ -129,7 +129,7 @@ impl LayoutEngine {
                 config,
                 cumulative_y,
                 syllable_widths,
-                document.ornament_edit_mode,
+                document.superscript_edit_mode,
                 selection,
             );
 
