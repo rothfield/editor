@@ -1040,8 +1040,13 @@ pub fn calculate_beat_subdivisions(beat_cells_refs: &[&Cell]) -> usize {
             }
 
             // Count dash extensions (which become rests after breath mark, but still count as subdivisions)
+            // IMPORTANT: Skip over superscripts when looking for dash extensions
+            // Superscripts are rhythm-transparent per GRAMMAR.md
             while j < beat_cells_refs.len() {
-                if beat_cells_refs[j].get_kind() == ElementKind::UnpitchedElement {
+                if beat_cells_refs[j].is_superscript() {
+                    // Skip superscripts - they don't affect rhythm
+                    j += 1;
+                } else if beat_cells_refs[j].get_kind() == ElementKind::UnpitchedElement {
                     slot_count += 1;
                     j += 1;
                 } else {

@@ -40,6 +40,7 @@ pub fn to_musicxml(document: &Document) -> Result<String, String> {
     let xml = emit_musicxml(
         &export_lines,
         document.title.as_deref(),
+        document.composer.as_deref(),
         document.key_signature.as_deref(),
     )?;
 

@@ -458,8 +458,8 @@ impl MusicXmlBuilder {
             self.buffer.push_str(&format!("  <accidental>{}</accidental>\n", accidental_name));
         }
 
-        // Grace notes: eighth notes without beams (simpler rendering)
-        self.buffer.push_str("  <type>eighth</type>\n");
+        // Grace notes: 16th notes without beams (simpler rendering)
+        self.buffer.push_str("  <type>16th</type>\n");
 
         // Note: beam_state is ignored - grace notes rendered without beams for simpler SVG manipulation
 
@@ -888,8 +888,8 @@ mod tests {
         assert!(builder.buffer.contains("<step>G</step>"));
         assert!(builder.buffer.contains("<octave>4</octave>"));
 
-        // Should have 32nd note type (default for grace notes)
-        assert!(builder.buffer.contains("<type>32nd</type>"));
+        // Should have 16th note type (grace notes use 16th notes for simpler rendering)
+        assert!(builder.buffer.contains("<type>16th</type>"));
 
         // Should NOT contain duration element (grace notes have no duration)
         assert!(!builder.buffer.contains("<duration>"));

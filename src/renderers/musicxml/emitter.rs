@@ -12,6 +12,7 @@ use super::grace_notes::superscript_position_to_placement;
 pub fn emit_musicxml(
     export_lines: &[ExportLine],
     document_title: Option<&str>,
+    document_composer: Option<&str>,
     document_key_signature: Option<&str>,
 ) -> Result<String, String> {
     // Handle empty document - use simple builder approach
@@ -44,6 +45,17 @@ pub fn emit_musicxml(
     xml.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
     xml.push_str("<!DOCTYPE score-partwise PUBLIC \"-//Recordare//DTD MusicXML 3.1 Partwise//EN\" \"http://www.musicxml.org/dtds/partwise.dtd\">\n");
     xml.push_str("<score-partwise version=\"3.1\">\n");
+
+    // Add identification (composer) if present
+    if let Some(composer) = document_composer {
+        if !composer.is_empty() {
+            xml.push_str("  <identification>\n");
+            xml.push_str("    <creator type=\"composer\">");
+            xml.push_str(&xml_escape(composer));
+            xml.push_str("</creator>\n");
+            xml.push_str("  </identification>\n");
+        }
+    }
 
     // Add title if present
     if let Some(title) = document_title {
