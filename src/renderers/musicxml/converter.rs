@@ -37,12 +37,12 @@ pub fn to_musicxml(document: &Document) -> Result<String, String> {
     );
 
     // Emit MusicXML from IR
-    let xml = emit_musicxml(
-        &export_lines,
-        document.title.as_deref(),
-        document.composer.as_deref(),
-        document.key_signature.as_deref(),
-    )?;
+    let options = super::emitter::EmitOptions {
+        title: document.title.as_deref(),
+        composer: document.composer.as_deref(),
+        key_signature: document.key_signature.as_deref(),
+    };
+    let xml = emit_musicxml(&export_lines, &options)?;
 
     crate::musicxml_log!("MusicXML export complete: {} bytes", xml.len());
     Ok(xml)

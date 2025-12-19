@@ -27,6 +27,8 @@ Auto-generated from all feature plans. Last updated: 2025-12-08
 
 ## Testing Conventions
 
+**RGR (Red-Green-Refactor):** When user says "RGR", make a failing test and a PLAN. Don't implement.
+
 **Use Number System (1-7) for all test input.** Examples: `1 2 3`, `| 1--2 -- 3 4 |`
 
 **Debug logging:** Write E2E tests to capture logs, don't ask user to check browser console.

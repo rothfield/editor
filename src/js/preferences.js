@@ -3,8 +3,6 @@
  *
  * Provides a preferences dialog for managing application settings:
  * - Show developer tabs (inspector panel visibility)
- * - Default notation system
- * - Show debug info (display debug information in editor)
  *
  * Uses UnoCSS for styling and localStorage for persistence
  */
@@ -27,16 +25,13 @@ class PreferencesUI {
    */
   loadPreferences() {
     const stored = localStorage.getItem('musicEditorPreferences');
-    return stored
-      ? JSON.parse(stored)
-      : {
-          showDeveloperTabs: true,
-          defaultNotationSystem: 'western', // or 'number', 'sargam', 'bhatkhande', 'tabla'
-          showDebugInfo: false,
-          // Line rendering mode: 'text' uses font glyphs with baked-in arcs (new architecture)
-          // 'svg' uses SVG overlay for beat loops and slurs (legacy fallback)
-          lineRenderingMode: 'text',
-        };
+    const defaults = { showDeveloperTabs: true };
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      // Only keep showDeveloperTabs, ignore legacy preferences
+      return { showDeveloperTabs: parsed.showDeveloperTabs ?? defaults.showDeveloperTabs };
+    }
+    return defaults;
   }
 
   /**
@@ -120,28 +115,6 @@ class PreferencesUI {
     );
     body.appendChild(devTabsGroup);
 
-    // Default Notation System preference
-    const notationGroup = this.createSelectGroup(
-      'defaultNotationSystem',
-      'Default Notation System',
-      'Choose the default pitch notation system for new documents',
-      this.preferences.defaultNotationSystem
-    );
-    body.appendChild(notationGroup);
-
-    // Show Debug Info preference
-    const debugGroup = this.createCheckboxGroup(
-      'showDebugInfo',
-      'Show Debug Info',
-      'Display debug information and metrics in the editor',
-      this.preferences.showDebugInfo
-    );
-    body.appendChild(debugGroup);
-
-    // Line Rendering Mode preference
-    const lineRenderingGroup = this.createLineRenderingGroup();
-    body.appendChild(lineRenderingGroup);
-
     // Footer with buttons
     const footer = document.createElement('div');
     footer.className = 'bg-gray-100 border-t border-gray-300 px-3 py-2 flex justify-end gap-2';
@@ -216,126 +189,16 @@ class PreferencesUI {
   }
 
   /**
-   * Create a select/dropdown preference group
-   * @private
-   */
-  createSelectGroup(id, label, description, selectedValue) {
-    const group = document.createElement('div');
-    group.className = 'flex flex-col gap-1';
-
-    const labelText = document.createElement('label');
-    labelText.htmlFor = id;
-    labelText.className = 'text-sm font-medium text-gray-900';
-    labelText.textContent = label;
-
-    const select = document.createElement('select');
-    select.id = id;
-    select.className =
-      'px-2 py-1 text-sm border border-gray-300 rounded bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer';
-
-    const options = [
-      { value: 'western', label: 'Western (C, D, E, ...)' },
-      { value: 'number', label: 'Number (1, 2, 3, ...)' },
-      { value: 'sargam', label: 'Sargam (Sa, Re, Ga, ...)' },
-      { value: 'bhatkhande', label: 'Bhatkhande (S, R, G, ...)' },
-      { value: 'tabla', label: 'Tabla (Ta, Ka, Jha, ...)' },
-    ];
-
-    options.forEach((opt) => {
-      const option = document.createElement('option');
-      option.value = opt.value;
-      option.textContent = opt.label;
-      option.selected = opt.value === selectedValue;
-      select.appendChild(option);
-    });
-
-    select.addEventListener('change', (e) => {
-      this.preferences[id] = e.target.value;
-    });
-
-    const descText = document.createElement('div');
-    descText.className = 'text-xs text-gray-600';
-    descText.textContent = description;
-
-    group.appendChild(labelText);
-    group.appendChild(select);
-    group.appendChild(descText);
-
-    return group;
-  }
-
-  /**
-   * Create line rendering mode preference group
-   * @private
-   */
-  createLineRenderingGroup() {
-    const id = 'lineRenderingMode';
-    const group = document.createElement('div');
-    group.className = 'flex flex-col gap-1';
-
-    const labelText = document.createElement('label');
-    labelText.htmlFor = id;
-    labelText.className = 'text-sm font-medium text-gray-900';
-    labelText.textContent = 'Beat/Slur Line Rendering';
-
-    const select = document.createElement('select');
-    select.id = id;
-    select.className =
-      'px-2 py-1 text-sm border border-gray-300 rounded bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer';
-
-    const options = [
-      { value: 'text', label: 'Text-based (font glyphs)' },
-      { value: 'svg', label: 'SVG overlay (legacy)' },
-    ];
-
-    options.forEach((opt) => {
-      const option = document.createElement('option');
-      option.value = opt.value;
-      option.textContent = opt.label;
-      option.selected = opt.value === this.preferences.lineRenderingMode;
-      select.appendChild(option);
-    });
-
-    select.addEventListener('change', (e) => {
-      this.preferences[id] = e.target.value;
-    });
-
-    const descText = document.createElement('div');
-    descText.className = 'text-xs text-gray-600';
-    descText.textContent = 'How beat grouping and slur lines are rendered. Text-based uses font glyphs with arcs. SVG uses overlay paths.';
-
-    group.appendChild(labelText);
-    group.appendChild(select);
-    group.appendChild(descText);
-
-    return group;
-  }
-
-  /**
    * Reset preferences to defaults
    * @private
    */
   resetToDefaults() {
-    this.preferences = {
-      showDeveloperTabs: true,
-      defaultNotationSystem: 'western',
-      showDebugInfo: false,
-      lineRenderingMode: 'text',
-    };
+    this.preferences = { showDeveloperTabs: true };
 
     // Update form
     const form = this.modalElement.querySelector('form') || this.modalElement;
     const showDevTabs = form.querySelector('#showDeveloperTabs');
     if (showDevTabs) showDevTabs.checked = true;
-
-    const notationSystem = form.querySelector('#defaultNotationSystem');
-    if (notationSystem) notationSystem.value = 'western';
-
-    const showDebug = form.querySelector('#showDebugInfo');
-    if (showDebug) showDebug.checked = false;
-
-    const lineRendering = form.querySelector('#lineRenderingMode');
-    if (lineRendering) lineRendering.value = 'text';
 
     this.showNotification('Preferences reset to defaults', 'info');
   }
@@ -371,13 +234,6 @@ class PreferencesUI {
         tab.style.display = this.preferences.showDeveloperTabs ? '' : 'none';
       }
     });
-
-    // Show/hide debug info
-    if (this.preferences.showDebugInfo) {
-      document.documentElement.setAttribute('data-debug-info', 'true');
-    } else {
-      document.documentElement.removeAttribute('data-debug-info');
-    }
 
     // Notify editor of changes (if needed)
     if (this.editor) {

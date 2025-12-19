@@ -29,11 +29,7 @@ test.describe('Preferences: Developer Tabs Visibility', () => {
   test('should show only user-facing tabs when showDeveloperTabs is false', async ({ page }) => {
     // Set preferences to hide developer tabs
     await page.evaluate(() => {
-      const prefs = {
-        showDeveloperTabs: false,
-        defaultNotationSystem: 'western',
-        showDebugInfo: false
-      };
+      const prefs = { showDeveloperTabs: false };
       localStorage.setItem('musicEditorPreferences', JSON.stringify(prefs));
     });
 
@@ -70,11 +66,7 @@ test.describe('Preferences: Developer Tabs Visibility', () => {
   test('should show all tabs when showDeveloperTabs is true', async ({ page }) => {
     // Set preferences to show all tabs (default behavior)
     await page.evaluate(() => {
-      const prefs = {
-        showDeveloperTabs: true,
-        defaultNotationSystem: 'western',
-        showDebugInfo: false
-      };
+      const prefs = { showDeveloperTabs: true };
       localStorage.setItem('musicEditorPreferences', JSON.stringify(prefs));
     });
 

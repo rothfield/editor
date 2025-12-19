@@ -8,13 +8,22 @@ use crate::ir::*;
 use super::builder::{MusicXmlBuilder, xml_escape};
 use super::grace_notes::superscript_position_to_placement;
 
+/// Options for MusicXML emission
+#[derive(Default, Clone)]
+pub struct EmitOptions<'a> {
+    pub title: Option<&'a str>,
+    pub composer: Option<&'a str>,
+    pub key_signature: Option<&'a str>,
+}
+
 /// Emit a complete MusicXML document from export lines
 pub fn emit_musicxml(
     export_lines: &[ExportLine],
-    document_title: Option<&str>,
-    document_composer: Option<&str>,
-    document_key_signature: Option<&str>,
+    options: &EmitOptions,
 ) -> Result<String, String> {
+    let document_title = options.title;
+    let document_composer = options.composer;
+    let document_key_signature = options.key_signature;
     // Handle empty document - use simple builder approach
     if export_lines.is_empty() || export_lines.iter().all(|line| line.measures.is_empty()) {
         let mut builder = MusicXmlBuilder::new();
@@ -1100,7 +1109,7 @@ mod tests {
         let export_lines = vec![export_line1, export_line2];
 
         // Emit MusicXML
-        let xml = emit_musicxml(&export_lines, Some("Test"), None)
+        let xml = emit_musicxml(&export_lines, &EmitOptions { title: Some("Test"), ..Default::default() })
             .expect("Failed to emit MusicXML");
 
         // Debug: print the XML
@@ -1386,7 +1395,7 @@ mod tests {
         let lines = vec![line1, line2];
 
         // Generate MusicXML
-        let xml = emit_musicxml(&lines, None, None).expect("Failed to emit MusicXML");
+        let xml = emit_musicxml(&lines, &EmitOptions::default()).expect("Failed to emit MusicXML");
 
         // Verify output contains:
         // 1. <part-group> with type="start"
@@ -1504,7 +1513,7 @@ mod tests {
         let lines = vec![line1, line2, line3];
 
         // Generate MusicXML
-        let xml = emit_musicxml(&lines, None, None).expect("Failed to emit MusicXML");
+        let xml = emit_musicxml(&lines, &EmitOptions::default()).expect("Failed to emit MusicXML");
 
         // Debug output
         eprintln!("\n=== G M M PATTERN (SEPARATE SYSTEMS) XML ===\n{}\n=== END ===\n", xml);
@@ -1617,7 +1626,7 @@ mod tests {
         let lines = vec![line1, line2, line3];
 
         // Generate MusicXML
-        let xml = emit_musicxml(&lines, None, None).expect("Failed to emit MusicXML");
+        let xml = emit_musicxml(&lines, &EmitOptions::default()).expect("Failed to emit MusicXML");
 
         // Debug output
         eprintln!("\n=== G GI GI PATTERN (SINGLE BRACKETED SYSTEM) XML ===\n{}\n=== END ===\n", xml);
@@ -1717,7 +1726,7 @@ mod tests {
         };
 
         let lines = vec![line1, line2];
-        let xml = emit_musicxml(&lines, None, None).expect("Failed to emit MusicXML");
+        let xml = emit_musicxml(&lines, &EmitOptions::default()).expect("Failed to emit MusicXML");
 
         // Verify bracket is hidden
         assert!(xml.contains("print-object=\"no\""),
@@ -1750,7 +1759,7 @@ mod tests {
             }],
         };
 
-        let xml = emit_musicxml(&vec![line], None, None).expect("Failed to emit MusicXML");
+        let xml = emit_musicxml(&vec![line], &EmitOptions::default()).expect("Failed to emit MusicXML");
 
         // Verify divisions=2 (not 1!)
         assert!(xml.contains("<divisions>2</divisions>"),
@@ -1816,7 +1825,7 @@ mod tests {
             }],
         };
 
-        let xml = emit_musicxml(&vec![line], None, None).expect("Failed to emit MusicXML");
+        let xml = emit_musicxml(&vec![line], &EmitOptions::default()).expect("Failed to emit MusicXML");
 
         // Verify rest has time-modification (tuplet ratio)
         let rest_section = xml.split("</note>").next().unwrap();
@@ -1871,7 +1880,7 @@ mod tests {
             }],
         };
 
-        let xml = emit_musicxml(&vec![line], None, None).expect("Failed to emit MusicXML");
+        let xml = emit_musicxml(&vec![line], &EmitOptions::default()).expect("Failed to emit MusicXML");
 
         // Verify divisions=3 (preserved, not reduced to 1)
         assert!(xml.contains("<divisions>3</divisions>"),
@@ -1956,7 +1965,7 @@ mod tests {
             }],
         };
 
-        let xml = emit_musicxml(&vec![line], None, None).expect("Failed to emit MusicXML");
+        let xml = emit_musicxml(&vec![line], &EmitOptions::default()).expect("Failed to emit MusicXML");
 
         // Count tuplet start/stop markers
         let tuplet_starts = xml.matches("<tuplet type=\"start\"").count();
@@ -2020,7 +2029,7 @@ mod tests {
             }],
         };
 
-        let xml = emit_musicxml(&vec![line], None, None).expect("Failed to emit MusicXML");
+        let xml = emit_musicxml(&vec![line], &EmitOptions::default()).expect("Failed to emit MusicXML");
 
         // Verify divisions=2 (GCD normalization applied)
         assert!(xml.contains("<divisions>2</divisions>"),
@@ -2067,7 +2076,7 @@ mod tests {
             }],
         };
 
-        let xml = emit_musicxml(&vec![line], None, None).expect("Failed to emit MusicXML");
+        let xml = emit_musicxml(&vec![line], &EmitOptions::default()).expect("Failed to emit MusicXML");
 
         // Debug output
         eprintln!("\n=== HALF-FLAT MUSICXML ===\n{}\n=== END ===\n", xml);
@@ -2137,7 +2146,7 @@ mod tests {
                 }],
             };
 
-            let xml = emit_musicxml(&vec![line], None, None).expect("Failed to emit MusicXML");
+            let xml = emit_musicxml(&vec![line], &EmitOptions::default()).expect("Failed to emit MusicXML");
 
             if let Some(alter_value) = expected_alter {
                 assert!(xml.contains(&format!("<alter>{}</alter>", alter_value)),

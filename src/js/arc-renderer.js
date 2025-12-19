@@ -66,19 +66,10 @@ class ArcRenderer {
 
   /**
    * Check if text-based line rendering is enabled (font glyphs have arcs baked in)
-   * @returns {boolean} True if text-based rendering is enabled
+   * @returns {boolean} Always true - text-based rendering is the only mode now
    */
   isTextBasedLineRendering() {
-    try {
-      const stored = localStorage.getItem('musicEditorPreferences');
-      if (stored) {
-        const prefs = JSON.parse(stored);
-        return prefs.lineRenderingMode === 'text';
-      }
-    } catch (e) {
-      // Default to text-based if error reading preferences
-    }
-    return true; // Default: text-based (new architecture)
+    return true;
   }
 
   /**
