@@ -31,6 +31,7 @@ class ExportUI {
     this.isOpen = true;
 
     // Focus on first button for accessibility
+    /** @type {HTMLElement | null} */
     const firstButton = this.modalElement.querySelector('button[data-export]');
     if (firstButton) {
       setTimeout(() => firstButton.focus(), 0);
@@ -382,7 +383,7 @@ class ExportUI {
     if (this.editor && this.editor.showUserNotification) {
       this.editor.showUserNotification(message, type);
     } else {
-      logger.log(LOG_CATEGORIES.UI, `[${type.toUpperCase()}] ${message}`);
+      logger.info(LOG_CATEGORIES.UI, `[${type.toUpperCase()}] ${message}`);
     }
   }
 }

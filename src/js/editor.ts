@@ -66,8 +66,10 @@ class MusicNotationEditor {
   eventHandlers: Map<string, EventListener>;
   isInitialized: boolean;
 
-  // UI reference (set externally)
+  // UI references (set externally)
   ui?: UI;
+  exportUI?: any;
+  preferencesUI?: any;
 
   // Staff notation real-time update
   staffNotationTimer: number | null;

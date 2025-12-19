@@ -383,20 +383,23 @@ class PerformanceMonitor {
 
   /**
    * Get current memory usage (if available)
+   * Note: performance.memory is a Chrome-only non-standard API
    *
    * @returns {Object|null} Memory usage object or null
    */
   getMemoryUsage() {
-    if (!performance.memory) {
+    // @ts-ignore - performance.memory is Chrome-only non-standard API
+    const memory = /** @type {any} */ (performance).memory;
+    if (!memory) {
       return null;
     }
 
     return {
-      usedJSHeapSize: performance.memory.usedJSHeapSize,
-      totalJSHeapSize: performance.memory.totalJSHeapSize,
-      jsHeapSizeLimit: performance.memory.jsHeapSizeLimit,
-      usedMB: (performance.memory.usedJSHeapSize / 1024 / 1024).toFixed(2),
-      totalMB: (performance.memory.totalJSHeapSize / 1024 / 1024).toFixed(2)
+      usedJSHeapSize: memory.usedJSHeapSize,
+      totalJSHeapSize: memory.totalJSHeapSize,
+      jsHeapSizeLimit: memory.jsHeapSizeLimit,
+      usedMB: (memory.usedJSHeapSize / 1024 / 1024).toFixed(2),
+      totalMB: (memory.totalJSHeapSize / 1024 / 1024).toFixed(2)
     };
   }
 }

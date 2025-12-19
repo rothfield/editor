@@ -210,6 +210,7 @@ class TextareaRenderer {
     container.appendChild(labelEl);
 
     // Insert in correct position
+    /** @type {HTMLElement[]} */
     const existingContainers = Array.from(this.container.querySelectorAll('.notation-line-container'));
     const insertBefore = existingContainers.find(el =>
       parseInt(el.dataset.lineIndex, 10) > lineIndex
@@ -241,8 +242,8 @@ class TextareaRenderer {
     textarea.wrap = 'off';
     textarea.spellcheck = false;
     textarea.autocomplete = 'off';
-    textarea.autocorrect = 'off';
-    textarea.autocapitalize = 'off';
+    textarea.setAttribute('autocorrect', 'off');
+    textarea.setAttribute('autocapitalize', 'off');
 
     // Insert after tala overlay, before lyric overlay (both are in content wrapper)
     const contentWrapper = lineContainer.querySelector('.line-content-wrapper');
@@ -796,7 +797,9 @@ class TextareaRenderer {
    * @param {HTMLTextAreaElement} textarea
    */
   _repositionOverlays(lineContainer, textarea) {
+    /** @type {NodeListOf<HTMLElement>} */
     const talaItems = lineContainer.querySelectorAll('.tala-item');
+    /** @type {NodeListOf<HTMLElement>} */
     const lyricItems = lineContainer.querySelectorAll('.lyric-item');
     const scrollLeft = textarea.scrollLeft;
 
@@ -819,7 +822,9 @@ class TextareaRenderer {
    * @param {string|null} label
    */
   _updateLabel(lineContainer, label) {
+    /** @type {HTMLElement | null} */
     const labelEl = lineContainer.querySelector('.line-label');
+    if (!labelEl) return;
     if (label) {
       labelEl.textContent = label;
       labelEl.style.display = '';
@@ -874,7 +879,7 @@ class TextareaRenderer {
    * @returns {number|null}
    */
   getFocusedLineIndex() {
-    const activeElement = document.activeElement;
+    const activeElement = /** @type {HTMLElement | null} */ (document.activeElement);
     if (activeElement?.classList.contains('notation-textarea')) {
       return parseInt(activeElement.dataset.lineIndex, 10);
     }

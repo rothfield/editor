@@ -1298,9 +1298,6 @@ pub fn insert_text(text: &str) -> Result<JsValue, JsValue> {
             // Sync text field after insert
             line.sync_text_from_cells();
 
-            // Update annotation positions
-            doc.annotation_layer.on_insert(crate::text::cursor::TextPos::new(cursor_line, insert_pos));
-
             // Record undo command
             let command = Command::InsertText {
                 line: cursor_line,
@@ -1326,9 +1323,6 @@ pub fn insert_text(text: &str) -> Result<JsValue, JsValue> {
         // Insert new cells at cursor position
         for (i, cell) in new_cells.iter().enumerate() {
             line.cells.insert(insert_pos + i, cell.clone());
-
-            // Update annotation positions
-            doc.annotation_layer.on_insert(crate::text::cursor::TextPos::new(cursor_line, insert_pos + i));
         }
         // Sync text field after bulk modification
         line.sync_text_from_cells();
@@ -1476,9 +1470,6 @@ pub fn delete_at_cursor() -> Result<JsValue, JsValue> {
                 line.cells.remove(cursor_col - 1);
                 // Sync text field after removal
                 line.sync_text_from_cells();
-
-                // Update annotation positions
-                doc.annotation_layer.on_delete(crate::text::cursor::TextPos::new(cursor_line, cursor_col - 1));
 
                 new_cursor_col = cursor_col - 1;
 
@@ -1646,9 +1637,6 @@ pub fn delete_forward() -> Result<JsValue, JsValue> {
         line.cells.remove(cursor_col);
         // Sync text field after removal
         line.sync_text_from_cells();
-
-        // Update annotation positions
-        doc.annotation_layer.on_delete(crate::text::cursor::TextPos::new(cursor_line, cursor_col));
 
         // Cursor stays at same position (now pointing to next cell)
         // Record undo command

@@ -401,7 +401,7 @@ class EventManager {
   handleTabNavigation() {
     // Navigate to next focusable element
     const focusableElements = this.getFocusableElements();
-    const currentIndex = focusableElements.indexOf(document.activeElement);
+    const currentIndex = focusableElements.indexOf(/** @type {HTMLElement} */ (document.activeElement));
 
     if (currentIndex < focusableElements.length - 1) {
       focusableElements[currentIndex + 1].focus();
@@ -416,7 +416,7 @@ class EventManager {
   handleShiftTabNavigation() {
     // Navigate to previous focusable element
     const focusableElements = this.getFocusableElements();
-    const currentIndex = focusableElements.indexOf(document.activeElement);
+    const currentIndex = focusableElements.indexOf(/** @type {HTMLElement} */ (document.activeElement));
 
     if (currentIndex > 0) {
       focusableElements[currentIndex - 1].focus();
@@ -545,6 +545,7 @@ class EventManager {
      * Return focus to editor textarea
      */
   returnFocusToEditor() {
+    /** @type {HTMLElement | null} */
     const textarea = document.querySelector('.notation-textarea');
     if (textarea) {
       textarea.focus();
@@ -653,6 +654,7 @@ Focus Management:
 
   /**
      * Get list of focusable elements
+     * @returns {HTMLElement[]}
      */
   getFocusableElements() {
     const selectors = [
@@ -665,8 +667,8 @@ Focus Management:
       '#notation-editor'
     ];
 
-    return Array.from(document.querySelectorAll(selectors.join(', ')))
-      .filter(el => el.offsetParent !== null); // Only visible elements
+    return /** @type {HTMLElement[]} */ (Array.from(document.querySelectorAll(selectors.join(', ')))
+      .filter(el => /** @type {HTMLElement} */ (el).offsetParent !== null)); // Only visible elements
   }
 
   /**

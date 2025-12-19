@@ -86,7 +86,7 @@ export default class DiagnosticsOverlay {
     const charLen = mark.len;
 
     // Get character positions using measureText or character width estimates
-    const positions = this.getCharacterPositions(textarea, charPos, charLen);
+    const positions = this.getCharacterPositions(/** @type {HTMLTextAreaElement} */ (textarea), charPos, charLen);
     if (!positions) {
       return;
     }

@@ -53,6 +53,36 @@ export class MouseHandler {
   handleDoubleClick(event) {
     // Browser's default word selection handles beat selection
   }
+
+  /**
+   * Calculate cell position from coordinates
+   * @param {number} _x - X coordinate
+   * @param {number} _y - Y coordinate
+   * @returns {number | null} Cell index or null
+   * @deprecated Textarea mode handles selection natively
+   */
+  calculateCellPosition(_x, _y) {
+    return null;
+  }
+
+  /**
+   * Calculate line from Y coordinate
+   * @param {number} _y - Y coordinate
+   * @returns {number | null} Line index or null
+   * @deprecated Textarea mode handles selection natively
+   */
+  calculateLineFromY(_y) {
+    return null;
+  }
+
+  /**
+   * Select entire line at cell position
+   * @param {number} _cellPosition - Cell index
+   * @deprecated Textarea mode handles selection natively
+   */
+  selectLine(_cellPosition) {
+    // No-op: browser handles line selection natively
+  }
 }
 
 export default MouseHandler;

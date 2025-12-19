@@ -261,27 +261,8 @@ impl BeatAccumulator {
             // Attach slur indicator if present or if we're inside a slur
             let slur_indicator = self.take_slur_indicator();
 
-            // Create a temporary cell for the attach_slur_to_note function
-            // kind is derived from codepoint via get_kind()
-            let mut temp_cell = Cell {
-                codepoint: 0,
-                flags: 0,
-                x: 0.0,
-                y: 0.0,
-                w: 0.0,
-                h: 0.0,
-                bbox: (0.0, 0.0, 0.0, 0.0),
-                hit: (0.0, 0.0, 0.0, 0.0),
-            };
-
-            // Set slur marker on temp cell based on indicator
-            match slur_indicator {
-                SlurIndicator::SlurStart => temp_cell.set_slur_start(),
-                SlurIndicator::SlurEnd => temp_cell.set_slur_end(),
-                SlurIndicator::None => {}
-            }
-
-            attach_slur_to_note(&mut note, &temp_cell, self.inside_slur);
+            // Attach slur directly based on indicator (don't use temp cell - codepoint 0 doesn't support line variants)
+            attach_slur_from_indicator(&mut note, slur_indicator, self.inside_slur);
 
             // Update inside_slur state based on indicator
             match slur_indicator {
@@ -794,6 +775,36 @@ pub fn attach_slur_to_note(note: &mut NoteData, cell: &Cell, inside_slur: bool) 
                 placement: SlurPlacement::Above,
                 type_: SlurType::Continue,
             });
+        }
+    }
+}
+
+/// Attach slur to note based on SlurIndicator enum directly
+///
+/// This is the preferred method - it doesn't require creating a temp cell
+/// which would need a valid PUA codepoint to support line variants.
+pub fn attach_slur_from_indicator(note: &mut NoteData, indicator: SlurIndicator, inside_slur: bool) {
+    match indicator {
+        SlurIndicator::SlurStart => {
+            note.slur = Some(SlurData {
+                placement: SlurPlacement::Above,
+                type_: SlurType::Start,
+            });
+        }
+        SlurIndicator::SlurEnd => {
+            note.slur = Some(SlurData {
+                placement: SlurPlacement::Above,
+                type_: SlurType::Stop,
+            });
+        }
+        SlurIndicator::None => {
+            // Check if we're inside an active slur
+            if inside_slur {
+                note.slur = Some(SlurData {
+                    placement: SlurPlacement::Above,
+                    type_: SlurType::Continue,
+                });
+            }
         }
     }
 }

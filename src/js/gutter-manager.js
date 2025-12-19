@@ -33,13 +33,15 @@ class GutterManager {
     // Use mousedown on document capture phase - more reliable than click
     // because click can be prevented by mousedown handlers elsewhere
     document.addEventListener('mousedown', (e) => {
-      const markerIndicator = e.target.closest('.system-marker-indicator');
+      const target = /** @type {Element} */ (e.target);
+      const markerIndicator = target.closest('.system-marker-indicator');
       if (!markerIndicator) return;
 
       e.preventDefault();
       e.stopPropagation();
 
-      const lineIndex = parseInt(markerIndicator.dataset.lineIndex);
+      const htmlMarker = /** @type {HTMLElement} */ (markerIndicator);
+      const lineIndex = parseInt(htmlMarker.dataset.lineIndex || '0');
       this.showSystemMarkerMenu(markerIndicator, lineIndex);
     }, true); // capture phase on document
 

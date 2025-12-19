@@ -50,7 +50,7 @@ export function toYAML(obj, indent = 0) {
 
     // Special ordering for root document: alphabetical with lines first, then verbose fields last
     if (indent === 0) {
-      const verboseFields = ['lines', 'annotation_layer', 'state'];
+      const verboseFields = ['lines', 'state'];
       const mainKeys = keys.filter(k => !verboseFields.includes(k)).sort();
       const endKeys = verboseFields.filter(k => keys.includes(k));
       keys = [...mainKeys, ...endKeys];

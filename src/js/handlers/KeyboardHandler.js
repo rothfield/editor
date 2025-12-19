@@ -272,6 +272,7 @@ export class KeyboardHandler {
     }
 
     try {
+      const line = selection.start.line;
       const start_col = selection.start.col;
       const end_col = selection.end.col;
 

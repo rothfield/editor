@@ -1,7 +1,12 @@
 // OSMD (OpenSheetMusicDisplay) renderer for VexFlow staff notation output
 // Implements IndexedDB caching for fast startup (FR-032)
+// @ts-ignore - osmd-audio-player loaded from CDN
 import PlaybackEngine from 'osmd-audio-player';
 import logger, { LOG_CATEGORIES } from './logger.js';
+
+// Declare global OSMD from CDN
+/** @type {any} */
+const opensheetmusicdisplay = /** @type {any} */ (window).opensheetmusicdisplay;
 
 export class OSMDRenderer {
     constructor(containerId) {
@@ -120,14 +125,16 @@ export class OSMDRenderer {
             const dbRequest = indexedDB.open('vexflow-staff-notation-cache', 1);
 
             dbRequest.onupgradeneeded = (e) => {
-                const db = e.target.result;
+                const target = /** @type {IDBOpenDBRequest} */ (e.target);
+                const db = target.result;
                 if (!db.objectStoreNames.contains('renders')) {
                     db.createObjectStore('renders');
                 }
             };
 
             dbRequest.onsuccess = (e) => {
-                this.cache = e.target.result;
+                const target = /** @type {IDBOpenDBRequest} */ (e.target);
+                this.cache = target.result;
                 logger.info(LOG_CATEGORIES.OSMD, 'Cache initialized');
             };
 
@@ -676,6 +683,7 @@ export class OSMDRenderer {
             logger.debug(LOG_CATEGORIES.OSMD, 'Reloading score into existing audio player...');
             await this.audioPlayer.loadScore(this.osmd);
             logger.debug(LOG_CATEGORIES.OSMD, 'Audio player reloaded', { state: this.audioPlayer.state, ready: this.audioPlayer.ready });
+            // @ts-ignore - accessing private property for debug logging
             logger.debug(LOG_CATEGORIES.OSMD, 'Iteration steps', { steps: this.audioPlayer.iterationSteps });
             return;
         }
@@ -705,11 +713,15 @@ export class OSMDRenderer {
 
         this.audioPlayer.setBpm(120); // Default tempo
         logger.info(LOG_CATEGORIES.OSMD, 'Audio player initialized with BPM 120');
+        // @ts-ignore - accessing private properties for debug logging
         logger.debug(LOG_CATEGORIES.OSMD, 'Audio player details', {
             availableInstruments: this.audioPlayer.availableInstruments.map(i => i.name),
             scoreInstruments: this.audioPlayer.scoreInstruments.map(i => i.Name),
+            // @ts-ignore - private property
             iterationSteps: this.audioPlayer.iterationSteps,
+            // @ts-ignore - private property
             scheduler: this.audioPlayer.scheduler,
+            // @ts-ignore - private property
             schedulerStepQueue: this.audioPlayer.scheduler?.stepQueue
         });
 

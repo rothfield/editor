@@ -41,6 +41,7 @@ export class NewDocumentDialog {
 
       // Focus the dialog for keyboard input
       setTimeout(() => {
+        /** @type {HTMLElement | null} */
         const firstOption = this.dialog.querySelector('.pitch-system-option');
         if (firstOption) {
           firstOption.focus();
@@ -205,15 +206,16 @@ export class NewDocumentDialog {
     const radios = this.dialog.querySelectorAll('input[type="radio"]');
     radios.forEach((radio) => {
       radio.addEventListener('change', (e) => {
-        this.selectedPitchSystem = e.target.value;
-        const index = this.pitchSystems.findIndex(s => s.value === e.target.value);
+        const target = /** @type {HTMLInputElement} */ (e.target);
+        this.selectedPitchSystem = target.value;
+        const index = this.pitchSystems.findIndex(s => s.value === target.value);
         if (index !== -1) {
           this.currentFocusIndex = index;
         }
         // Update ARIA and selected class (fallback for browsers without :has() support)
         const options = this.dialog.querySelectorAll('.pitch-system-option');
         options.forEach((option) => {
-          const isSelected = option.getAttribute('data-value') === e.target.value;
+          const isSelected = option.getAttribute('data-value') === target.value;
           option.setAttribute('aria-checked', isSelected ? 'true' : 'false');
           option.classList.toggle('selected', isSelected);
         });
@@ -221,11 +223,14 @@ export class NewDocumentDialog {
     });
 
     // Click on option div - trigger the radio button
+    /** @type {NodeListOf<HTMLElement>} */
     const options = this.dialog.querySelectorAll('.pitch-system-option');
     options.forEach((option) => {
       option.addEventListener('click', (e) => {
+        const target = /** @type {HTMLElement} */ (e.target);
         // Only trigger if not already clicking on the radio itself
-        if (e.target.type !== 'radio') {
+        if (!(target instanceof HTMLInputElement && target.type === 'radio')) {
+          /** @type {HTMLInputElement | null} */
           const radio = option.querySelector('input[type="radio"]');
           if (radio) {
             radio.click();
@@ -288,6 +293,7 @@ export class NewDocumentDialog {
 
       // Select the radio button at the new index
       const value = this.pitchSystems[this.currentFocusIndex].value;
+      /** @type {HTMLInputElement | null} */
       const radio = this.dialog.querySelector(`input[type="radio"][value="${value}"]`);
       if (radio) {
         radio.checked = true;
@@ -311,6 +317,7 @@ export class NewDocumentDialog {
     }
 
     // Update radio buttons - they handle selection automatically
+    /** @type {HTMLInputElement | null} */
     const radio = this.dialog.querySelector(`input[type="radio"][value="${value}"]`);
     if (radio) {
       radio.checked = true;
@@ -330,6 +337,7 @@ export class NewDocumentDialog {
    * Focus a specific option by index
    */
   focusOption(index) {
+    /** @type {NodeListOf<HTMLElement>} */
     const options = this.dialog.querySelectorAll('.pitch-system-option');
     if (options[index]) {
       options[index].focus();

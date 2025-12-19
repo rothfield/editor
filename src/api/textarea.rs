@@ -11,7 +11,7 @@ use crate::api::helpers::lock_document;
 use crate::wasm_info;
 use crate::models::{PitchSystem, ElementKind};
 use crate::parse::beats::BeatDeriver;
-use crate::renderers::line_variants::{UnderlineState, OverlineState, get_line_variant_codepoint};
+use crate::renderers::line_variants::{LowerLoopRole, SlurRole, get_line_variant_codepoint};
 use crate::renderers::font_utils::{glyph_for_pitch, decode_char, DecodedChar};
 
 // ============================================================================
@@ -609,39 +609,39 @@ fn compute_textarea_line_display(
     let beats = beat_deriver.extract_implicit_beats(cells);
 
     // 2. Compute underline states from beats (multi-cell beats get underlines)
-    let mut underline_states: Vec<UnderlineState> = vec![UnderlineState::None; cells.len()];
+    let mut lower_loop_roles: Vec<LowerLoopRole> = vec![LowerLoopRole::None; cells.len()];
     for beat in &beats {
         let start = beat.start;
         let end = beat.end;
         if start != end {
-            underline_states[start] = UnderlineState::Left;
-            underline_states[end] = UnderlineState::Right;
+            lower_loop_roles[start] = LowerLoopRole::Left;
+            lower_loop_roles[end] = LowerLoopRole::Right;
             for i in (start + 1)..end {
-                underline_states[i] = UnderlineState::Middle;
+                lower_loop_roles[i] = LowerLoopRole::Middle;
             }
         }
     }
 
     // 3. Compute overline states from slur indicators
-    let mut overline_states: Vec<OverlineState> = vec![OverlineState::None; cells.len()];
+    let mut slur_roles: Vec<SlurRole> = vec![SlurRole::None; cells.len()];
     let mut in_slur = false;
     let mut slur_start_idx: Option<usize> = None;
     for (idx, cell) in cells.iter().enumerate() {
         if cell.is_slur_start() {
             in_slur = true;
             slur_start_idx = Some(idx);
-            overline_states[idx] = OverlineState::Left;
+            slur_roles[idx] = SlurRole::Left;
         } else if cell.is_slur_end() {
-            overline_states[idx] = OverlineState::Right;
+            slur_roles[idx] = SlurRole::Right;
             if let Some(start) = slur_start_idx {
                 for i in (start + 1)..idx {
-                    overline_states[i] = OverlineState::Middle;
+                    slur_roles[i] = SlurRole::Middle;
                 }
             }
             in_slur = false;
             slur_start_idx = None;
         } else if in_slur {
-            overline_states[idx] = OverlineState::Middle;
+            slur_roles[idx] = SlurRole::Middle;
         }
     }
 
@@ -662,8 +662,8 @@ fn compute_textarea_line_display(
 
     for (cell_idx, cell) in cells.iter().enumerate() {
         let current_beat = cell_to_beat[cell_idx];
-        let underline = underline_states[cell_idx];
-        let overline = overline_states[cell_idx];
+        let underline = lower_loop_roles[cell_idx];
+        let overline = slur_roles[cell_idx];
 
         // Add space at beat boundary
         if current_beat != prev_beat && prev_beat.is_some() && current_beat.is_some() {
@@ -711,8 +711,8 @@ fn to_glyph(
     pitch_system: PitchSystem,
     pitch_code: crate::models::pitch_code::PitchCode,
     octave: i8,
-    underline: UnderlineState,
-    overline: OverlineState,
+    underline: LowerLoopRole,
+    overline: SlurRole,
     is_superscript: bool,
 ) -> char {
     use crate::renderers::font_utils::GlyphExt;
@@ -745,8 +745,8 @@ fn pitch_to_base_char(pitch_code: crate::models::pitch_code::PitchCode, pitch_sy
 fn render_cell_with_lines(
     cell: &crate::models::core::Cell,
     pitch_system: PitchSystem,
-    underline: UnderlineState,
-    overline: OverlineState,
+    underline: LowerLoopRole,
+    overline: SlurRole,
 ) -> String {
     // For non-pitched elements, use simple characters
     match cell.get_kind() {
@@ -767,7 +767,7 @@ fn render_cell_with_lines(
     // For non-pitched elements (dash, breath mark, etc.)
     match cell.get_kind() {
         ElementKind::UnpitchedElement => {
-            if underline != UnderlineState::None || overline != OverlineState::None {
+            if underline != LowerLoopRole::None || overline != SlurRole::None {
                 get_line_variant_codepoint('-', underline, overline)
                     .map(|c| c.to_string())
                     .unwrap_or_else(|| "-".to_string())
@@ -1003,7 +1003,7 @@ mod tests {
         let cell = Cell::new(glyph.to_string(), ElementKind::PitchedElement);
         // pitch_code and pitch_system are derived from codepoint via getters
 
-        let rendered = render_cell_with_lines(&cell, PitchSystem::Number, UnderlineState::None, OverlineState::None);
+        let rendered = render_cell_with_lines(&cell, PitchSystem::Number, LowerLoopRole::None, SlurRole::None);
         println!("Rendered: {:?} len={}", rendered, rendered.len());
         assert!(!rendered.is_empty(), "render_cell_with_lines should not return empty string");
     }

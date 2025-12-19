@@ -4,6 +4,12 @@ Auto-generated from all feature plans. Last updated: 2025-12-08
 
 ---
 
+## ⚠️ **CORRECTNESS OVER SPEED** ⚠️
+
+This is a **side project**. CORRECTNESS is more important than speed of development. Don't take shortcuts!
+
+---
+
 ## ⚠️ **PRIME DIRECTIVE: WASM-FIRST ARCHITECTURE** ⚠️
 
 **STOP AND ASK:** "Does this code belong in JavaScript or WASM?"

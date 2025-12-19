@@ -356,6 +356,12 @@
             resize: none;
         }
 
+        /* Font Inspector - NotationFont textarea */
+        textarea.font-inspector {
+            font-family: 'NotationFont', monospace;
+            font-size: 24pt;
+        }
+
         /* Notation Font Test Mode - Apply to all children in editor-container */
         #editor-container.notation-font-test {
             font-family: 'NotationFont', monospace !important;
@@ -601,6 +607,9 @@
                         </button>
                         <button id="tab-font-sandbox" class="tab" data-tab="font-sandbox" data-testid="tab-font-sandbox" title="Font Sandbox - Test NotationFont rendering">
                             Font Sandbox
+                        </button>
+                        <button id="tab-font-inspector" class="tab" data-tab="font-inspector" data-testid="tab-font-inspector" title="Font Inspector - Explore glyphs by category (from atoms.yaml)">
+                            Font Inspector
                         </button>
                     </div>
                 </div>
@@ -851,6 +860,51 @@ SARGAM with all combinations:
                             </select>
                         </div>
                         <textarea id="font-sandbox" class="flex-1 bg-white p-3 border-2 border-gray-300 rounded overflow-auto font-sandbox resize-none" placeholder="Type NotationFont characters here (1-7, A-G, S-N, d-t, etc.)"></textarea>
+                    </div>
+
+                    <!-- Font Inspector Tab -->
+                    <div id="tab-content-font-inspector" data-tab-content="font-inspector" class="tab-content hidden flex-1 flex flex-col p-4">
+                        <div class="mb-3 flex flex-wrap items-center gap-2">
+                            <label for="font-inspector-category" class="text-xs font-medium text-gray-700">Category:</label>
+                            <select id="font-inspector-category" class="px-2 py-1 border border-gray-300 rounded text-xs">
+                                <option value="base-pitches">Base Pitches (33 chars)</option>
+                                <option value="octave-variants">Octave Variants</option>
+                                <option value="accidentals">Accidentals</option>
+                                <option value="underlines">Underlines (Beat Grouping)</option>
+                                <option value="slurs">Slurs (Overlines)</option>
+                                <option value="superscripts">Superscripts (Grace Notes)</option>
+                                <option value="symbols">Symbols (Barlines, Ornaments)</option>
+                                <option value="notation-elements">Notation Elements</option>
+                                <option value="example-beats">Example Beats</option>
+                            </select>
+                            <label for="font-inspector-system" class="text-xs font-medium text-gray-700 ml-2">System:</label>
+                            <select id="font-inspector-system" class="px-2 py-1 border border-gray-300 rounded text-xs">
+                                <option value="number">Number (1234567)</option>
+                                <option value="western">Western (CDEFGAB)</option>
+                                <option value="sargam">Sargam (SrRgGmMPdDnN)</option>
+                                <option value="doremi">Doremi (drmfslt)</option>
+                            </select>
+                            <label for="font-inspector-size" class="text-xs font-medium text-gray-700 ml-2">Size:</label>
+                            <select id="font-inspector-size" class="px-2 py-1 border border-gray-300 rounded text-xs">
+                                <option value="16">16pt</option>
+                                <option value="20">20pt</option>
+                                <option value="24" selected>24pt</option>
+                                <option value="32">32pt</option>
+                                <option value="48">48pt</option>
+                            </select>
+                        </div>
+                        <div class="mb-2 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-800" id="font-inspector-info">
+                            Select a category to explore glyphs. Click any character to see Unicode details.
+                        </div>
+                        <textarea id="font-inspector-display"
+                            class="flex-1 bg-white p-3 border-2 border-gray-300 rounded overflow-auto resize-none font-inspector"
+                            readonly
+                            placeholder="Glyphs will appear here..."></textarea>
+                        <div class="mt-2 p-2 bg-gray-100 border border-gray-300 rounded">
+                            <div class="text-xs font-mono" id="font-inspector-unicode">
+                                <span class="text-gray-500">Hover or click a character to see Unicode info</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </aside>

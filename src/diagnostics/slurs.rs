@@ -7,7 +7,7 @@
 
 use crate::models::Cell;
 use crate::renderers::font_utils::CodepointTransform;
-use crate::renderers::line_variants::OverlineState;
+use crate::renderers::line_variants::SlurRole;
 
 use super::{DiagnosticMark, DiagnosticSeverity};
 
@@ -28,11 +28,11 @@ pub fn analyze_slurs(cells: &[Cell], line_index: usize) -> Vec<DiagnosticMark> {
         let overline = cell.codepoint.get_overline();
 
         match overline {
-            OverlineState::Left => {
+            SlurRole::Left => {
                 // Slur start - push to stack
                 stack.push(idx);
             }
-            OverlineState::Right => {
+            SlurRole::Right => {
                 // Slur end - try to pop matching start
                 if stack.pop().is_none() {
                     // No matching start - orphaned end
@@ -46,7 +46,7 @@ pub fn analyze_slurs(cells: &[Cell], line_index: usize) -> Vec<DiagnosticMark> {
                 }
                 // If pop succeeded, the slur is properly matched
             }
-            OverlineState::Middle | OverlineState::None => {
+            SlurRole::Middle | SlurRole::None => {
                 // Middle markers or no overline - no action needed
             }
         }
@@ -86,13 +86,13 @@ mod tests {
     use super::*;
     use crate::models::Cell;
 
-    /// Helper to create a test cell with a specific overline state
-    fn make_cell_with_overline(overline: OverlineState) -> Cell {
+    /// Helper to create a test cell with a specific slur role
+    fn make_cell_with_slur_role(role: SlurRole) -> Cell {
         use crate::renderers::line_variants::set_overline_on_codepoint;
 
         // Start with ASCII '1' (a simple base character)
         let base_cp = '1' as u32;
-        let cp = set_overline_on_codepoint(base_cp, overline);
+        let cp = set_overline_on_codepoint(base_cp, role);
 
         Cell {
             codepoint: cp,
@@ -104,9 +104,9 @@ mod tests {
     fn test_matched_slur() {
         // ( 1 2 ) - properly matched
         let cells = vec![
-            make_cell_with_overline(OverlineState::Left),
-            make_cell_with_overline(OverlineState::Middle),
-            make_cell_with_overline(OverlineState::Right),
+            make_cell_with_slur_role(SlurRole::Left),
+            make_cell_with_slur_role(SlurRole::Middle),
+            make_cell_with_slur_role(SlurRole::Right),
         ];
 
         let marks = analyze_slurs(&cells, 0);
@@ -117,9 +117,9 @@ mod tests {
     fn test_orphan_end() {
         // 1 2 ) - end with no start
         let cells = vec![
-            make_cell_with_overline(OverlineState::None),
-            make_cell_with_overline(OverlineState::None),
-            make_cell_with_overline(OverlineState::Right),
+            make_cell_with_slur_role(SlurRole::None),
+            make_cell_with_slur_role(SlurRole::None),
+            make_cell_with_slur_role(SlurRole::Right),
         ];
 
         let marks = analyze_slurs(&cells, 0);
@@ -132,9 +132,9 @@ mod tests {
     fn test_orphan_start() {
         // ( 1 2 - start with no end
         let cells = vec![
-            make_cell_with_overline(OverlineState::Left),
-            make_cell_with_overline(OverlineState::Middle),
-            make_cell_with_overline(OverlineState::None),
+            make_cell_with_slur_role(SlurRole::Left),
+            make_cell_with_slur_role(SlurRole::Middle),
+            make_cell_with_slur_role(SlurRole::None),
         ];
 
         let marks = analyze_slurs(&cells, 0);
@@ -147,10 +147,10 @@ mod tests {
     fn test_nested_slurs() {
         // ( ( ) ) - properly nested
         let cells = vec![
-            make_cell_with_overline(OverlineState::Left),
-            make_cell_with_overline(OverlineState::Left),
-            make_cell_with_overline(OverlineState::Right),
-            make_cell_with_overline(OverlineState::Right),
+            make_cell_with_slur_role(SlurRole::Left),
+            make_cell_with_slur_role(SlurRole::Left),
+            make_cell_with_slur_role(SlurRole::Right),
+            make_cell_with_slur_role(SlurRole::Right),
         ];
 
         let marks = analyze_slurs(&cells, 0);
@@ -161,8 +161,8 @@ mod tests {
     fn test_multiple_orphans() {
         // ) ( - orphan end then orphan start
         let cells = vec![
-            make_cell_with_overline(OverlineState::Right), // orphan end
-            make_cell_with_overline(OverlineState::Left),  // orphan start
+            make_cell_with_slur_role(SlurRole::Right), // orphan end
+            make_cell_with_slur_role(SlurRole::Left),  // orphan start
         ];
 
         let marks = analyze_slurs(&cells, 0);

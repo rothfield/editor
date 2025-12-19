@@ -3,6 +3,7 @@
  * Implements MIDI playback for the music notation editor using Tone.js
  */
 
+// @ts-ignore - Tone.js is loaded from CDN
 import * as Tone from 'tone';
 
 export class MidiPlayer {
@@ -197,7 +198,7 @@ export class MidiPlayer {
               const midiNote = this.pitchToMIDI(step, octave, alter);
 
               // Get duration
-              const duration = parseInt(note.querySelector('duration')?.textContent || divisions);
+              const duration = parseInt(note.querySelector('duration')?.textContent || String(divisions));
               const durationInSeconds = (duration / divisions) * beatDuration * 0.75; // 3/4 articulation
 
               events.push({
@@ -213,7 +214,7 @@ export class MidiPlayer {
           }
 
           // Advance time based on note duration
-          const duration = parseInt(note.querySelector('duration')?.textContent || divisions);
+          const duration = parseInt(note.querySelector('duration')?.textContent || String(divisions));
           currentTime += (duration / divisions) * beatDuration;
         }
       }
@@ -283,7 +284,7 @@ export class MidiPlayer {
 
     if (this.synth) this.synth.dispose();
 
-    this.eventListeners = {};
+    this.eventListeners = { play: [], pause: [], stop: [], note: [], beat: [], end: [] };
     console.log('🗑️ MIDI Player disposed');
   }
 }

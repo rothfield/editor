@@ -43,8 +43,8 @@ export class ContextMenuManager {
    * @param {string} currentValue - Currently selected value
    * @param {HTMLElement} target - Target element that was right-clicked
    * @param {Function} onSelect - Callback when item is selected
-   * @param {Object} options - Optional configuration
-   * @param {Object} options.disabledItems - Map of item choice to disabled message
+   * @param {Object} [options] - Optional configuration
+   * @param {Object} [options.disabledItems] - Map of item choice to disabled message
    */
   show(x, y, currentValue, target, onSelect, options = {}) {
     if (!this.menu) return;
@@ -114,6 +114,7 @@ export class ContextMenuManager {
    * @param {Object} disabledItems - Map of item choice to disabled message
    */
   updateDisabledStates(disabledItems) {
+    /** @type {NodeListOf<HTMLElement>} */
     const items = this.menu.querySelectorAll('.context-menu-item');
     items.forEach(item => {
       const choice = item.dataset.choice;
@@ -158,10 +159,12 @@ export class ContextMenuManager {
 
   /**
    * Handle menu item click
-   * @param {Event} e - Click event
+   * @param {MouseEvent} e - Click event
    */
   handleMenuClick(e) {
-    const item = e.target.closest('.context-menu-item');
+    const target = /** @type {HTMLElement} */ (e.target);
+    /** @type {HTMLElement | null} */
+    const item = target.closest('.context-menu-item');
     if (!item || !this.targetElement || !this.onSelectCallback) return;
 
     // Ignore clicks on disabled items
@@ -192,7 +195,7 @@ export class ContextMenuManager {
 
   /**
    * Handle clicks outside the menu (left-click only)
-   * @param {Event} e - Click event
+   * @param {MouseEvent} e - Click event
    */
   handleDocumentClick(e) {
     // Only respond to left-clicks (button 0)
@@ -207,14 +210,15 @@ export class ContextMenuManager {
     }
 
     // If click is outside the menu, hide it
-    if (!this.menu.contains(e.target)) {
+    const target = /** @type {Node} */ (e.target);
+    if (!this.menu.contains(target)) {
       this.hide();
     }
   }
 
   /**
    * Handle contextmenu events globally to hide menu on right-click elsewhere
-   * @param {Event} e - Contextmenu event
+   * @param {MouseEvent} e - Contextmenu event
    */
   handleDocumentContextMenu(e) {
     // Don't close if menu was just opened (prevents race condition)
@@ -224,7 +228,8 @@ export class ContextMenuManager {
 
     // If menu is visible and right-click is outside menu, hide it
     if (this.menu && this.menu.style.display !== 'none') {
-      if (!this.menu.contains(e.target)) {
+      const target = /** @type {Node} */ (e.target);
+      if (!this.menu.contains(target)) {
         this.hide();
       }
     }

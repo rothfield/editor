@@ -72,9 +72,16 @@ export async function musicXMLContains(page, expectedPattern) {
  */
 export async function getDocumentModel(page) {
   // Wait for editor to be initialized and document to be available
+  // Use getDocument() method or renderer.theDocument (WASM owns the state now)
   const doc = await page.waitForFunction(() => {
     const app = window.MusicNotationApp?.app();
-    return app?.editor?.theDocument || null;
+    if (!app?.editor) return null;
+    // Try getDocument() first (calls WASM), fall back to renderer's cached copy
+    try {
+      return app.editor.getDocument?.() || app.editor.renderer?.theDocument || null;
+    } catch (e) {
+      return app.editor.renderer?.theDocument || null;
+    }
   }, { timeout: 10000 });
 
   const documentData = await doc.jsonValue();

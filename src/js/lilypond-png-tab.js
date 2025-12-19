@@ -85,7 +85,7 @@ class LilyPondPngTab {
         logger.debug(LOG_CATEGORIES.UI, 'LilyPondDisplay: context', { context: this });
         logger.debug(LOG_CATEGORIES.UI, 'LilyPondDisplay: render method available', { available: !!this.render });
         this.render();
-        if (originalOnClick) originalOnClick(e);
+        if (originalOnClick) originalOnClick.call(tabButton, e);
       };
 
       logger.debug(LOG_CATEGORIES.UI, 'LilyPondDisplay: Click handler attached');

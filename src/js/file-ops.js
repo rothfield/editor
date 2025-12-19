@@ -169,7 +169,8 @@ class FileOperations {
       fileInput.style.display = 'none';
 
       fileInput.addEventListener('change', async (event) => {
-        const file = event.target.files[0];
+        const target = /** @type {HTMLInputElement} */ (event.target);
+        const file = target.files?.[0];
         if (file) {
           await this.loadFile(file);
         }
@@ -684,7 +685,7 @@ class FileOperations {
     if (this.editor && this.editor.showUserNotification) {
       this.editor.showUserNotification(message, 'success');
     } else {
-      logger.log(LOG_CATEGORIES.FILE, message);
+      logger.info(LOG_CATEGORIES.FILE, message);
     }
   }
 

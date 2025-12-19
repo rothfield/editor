@@ -124,7 +124,7 @@ class AutoSave {
    * Restore the last auto-saved document
    * Called on page load
    *
-   * @returns {boolean} True if restored, false otherwise
+   * @returns {Promise<boolean>} True if restored, false otherwise
    */
   async restoreLastAutosave() {
     if (!this.isEnabled) {
@@ -231,7 +231,7 @@ class AutoSave {
       }
 
       // Sort by timestamp (newest first)
-      index.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+      index.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
       // Remove old entries
       const toRemove = index.slice(keepCount);
@@ -260,7 +260,7 @@ class AutoSave {
       const index = JSON.parse(indexJson);
 
       // Sort by timestamp (newest first)
-      index.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+      index.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
       return index;
     } catch (error) {

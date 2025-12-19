@@ -24,7 +24,6 @@
 use wasm_bindgen::prelude::*;
 use serde::{Deserialize, Serialize};
 use crate::text::cursor::{TextPos, TextRange};
-use crate::text::annotations::SlurSpan;
 use crate::structure::line_analysis::find_beat_at_position;
 use crate::structure::operations::shift_octaves_in_range;
 use crate::models::PitchSystem;
@@ -457,7 +456,9 @@ pub fn set_octave(line: usize, start_col: usize, end_col: usize, target_octave: 
 
 /// Toggle slur on a selection range (WASM-first: decision logic in WASM)
 ///
-/// If slur exists at this exact range, removes it. Otherwise, adds it.
+/// Cell-first architecture: checks if slur markers exist at the exact range.
+/// If start_col has slur_start AND end_col-1 has slur_end, removes them.
+/// Otherwise, sets them.
 ///
 /// ## Parameters
 /// - `line`: Line number (0-based)
@@ -484,7 +485,7 @@ pub fn toggle_slur(line: usize, start_col: usize, end_col: usize) -> JsValue {
         return serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL);
     }
 
-    // Lock document to access annotation layer
+    // Lock document
     let mut doc_guard = match lock_document() {
         Ok(guard) => guard,
         Err(e) => {
@@ -517,45 +518,68 @@ pub fn toggle_slur(line: usize, start_col: usize, end_col: usize) -> JsValue {
         }
     };
 
-    // Check if exact slur exists
-    let has_exact_slur = document.annotation_layer.slurs.iter().any(|s|
-        s.start.line == line && s.start.col == start_col &&
-        s.end.line == line && s.end.col == end_col
-    );
-
-    web_sys::console::log_1(&format!("[WASM] Exact slur exists: {}", has_exact_slur).into());
-
-    if has_exact_slur {
-        // Remove the exact slur
-        web_sys::console::log_1(&"[WASM] Removing slur (toggle off)".into());
-        document.annotation_layer.slurs.retain(|s|
-            !(s.start.line == line && s.start.col == start_col &&
-              s.end.line == line && s.end.col == end_col)
-        );
-    } else {
-        // Add the slur
-        web_sys::console::log_1(&"[WASM] Adding slur (toggle on)".into());
-        let slur = SlurSpan::new(
-            TextPos::new(line, start_col),
-            TextPos::new(line, end_col)
-        );
-        document.annotation_layer.add_slur(slur);
+    // Check line exists
+    if line >= document.lines.len() {
+        let result = SlurResult {
+            line,
+            start_col,
+            end_col,
+            slur_count: 0,
+            success: false,
+            error: Some(format!("Line {} does not exist", line)),
+        };
+        return serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL);
     }
 
-    // Count final slurs on this line
-    let slur_count = document.annotation_layer
-        .slurs
-        .iter()
-        .filter(|s| s.start.line == line)
-        .count();
+    let cells_len = document.lines[line].cells.len();
+    let end_cell_col = end_col - 1;
 
-    web_sys::console::log_1(&format!("[WASM] Toggle complete: {} slurs on line {}", slur_count, line).into());
+    // Validate column bounds
+    if start_col >= cells_len || end_cell_col >= cells_len {
+        let result = SlurResult {
+            line,
+            start_col,
+            end_col,
+            slur_count: 0,
+            success: false,
+            error: Some(format!("Column out of bounds (line has {} cells)", cells_len)),
+        };
+        return serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL);
+    }
+
+    // Check if exact slur exists by examining cell markers
+    let has_start = document.lines[line].cells[start_col].is_slur_start();
+    let has_end = document.lines[line].cells[end_cell_col].is_slur_end();
+    let has_exact_slur = has_start && has_end;
+
+    web_sys::console::log_1(&format!("[WASM] Exact slur exists: {} (start={}, end={})", has_exact_slur, has_start, has_end).into());
+
+    if has_exact_slur {
+        // Remove the slur by clearing markers
+        web_sys::console::log_1(&"[WASM] Removing slur (toggle off)".into());
+        document.lines[line].cells[start_col].clear_slur();
+        document.lines[line].cells[end_cell_col].clear_slur();
+        // Also clear any mid markers between them
+        for col in (start_col + 1)..end_cell_col {
+            document.lines[line].cells[col].clear_slur();
+        }
+    } else {
+        // Add the slur by setting markers
+        web_sys::console::log_1(&"[WASM] Adding slur (toggle on)".into());
+        document.lines[line].cells[start_col].set_slur_start();
+        document.lines[line].cells[end_cell_col].set_slur_end();
+    }
+
+    // Re-normalize to derive slur_mid
+    document.compute_line_variants();
+
+    web_sys::console::log_1(&"[WASM] Toggle complete".into());
 
     let result = SlurResult {
         line,
         start_col,
         end_col,
-        slur_count,
+        slur_count: if has_exact_slur { 0 } else { 1 },
         success: true,
         error: None,
     };
@@ -565,13 +589,10 @@ pub fn toggle_slur(line: usize, start_col: usize, end_col: usize) -> JsValue {
 
 /// Apply a slur to a selection range
 ///
-/// This demonstrates the layered architecture for annotations:
-///
-/// ## Architecture Demo
-///
-/// - Layer 0: Selection defines text range
-/// - Annotation Layer: Add SlurSpan for the range
-/// - Automatic tracking: Slur positions update as text changes
+/// Cell-first architecture: slurs are stored as markers directly on cells.
+/// - start_col cell gets slur_start (overline Left)
+/// - end_col-1 cell gets slur_end (overline Right)
+/// - compute_line_variants() derives slur_mid for cells in between
 ///
 /// ## Parameters
 /// - `line`: Line number (0-based)
@@ -645,45 +666,69 @@ pub fn apply_slur_layered(line: usize, start_col: usize, end_col: usize) -> JsVa
         }
     };
 
-    // Create slur span
-    let start = TextPos::new(line, start_col);
-    let end = TextPos::new(line, end_col);
-    let slur = SlurSpan::new(start, end);
+    // Check line exists
+    if line >= document.lines.len() {
+        web_sys::console::log_1(&format!("[WASM] ❌ Line {} out of bounds", line).into());
+        let result = SlurResult {
+            line,
+            start_col,
+            end_col,
+            slur_count: 0,
+            success: false,
+            error: Some(format!("Line {} does not exist", line)),
+        };
+        return serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL);
+    }
 
-    web_sys::console::log_1(&format!("[WASM] Created slur span: ({}, {}) to ({}, {})", start.line, start.col, end.line, end.col).into());
+    let cells_len = document.lines[line].cells.len();
 
-    // Add slur to annotation layer
-    document.annotation_layer.add_slur(slur);
+    // Validate column bounds
+    if start_col >= cells_len || end_col > cells_len {
+        web_sys::console::log_1(&format!("[WASM] ❌ Column out of bounds: start_col={}, end_col={}, cells_len={}", start_col, end_col, cells_len).into());
+        let result = SlurResult {
+            line,
+            start_col,
+            end_col,
+            slur_count: 0,
+            success: false,
+            error: Some(format!("Column out of bounds (line has {} cells)", cells_len)),
+        };
+        return serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL);
+    }
 
-    web_sys::console::log_1(&format!("[WASM] Added slur to annotation layer (total slurs: {})", document.annotation_layer.slurs.len()).into());
+    // Set slur markers directly on cells
+    // start_col gets slur_start (overline Left)
+    document.lines[line].cells[start_col].set_slur_start();
+    web_sys::console::log_1(&format!("[WASM] Set slur_start on col {}", start_col).into());
 
-    // Count slurs on this line
-    let slur_count = document
-        .annotation_layer
-        .slurs
-        .iter()
-        .filter(|s| s.start.line == line)
-        .count();
+    // end_col-1 gets slur_end (overline Right) - end_col is exclusive
+    let end_cell_col = end_col - 1;
+    document.lines[line].cells[end_cell_col].set_slur_end();
+    web_sys::console::log_1(&format!("[WASM] Set slur_end on col {}", end_cell_col).into());
 
-    web_sys::console::log_1(&format!("[WASM] Slurs on line {}: {}", line, slur_count).into());
+    // Derive slur_mid for cells in between via normalization
+    document.compute_line_variants();
+    web_sys::console::log_1(&"[WASM] ✅ Computed line variants (derived slur_mid)".into());
 
+    // Return success (slur_count=1 since we added one slur)
     let result = SlurResult {
         line,
         start_col,
         end_col,
-        slur_count,
+        slur_count: 1,
         success: true,
         error: None,
     };
 
-    web_sys::console::log_1(&format!("[WASM] Returning success result: slur_count={}", slur_count).into());
+    web_sys::console::log_1(&"[WASM] ✅ Slur applied successfully".into());
 
     serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL)
 }
 
 /// Remove slurs overlapping a selection range
 ///
-/// This demonstrates annotation removal in the layered architecture.
+/// Cell-first architecture: clears slur markers from cells in the range.
+/// After clearing, compute_line_variants() re-normalizes any remaining slurs.
 ///
 /// ## Parameters
 /// - `line`: Line number (0-based)
@@ -703,7 +748,13 @@ pub fn apply_slur_layered(line: usize, start_col: usize, end_col: usize) -> JsVa
 /// ```
 #[wasm_bindgen(js_name = removeSlurLayered)]
 pub fn remove_slur_layered(line: usize, start_col: usize, end_col: usize) -> JsValue {
-    // Lock document to access annotation layer
+    #[cfg(target_arch = "wasm32")]
+    web_sys::console::log_1(&format!(
+        "[WASM] removeSlurLayered called: line={}, start_col={}, end_col={}",
+        line, start_col, end_col
+    ).into());
+
+    // Lock document
     let mut doc_guard = match lock_document() {
         Ok(guard) => guard,
         Err(e) => {
@@ -734,224 +785,47 @@ pub fn remove_slur_layered(line: usize, start_col: usize, end_col: usize) -> JsV
         }
     };
 
-    #[cfg(target_arch = "wasm32")]
-    web_sys::console::log_1(&format!(
-        "[removeSlurLayered] Before removal: {} slurs on line {}",
-        document.annotation_layer.slurs.iter().filter(|s| s.start.line == line).count(),
-        line
-    ).into());
+    // Check line exists
+    if line >= document.lines.len() {
+        let result = SlurResult {
+            line,
+            start_col,
+            end_col,
+            slur_count: 0,
+            success: false,
+            error: Some(format!("Line {} does not exist", line)),
+        };
+        return serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL);
+    }
 
-    // Remove slurs overlapping the selection
-    let range = TextRange::new(TextPos::new(line, start_col), TextPos::new(line, end_col));
-    #[cfg(target_arch = "wasm32")]
-    let before_count = document.annotation_layer.slurs.len();
-    document.annotation_layer.slurs.retain(|slur| {
-        // Keep slurs that don't overlap with the selection
-        let should_keep = !(slur.start.line == line && slur.range().start < range.end && slur.range().end > range.start);
-
-        #[cfg(target_arch = "wasm32")]
-        if slur.start.line == line {
-            web_sys::console::log_1(&format!(
-                "[removeSlurLayered] Slur ({},{}) to ({},{}): {} (range check: start {} < {} end && end {} > {} start)",
-                slur.start.line, slur.start.col, slur.end.line, slur.end.col,
-                if should_keep { "KEEP" } else { "REMOVE" },
-                slur.range().start.col, range.end.col,
-                slur.range().end.col, range.start.col
-            ).into());
-        }
-
-        should_keep
-    });
-    #[cfg(target_arch = "wasm32")]
-    let after_count = document.annotation_layer.slurs.len();
+    let cells_len = document.lines[line].cells.len();
+    let actual_end = end_col.min(cells_len);
 
     #[cfg(target_arch = "wasm32")]
     web_sys::console::log_1(&format!(
-        "[removeSlurLayered] Removed {} slurs (before: {}, after: {})",
-        before_count - after_count, before_count, after_count
+        "[WASM] Clearing slur markers from cols {}..{}",
+        start_col, actual_end
     ).into());
 
-    // Count remaining slurs on this line
-    let slur_count = document.annotation_layer
-        .slurs
-        .iter()
-        .filter(|s| s.start.line == line)
-        .count();
+    // Clear slur markers from all cells in the range
+    for col in start_col..actual_end {
+        document.lines[line].cells[col].clear_slur();
+    }
+
+    // Re-normalize to fix any orphaned slur anchors
+    document.compute_line_variants();
+
+    #[cfg(target_arch = "wasm32")]
+    web_sys::console::log_1(&"[WASM] ✅ Slur markers cleared and line variants recomputed".into());
 
     let result = SlurResult {
         line,
         start_col,
         end_col,
-        slur_count,
+        slur_count: 0, // We don't track count in cell-first model
         success: true,
         error: None,
     };
-
-    serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL)
-}
-
-/// Get slurs for a specific line (for debugging/inspection)
-///
-/// ## Parameters
-/// - `line`: Line number (0-based)
-///
-/// ## Returns
-/// JSON array of slurs on this line:
-/// ```json
-/// [
-///   { "start": { "line": 0, "col": 0 }, "end": { "line": 0, "col": 5 } },
-///   { "start": { "line": 0, "col": 7 }, "end": { "line": 0, "col": 10 } }
-/// ]
-/// ```
-#[wasm_bindgen(js_name = getSlursForLine)]
-pub fn get_slurs_for_line(line: usize) -> JsValue {
-    web_sys::console::log_1(&format!("[WASM] getSlursForLine called: line={}", line).into());
-
-    let doc_guard = match lock_document() {
-        Ok(guard) => guard,
-        Err(e) => {
-            web_sys::console::log_1(&format!("[WASM] ❌ Failed to lock document: {:?}", e).into());
-            return JsValue::NULL;
-        }
-    };
-
-    let document = match doc_guard.as_ref() {
-        Some(doc) => doc,
-        None => {
-            web_sys::console::log_1(&"[WASM] ❌ No document loaded".into());
-            return JsValue::NULL;
-        }
-    };
-
-    web_sys::console::log_1(&format!("[WASM] Locked document, total slurs: {}", document.annotation_layer.slurs.len()).into());
-
-    let line_slurs: Vec<&SlurSpan> = document
-        .annotation_layer
-        .slurs
-        .iter()
-        .filter(|s| s.start.line == line)
-        .collect();
-
-    web_sys::console::log_1(&format!("[WASM] Found {} slurs on line {}", line_slurs.len(), line).into());
-
-    for (i, slur) in line_slurs.iter().enumerate() {
-        web_sys::console::log_1(&format!("[WASM]   Slur {}: ({}, {}) to ({}, {})", i, slur.start.line, slur.start.col, slur.end.line, slur.end.col).into());
-    }
-
-    serde_wasm_bindgen::to_value(&line_slurs).unwrap_or(JsValue::NULL)
-}
-
-/// Apply annotation layer slurs to document cells for export
-///
-/// This function converts SlurSpan annotations to slur markers on cells,
-/// allowing the existing export pipeline to work with layered architecture slurs.
-///
-/// ## How it works
-/// - Reads slurs from document.annotation_layer
-/// - For each slur, sets slur_start on the cell at slur.start
-/// - Sets slur_end on the cell at slur.end
-/// - Cells between start and end don't get markers (they're implicitly slurred)
-///
-/// ## Returns
-/// JSON object with the number of slurs applied per line
-#[wasm_bindgen(js_name = applyAnnotationSlursToCells)]
-pub fn apply_annotation_slurs_to_cells() -> JsValue {
-
-    // Lock document
-    let mut doc_guard = match lock_document() {
-        Ok(guard) => guard,
-        Err(e) => {
-            log::error!("Failed to lock document: {:?}", e);
-            return JsValue::NULL;
-        }
-    };
-
-    let doc = match doc_guard.as_mut() {
-        Some(d) => d,
-        None => {
-            log::error!("No document loaded");
-            return JsValue::NULL;
-        }
-    };
-
-    // Clear all existing slur indicators from cells (start fresh)
-    for line in &mut doc.lines {
-        for cell in &mut line.cells {
-            cell.clear_slur();
-        }
-    }
-
-    // Get total slur count before borrowing doc mutably
-    let total_slurs = doc.annotation_layer.slurs.len();
-
-    // Apply slurs from annotation layer
-    let mut slurs_applied = 0;
-
-    // Clone slurs to avoid borrowing issues
-    let slurs_to_apply: Vec<_> = doc.annotation_layer.slurs.clone();
-
-    for slur in &slurs_to_apply {
-        let line_idx = slur.start.line;
-
-        if line_idx >= doc.lines.len() {
-            log::warn!("Slur references line {} which doesn't exist", line_idx);
-            continue;
-        }
-
-        let line = &mut doc.lines[line_idx];
-
-        // Set SlurStart on start column
-        if slur.start.col < line.cells.len() {
-            line.cells[slur.start.col].set_slur_start();
-            #[cfg(target_arch = "wasm32")]
-            web_sys::console::log_1(&format!(
-                "[applyAnnotationSlursToCells] Set SlurStart on line {} col {} (char: '{}')",
-                line_idx, slur.start.col, line.cells[slur.start.col].get_char_string()
-            ).into());
-        } else {
-            log::warn!("Slur start column {} out of bounds on line {}", slur.start.col, line_idx);
-            continue;
-        }
-
-        // Set SlurEnd on end column (inclusive end)
-        // Subtract 1 because TextRange.end is exclusive but slur.end is the last character
-        let end_col = if slur.end.col > 0 { slur.end.col - 1 } else { 0 };
-        if end_col < line.cells.len() {
-            line.cells[end_col].set_slur_end();
-            slurs_applied += 1;
-            #[cfg(target_arch = "wasm32")]
-            web_sys::console::log_1(&format!(
-                "[applyAnnotationSlursToCells] Set SlurEnd on line {} col {} (char: '{}')",
-                line_idx, end_col, line.cells[end_col].get_char_string()
-            ).into());
-        } else {
-            log::warn!("Slur end column {} out of bounds on line {}", end_col, line_idx);
-        }
-    }
-
-    // Return summary
-    #[derive(Serialize)]
-    struct ApplySlursResult {
-        success: bool,
-        slurs_applied: usize,
-        total_slurs: usize,
-    }
-
-    let result = ApplySlursResult {
-        success: true,
-        slurs_applied,
-        total_slurs,
-    };
-
-    #[cfg(target_arch = "wasm32")]
-    web_sys::console::log_1(&format!(
-        "[applyAnnotationSlursToCells] Applied {} of {} slurs to cells",
-        slurs_applied, total_slurs
-    ).into());
-
-    // Recompute line variants now that slur indicators are set
-    // This encodes overlines into cell.char for font-based rendering
-    doc.compute_line_variants();
 
     serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL)
 }

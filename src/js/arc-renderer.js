@@ -111,6 +111,7 @@ class ArcRenderer {
     }
 
     const slurs = [];
+    /** @type {HTMLElement[]} */
     const lineElements = Array.from(document.querySelectorAll('.notation-line'));
 
     for (let lineIdx = 0; lineIdx < displayList.lines.length; lineIdx++) {
@@ -119,6 +120,7 @@ class ArcRenderer {
 
       if (line.slurs && Array.isArray(line.slurs) && lineElement) {
         // Get gutter offset (cells are positioned relative to .line-content)
+        /** @type {HTMLElement | null} */
         const lineContent = lineElement.querySelector('.line-content');
         const gutterOffset = lineContent ? lineContent.offsetLeft : 0;
 
@@ -157,6 +159,7 @@ class ArcRenderer {
     }
 
     const beatLoops = [];
+    /** @type {HTMLElement[]} */
     const lineElements = Array.from(document.querySelectorAll('.notation-line'));
 
     for (let lineIdx = 0; lineIdx < displayList.lines.length; lineIdx++) {
@@ -165,6 +168,7 @@ class ArcRenderer {
 
       if (line.beat_loops && Array.isArray(line.beat_loops) && lineElement) {
         // Get gutter offset (cells are positioned relative to .line-content)
+        /** @type {HTMLElement | null} */
         const lineContent = lineElement.querySelector('.line-content');
         const gutterOffset = lineContent ? lineContent.offsetLeft : 0;
 
@@ -204,6 +208,7 @@ class ArcRenderer {
     }
 
     const superscriptArcs = [];
+    /** @type {HTMLElement[]} */
     const lineElements = Array.from(document.querySelectorAll('.notation-line'));
 
     let cumulativeY = 0;
@@ -213,6 +218,7 @@ class ArcRenderer {
 
       if (line.ornament_arcs && Array.isArray(line.ornament_arcs) && lineElement) {
         // Get gutter offset (cells are positioned relative to .line-content)
+        /** @type {HTMLElement | null} */
         const lineContent = lineElement.querySelector('.line-content');
         const gutterOffset = lineContent ? lineContent.offsetLeft : 0;
 
@@ -258,6 +264,7 @@ class ArcRenderer {
     }
 
     // Get all cell-containers in this line
+    /** @type {NodeListOf<HTMLElement>} */
     const containers = lineElement.querySelectorAll('.cell-container');
 
     containers.forEach((container, i) => {
@@ -323,6 +330,7 @@ class ArcRenderer {
     }
 
     // Get all cell-containers in this line
+    /** @type {NodeListOf<HTMLElement>} */
     const containers = lineElement.querySelectorAll('.cell-container');
 
     containers.forEach((container, i) => {
@@ -374,7 +382,7 @@ class ArcRenderer {
    *
    * @param {Array} arcs - Array of arc span objects (slurs or beat loops)
    * @param {Map} pathsMap - Map of arc ID to SVG path element
-   * @param {SVGGroup} group - SVG group element to append paths to
+   * @param {SVGGElement} group - SVG group element to append paths to
    * @param {Object} options - Rendering options (direction, color)
    */
   /**

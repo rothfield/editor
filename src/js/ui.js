@@ -75,7 +75,8 @@ class UI {
     const textDisplay = document.getElementById('text-display');
     if (sizeToggle && textDisplay) {
       sizeToggle.addEventListener('change', (e) => {
-        textDisplay.style.fontSize = `${e.target.value}px`;
+        const target = /** @type {HTMLInputElement} */ (e.target);
+        textDisplay.style.fontSize = `${target.value}px`;
       });
     }
 
@@ -95,7 +96,8 @@ class UI {
     const textSample = document.getElementById('text-sample');
     if (sampleFontToggle && textSample) {
       sampleFontToggle.addEventListener('change', (e) => {
-        const fontKey = e.target.value;
+        const target = /** @type {HTMLSelectElement} */ (e.target);
+        const fontKey = target.value;
         textSample.style.fontFamily = fontMap[fontKey] || fontMap['jetbrains'];
       });
     }
@@ -720,7 +722,8 @@ class UI {
     input.accept = '.json';
 
     input.onchange = async (event) => {
-      const file = event.target.files[0];
+      const target = /** @type {HTMLInputElement} */ (event.target);
+      const file = target.files?.[0];
       if (file) {
         try {
           const text = await file.text();
@@ -1340,14 +1343,15 @@ class UI {
 
     // Add hover to new item
     items[currentIndex]?.classList.add('hover');
-    items[currentIndex]?.focus();
+    const focusItem = /** @type {HTMLElement | null} */ (items[currentIndex]);
+    focusItem?.focus();
   }
 
   /**
      * Activate current menu item
      */
   activateCurrentMenuItem() {
-    const activeItem = document.querySelector('.menu-item.hover, .menu-item.active');
+    const activeItem = /** @type {HTMLElement | null} */ (document.querySelector('.menu-item.hover, .menu-item.active'));
     if (activeItem) {
       activeItem.click();
     }
@@ -1690,7 +1694,8 @@ class UI {
       fileInput.style.display = 'none';
 
       fileInput.addEventListener('change', async (event) => {
-        const file = event.target.files[0];
+        const target = /** @type {HTMLInputElement} */ (event.target);
+        const file = target.files?.[0];
         if (file) {
           try {
             const text = await file.text();
@@ -1865,7 +1870,7 @@ class UI {
 
   /**
    * Get the current selection range
-   * @returns {{line: number, start: number, end: number}|null} Selection range or null if no selection
+   * @returns {{line: number, start: number, end: number, anchor: any, head: any}|null} Selection range or null if no selection
    */
   getSelectionRange() {
     if (!this.editor) return null;

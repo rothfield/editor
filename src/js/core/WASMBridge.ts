@@ -13,19 +13,26 @@ import type { WASMModule } from '~types/wasm-module';
 import type { Document } from '~types/wasm';
 
 /**
- * Editor interface for window.editor (used for auto-redraw)
+ * Editor interface for window.editor (used for auto-redraw and global access)
  */
 interface EditorInstance {
   renderAndUpdate(): Promise<void>;
   updateDocumentDisplay(): void;
+  wasmModule?: WASMModule;
 }
 
 /**
- * Extended window interface with editor
+ * Extended window interface with editor and other globals
  */
 declare global {
   interface Window {
     editor?: EditorInstance;
+    fontInspector?: any;
+    fontTestUI?: any;
+    toggleHotReload?: () => void;
+    isHotReloadEnabled?: () => boolean;
+    MusicNotationApp?: any;
+    VexFlow?: any;
   }
 }
 
@@ -140,7 +147,7 @@ export class WASMBridge implements WASMModule {
 
       // Layered Architecture API
       'selectWholeBeat', 'shiftOctave', 'setOctave',
-      'toggleSlur', 'applySlurLayered', 'removeSlurLayered', 'getSlursForLine', 'applyAnnotationSlursToCells',
+      'toggleSlur', 'applySlurLayered', 'removeSlurLayered',
       'setLineTalaModern',
 
       // Document lifecycle API
@@ -176,7 +183,10 @@ export class WASMBridge implements WASMModule {
       'exportMusicXML', 'importMusicXML', 'convertMusicXMLToLilyPond', 'exportMIDI', 'exportMIDIDirect', 'generateIRJson', 'exportAsText',
 
       // Font Configuration API
-      'getFontConfig', 'setGlyphWidthCache',
+      'getFontConfig', 'setGlyphWidthCache', 'getSimpleChars',
+
+      // Patch-based Text Editing API
+      'insertCps', 'deleteRange',
 
       // Pitch System API
       'getAvailablePitchSystems',
@@ -324,6 +334,9 @@ export class WASMBridge implements WASMModule {
   // Stub declarations to satisfy TypeScript (actual implementations added dynamically)
   getFontConfig!: WASMModule['getFontConfig'];
   setGlyphWidthCache!: WASMModule['setGlyphWidthCache'];
+  getSimpleChars!: WASMModule['getSimpleChars'];
+  insertCps!: WASMModule['insertCps'];
+  deleteRange!: WASMModule['deleteRange'];
   getAvailablePitchSystems!: WASMModule['getAvailablePitchSystems'];
   createNewDocument!: WASMModule['createNewDocument'];
   loadDocument!: WASMModule['loadDocument'];
@@ -359,8 +372,6 @@ export class WASMBridge implements WASMModule {
   toggleSlur!: WASMModule['toggleSlur'];
   applySlurLayered!: WASMModule['applySlurLayered'];
   removeSlurLayered!: WASMModule['removeSlurLayered'];
-  getSlursForLine!: WASMModule['getSlursForLine'];
-  applyAnnotationSlursToCells!: WASMModule['applyAnnotationSlursToCells'];
   copyCells!: WASMModule['copyCells'];
   pasteCells!: WASMModule['pasteCells'];
   getPrimarySelection!: WASMModule['getPrimarySelection'];

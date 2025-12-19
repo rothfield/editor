@@ -53,6 +53,7 @@ class PreferencesUI {
     this.isOpen = true;
 
     // Focus on first input for accessibility
+    /** @type {HTMLElement | null} */
     const firstInput = this.modalElement.querySelector('input, select');
     if (firstInput) {
       setTimeout(() => firstInput.focus(), 0);
@@ -167,7 +168,8 @@ class PreferencesUI {
     checkbox.className =
       'w-4 h-4 text-blue-500 border-gray-300 rounded focus:ring-blue-500 cursor-pointer';
     checkbox.addEventListener('change', (e) => {
-      this.preferences[id] = e.target.checked;
+      const target = /** @type {HTMLInputElement} */ (e.target);
+      this.preferences[id] = target.checked;
     });
 
     const labelText = document.createElement('label');
@@ -197,7 +199,7 @@ class PreferencesUI {
 
     // Update form
     const form = this.modalElement.querySelector('form') || this.modalElement;
-    const showDevTabs = form.querySelector('#showDeveloperTabs');
+    const showDevTabs = /** @type {HTMLInputElement | null} */ (form.querySelector('#showDeveloperTabs'));
     if (showDevTabs) showDevTabs.checked = true;
 
     this.showNotification('Preferences reset to defaults', 'info');
@@ -258,7 +260,7 @@ class PreferencesUI {
    */
   showNotification(message, type = 'info') {
     // For now, just log to console
-    logger.log(LOG_CATEGORIES.UI, `[${type.toUpperCase()}] ${message}`);
+    logger.info(LOG_CATEGORIES.UI, `[${type.toUpperCase()}] ${message}`);
 
     // Optional: display a toast notification
     // This could be enhanced with a toast component later

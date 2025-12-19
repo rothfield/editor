@@ -11,9 +11,10 @@ export class KeySignatureSelector {
     this.modal = document.getElementById('key-signature-modal');
     this.closeBtn = document.getElementById('key-sig-close');
     this.overlay = this.modal.querySelector('.key-sig-overlay');
-    this.modeToggle = document.getElementById('key-sig-mode');
+    this.modeToggle = /** @type {HTMLInputElement | null} */ (document.getElementById('key-sig-mode'));
     this.modeLabel = document.getElementById('key-sig-mode-label');
     this.displayElement = document.getElementById('key-sig-display');
+    /** @type {NodeListOf<HTMLElement>} */
     this.items = this.modal.querySelectorAll('.key-sig-item');
 
     this.selectedKey = null;
@@ -241,8 +242,8 @@ function getKeySVGFilename(keySignature) {
 export function updateKeySignatureDisplay(keySignature, onClickCallback = null) {
   logger.debug(LOG_CATEGORIES.UI, `updateKeySignatureDisplay called`, { keySignature });
 
-  const displayElement = document.getElementById('key-signature-display');
-  const svgElement = document.getElementById('key-sig-display-svg');
+  const displayElement = /** @type {HTMLElement | null} */ (document.getElementById('key-signature-display'));
+  const svgElement = /** @type {HTMLImageElement | null} */ (document.getElementById('key-sig-display-svg'));
 
   if (!displayElement || !svgElement) {
     logger.warn(LOG_CATEGORIES.UI, 'Display elements not found');
@@ -264,7 +265,7 @@ export function updateKeySignatureDisplay(keySignature, onClickCallback = null) 
 
       // Setup click handler if provided
       if (onClickCallback && !displayElement.dataset.hasClickHandler) {
-        displayElement.addEventListener('click', onClickCallback);
+        displayElement.addEventListener('click', /** @type {EventListener} */ (onClickCallback));
         displayElement.dataset.hasClickHandler = 'true';
       }
     } else {

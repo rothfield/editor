@@ -17,6 +17,7 @@ import LilyPondRenderer from './lilypond-renderer.js';
 import ExportUI from './export-ui.js';
 import PreferencesUI from './preferences.js';
 import { FontTestUI } from './font-test.js';
+import { FontInspector } from './font-inspector.js';
 
 /**
  * Main application class
@@ -216,10 +217,10 @@ class MusicNotationApp {
      * Setup MIDI playback controls
      */
   setupMidiControls() {
-    const playButton = document.getElementById('midi-play');
-    const pauseButton = document.getElementById('midi-pause');
-    const stopButton = document.getElementById('midi-stop');
-    const tempoInput = document.getElementById('midi-tempo');
+    const playButton = /** @type {HTMLButtonElement | null} */ (document.getElementById('midi-play'));
+    const pauseButton = /** @type {HTMLButtonElement | null} */ (document.getElementById('midi-pause'));
+    const stopButton = /** @type {HTMLButtonElement | null} */ (document.getElementById('midi-stop'));
+    const tempoInput = /** @type {HTMLInputElement | null} */ (document.getElementById('midi-tempo'));
     const statusSpan = document.getElementById('midi-status');
 
     if (!playButton || !pauseButton || !stopButton || !tempoInput || !statusSpan) {
@@ -293,7 +294,8 @@ class MusicNotationApp {
 
     // Tempo input
     tempoInput.addEventListener('change', (e) => {
-      const tempo = parseInt(e.target.value, 10);
+      const target = /** @type {HTMLInputElement} */ (e.target);
+      const tempo = parseInt(target.value, 10);
       if (this.editor && this.editor.osmdRenderer && this.editor.osmdRenderer.audioPlayer && !isNaN(tempo)) {
         this.editor.osmdRenderer.audioPlayer.setBpm(tempo);
         statusSpan.textContent = `Tempo set to ${tempo} BPM`;
@@ -301,12 +303,13 @@ class MusicNotationApp {
     });
 
     // Volume control
-    const volumeSlider = document.getElementById('midi-volume');
+    const volumeSlider = /** @type {HTMLInputElement | null} */ (document.getElementById('midi-volume'));
     const volumeLabel = document.getElementById('midi-volume-label');
     if (volumeSlider && volumeLabel) {
       volumeSlider.addEventListener('input', (e) => {
-        const volume = parseInt(e.target.value, 10) / 100; // Convert to 0-1 range
-        volumeLabel.textContent = `${e.target.value}%`;
+        const target = /** @type {HTMLInputElement} */ (e.target);
+        const volume = parseInt(target.value, 10) / 100; // Convert to 0-1 range
+        volumeLabel.textContent = `${target.value}%`;
 
         if (this.editor && this.editor.osmdRenderer && this.editor.osmdRenderer.audioPlayer) {
           this.editor.osmdRenderer.audioPlayer.playbackSettings.masterVolume = volume;
@@ -336,13 +339,14 @@ class MusicNotationApp {
         console.log('🟢 [Main] Panel resized, triggering redraw...');
 
         // Get the currently active tab
+        /** @type {HTMLElement | null} */
         const activeTabButton = document.querySelector('[data-tab].active');
         if (!activeTabButton) {
           console.log('🟡 [Main] No active tab found');
           return;
         }
 
-        const activeTabName = activeTabButton?.dataset?.tab;
+        const activeTabName = activeTabButton.dataset.tab;
         if (!activeTabName) {
           console.log('🟡 [Main] Active tab has no data-tab attribute');
           return;

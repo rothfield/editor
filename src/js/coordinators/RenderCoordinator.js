@@ -37,13 +37,7 @@ export default class RenderCoordinator {
     try {
       logger.debug(LOG_CATEGORIES.RENDERER, 'render() called', { dirtyLineIndices });
 
-      // Merge annotation layer slurs into cells before rendering
-      // This updates the WASM internal document with slur indicators on cells
-      if (this.editor.wasmModule && this.editor.wasmModule.applyAnnotationSlursToCells) {
-        this.editor.wasmModule.applyAnnotationSlursToCells();
-      }
-
-      // Get the updated document from WASM (with slur indicators merged)
+      // Get the document from WASM (slur indicators are set directly on cells)
       // WASM is the only source of truth - we just read for rendering
       let doc;
       if (this.editor.wasmModule && this.editor.wasmModule.getDocumentSnapshot) {

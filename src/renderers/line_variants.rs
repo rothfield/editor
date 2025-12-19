@@ -39,25 +39,37 @@ pub mod pua {
 
 use serde::{Serialize, Deserialize};
 
-/// Underline state for line variants
+/// Lower loop role for beat grouping (visual underline)
+///
+/// "Lower loop" describes the visual appearance: a curved line below notes
+/// that connects subdivisions within a beat. Also known as "beat grouping".
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
-pub enum UnderlineState {
+pub enum LowerLoopRole {
     #[default]
     None,
-    Middle,  // Inside beat group
-    Left,    // Start of beat group (left arc)
-    Right,   // End of beat group (right arc)
+    Middle,  // Inside beat group (derived from Left/Right anchors)
+    Left,    // Start of beat group (left arc) - authoritative anchor
+    Right,   // End of beat group (right arc) - authoritative anchor
 }
 
-/// Overline state for line variants
+/// Slur role for musical slurs (visual overline)
+///
+/// "Slur" is a well-known musical term for a curved line above notes
+/// indicating legato or phrase grouping.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
-pub enum OverlineState {
+pub enum SlurRole {
     #[default]
     None,
-    Middle,  // Inside slur
-    Left,    // Start of slur (left arc)
-    Right,   // End of slur (right arc)
+    Middle,  // Inside slur (derived from Left/Right anchors)
+    Left,    // Start of slur (left arc) - authoritative anchor
+    Right,   // End of slur (right arc) - authoritative anchor
 }
+
+// Backward compatibility aliases (deprecated)
+#[deprecated(note = "Use LowerLoopRole instead")]
+pub type UnderlineState = LowerLoopRole;
+#[deprecated(note = "Use SlurRole instead")]
+pub type OverlineState = SlurRole;
 
 /// Check if a character is ASCII printable (line-capable)
 pub fn is_ascii_line_capable(c: char) -> bool {
@@ -92,8 +104,8 @@ pub fn is_line_capable(c: char) -> bool {
 /// - Both underline and overline are None (plain character)
 pub fn get_line_variant_codepoint(
     base_char: char,
-    underline: UnderlineState,
-    overline: OverlineState,
+    underline: LowerLoopRole,
+    overline: SlurRole,
 ) -> Option<char> {
     // Only ASCII printable characters
     if !is_ascii_line_capable(base_char) {
@@ -101,7 +113,7 @@ pub fn get_line_variant_codepoint(
     }
 
     // No line needed - return None to use plain character
-    if underline == UnderlineState::None && overline == OverlineState::None {
+    if underline == LowerLoopRole::None && overline == SlurRole::None {
         return None;
     }
 
@@ -111,24 +123,24 @@ pub fn get_line_variant_codepoint(
     // Calculate variant index and PUA codepoint based on line states
     let variant_cp = match (underline, overline) {
         // Underline-only (indices 0-2)
-        (UnderlineState::Middle, OverlineState::None) => {
+        (LowerLoopRole::Middle, SlurRole::None) => {
             pua::ASCII_UNDERLINE_BASE + (char_index * 3) + 0
         }
-        (UnderlineState::Left, OverlineState::None) => {
+        (LowerLoopRole::Left, SlurRole::None) => {
             pua::ASCII_UNDERLINE_BASE + (char_index * 3) + 1
         }
-        (UnderlineState::Right, OverlineState::None) => {
+        (LowerLoopRole::Right, SlurRole::None) => {
             pua::ASCII_UNDERLINE_BASE + (char_index * 3) + 2
         }
 
         // Overline-only (indices 0-2)
-        (UnderlineState::None, OverlineState::Middle) => {
+        (LowerLoopRole::None, SlurRole::Middle) => {
             pua::ASCII_OVERLINE_BASE + (char_index * 3) + 0
         }
-        (UnderlineState::None, OverlineState::Left) => {
+        (LowerLoopRole::None, SlurRole::Left) => {
             pua::ASCII_OVERLINE_BASE + (char_index * 3) + 1
         }
-        (UnderlineState::None, OverlineState::Right) => {
+        (LowerLoopRole::None, SlurRole::Right) => {
             pua::ASCII_OVERLINE_BASE + (char_index * 3) + 2
         }
 
@@ -136,17 +148,17 @@ pub fn get_line_variant_codepoint(
         (u, o) => {
             // Map underline state to index 0-2
             let u_idx = match u {
-                UnderlineState::Middle => 0,
-                UnderlineState::Left => 1,
-                UnderlineState::Right => 2,
-                UnderlineState::None => return None,
+                LowerLoopRole::Middle => 0,
+                LowerLoopRole::Left => 1,
+                LowerLoopRole::Right => 2,
+                LowerLoopRole::None => return None,
             };
             // Map overline state to index 0-2
             let o_idx = match o {
-                OverlineState::Middle => 0,
-                OverlineState::Left => 1,
-                OverlineState::Right => 2,
-                OverlineState::None => return None,
+                SlurRole::Middle => 0,
+                SlurRole::Left => 1,
+                SlurRole::Right => 2,
+                SlurRole::None => return None,
             };
             // Combined variant index: u_idx * 3 + o_idx
             pua::ASCII_COMBINED_BASE + (char_index * 9) + (u_idx * 3 + o_idx)
@@ -167,11 +179,11 @@ pub fn get_line_variant_codepoint(
 /// line variants from NUMBER_LINE_BASE.
 pub fn get_pua_note_line_variant_codepoint(
     note_cp: u32,
-    underline: UnderlineState,
-    overline: OverlineState,
+    underline: LowerLoopRole,
+    overline: SlurRole,
 ) -> Option<char> {
     // No line needed - return None to use plain note
-    if underline == UnderlineState::None && overline == OverlineState::None {
+    if underline == LowerLoopRole::None && overline == SlurRole::None {
         return None;
     }
 
@@ -195,28 +207,28 @@ pub fn get_pua_note_line_variant_codepoint(
     // Calculate variant index (0-14)
     let variant_idx = match (underline, overline) {
         // Underline-only (indices 0-2)
-        (UnderlineState::Middle, OverlineState::None) => 0,
-        (UnderlineState::Left, OverlineState::None) => 1,
-        (UnderlineState::Right, OverlineState::None) => 2,
+        (LowerLoopRole::Middle, SlurRole::None) => 0,
+        (LowerLoopRole::Left, SlurRole::None) => 1,
+        (LowerLoopRole::Right, SlurRole::None) => 2,
 
         // Overline-only (indices 3-5)
-        (UnderlineState::None, OverlineState::Middle) => 3,
-        (UnderlineState::None, OverlineState::Left) => 4,
-        (UnderlineState::None, OverlineState::Right) => 5,
+        (LowerLoopRole::None, SlurRole::Middle) => 3,
+        (LowerLoopRole::None, SlurRole::Left) => 4,
+        (LowerLoopRole::None, SlurRole::Right) => 5,
 
         // Combined (indices 6-14)
         (u, o) => {
             let u_idx = match u {
-                UnderlineState::Middle => 0,
-                UnderlineState::Left => 1,
-                UnderlineState::Right => 2,
-                UnderlineState::None => return None,
+                LowerLoopRole::Middle => 0,
+                LowerLoopRole::Left => 1,
+                LowerLoopRole::Right => 2,
+                LowerLoopRole::None => return None,
             };
             let o_idx = match o {
-                OverlineState::Middle => 0,
-                OverlineState::Left => 1,
-                OverlineState::Right => 2,
-                OverlineState::None => return None,
+                SlurRole::Middle => 0,
+                SlurRole::Left => 1,
+                SlurRole::Right => 2,
+                SlurRole::None => return None,
             };
             6 + (u_idx * 3 + o_idx)
         }
@@ -235,8 +247,8 @@ pub fn get_pua_note_line_variant_codepoint(
 /// - Both underline and overline are None (use plain char)
 pub fn encode_ascii_line_variant(
     ch: char,
-    underline: UnderlineState,
-    overline: OverlineState,
+    underline: LowerLoopRole,
+    overline: SlurRole,
 ) -> Option<char> {
     // Only handle printable ASCII
     if !is_ascii_line_capable(ch) {
@@ -244,7 +256,7 @@ pub fn encode_ascii_line_variant(
     }
 
     // No line needed - return None to use plain char
-    if underline == UnderlineState::None && overline == OverlineState::None {
+    if underline == LowerLoopRole::None && overline == SlurRole::None {
         return None;
     }
 
@@ -252,28 +264,28 @@ pub fn encode_ascii_line_variant(
 
     let cp = match (underline, overline) {
         // Underline-only: 0xE800 + (char_index * 3) + variant
-        (UnderlineState::Middle, OverlineState::None) => pua::ASCII_UNDERLINE_BASE + (char_index * 3) + 0,
-        (UnderlineState::Left, OverlineState::None) => pua::ASCII_UNDERLINE_BASE + (char_index * 3) + 1,
-        (UnderlineState::Right, OverlineState::None) => pua::ASCII_UNDERLINE_BASE + (char_index * 3) + 2,
+        (LowerLoopRole::Middle, SlurRole::None) => pua::ASCII_UNDERLINE_BASE + (char_index * 3) + 0,
+        (LowerLoopRole::Left, SlurRole::None) => pua::ASCII_UNDERLINE_BASE + (char_index * 3) + 1,
+        (LowerLoopRole::Right, SlurRole::None) => pua::ASCII_UNDERLINE_BASE + (char_index * 3) + 2,
 
         // Overline-only: 0xE920 + (char_index * 3) + variant
-        (UnderlineState::None, OverlineState::Middle) => pua::ASCII_OVERLINE_BASE + (char_index * 3) + 0,
-        (UnderlineState::None, OverlineState::Left) => pua::ASCII_OVERLINE_BASE + (char_index * 3) + 1,
-        (UnderlineState::None, OverlineState::Right) => pua::ASCII_OVERLINE_BASE + (char_index * 3) + 2,
+        (LowerLoopRole::None, SlurRole::Middle) => pua::ASCII_OVERLINE_BASE + (char_index * 3) + 0,
+        (LowerLoopRole::None, SlurRole::Left) => pua::ASCII_OVERLINE_BASE + (char_index * 3) + 1,
+        (LowerLoopRole::None, SlurRole::Right) => pua::ASCII_OVERLINE_BASE + (char_index * 3) + 2,
 
         // Combined: 0xEA40 + (char_index * 9) + (u_idx * 3 + o_idx)
         (u, o) => {
             let u_idx = match u {
-                UnderlineState::Middle => 0,
-                UnderlineState::Left => 1,
-                UnderlineState::Right => 2,
-                UnderlineState::None => return None,
+                LowerLoopRole::Middle => 0,
+                LowerLoopRole::Left => 1,
+                LowerLoopRole::Right => 2,
+                LowerLoopRole::None => return None,
             };
             let o_idx = match o {
-                OverlineState::Middle => 0,
-                OverlineState::Left => 1,
-                OverlineState::Right => 2,
-                OverlineState::None => return None,
+                SlurRole::Middle => 0,
+                SlurRole::Left => 1,
+                SlurRole::Right => 2,
+                SlurRole::None => return None,
             };
             pua::ASCII_COMBINED_BASE + (char_index * 9) + (u_idx * 3 + o_idx)
         }
@@ -287,10 +299,10 @@ pub fn encode_ascii_line_variant(
 pub struct DecodedLineVariant {
     /// The base character or codepoint
     pub base_char: char,
-    /// Underline state
-    pub underline: UnderlineState,
-    /// Overline state
-    pub overline: OverlineState,
+    /// Lower loop role (beat grouping underline)
+    pub underline: LowerLoopRole,
+    /// Slur role (slur overline)
+    pub overline: SlurRole,
 }
 
 /// Decode a PUA line variant codepoint into its components
@@ -309,15 +321,15 @@ pub fn decode_line_variant(ch: char) -> Option<DecodedLineVariant> {
         let variant = offset % 3;
 
         let underline = match variant {
-            0 => UnderlineState::Middle,
-            1 => UnderlineState::Left,
-            2 => UnderlineState::Right,
+            0 => LowerLoopRole::Middle,
+            1 => LowerLoopRole::Left,
+            2 => LowerLoopRole::Right,
             _ => return None,
         };
         return Some(DecodedLineVariant {
             base_char: char::from_u32(0x20 + char_index)?,
             underline,
-            overline: OverlineState::None,
+            overline: SlurRole::None,
         });
     }
 
@@ -328,14 +340,14 @@ pub fn decode_line_variant(ch: char) -> Option<DecodedLineVariant> {
         let variant = offset % 3;
 
         let overline = match variant {
-            0 => OverlineState::Middle,
-            1 => OverlineState::Left,
-            2 => OverlineState::Right,
+            0 => SlurRole::Middle,
+            1 => SlurRole::Left,
+            2 => SlurRole::Right,
             _ => return None,
         };
         return Some(DecodedLineVariant {
             base_char: char::from_u32(0x20 + char_index)?,
-            underline: UnderlineState::None,
+            underline: LowerLoopRole::None,
             overline,
         });
     }
@@ -349,15 +361,15 @@ pub fn decode_line_variant(ch: char) -> Option<DecodedLineVariant> {
         let o_idx = combined_variant % 3;
 
         let underline = match u_idx {
-            0 => UnderlineState::Middle,
-            1 => UnderlineState::Left,
-            2 => UnderlineState::Right,
+            0 => LowerLoopRole::Middle,
+            1 => LowerLoopRole::Left,
+            2 => LowerLoopRole::Right,
             _ => return None,
         };
         let overline = match o_idx {
-            0 => OverlineState::Middle,
-            1 => OverlineState::Left,
-            2 => OverlineState::Right,
+            0 => SlurRole::Middle,
+            1 => SlurRole::Left,
+            2 => SlurRole::Right,
             _ => return None,
         };
         return Some(DecodedLineVariant {

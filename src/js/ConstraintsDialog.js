@@ -15,11 +15,13 @@ export class ConstraintsDialog {
     this.displayElement = document.getElementById('constraints-display');
     this.clearBtn = document.getElementById('constraints-clear');
     this.customBtn = document.getElementById('constraints-custom');
-    this.searchInput = document.getElementById('constraints-search');
+    this.searchInput = /** @type {HTMLInputElement | null} */ (document.getElementById('constraints-search'));
     this.emptyState = document.getElementById('constraints-empty');
 
     // Tab elements
+    /** @type {NodeListOf<HTMLElement>} */
     this.tabs = this.modal.querySelectorAll('.constraints-tab');
+    /** @type {NodeListOf<HTMLElement>} */
     this.tabPanels = this.modal.querySelectorAll('.constraints-tab-panel');
 
     // Grid containers for each tab
@@ -37,7 +39,7 @@ export class ConstraintsDialog {
     this.selectedPitchSystem = 'Number'; // Default to Number system
 
     // Get pitch system selector
-    this.pitchSystemSelect = document.getElementById('constraints-pitch-system-select');
+    this.pitchSystemSelect = /** @type {HTMLSelectElement | null} */ (document.getElementById('constraints-pitch-system-select'));
 
     this.bindEvents();
   }
@@ -71,7 +73,8 @@ export class ConstraintsDialog {
 
     // Search input
     this.searchInput.addEventListener('input', (e) => {
-      this.searchQuery = e.target.value.toLowerCase().trim();
+      const target = /** @type {HTMLInputElement} */ (e.target);
+      this.searchQuery = target.value.toLowerCase().trim();
       this.renderCurrentTab();
     });
 
@@ -87,7 +90,8 @@ export class ConstraintsDialog {
     // Pitch system selector
     if (this.pitchSystemSelect) {
       this.pitchSystemSelect.addEventListener('change', (e) => {
-        this.selectedPitchSystem = e.target.value;
+        const target = /** @type {HTMLSelectElement} */ (e.target);
+        this.selectedPitchSystem = target.value;
         this.renderCurrentTab(); // Re-render to show notes in new pitch system
       });
     }

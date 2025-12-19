@@ -31,18 +31,7 @@ export class ExportManager {
       const startTime = performance.now();
       console.log(`[JS] exportMusicXML: using WASM internal document`);
 
-      // Apply annotation layer slurs to cells before export
-      if (typeof this.editor.wasmModule.applyAnnotationSlursToCells === 'function') {
-        console.log(`[ExportManager] Calling applyAnnotationSlursToCells()...`);
-        const slurResult = this.editor.wasmModule.applyAnnotationSlursToCells();
-        console.log(`[ExportManager] applyAnnotationSlursToCells() returned:`, slurResult);
-        if (slurResult?.success) {
-          console.log(`[JS] Applied ${slurResult.slurs_applied} slurs from annotation layer to cells`);
-        }
-      } else {
-        console.warn(`[ExportManager] applyAnnotationSlursToCells function not available`);
-      }
-
+      // Slur markers are already set directly on cells - no sync needed
       const musicxml = this.editor.wasmModule.exportMusicXML();
       const exportTime = performance.now() - startTime;
 
@@ -170,17 +159,13 @@ export class ExportManager {
    * Uses NotationFont PUA glyphs with pre-computed line variants
    */
   async updateTextDisplay() {
-    const textDisplay = document.getElementById('text-display');
+    const textDisplay = /** @type {HTMLTextAreaElement | null} */ (document.getElementById('text-display'));
     if (!textDisplay || !this.editor.wasmModule) {
       return;
     }
 
     try {
-      // Apply annotation layer slurs to cells before export
-      if (typeof this.editor.wasmModule.applyAnnotationSlursToCells === 'function') {
-        this.editor.wasmModule.applyAnnotationSlursToCells();
-      }
-
+      // Slur markers are already set directly on cells - no sync needed
       const text = this.editor.wasmModule.exportAsText();
       textDisplay.value = text;
     } catch (error) {

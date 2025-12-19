@@ -21,6 +21,7 @@ class StorageManager {
     this.SAVED_INDEX_KEY = 'music-editor-saved-index';
 
     // Autosave interval (initialized later)
+    /** @type {number | null} */
     this.autosaveInterval = null;
   }
 
@@ -125,7 +126,7 @@ class StorageManager {
       const index = JSON.parse(indexJson);
 
       // Sort by save time (newest first)
-      index.sort((a, b) => new Date(b.savedAt) - new Date(a.savedAt));
+      index.sort((a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime());
 
       return index;
 
@@ -225,7 +226,8 @@ class StorageManager {
       return new Promise((resolve) => {
         input.addEventListener('change', async (e) => {
           try {
-            const file = e.target.files[0];
+            const target = /** @type {HTMLInputElement} */ (e.target);
+            const file = target.files?.[0];
             if (!file) {
               resolve(false);
               return;
@@ -434,7 +436,7 @@ class StorageManager {
     }
 
     // Set up new autosave interval (every 10 seconds)
-    this.autosaveInterval = setInterval(() => {
+    this.autosaveInterval = window.setInterval(() => {
       this.autoSave();
     }, 10000);
 

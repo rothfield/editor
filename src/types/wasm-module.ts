@@ -20,6 +20,30 @@ import type {
 } from './wasm.js';
 
 /**
+ * Diagnostic severity level
+ */
+export type DiagnosticSeverity = 'error' | 'warning' | 'info' | 'hint';
+
+/**
+ * A single diagnostic mark (e.g., highlighting an orphan slur)
+ */
+export interface DiagnosticMark {
+  line: number;
+  col: number;
+  len: number;
+  severity: DiagnosticSeverity;
+  kind: string;
+  message: string;
+}
+
+/**
+ * Collection of diagnostic marks
+ */
+export interface Diagnostics {
+  marks: DiagnosticMark[];
+}
+
+/**
  * Layout configuration for computeLayout
  */
 export interface LayoutConfig {
@@ -78,6 +102,21 @@ export interface TalaDefinition {
 }
 
 /**
+ * A patch representing a text mutation
+ * Patches describe a range to replace and the replacement codepoints.
+ */
+export interface Patch {
+  /** Start of range to replace (codepoint index, inclusive) */
+  start_cp: number;
+  /** End of range to replace (codepoint index, exclusive) */
+  end_cp: number;
+  /** Replacement codepoints */
+  replacement: number[];
+  /** New cursor position after applying patch */
+  new_cursor_cp: number;
+}
+
+/**
  * Complete WASM module interface
  * This is the interface for `this.wasmModule` in the Editor class and WASMBridge
  */
@@ -94,6 +133,32 @@ export interface WASMModule {
    * Set the global glyph width cache (for text measurement)
    */
   setGlyphWidthCache(cacheJson: string): void;
+
+  /**
+   * Get simple chars that JS can handle directly (no WASM call needed)
+   */
+  getSimpleChars(pitchSystem: number): number[];
+
+  // ========== Patch-based Text Editing ==========
+
+  /**
+   * Insert codepoints at selection, returns patch
+   */
+  insertCps(
+    codepoints: number[] | Uint32Array,
+    selStartCp: number,
+    selEndCp: number,
+    insertedCps: number[] | Uint32Array
+  ): Patch;
+
+  /**
+   * Delete selection, returns patch
+   */
+  deleteRange(
+    codepoints: number[] | Uint32Array,
+    selStartCp: number,
+    selEndCp: number
+  ): Patch;
 
   // ========== Pitch System API ==========
 
@@ -327,20 +392,6 @@ export interface WASMModule {
     startCol: number,
     endCol: number
   ): DocumentOperationResult;
-
-  /**
-   * Get all slurs for a line
-   */
-  getSlursForLine(line: number): Array<{
-    start: number;
-    end: number;
-    direction?: 'up' | 'down';
-  }>;
-
-  /**
-   * Apply slurs from annotation layer to cells
-   */
-  applyAnnotationSlursToCells(): { [line: number]: number };
 
   // ========== Copy/Paste Operations ==========
 

@@ -178,10 +178,17 @@ export interface DocumentOperationResult {
   new_cursor_col?: number;
 }
 
+/** Symbol info from font config */
+export interface SymbolInfo {
+  name: string;
+  codepoint: number;
+  label: string;
+}
+
 /** Font configuration */
 export interface FontConfig {
   systems: PitchSystemConfig[];
-  symbols: Record<string, number>;
+  symbols: SymbolInfo[];
 }
 
 export interface PitchSystemConfig {

@@ -57,7 +57,7 @@ impl Serialize for Cell {
         S: serde::Serializer,
     {
         use serde::ser::SerializeStruct;
-        let mut state = serializer.serialize_struct("Cell", 8)?;
+        let mut state = serializer.serialize_struct("Cell", 9)?;
         state.serialize_field("codepoint", &self.codepoint)?;
         // Serialize char computed from codepoint for backward compatibility
         state.serialize_field("char", &self.get_char_string())?;
@@ -67,7 +67,16 @@ impl Serialize for Cell {
         state.serialize_field("pitch_code", &self.get_pitch_code())?; // derived from codepoint
         state.serialize_field("pitch_system", &self.get_pitch_system())?; // derived from codepoint
         state.serialize_field("octave", &self.get_octave())?; // derived from codepoint
-        // underline/overline derived from codepoint - not serialized
+        // Serialize slur_indicator derived from codepoint for tests/debugging
+        let slur_indicator = if self.is_slur_start() {
+            SlurIndicator::SlurStart
+        } else if self.is_slur_end() {
+            SlurIndicator::SlurEnd
+        } else {
+            SlurIndicator::None
+        };
+        state.serialize_field("slur_indicator", &slur_indicator)?;
+        // underline/overline derived from codepoint - not serialized separately
         // Computed field for debug inspection
         state.serialize_field("char_info", &self.decode_char())?;
         state.end()
@@ -270,22 +279,22 @@ impl Cell {
     /// Set slur start marker in codepoint (overline Left)
     pub fn set_slur_start(&mut self) {
         use crate::renderers::font_utils::CodepointTransform;
-        use crate::renderers::line_variants::OverlineState;
-        self.codepoint = self.codepoint.set_overline(OverlineState::Left);
+        use crate::renderers::line_variants::SlurRole;
+        self.codepoint = self.codepoint.set_overline(SlurRole::Left);
     }
 
     /// Set slur end marker in codepoint (overline Right)
     pub fn set_slur_end(&mut self) {
         use crate::renderers::font_utils::CodepointTransform;
-        use crate::renderers::line_variants::OverlineState;
-        self.codepoint = self.codepoint.set_overline(OverlineState::Right);
+        use crate::renderers::line_variants::SlurRole;
+        self.codepoint = self.codepoint.set_overline(SlurRole::Right);
     }
 
     /// Clear slur marker from codepoint
     pub fn clear_slur(&mut self) {
         use crate::renderers::font_utils::CodepointTransform;
-        use crate::renderers::line_variants::OverlineState;
-        self.codepoint = self.codepoint.set_overline(OverlineState::None);
+        use crate::renderers::line_variants::SlurRole;
+        self.codepoint = self.codepoint.set_overline(SlurRole::None);
     }
 
     /// Check if this cell has a superscript indicator (stub - superscript system refactored)
@@ -375,20 +384,20 @@ impl Cell {
         self.codepoint.slur_right()
     }
 
-    /// Get underline state derived from codepoint
+    /// Get lower loop role derived from codepoint
     ///
-    /// Underlines indicate beat grouping (multiple notes sharing a beat).
-    /// Derived from codepoint - underline is encoded in line variant bits.
-    pub fn get_underline(&self) -> UnderlineState {
+    /// Lower loops indicate beat grouping (multiple notes sharing a beat).
+    /// Derived from codepoint - encoded in line variant bits.
+    pub fn get_underline(&self) -> LowerLoopRole {
         use crate::renderers::font_utils::CodepointTransform;
         self.codepoint.get_underline()
     }
 
-    /// Get overline state derived from codepoint
+    /// Get slur role derived from codepoint
     ///
-    /// Overlines indicate slurs (connected phrase markings).
-    /// Derived from codepoint - overline is encoded in line variant bits.
-    pub fn get_overline(&self) -> OverlineState {
+    /// Slurs indicate connected phrase markings (overlines).
+    /// Derived from codepoint - encoded in line variant bits.
+    pub fn get_overline(&self) -> SlurRole {
         use crate::renderers::font_utils::CodepointTransform;
         self.codepoint.get_overline()
     }
@@ -483,7 +492,10 @@ impl Cell {
 // CHARACTER INFO - Decoded character information
 // ============================================================================
 
-// Re-export line variant types from renderers
+// Re-export line variant types from renderers (new names)
+pub use crate::renderers::line_variants::{LowerLoopRole, SlurRole};
+// Backward compatibility aliases
+#[allow(deprecated)]
 pub use crate::renderers::line_variants::{UnderlineState, OverlineState};
 
 /// Fully decoded character information from a cell's codepoint
@@ -527,11 +539,11 @@ pub struct CharInfo {
     /// Octave offset (-2 to +2), 0 for base octave or non-pitched
     pub octave: i8,
 
-    /// Underline state for beat grouping
-    pub underline: UnderlineState,
+    /// Lower loop role for beat grouping
+    pub underline: LowerLoopRole,
 
-    /// Overline state for slurs
-    pub overline: OverlineState,
+    /// Slur role for musical slurs
+    pub overline: SlurRole,
 }
 
 impl Default for CharInfo {
@@ -542,8 +554,8 @@ impl Default for CharInfo {
             pitch_code: None,
             pitch_system: None,
             octave: 0,
-            underline: UnderlineState::None,
-            overline: OverlineState::None,
+            underline: LowerLoopRole::None,
+            overline: SlurRole::None,
         }
     }
 }
@@ -561,7 +573,7 @@ impl CharInfo {
         let (underline, overline, base_cp) = if let Some(decoded) = decode_codepoint(codepoint) {
             (decoded.underline, decoded.overline, decoded.base_cp)
         } else {
-            (UnderlineState::None, OverlineState::None, codepoint)
+            (LowerLoopRole::None, SlurRole::None, codepoint)
         };
 
         // Convert base_cp back to displayable ASCII character
@@ -589,7 +601,7 @@ impl CharInfo {
         let decoded = decode_codepoint(cp);
         let (underline, overline, base_cp) = decoded
             .map(|d| (d.underline, d.overline, d.base_cp))
-            .unwrap_or((UnderlineState::None, OverlineState::None, cp));
+            .unwrap_or((LowerLoopRole::None, SlurRole::None, cp));
 
         // Use compile-time lookup tables for pitch decoding
         let base_char = char::from_u32(base_cp).unwrap_or(' ');
@@ -616,7 +628,7 @@ impl CharInfo {
 
     /// Check if this has any line decorations
     pub fn has_lines(&self) -> bool {
-        self.underline != UnderlineState::None || self.overline != OverlineState::None
+        self.underline != LowerLoopRole::None || self.overline != SlurRole::None
     }
 
     /// Extract base ASCII character from a codepoint
@@ -913,7 +925,7 @@ impl Line {
     /// Commutative with `draw_slurs` - order doesn't matter.
     /// Idempotent - calling twice produces same result as calling once.
     pub fn draw_beat_groups(&mut self, beats: &[BeatSpan]) -> &mut Self {
-        use crate::renderers::line_variants::UnderlineState;
+        use crate::renderers::line_variants::LowerLoopRole;
         use crate::renderers::font_utils::CodepointTransform;
 
         if self.cells.is_empty() {
@@ -938,10 +950,10 @@ impl Line {
 
             // Multi-cell beat - apply underlines to ALL cells in range (including superscripts)
             if start < self.cells.len() {
-                self.cells[start].codepoint = self.cells[start].codepoint.set_underline(UnderlineState::Left);
+                self.cells[start].codepoint = self.cells[start].codepoint.set_underline(LowerLoopRole::Left);
             }
             if end < self.cells.len() {
-                self.cells[end].codepoint = self.cells[end].codepoint.set_underline(UnderlineState::Right);
+                self.cells[end].codepoint = self.cells[end].codepoint.set_underline(LowerLoopRole::Right);
             }
             for i in (start + 1)..end {
                 if i < self.cells.len() {
@@ -1015,10 +1027,6 @@ pub struct Document {
 
     // === Verbose/debug fields below - displayed last in inspector ===
 
-    /// Annotation layer for slurs, superscripts, etc.
-    #[serde(default)]
-    pub annotation_layer: crate::text::annotations::AnnotationLayer,
-
     /// Application state (cursor position, selection, etc.)
     pub state: DocumentState,
 }
@@ -1039,7 +1047,6 @@ impl Document {
             active_constraint: None,
             lines: Vec::new(),
             // Verbose/debug fields last
-            annotation_layer: crate::text::annotations::AnnotationLayer::new(),
             state: DocumentState::new(),
         }
     }
@@ -1973,7 +1980,7 @@ mod tests {
     }
 
     /// Helper: get line variant states as a string for comparison
-    fn get_line_states(line: &Line) -> Vec<(UnderlineState, OverlineState)> {
+    fn get_line_states(line: &Line) -> Vec<(LowerLoopRole, SlurRole)> {
         use crate::renderers::font_utils::CodepointTransform;
         line.cells.iter()
             .map(|c| (c.codepoint.get_underline(), c.codepoint.get_overline()))
@@ -1982,7 +1989,7 @@ mod tests {
 
     #[test]
     fn test_draw_line_variants_commutative() {
-        use crate::renderers::line_variants::{UnderlineState, OverlineState};
+        use crate::renderers::line_variants::{LowerLoopRole, SlurRole};
 
         let beats = create_test_beats();
 
@@ -2003,20 +2010,20 @@ mod tests {
         use crate::renderers::font_utils::CodepointTransform;
 
         // Cell 0: underline Left (beat start), overline None
-        assert_eq!(line_a.cells[0].codepoint.get_underline(), UnderlineState::Left);
-        assert_eq!(line_a.cells[0].codepoint.get_overline(), OverlineState::None);
+        assert_eq!(line_a.cells[0].codepoint.get_underline(), LowerLoopRole::Left);
+        assert_eq!(line_a.cells[0].codepoint.get_overline(), SlurRole::None);
 
         // Cell 1: underline Middle (beat middle), overline Left (slur start)
-        assert_eq!(line_a.cells[1].codepoint.get_underline(), UnderlineState::Middle);
-        assert_eq!(line_a.cells[1].codepoint.get_overline(), OverlineState::Left);
+        assert_eq!(line_a.cells[1].codepoint.get_underline(), LowerLoopRole::Middle);
+        assert_eq!(line_a.cells[1].codepoint.get_overline(), SlurRole::Left);
 
         // Cell 2: underline Right (beat end), overline Middle (inside slur)
-        assert_eq!(line_a.cells[2].codepoint.get_underline(), UnderlineState::Right);
-        assert_eq!(line_a.cells[2].codepoint.get_overline(), OverlineState::Middle);
+        assert_eq!(line_a.cells[2].codepoint.get_underline(), LowerLoopRole::Right);
+        assert_eq!(line_a.cells[2].codepoint.get_overline(), SlurRole::Middle);
 
         // Cell 3: underline None, overline Right (slur end)
-        assert_eq!(line_a.cells[3].codepoint.get_underline(), UnderlineState::None);
-        assert_eq!(line_a.cells[3].codepoint.get_overline(), OverlineState::Right);
+        assert_eq!(line_a.cells[3].codepoint.get_underline(), LowerLoopRole::None);
+        assert_eq!(line_a.cells[3].codepoint.get_overline(), SlurRole::Right);
     }
 
     #[test]
@@ -2058,5 +2065,115 @@ mod tests {
         let after_twice = get_line_states(&line);
 
         assert_eq!(after_once, after_twice, "full chain should be idempotent");
+    }
+
+    /// Test: Mid markers are ignored as input - only derived from Left/Right anchors
+    ///
+    /// This verifies the key invariant: "Only `*_left` and `*_right` are authoritative.
+    /// `*_mid` is derived and ignored as input."
+    #[test]
+    fn test_slur_mid_ignored_without_anchors() {
+        use crate::renderers::font_utils::CodepointTransform;
+        use crate::renderers::line_variants::SlurRole;
+
+        // Create a line with cells that have Middle slur markers but NO Left/Right anchors
+        let mut line = Line::new();
+        for _ in 0..5 {
+            let glyph = crate::renderers::font_utils::glyph_for_pitch(
+                crate::models::pitch_code::PitchCode::N1, 0, crate::models::PitchSystem::Number
+            ).unwrap();
+            let mut cell = Cell::new(glyph.to_string(), crate::models::ElementKind::PitchedElement);
+            // Manually set Middle overline (simulating pasted content with stray mid markers)
+            cell.codepoint = cell.codepoint.set_overline(SlurRole::Middle);
+            line.cells.push(cell);
+        }
+        line.sync_text_from_cells();
+
+        // Verify all cells have Middle before draw_slurs
+        for cell in &line.cells {
+            assert_eq!(cell.codepoint.get_overline(), SlurRole::Middle,
+                "Pre-condition: all cells should have Middle slur marker");
+        }
+
+        // Apply draw_slurs normalization
+        line.draw_slurs();
+
+        // After normalization, all Middle markers should be stripped
+        // because there are no Left/Right anchors to derive them from
+        for (idx, cell) in line.cells.iter().enumerate() {
+            assert_eq!(cell.codepoint.get_overline(), SlurRole::None,
+                "Cell {} should have no slur marker after normalization (no anchors)", idx);
+        }
+    }
+
+    /// Test: Mid markers are derived correctly when anchors are present
+    #[test]
+    fn test_slur_mid_derived_from_anchors() {
+        use crate::renderers::font_utils::CodepointTransform;
+        use crate::renderers::line_variants::SlurRole;
+
+        // Create a line: [None, Left, None, None, Right]
+        // After draw_slurs: [None, Left, Mid, Mid, Right]
+        let mut line = Line::new();
+        for i in 0..5 {
+            let glyph = crate::renderers::font_utils::glyph_for_pitch(
+                crate::models::pitch_code::PitchCode::N1, 0, crate::models::PitchSystem::Number
+            ).unwrap();
+            let mut cell = Cell::new(glyph.to_string(), crate::models::ElementKind::PitchedElement);
+            // Set slur start/end on cells 1 (start) and 4 (end)
+            if i == 1 {
+                cell.set_slur_start();
+            } else if i == 4 {
+                cell.set_slur_end();
+            }
+            line.cells.push(cell);
+        }
+        line.sync_text_from_cells();
+
+        // Apply draw_slurs
+        line.draw_slurs();
+
+        // Verify expected pattern
+        assert_eq!(line.cells[0].codepoint.get_overline(), SlurRole::None, "Cell 0 should be None");
+        assert_eq!(line.cells[1].codepoint.get_overline(), SlurRole::Left, "Cell 1 should be Left (start)");
+        assert_eq!(line.cells[2].codepoint.get_overline(), SlurRole::Middle, "Cell 2 should be Middle (derived)");
+        assert_eq!(line.cells[3].codepoint.get_overline(), SlurRole::Middle, "Cell 3 should be Middle (derived)");
+        assert_eq!(line.cells[4].codepoint.get_overline(), SlurRole::Right, "Cell 4 should be Right (end)");
+    }
+
+    /// Test: Lower loop mid markers are ignored without anchors
+    #[test]
+    fn test_lower_loop_mid_ignored_without_anchors() {
+        use crate::renderers::font_utils::CodepointTransform;
+        use crate::renderers::line_variants::LowerLoopRole;
+
+        // Create a line with cells that have Middle underline markers but NO Left/Right anchors
+        let mut line = Line::new();
+        for _ in 0..5 {
+            let glyph = crate::renderers::font_utils::glyph_for_pitch(
+                crate::models::pitch_code::PitchCode::N1, 0, crate::models::PitchSystem::Number
+            ).unwrap();
+            let mut cell = Cell::new(glyph.to_string(), crate::models::ElementKind::PitchedElement);
+            // Manually set Middle underline (simulating pasted content with stray mid markers)
+            cell.codepoint = cell.codepoint.set_underline(LowerLoopRole::Middle);
+            line.cells.push(cell);
+        }
+        line.sync_text_from_cells();
+
+        // Verify all cells have Middle before draw_beat_groups
+        for cell in &line.cells {
+            assert_eq!(cell.codepoint.get_underline(), LowerLoopRole::Middle,
+                "Pre-condition: all cells should have Middle underline marker");
+        }
+
+        // Apply draw_beat_groups with NO beats (empty list)
+        line.draw_beat_groups(&[]);
+
+        // After normalization, all Middle markers should be stripped
+        // because there are no beats to derive them from
+        for (idx, cell) in line.cells.iter().enumerate() {
+            assert_eq!(cell.codepoint.get_underline(), LowerLoopRole::None,
+                "Cell {} should have no underline marker after normalization (no beats)", idx);
+        }
     }
 }

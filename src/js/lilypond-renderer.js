@@ -18,11 +18,11 @@ class LilyPondRenderer {
   /**
    * Render LilyPond from musical notation with Mustache templating
    * @param {string} lilypondSource - LilyPond source code
-   * @param {Object} options - Rendering options
-   * @param {boolean} options.minimal - Use minimal template (in-tab, smaller)
-   * @param {string} options.format - Output format: 'svg' or 'png' (default: 'svg')
-   * @param {Function} options.onSuccess - Success callback
-   * @param {Function} options.onError - Error callback
+   * @param {Object} [options] - Rendering options
+   * @param {boolean} [options.minimal] - Use minimal template (in-tab, smaller)
+   * @param {string} [options.format] - Output format: 'svg' or 'png' (default: 'svg')
+   * @param {Function} [options.onSuccess] - Success callback
+   * @param {Function} [options.onError] - Error callback
    */
   async render(lilypondSource, options = {}) {
     const {

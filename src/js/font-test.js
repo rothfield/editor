@@ -452,18 +452,11 @@ export class FontTestUI {
     }
     return null;
   }
-
-  getSymbolType(cp) {
-    if (SYMBOLS.accidentals.find(s => s.cp === cp)) return 'Accidental';
-    if (SYMBOLS.barlines.find(s => s.cp === cp)) return 'Barline';
-    if (SYMBOLS.ornaments.find(s => s.cp === cp)) return 'Ornament';
-    return 'Symbol';
-  }
 }
 
 /// Initialize Font Sandbox with all custom glyphs
 function initFontSandbox() {
-  const sandbox = document.getElementById('font-sandbox');
+  const sandbox = /** @type {HTMLTextAreaElement | null} */ (document.getElementById('font-sandbox'));
   const sandboxSizeSelector = document.getElementById('font-sandbox-size');
   if (!sandbox || !fontConfig) return;
 
@@ -472,7 +465,8 @@ function initFontSandbox() {
 
   // Handle font size changes
   sandboxSizeSelector?.addEventListener('change', (e) => {
-    const newSize = parseInt(e.target.value);
+    const target = /** @type {HTMLSelectElement} */ (e.target);
+    const newSize = parseInt(target.value);
     sandbox.style.fontSize = `${newSize}pt`;
   });
 

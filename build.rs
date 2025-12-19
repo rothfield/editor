@@ -1833,7 +1833,7 @@ pub fn get_line_variant(base_cp: u32, variant_index: u32) -> Option<u32> {
 // =============================================================================
 // LINE VARIANT DECODING (for CharInfo)
 // =============================================================================
-// Uses UnderlineState and OverlineState already imported in font_utils.rs
+// Uses LowerLoopRole and SlurRole already imported in font_utils.rs
 
 /// Decoded line variant information
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -1841,9 +1841,9 @@ pub struct DecodedLineVariant {
     /// Base codepoint (without line variant)
     pub base_cp: u32,
     /// Underline state
-    pub underline: UnderlineState,
+    pub underline: LowerLoopRole,
     /// Overline state
-    pub overline: OverlineState,
+    pub overline: SlurRole,
     /// Whether this is a superscript (grace note)
     pub is_superscript: bool,
 }
@@ -1875,27 +1875,27 @@ pub struct DecodedLineVariant {
 ///
 /// This is the inverse of the encoding used in atoms.yaml line_variant_config.
 #[inline]
-pub fn decode_line_variant_index(idx: u32) -> (UnderlineState, OverlineState) {
+pub fn decode_line_variant_index(idx: u32) -> (LowerLoopRole, SlurRole) {
     match idx {
         // Underline only (0-2)
-        0 => (UnderlineState::Middle, OverlineState::None),
-        1 => (UnderlineState::Left, OverlineState::None),
-        2 => (UnderlineState::Right, OverlineState::None),
+        0 => (LowerLoopRole::Middle, SlurRole::None),
+        1 => (LowerLoopRole::Left, SlurRole::None),
+        2 => (LowerLoopRole::Right, SlurRole::None),
         // Overline only (3-5)
-        3 => (UnderlineState::None, OverlineState::Middle),
-        4 => (UnderlineState::None, OverlineState::Left),
-        5 => (UnderlineState::None, OverlineState::Right),
+        3 => (LowerLoopRole::None, SlurRole::Middle),
+        4 => (LowerLoopRole::None, SlurRole::Left),
+        5 => (LowerLoopRole::None, SlurRole::Right),
         // Combined (6-14): underline × overline
-        6 => (UnderlineState::Middle, OverlineState::Middle),
-        7 => (UnderlineState::Middle, OverlineState::Left),
-        8 => (UnderlineState::Middle, OverlineState::Right),
-        9 => (UnderlineState::Left, OverlineState::Middle),
-        10 => (UnderlineState::Left, OverlineState::Left),
-        11 => (UnderlineState::Left, OverlineState::Right),
-        12 => (UnderlineState::Right, OverlineState::Middle),
-        13 => (UnderlineState::Right, OverlineState::Left),
-        14 => (UnderlineState::Right, OverlineState::Right),
-        _ => (UnderlineState::None, OverlineState::None),
+        6 => (LowerLoopRole::Middle, SlurRole::Middle),
+        7 => (LowerLoopRole::Middle, SlurRole::Left),
+        8 => (LowerLoopRole::Middle, SlurRole::Right),
+        9 => (LowerLoopRole::Left, SlurRole::Middle),
+        10 => (LowerLoopRole::Left, SlurRole::Left),
+        11 => (LowerLoopRole::Left, SlurRole::Right),
+        12 => (LowerLoopRole::Right, SlurRole::Middle),
+        13 => (LowerLoopRole::Right, SlurRole::Left),
+        14 => (LowerLoopRole::Right, SlurRole::Right),
+        _ => (LowerLoopRole::None, SlurRole::None),
     }
 }
 
@@ -1903,27 +1903,27 @@ pub fn decode_line_variant_index(idx: u32) -> (UnderlineState, OverlineState) {
 ///
 /// Returns None for (None, None) since that's the base glyph, not a variant.
 #[inline]
-pub fn encode_line_variant_index(underline: UnderlineState, overline: OverlineState) -> Option<u32> {
+pub fn encode_line_variant_index(underline: LowerLoopRole, overline: SlurRole) -> Option<u32> {
     match (underline, overline) {
-        (UnderlineState::None, OverlineState::None) => None, // Base glyph
+        (LowerLoopRole::None, SlurRole::None) => None, // Base glyph
         // Underline only
-        (UnderlineState::Middle, OverlineState::None) => Some(0),
-        (UnderlineState::Left, OverlineState::None) => Some(1),
-        (UnderlineState::Right, OverlineState::None) => Some(2),
+        (LowerLoopRole::Middle, SlurRole::None) => Some(0),
+        (LowerLoopRole::Left, SlurRole::None) => Some(1),
+        (LowerLoopRole::Right, SlurRole::None) => Some(2),
         // Overline only
-        (UnderlineState::None, OverlineState::Middle) => Some(3),
-        (UnderlineState::None, OverlineState::Left) => Some(4),
-        (UnderlineState::None, OverlineState::Right) => Some(5),
+        (LowerLoopRole::None, SlurRole::Middle) => Some(3),
+        (LowerLoopRole::None, SlurRole::Left) => Some(4),
+        (LowerLoopRole::None, SlurRole::Right) => Some(5),
         // Combined
-        (UnderlineState::Middle, OverlineState::Middle) => Some(6),
-        (UnderlineState::Middle, OverlineState::Left) => Some(7),
-        (UnderlineState::Middle, OverlineState::Right) => Some(8),
-        (UnderlineState::Left, OverlineState::Middle) => Some(9),
-        (UnderlineState::Left, OverlineState::Left) => Some(10),
-        (UnderlineState::Left, OverlineState::Right) => Some(11),
-        (UnderlineState::Right, OverlineState::Middle) => Some(12),
-        (UnderlineState::Right, OverlineState::Left) => Some(13),
-        (UnderlineState::Right, OverlineState::Right) => Some(14),
+        (LowerLoopRole::Middle, SlurRole::Middle) => Some(6),
+        (LowerLoopRole::Middle, SlurRole::Left) => Some(7),
+        (LowerLoopRole::Middle, SlurRole::Right) => Some(8),
+        (LowerLoopRole::Left, SlurRole::Middle) => Some(9),
+        (LowerLoopRole::Left, SlurRole::Left) => Some(10),
+        (LowerLoopRole::Left, SlurRole::Right) => Some(11),
+        (LowerLoopRole::Right, SlurRole::Middle) => Some(12),
+        (LowerLoopRole::Right, SlurRole::Left) => Some(13),
+        (LowerLoopRole::Right, SlurRole::Right) => Some(14),
     }
 }
 
@@ -1974,8 +1974,8 @@ pub fn decode_codepoint(cp: u32) -> Option<DecodedLineVariant> {
     if is_pitched_note(cp) || is_dash(cp) || is_breath_mark(cp) || is_space(cp) || is_barline(cp) {
         return Some(DecodedLineVariant {
             base_cp: cp,
-            underline: UnderlineState::None,
-            overline: OverlineState::None,
+            underline: LowerLoopRole::None,
+            overline: SlurRole::None,
             is_superscript: false,
         });
     }
@@ -1984,8 +1984,8 @@ pub fn decode_codepoint(cp: u32) -> Option<DecodedLineVariant> {
     if cp >= 0x20 && cp <= 0x7E {
         return Some(DecodedLineVariant {
             base_cp: cp,
-            underline: UnderlineState::None,
-            overline: OverlineState::None,
+            underline: LowerLoopRole::None,
+            overline: SlurRole::None,
             is_superscript: false,
         });
     }
@@ -2000,25 +2000,25 @@ pub fn decode_codepoint(cp: u32) -> Option<DecodedLineVariant> {
 /// - 1-3: Underline only (left, middle, right)
 /// - 4-6: Overline only (left, middle, right)
 /// - 7-15: Combined (3 underline × 3 overline)
-fn decode_superscript_line_variant(idx: u32) -> (UnderlineState, OverlineState) {
+fn decode_superscript_line_variant(idx: u32) -> (LowerLoopRole, SlurRole) {
     match idx {
-        0 => (UnderlineState::None, OverlineState::None),
-        1 => (UnderlineState::Left, OverlineState::None),
-        2 => (UnderlineState::Middle, OverlineState::None),
-        3 => (UnderlineState::Right, OverlineState::None),
-        4 => (UnderlineState::None, OverlineState::Left),
-        5 => (UnderlineState::None, OverlineState::Middle),
-        6 => (UnderlineState::None, OverlineState::Right),
-        7 => (UnderlineState::Left, OverlineState::Left),
-        8 => (UnderlineState::Left, OverlineState::Middle),
-        9 => (UnderlineState::Left, OverlineState::Right),
-        10 => (UnderlineState::Middle, OverlineState::Left),
-        11 => (UnderlineState::Middle, OverlineState::Middle),
-        12 => (UnderlineState::Middle, OverlineState::Right),
-        13 => (UnderlineState::Right, OverlineState::Left),
-        14 => (UnderlineState::Right, OverlineState::Middle),
-        15 => (UnderlineState::Right, OverlineState::Right),
-        _ => (UnderlineState::None, OverlineState::None),
+        0 => (LowerLoopRole::None, SlurRole::None),
+        1 => (LowerLoopRole::Left, SlurRole::None),
+        2 => (LowerLoopRole::Middle, SlurRole::None),
+        3 => (LowerLoopRole::Right, SlurRole::None),
+        4 => (LowerLoopRole::None, SlurRole::Left),
+        5 => (LowerLoopRole::None, SlurRole::Middle),
+        6 => (LowerLoopRole::None, SlurRole::Right),
+        7 => (LowerLoopRole::Left, SlurRole::Left),
+        8 => (LowerLoopRole::Left, SlurRole::Middle),
+        9 => (LowerLoopRole::Left, SlurRole::Right),
+        10 => (LowerLoopRole::Middle, SlurRole::Left),
+        11 => (LowerLoopRole::Middle, SlurRole::Middle),
+        12 => (LowerLoopRole::Middle, SlurRole::Right),
+        13 => (LowerLoopRole::Right, SlurRole::Left),
+        14 => (LowerLoopRole::Right, SlurRole::Middle),
+        15 => (LowerLoopRole::Right, SlurRole::Right),
+        _ => (LowerLoopRole::None, SlurRole::None),
     }
 }
 
