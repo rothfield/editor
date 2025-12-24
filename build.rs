@@ -256,9 +256,9 @@ pub fn octave_index(o: i8) -> Option<usize> {
         );
     }
 
-    // Generate underlined lookup tables (parallel to base tables)
-    // Underlined PUA bases from atoms.yaml underlined_notes section
-    let underlined_bases: HashMap<u32, u32> = [
+    // Generate lower_loop lookup tables (parallel to base tables)
+    // Lower loop PUA bases from atoms.yaml lower_loop_notes section
+    let lower_loop_bases: HashMap<u32, u32> = [
         (0xE000, 0x16000), // Number
         (0xE100, 0x16100), // Western
         (0xE300, 0x16300), // Sargam
@@ -266,8 +266,8 @@ pub fn octave_index(o: i8) -> Option<usize> {
     ].iter().cloned().collect();
 
     code.push_str("// =============================================================================\n");
-    code.push_str("// UNDERLINED LOOKUP TABLES (for beat grouping display)\n");
-    code.push_str("// Same structure as base tables, just with underlined PUA range\n");
+    code.push_str("// LOWER LOOP LOOKUP TABLES (for beat grouping display)\n");
+    code.push_str("// Same structure as base tables, just with lower_loop PUA range\n");
     code.push_str("// =============================================================================\n\n");
 
     for system in systems {
@@ -297,23 +297,23 @@ pub fn octave_index(o: i8) -> Option<usize> {
             }
         }
 
-        // Get underlined base for this system
-        if let Some(&underlined_base) = underlined_bases.get(&pua_base) {
-            generate_underlined_lookup_table(
+        // Get lower_loop base for this system
+        if let Some(&lower_loop_base) = lower_loop_bases.get(&pua_base) {
+            generate_lower_loop_lookup_table(
                 &mut code,
                 &system_name_upper,
-                underlined_base,
+                lower_loop_base,
                 &char_to_index,
                 &characters,
             );
         }
     }
 
-    // Add underlined glyph lookup function
+    // Add lower_loop glyph lookup function
     code.push_str(r#"
-/// Get underlined glyph for a pitch code and octave
-/// Returns the glyph from the appropriate underlined system table
-pub fn underlined_glyph_for_pitch(
+/// Get lower_loop glyph for a pitch code and octave
+/// Returns the glyph from the appropriate lower_loop system table
+pub fn lower_loop_glyph_for_pitch(
     pitch: PitchCode,
     octave: i8,
     system: crate::models::elements::PitchSystem,
@@ -322,15 +322,15 @@ pub fn underlined_glyph_for_pitch(
     let oi = octave_index(octave)?;
 
     Some(match system {
-        crate::models::elements::PitchSystem::Number => NUMBER_UNDERLINED_TABLE[pi][oi],
-        crate::models::elements::PitchSystem::Western => WESTERN_UNDERLINED_TABLE[pi][oi],
-        crate::models::elements::PitchSystem::Sargam => SARGAM_UNDERLINED_TABLE[pi][oi],
+        crate::models::elements::PitchSystem::Number => NUMBER_LOWER_LOOP_TABLE[pi][oi],
+        crate::models::elements::PitchSystem::Western => WESTERN_LOWER_LOOP_TABLE[pi][oi],
+        crate::models::elements::PitchSystem::Sargam => SARGAM_LOWER_LOOP_TABLE[pi][oi],
         // Doremi, Bhatkhande, Tabla not yet implemented - use Number as fallback
-        _ => NUMBER_UNDERLINED_TABLE[pi][oi],
+        _ => NUMBER_LOWER_LOOP_TABLE[pi][oi],
     })
 }
 
-/// Bracket position for underlined note groups
+/// Bracket position for lower_loop note groups
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum BracketPosition {
     Middle,  // Inside group (no arc endpoints)
@@ -338,51 +338,51 @@ pub enum BracketPosition {
     Right,   // End of group (right arc)
 }
 
-/// Underlined note bracket system configuration
-/// Maps underlined glyph ranges to bracket variant ranges
-struct UnderlinedBracketSystem {
-    underlined_start: u32,  // Start of underlined range (e.g., 0x16000)
-    underlined_end: u32,    // End of underlined range (exclusive)
+/// Lower loop note bracket system configuration
+/// Maps lower_loop glyph ranges to bracket variant ranges
+struct LowerLoopBracketSystem {
+    lower_loop_start: u32,  // Start of lower_loop range (e.g., 0x16000)
+    lower_loop_end: u32,    // End of lower_loop range (exclusive)
     bracket_base: u32,      // Base of bracket variants for this system
-    count: u32,             // Number of underlined glyphs in this system
+    count: u32,             // Number of lower_loop glyphs in this system
 }
 
-/// All underlined bracket systems (generated from atoms.yaml)
+/// All lower_loop bracket systems (generated from atoms.yaml)
 /// Layout: left = bracket_base + offset, right = bracket_base + count + offset
-const UNDERLINED_BRACKET_SYSTEMS: &[UnderlinedBracketSystem] = &[
-    UnderlinedBracketSystem { underlined_start: 0x16000, underlined_end: 0x160D1, bracket_base: 0x17000, count: 210 },  // number: 1234567
-    UnderlinedBracketSystem { underlined_start: 0x16100, underlined_end: 0x161D1, bracket_base: 0x171A4, count: 210 },  // western: CDEFGAB
-    UnderlinedBracketSystem { underlined_start: 0x16300, underlined_end: 0x16467, bracket_base: 0x173AC, count: 360 },  // sargam: SrRgGmMPdDnN
-    UnderlinedBracketSystem { underlined_start: 0x16500, underlined_end: 0x165D1, bracket_base: 0x17614, count: 210 },  // doremi: drmfslt
+const LOWER_LOOP_BRACKET_SYSTEMS: &[LowerLoopBracketSystem] = &[
+    LowerLoopBracketSystem { lower_loop_start: 0x16000, lower_loop_end: 0x160D1, bracket_base: 0x17000, count: 210 },  // number: 1234567
+    LowerLoopBracketSystem { lower_loop_start: 0x16100, lower_loop_end: 0x161D1, bracket_base: 0x171A4, count: 210 },  // western: CDEFGAB
+    LowerLoopBracketSystem { lower_loop_start: 0x16300, lower_loop_end: 0x16467, bracket_base: 0x173AC, count: 360 },  // sargam: SrRgGmMPdDnN
+    LowerLoopBracketSystem { lower_loop_start: 0x16500, lower_loop_end: 0x165D1, bracket_base: 0x17614, count: 210 },  // doremi: drmfslt
 ];
 
-/// Get bracket variant for an underlined glyph
+/// Get bracket variant for a lower_loop glyph
 ///
-/// Given an underlined glyph (0x16000+) and bracket position, returns the
+/// Given a lower_loop glyph (0x16000+) and bracket position, returns the
 /// appropriate bracket variant (0x17000+) with arc endpoints.
 ///
 /// # Arguments
-/// * `underlined_glyph` - The underlined glyph character (from underlined_glyph_for_pitch)
+/// * `lower_loop_glyph` - The lower_loop glyph character (from lower_loop_glyph_for_pitch)
 /// * `position` - Where this note appears in the beat group
 ///
 /// # Returns
 /// * `Some(char)` - The bracket variant glyph
-/// * `None` - If position is Middle (use underlined_glyph directly) or glyph not found
-pub fn bracket_variant_for_underlined(
-    underlined_glyph: char,
+/// * `None` - If position is Middle (use lower_loop_glyph directly) or glyph not found
+pub fn bracket_variant_for_lower_loop(
+    lower_loop_glyph: char,
     position: BracketPosition,
 ) -> Option<char> {
-    // Middle position = no bracket needed, use underlined glyph as-is
+    // Middle position = no bracket needed, use lower_loop glyph as-is
     if position == BracketPosition::Middle {
         return None;
     }
 
-    let cp = underlined_glyph as u32;
+    let cp = lower_loop_glyph as u32;
 
-    // Find which system this underlined glyph belongs to
-    for sys in UNDERLINED_BRACKET_SYSTEMS {
-        if cp >= sys.underlined_start && cp < sys.underlined_end {
-            let offset = cp - sys.underlined_start;
+    // Find which system this lower_loop glyph belongs to
+    for sys in LOWER_LOOP_BRACKET_SYSTEMS {
+        if cp >= sys.lower_loop_start && cp < sys.lower_loop_end {
+            let offset = cp - sys.lower_loop_start;
 
             // Calculate bracket variant codepoint
             // Layout: left=base+0, right=base+count
@@ -396,23 +396,23 @@ pub fn bracket_variant_for_underlined(
         }
     }
 
-    None  // Glyph not in any known underlined range
+    None  // Glyph not in any known lower_loop range
 }
 
-/// Convenience function: get underlined glyph with bracket position
+/// Convenience function: get lower_loop glyph with bracket position
 ///
-/// Combines underlined_glyph_for_pitch and bracket_variant_for_underlined
-pub fn underlined_bracket_glyph_for_pitch(
+/// Combines lower_loop_glyph_for_pitch and bracket_variant_for_lower_loop
+pub fn lower_loop_bracket_glyph_for_pitch(
     pitch: PitchCode,
     octave: i8,
     system: crate::models::elements::PitchSystem,
     position: BracketPosition,
 ) -> Option<char> {
-    let underlined = underlined_glyph_for_pitch(pitch, octave, system)?;
+    let lower_loop = lower_loop_glyph_for_pitch(pitch, octave, system)?;
 
     match position {
-        BracketPosition::Middle => Some(underlined),
-        _ => bracket_variant_for_underlined(underlined, position),
+        BracketPosition::Middle => Some(lower_loop),
+        _ => bracket_variant_for_lower_loop(lower_loop, position),
     }
 }
 
@@ -534,11 +534,11 @@ pub fn derive_kind(cp: u32) -> crate::models::elements::ElementKind {
         return ElementKind::UpperAnnotation;
     }
 
-    // Check note line variant ranges (0x1A000+) - these are pitched elements with underlines/overlines
-    // Number lines: 0x1A000-0x1AC4D
-    // Western lines: 0x1B000-0x1BC4D
-    // Sargam lines: 0x1D000-0x1E517
-    // Doremi lines: 0x1F000-0x1FC4D
+    // Check note decoration ranges (0x1A000+) - these are pitched elements with lower_loops/slurs
+    // Number decorations: 0x1A000-0x1AC4D
+    // Western decorations: 0x1B000-0x1BC4D
+    // Sargam decorations: 0x1D000-0x1E517
+    // Doremi decorations: 0x1F000-0x1FC4D
     if (cp >= 0x1A000 && cp <= 0x1AC4D)
         || (cp >= 0x1B000 && cp <= 0x1BC4D)
         || (cp >= 0x1D000 && cp <= 0x1E517)
@@ -547,19 +547,19 @@ pub fn derive_kind(cp: u32) -> crate::models::elements::ElementKind {
         return ElementKind::PitchedElement;
     }
 
-    // Check ASCII line variant ranges (0xE800-0xEDB3)
+    // Check ASCII decoration ranges (0xE800-0xEDB3)
     // These preserve the base character's kind
     if cp >= 0xE800 && cp <= 0xEDB3 {
-        // Decode the base ASCII character from line variant
-        // underline_only: 0xE800 + (char_offset * 3) + variant
-        // overline_only: 0xE920 + (char_offset * 3) + variant
+        // Decode the base ASCII character from decoration
+        // lower_loop_only: 0xE800 + (char_offset * 3) + variant
+        // slur_only: 0xE920 + (char_offset * 3) + variant
         // combined: 0xEA40 + (char_offset * 9) + variant
         let base_char = if cp < 0xE920 {
-            // underline_only range
+            // lower_loop_only range
             let offset = (cp - 0xE800) / 3;
             (0x20 + offset) as u8 as char
         } else if cp < 0xEA40 {
-            // overline_only range
+            // slur_only range
             let offset = (cp - 0xE920) / 3;
             (0x20 + offset) as u8 as char
         } else {
@@ -846,12 +846,12 @@ fn generate_system_lookup_table(
     code.push_str("}\n\n");
 }
 
-/// Generate underlined lookup table for a notation system
-/// Same structure as base table but with _UNDERLINED_TABLE suffix
-fn generate_underlined_lookup_table(
+/// Generate lower loop (beat grouping) lookup table for a notation system
+/// Same structure as base table but with _LOWER_LOOP_TABLE suffix
+fn generate_lower_loop_lookup_table(
     code: &mut String,
     system_name_upper: &str,
-    underlined_pua_base: u32,
+    lower_loop_pua_base: u32,
     char_to_index: &HashMap<char, usize>,
     characters: &[serde_yaml::Value],
 ) {
@@ -867,15 +867,15 @@ fn generate_underlined_lookup_table(
     ];
 
     code.push_str(&format!(
-        "/// {} UNDERLINED system: [42 pitch codes][5 octaves]\n",
+        "/// {} LOWER_LOOP system: [42 pitch codes][5 octaves]\n",
         system_name_upper
     ));
     code.push_str(&format!(
-        "/// PUA base: 0x{:X} (underlined variants for beat grouping)\n",
-        underlined_pua_base
+        "/// PUA base: 0x{:X} (lower loop variants for beat grouping)\n",
+        lower_loop_pua_base
     ));
     code.push_str(&format!(
-        "pub static {}_UNDERLINED_TABLE: [[char; OCTAVE_COUNT]; PITCH_CODE_COUNT] = [\n",
+        "pub static {}_LOWER_LOOP_TABLE: [[char; OCTAVE_COUNT]; PITCH_CODE_COUNT] = [\n",
         system_name_upper
     ));
 
@@ -896,7 +896,7 @@ fn generate_underlined_lookup_table(
             }
         };
 
-        code.push_str(&format!("    // {} underlined (degree {}, char '{}')\n", pitch_code, degree, base_char));
+        code.push_str(&format!("    // {} lower loop (degree {}, char '{}')\n", pitch_code, degree, base_char));
         code.push_str("    [");
 
         // Same octave order: 0, -2, -1, +1, +2
@@ -906,7 +906,7 @@ fn generate_underlined_lookup_table(
                 base_char,
                 octave,
                 char_to_index,
-                underlined_pua_base,
+                lower_loop_pua_base,
                 characters.len() as u32,
             );
             // Use 5 digits for supplementary plane codepoints
@@ -1129,35 +1129,35 @@ fn generate_measurement_systems(atoms: &serde_yaml::Value, out_dir: &PathBuf) {
         }
     }
 
-    // 2. Add line_variants from pua_allocation
+    // 2. Add glyph_decorations from pua_allocation
     if let Some(pua_alloc) = atoms.get("pua_allocation") {
-        if let Some(line_variants) = pua_alloc.get("line_variants") {
-            let line_capable = line_variants.get("line_capable_chars").and_then(|v| v.as_u64()).unwrap_or(37) as usize;
+        if let Some(glyph_decorations) = pua_alloc.get("glyph_decorations") {
+            let decoration_capable = glyph_decorations.get("decoration_capable_chars").and_then(|v| v.as_u64()).unwrap_or(37) as usize;
 
-            if let Some(underline) = line_variants.get("underline_only") {
-                let pua_base = underline.get("pua_base").and_then(|v| parse_hex(v)).unwrap_or(0xE800);
-                let variants = underline.get("variants").and_then(|v| v.as_u64()).unwrap_or(4) as usize;
-                systems.push(("underline".to_string(), pua_base, line_capable, variants));
+            if let Some(lower_loop) = glyph_decorations.get("lower_loop_only") {
+                let pua_base = lower_loop.get("pua_base").and_then(|v| parse_hex(v)).unwrap_or(0xE800);
+                let variants = lower_loop.get("variants").and_then(|v| v.as_u64()).unwrap_or(4) as usize;
+                systems.push(("lower_loop".to_string(), pua_base, decoration_capable, variants));
             }
-            if let Some(overline) = line_variants.get("overline_only") {
-                let pua_base = overline.get("pua_base").and_then(|v| parse_hex(v)).unwrap_or(0xE900);
-                let variants = overline.get("variants").and_then(|v| v.as_u64()).unwrap_or(3) as usize;
-                systems.push(("overline".to_string(), pua_base, line_capable, variants));
+            if let Some(slur) = glyph_decorations.get("slur_only") {
+                let pua_base = slur.get("pua_base").and_then(|v| parse_hex(v)).unwrap_or(0xE900);
+                let variants = slur.get("variants").and_then(|v| v.as_u64()).unwrap_or(3) as usize;
+                systems.push(("slur".to_string(), pua_base, decoration_capable, variants));
             }
-            if let Some(combined) = line_variants.get("combined") {
+            if let Some(combined) = glyph_decorations.get("combined") {
                 let pua_base = combined.get("pua_base").and_then(|v| parse_hex(v)).unwrap_or(0xEA00);
                 let variants = combined.get("variants").and_then(|v| v.as_u64()).unwrap_or(12) as usize;
-                systems.push(("combined".to_string(), pua_base, line_capable, variants));
+                systems.push(("combined".to_string(), pua_base, decoration_capable, variants));
             }
         }
 
-        // 3. Add underlined_notes
-        if let Some(underlined) = pua_alloc.get("underlined_notes") {
+        // 3. Add lower_loop_notes
+        if let Some(lower_loop_notes) = pua_alloc.get("lower_loop_notes") {
             for (key, value) in [
-                ("number_underlined", underlined.get("number_underlined")),
-                ("western_underlined", underlined.get("western_underlined")),
-                ("sargam_underlined", underlined.get("sargam_underlined")),
-                ("doremi_underlined", underlined.get("doremi_underlined")),
+                ("number_lower_loop", lower_loop_notes.get("number_lower_loop")),
+                ("western_lower_loop", lower_loop_notes.get("western_lower_loop")),
+                ("sargam_lower_loop", lower_loop_notes.get("sargam_lower_loop")),
+                ("doremi_lower_loop", lower_loop_notes.get("doremi_lower_loop")),
             ] {
                 if let Some(sys) = value {
                     let pua_base = sys.get("pua_base").and_then(|v| parse_hex(v)).unwrap_or(0);
@@ -1170,20 +1170,20 @@ fn generate_measurement_systems(atoms: &serde_yaml::Value, out_dir: &PathBuf) {
 
         // 4. Add bracket_variants
         if let Some(brackets) = pua_alloc.get("bracket_variants") {
-            if let Some(underline_brackets) = brackets.get("underline_brackets") {
-                let pua_base = underline_brackets.get("pua_base").and_then(|v| parse_hex(v)).unwrap_or(0xF700);
+            if let Some(lower_loop_brackets) = brackets.get("lower_loop_brackets") {
+                let pua_base = lower_loop_brackets.get("pua_base").and_then(|v| parse_hex(v)).unwrap_or(0xF700);
                 // 95 ASCII printable chars × 2 variants (left, right)
-                systems.push(("underline_brackets".to_string(), pua_base, 95, 2));
+                systems.push(("lower_loop_brackets".to_string(), pua_base, 95, 2));
             }
-            if let Some(overline_brackets) = brackets.get("overline_brackets") {
-                let pua_base = overline_brackets.get("pua_base").and_then(|v| parse_hex(v)).unwrap_or(0xFA00);
-                systems.push(("overline_brackets".to_string(), pua_base, 95, 3));
+            if let Some(slur_brackets) = brackets.get("slur_brackets") {
+                let pua_base = slur_brackets.get("pua_base").and_then(|v| parse_hex(v)).unwrap_or(0xFA00);
+                systems.push(("slur_brackets".to_string(), pua_base, 95, 3));
             }
-            // 5. Add underlined_note_brackets (bracket endpoints for underlined note variants)
-            if let Some(underlined_note_brackets) = brackets.get("underlined_note_brackets") {
-                let pua_base = underlined_note_brackets.get("pua_base").and_then(|v| parse_hex(v)).unwrap_or(0x17000);
-                // 1410 underlined notes × 2 variants (left, right)
-                systems.push(("underlined_note_brackets".to_string(), pua_base, 1410, 2));
+            // 5. Add lower_loop_note_brackets (bracket endpoints for lower_loop note variants)
+            if let Some(lower_loop_note_brackets) = brackets.get("lower_loop_note_brackets") {
+                let pua_base = lower_loop_note_brackets.get("pua_base").and_then(|v| parse_hex(v)).unwrap_or(0x17000);
+                // 1410 lower_loop notes × 2 variants (left, right)
+                systems.push(("lower_loop_note_brackets".to_string(), pua_base, 1410, 2));
             }
         }
     }
@@ -1224,59 +1224,59 @@ pub static MEASUREMENT_SYSTEMS: &[MeasurementSystem] = &[
 
 /// Generate superscript lookup tables for ornament rendering
 ///
-/// Creates tables for 75% scaled superscript glyphs with overline variants.
-/// Formula: superscript_cp = system_base + (source_offset × 4) + overline_variant
+/// Creates tables for 75% scaled superscript glyphs with decoration variants.
+/// Formula: superscript_cp = system_base + (source_offset × 16) + decoration_variant
 ///
 /// Where:
-///   system_base     = PUA base for that pitch system (e.g., 0xF0200 for Number)
-///   source_offset   = source_codepoint - source_system_base
-///   overline_variant = 0 (none), 1 (left-cap), 2 (middle), 3 (right-cap)
+///   system_base       = PUA base for that pitch system (e.g., 0xF0200 for Number)
+///   source_offset     = source_codepoint - source_system_base
+///   decoration_variant = 0-15 (lower_loop and slur combinations)
 fn generate_superscript_tables(atoms: &serde_yaml::Value, out_dir: &PathBuf) {
     let mut code = String::from(r#"/// Auto-generated superscript lookup tables from atoms.yaml at compile time
 /// DO NOT EDIT - This file is generated by build.rs
 ///
 /// These tables provide 75% scaled superscript glyphs for ornament rendering.
-/// Each source glyph has 4 variants: none, left-cap overline, middle overline, right-cap overline.
+/// Each source glyph has 16 variants: combinations of lower_loop and slur decorations.
 ///
-/// Formula: superscript_cp = system_base + (source_offset × 4) + overline_variant
+/// Formula: superscript_cp = system_base + (source_offset × 16) + decoration_variant
 ///
 /// Location: Supplementary Private Use Area-A (0xF0000-0xFFFFD)
 
-/// Overline variant for superscript glyphs
+/// Decoration variant for superscript glyphs
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum SuperscriptLineVariant {
-    /// No lines
+    /// No decorations
     None = 0,
-    /// Underline only - left cap
-    UnderlineLeft = 1,
-    /// Underline only - middle
-    UnderlineMiddle = 2,
-    /// Underline only - right cap
-    UnderlineRight = 3,
-    /// Overline only - left cap
-    OverlineLeft = 4,
-    /// Overline only - middle
-    OverlineMiddle = 5,
-    /// Overline only - right cap
-    OverlineRight = 6,
-    /// Combined: underline left + overline left
+    /// Lower loop only - left cap (beat grouping)
+    LowerLoopLeft = 1,
+    /// Lower loop only - middle (beat grouping)
+    LowerLoopMiddle = 2,
+    /// Lower loop only - right cap (beat grouping)
+    LowerLoopRight = 3,
+    /// Slur only - left cap (phrasing)
+    SlurLeft = 4,
+    /// Slur only - middle (phrasing)
+    SlurMiddle = 5,
+    /// Slur only - right cap (phrasing)
+    SlurRight = 6,
+    /// Combined: lower_loop left + slur left
     CombinedLeftLeft = 7,
-    /// Combined: underline left + overline middle
+    /// Combined: lower_loop left + slur middle
     CombinedLeftMiddle = 8,
-    /// Combined: underline left + overline right
+    /// Combined: lower_loop left + slur right
     CombinedLeftRight = 9,
-    /// Combined: underline middle + overline left
+    /// Combined: lower_loop middle + slur left
     CombinedMiddleLeft = 10,
-    /// Combined: underline middle + overline middle
+    /// Combined: lower_loop middle + slur middle
     CombinedMiddleMiddle = 11,
-    /// Combined: underline middle + overline right
+    /// Combined: lower_loop middle + slur right
     CombinedMiddleRight = 12,
-    /// Combined: underline right + overline left
+    /// Combined: lower_loop right + slur left
     CombinedRightLeft = 13,
-    /// Combined: underline right + overline middle
+    /// Combined: lower_loop right + slur middle
     CombinedRightMiddle = 14,
-    /// Combined: underline right + overline right
+    /// Combined: lower_loop right + slur right
     CombinedRightRight = 15,
 }
 
@@ -1290,12 +1290,12 @@ impl SuperscriptLineVariant {
     pub fn from_index(idx: u8) -> Option<Self> {
         match idx {
             0 => Some(Self::None),
-            1 => Some(Self::UnderlineLeft),
-            2 => Some(Self::UnderlineMiddle),
-            3 => Some(Self::UnderlineRight),
-            4 => Some(Self::OverlineLeft),
-            5 => Some(Self::OverlineMiddle),
-            6 => Some(Self::OverlineRight),
+            1 => Some(Self::LowerLoopLeft),
+            2 => Some(Self::LowerLoopMiddle),
+            3 => Some(Self::LowerLoopRight),
+            4 => Some(Self::SlurLeft),
+            5 => Some(Self::SlurMiddle),
+            6 => Some(Self::SlurRight),
             7 => Some(Self::CombinedLeftLeft),
             8 => Some(Self::CombinedLeftMiddle),
             9 => Some(Self::CombinedLeftRight),
@@ -1344,7 +1344,7 @@ pub const SUPERSCRIPT_LINE_VARIANTS: u32 = 16;
 ///
 /// # Arguments
 /// * `ascii_char` - ASCII character (0x20-0x7E)
-/// * `line_variant` - Line variant (underline/overline/combined)
+/// * `line_variant` - Line variant (lower_loop/slur/combined)
 ///
 /// # Returns
 /// * `Some(char)` - Superscript glyph in Supplementary PUA-A
@@ -1363,7 +1363,7 @@ pub fn superscript_ascii(ascii_char: char, line_variant: SuperscriptLineVariant)
 ///
 /// # Arguments
 /// * `source_cp` - Source codepoint in Number PUA range (0xE000+)
-/// * `line_variant` - Line variant (underline/overline/combined)
+/// * `line_variant` - Line variant (lower_loop/slur/combined)
 ///
 /// # Returns
 /// * `Some(char)` - Superscript glyph in Supplementary PUA-A
@@ -1384,7 +1384,7 @@ pub fn superscript_number(source_cp: u32, line_variant: SuperscriptLineVariant) 
 ///
 /// # Arguments
 /// * `source_cp` - Source codepoint in Western PUA range (0xE100+)
-/// * `line_variant` - Line variant (underline/overline/combined)
+/// * `line_variant` - Line variant (lower_loop/slur/combined)
 ///
 /// # Returns
 /// * `Some(char)` - Superscript glyph in Supplementary PUA-A
@@ -1405,7 +1405,7 @@ pub fn superscript_western(source_cp: u32, line_variant: SuperscriptLineVariant)
 ///
 /// # Arguments
 /// * `source_cp` - Source codepoint in Sargam PUA range (0xE300+)
-/// * `line_variant` - Line variant (underline/overline/combined)
+/// * `line_variant` - Line variant (lower_loop/slur/combined)
 ///
 /// # Returns
 /// * `Some(char)` - Superscript glyph in Supplementary PUA-A
@@ -1426,7 +1426,7 @@ pub fn superscript_sargam(source_cp: u32, line_variant: SuperscriptLineVariant) 
 ///
 /// # Arguments
 /// * `source_cp` - Source codepoint in Doremi PUA range (0xE500+)
-/// * `line_variant` - Line variant (underline/overline/combined)
+/// * `line_variant` - Line variant (lower_loop/slur/combined)
 ///
 /// # Returns
 /// * `Some(char)` - Superscript glyph in Supplementary PUA-A
@@ -1449,7 +1449,7 @@ pub fn superscript_doremi(source_cp: u32, line_variant: SuperscriptLineVariant) 
 ///
 /// # Arguments
 /// * `source_cp` - Source codepoint (ASCII or PUA pitch glyph)
-/// * `line_variant` - Line variant (underline/overline/combined)
+/// * `line_variant` - Line variant (lower_loop/slur/combined)
 ///
 /// # Returns
 /// * `Some(char)` - Superscript glyph
@@ -1495,8 +1495,8 @@ pub fn superscript_line_variant(cp: u32) -> Option<SuperscriptLineVariant> {
     SuperscriptLineVariant::from_index((cp % 16) as u8)
 }
 
-/// Legacy alias
-pub fn superscript_overline(cp: u32) -> Option<SuperscriptOverline> {
+/// Legacy alias (deprecated - use superscript_line_variant instead)
+pub fn superscript_slur(cp: u32) -> Option<SuperscriptOverline> {
     superscript_line_variant(cp)
 }
 "#);
@@ -1535,7 +1535,7 @@ pub fn superscript_overline(cp: u32) -> Option<SuperscriptOverline> {
 /// - is_beat_element(cp) - combination of above (pitched notes + dash + breath mark)
 fn generate_beat_element_predicates(atoms: &serde_yaml::Value, out_dir: &PathBuf) {
     const VARIANTS_PER_CHAR: u32 = 30;  // 6 accidentals × 5 octaves
-    const LINE_VARIANTS_PER_GLYPH: u32 = 15;  // 3 underline × (1 + 3 overline + 3 combined)
+    const LINE_VARIANTS_PER_GLYPH: u32 = 15;  // 3 lower_loop × (1 + 3 slur + 3 combined)
 
     let mut code = String::from(r#"/// Auto-generated beat element predicates from atoms.yaml at compile time
 /// DO NOT EDIT - This file is generated by build.rs
@@ -1549,7 +1549,7 @@ fn generate_beat_element_predicates(atoms: &serde_yaml::Value, out_dir: &PathBuf
 ///
 /// Each element has:
 /// - Base codepoint range (e.g., 0xE000-0xE0D1 for Number notes)
-/// - Line variant range (e.g., 0x1A000+ for underlined/overlined variants)
+/// - Decoration range (e.g., 0x1A000+ for lower_loop/slur variants)
 
 "#);
 
@@ -1646,7 +1646,7 @@ fn generate_beat_element_predicates(atoms: &serde_yaml::Value, out_dir: &PathBuf
 ///
 /// Includes:
 /// - Base glyphs (all notation systems)
-/// - Line variant glyphs (underlined/overlined)
+/// - Decoration glyphs (lower_loop/slur variants)
 #[inline]
 pub fn is_pitched_note(cp: u32) -> bool {
 "#);
@@ -1703,7 +1703,7 @@ pub fn is_beat_element(cp: u32) -> bool {
     // is_timed_element
     code.push_str(r#"/// Check if codepoint is a timed element (consumes measure time)
 ///
-/// Timed elements define beat boundaries and get underlines.
+/// Timed elements define beat boundaries and get lower loops (beat grouping).
 /// See `src/parse/GRAMMAR.md` - TimedElement = PitchedElement | UnpitchedElement
 ///
 /// Includes:
@@ -1838,26 +1838,26 @@ pub fn get_line_variant(base_cp: u32, variant_index: u32) -> Option<u32> {
 /// Decoded line variant information
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub struct DecodedLineVariant {
-    /// Base codepoint (without line variant)
+    /// Base codepoint (without decoration)
     pub base_cp: u32,
-    /// Underline state
-    pub underline: LowerLoopRole,
-    /// Overline state
-    pub overline: SlurRole,
+    /// Lower loop state (beat grouping)
+    pub lower_loop: LowerLoopRole,
+    /// Slur state (phrasing)
+    pub slur: SlurRole,
     /// Whether this is a superscript (grace note)
     pub is_superscript: bool,
 }
 
-/// Line variant encoding scheme (15 variants per glyph):
+/// Decoration encoding scheme (15 variants per glyph):
 ///
-/// Index | Underline | Overline | Description
+/// Index | LowerLoop | Slur     | Description
 /// ------|-----------|----------|------------
-///   0   | Middle    | None     | Underline only - middle
-///   1   | Left      | None     | Underline only - left cap
-///   2   | Right     | None     | Underline only - right cap
-///   3   | None      | Middle   | Overline only - middle
-///   4   | None      | Left     | Overline only - left cap
-///   5   | None      | Right    | Overline only - right cap
+///   0   | Middle    | None     | Lower loop only - middle
+///   1   | Left      | None     | Lower loop only - left cap
+///   2   | Right     | None     | Lower loop only - right cap
+///   3   | None      | Middle   | Slur only - middle
+///   4   | None      | Left     | Slur only - left cap
+///   5   | None      | Right    | Slur only - right cap
 ///   6   | Middle    | Middle   | Combined - middle/middle
 ///   7   | Middle    | Left     | Combined - middle/left
 ///   8   | Middle    | Right    | Combined - middle/right
@@ -1868,24 +1868,24 @@ pub struct DecodedLineVariant {
 ///  13   | Right     | Left     | Combined - right/left
 ///  14   | Right     | Right    | Combined - right/right
 ///
-/// Formula: variant_index = encode(underline, overline)
-/// Decode: (underline, overline) = decode(variant_index)
+/// Formula: variant_index = encode(lower_loop, slur)
+/// Decode: (lower_loop, slur) = decode(variant_index)
 
-/// Decode a line variant index (0-14) into underline and overline states
+/// Decode a decoration index (0-14) into lower_loop and slur states
 ///
-/// This is the inverse of the encoding used in atoms.yaml line_variant_config.
+/// This is the inverse of the encoding used in atoms.yaml decoration_config.
 #[inline]
 pub fn decode_line_variant_index(idx: u32) -> (LowerLoopRole, SlurRole) {
     match idx {
-        // Underline only (0-2)
+        // Lower loop only (0-2)
         0 => (LowerLoopRole::Middle, SlurRole::None),
         1 => (LowerLoopRole::Left, SlurRole::None),
         2 => (LowerLoopRole::Right, SlurRole::None),
-        // Overline only (3-5)
+        // Slur only (3-5)
         3 => (LowerLoopRole::None, SlurRole::Middle),
         4 => (LowerLoopRole::None, SlurRole::Left),
         5 => (LowerLoopRole::None, SlurRole::Right),
-        // Combined (6-14): underline × overline
+        // Combined (6-14): lower_loop × slur
         6 => (LowerLoopRole::Middle, SlurRole::Middle),
         7 => (LowerLoopRole::Middle, SlurRole::Left),
         8 => (LowerLoopRole::Middle, SlurRole::Right),
@@ -1899,18 +1899,18 @@ pub fn decode_line_variant_index(idx: u32) -> (LowerLoopRole, SlurRole) {
     }
 }
 
-/// Encode underline and overline states into a line variant index (0-14)
+/// Encode lower_loop and slur states into a decoration index (0-14)
 ///
 /// Returns None for (None, None) since that's the base glyph, not a variant.
 #[inline]
-pub fn encode_line_variant_index(underline: LowerLoopRole, overline: SlurRole) -> Option<u32> {
-    match (underline, overline) {
+pub fn encode_line_variant_index(lower_loop: LowerLoopRole, slur: SlurRole) -> Option<u32> {
+    match (lower_loop, slur) {
         (LowerLoopRole::None, SlurRole::None) => None, // Base glyph
-        // Underline only
+        // Lower loop only
         (LowerLoopRole::Middle, SlurRole::None) => Some(0),
         (LowerLoopRole::Left, SlurRole::None) => Some(1),
         (LowerLoopRole::Right, SlurRole::None) => Some(2),
-        // Overline only
+        // Slur only
         (LowerLoopRole::None, SlurRole::Middle) => Some(3),
         (LowerLoopRole::None, SlurRole::Left) => Some(4),
         (LowerLoopRole::None, SlurRole::Right) => Some(5),
@@ -1939,9 +1939,9 @@ pub fn decode_codepoint(cp: u32) -> Option<DecodedLineVariant> {
     let is_superscript = cp >= 0xF8000 && cp < 0xFE040;
 
     if is_superscript {
-        // Superscripts have 16 line variants per glyph
-        let line_variant_idx = cp % 16;
-        let (underline, overline) = decode_superscript_line_variant(line_variant_idx);
+        // Superscripts have 16 decoration variants per glyph
+        let decoration_variant_idx = cp % 16;
+        let (lower_loop, slur) = decode_superscript_line_variant(decoration_variant_idx);
 
         // Get base codepoint by reversing superscript encoding
         // This requires knowing which system it came from
@@ -1949,33 +1949,33 @@ pub fn decode_codepoint(cp: u32) -> Option<DecodedLineVariant> {
 
         return Some(DecodedLineVariant {
             base_cp,
-            underline,
-            overline,
+            lower_loop,
+            slur,
             is_superscript: true,
         });
     }
 
-    // Check if line variant (has base + variant index)
+    // Check if decoration variant (has base + variant index)
     if let Some(base_cp) = strip_line_variant(cp) {
         if base_cp != cp {
-            // It's a line variant - decode the index
+            // It's a decoration variant - decode the index
             let variant_idx = decode_line_variant_from_cp(cp)?;
-            let (underline, overline) = decode_line_variant_index(variant_idx);
+            let (lower_loop, slur) = decode_line_variant_index(variant_idx);
             return Some(DecodedLineVariant {
                 base_cp,
-                underline,
-                overline,
+                lower_loop,
+                slur,
                 is_superscript: false,
             });
         }
     }
 
-    // Base glyph (no line variant)
+    // Base glyph (no decoration)
     if is_pitched_note(cp) || is_dash(cp) || is_breath_mark(cp) || is_space(cp) || is_barline(cp) {
         return Some(DecodedLineVariant {
             base_cp: cp,
-            underline: LowerLoopRole::None,
-            overline: SlurRole::None,
+            lower_loop: LowerLoopRole::None,
+            slur: SlurRole::None,
             is_superscript: false,
         });
     }
@@ -1984,8 +1984,8 @@ pub fn decode_codepoint(cp: u32) -> Option<DecodedLineVariant> {
     if cp >= 0x20 && cp <= 0x7E {
         return Some(DecodedLineVariant {
             base_cp: cp,
-            underline: LowerLoopRole::None,
-            overline: SlurRole::None,
+            lower_loop: LowerLoopRole::None,
+            slur: SlurRole::None,
             is_superscript: false,
         });
     }
@@ -1993,13 +1993,13 @@ pub fn decode_codepoint(cp: u32) -> Option<DecodedLineVariant> {
     None
 }
 
-/// Decode superscript line variant (16 variants: 0-15)
+/// Decode superscript decoration variant (16 variants: 0-15)
 ///
-/// Superscripts use a different encoding than regular line variants:
+/// Superscripts use a different encoding than regular decorations:
 /// - 0: None
-/// - 1-3: Underline only (left, middle, right)
-/// - 4-6: Overline only (left, middle, right)
-/// - 7-15: Combined (3 underline × 3 overline)
+/// - 1-3: Lower loop only (left, middle, right)
+/// - 4-6: Slur only (left, middle, right)
+/// - 7-15: Combined (3 lower_loop × 3 slur)
 fn decode_superscript_line_variant(idx: u32) -> (LowerLoopRole, SlurRole) {
     match idx {
         0 => (LowerLoopRole::None, SlurRole::None),

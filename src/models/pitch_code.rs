@@ -615,151 +615,21 @@ impl PitchCode {
 }
 
 impl PitchCode {
-    /// Parse a sargam string and return the corresponding PitchCode
-    /// Case-sensitive parsing following the SrRgGmMPdDnN convention
-    pub fn from_sargam(sargam: &str) -> Option<Self> {
-        match sargam {
-            // Natural sargam
-            "S" | "s" => Some(PitchCode::N1),    // Sa (both uppercase and lowercase)
-            "R" => Some(PitchCode::N2),    // shuddha Re
-            "G" => Some(PitchCode::N3),    // shuddha Ga
-            "m" => Some(PitchCode::N4),    // shuddha Ma
-            "P" | "p" => Some(PitchCode::N5),    // Pa (both uppercase and lowercase)
-            "D" => Some(PitchCode::N6),    // shuddha Dha
-            "N" => Some(PitchCode::N7),    // shuddha Ni
-            // Komal (flattened) sargam
-            "r" => Some(PitchCode::N2b),   // komal Re
-            "g" => Some(PitchCode::N3b),   // komal Ga
-            "d" => Some(PitchCode::N6b),   // komal Dha
-            "n" => Some(PitchCode::N7b),   // komal Ni
-            // Tivra (sharpened) sargam
-            "M" => Some(PitchCode::N4s),   // tivra Ma
-            // Extended sargam with explicit accidentals
-            "S#" | "s#" => Some(PitchCode::N1s),
-            "S##" | "s##" => Some(PitchCode::N1ss),
-            "Sb" | "sb" => Some(PitchCode::N1b),
-            "Sbb" | "sbb" => Some(PitchCode::N1bb),
-            "R#" => Some(PitchCode::N2s),
-            "R##" => Some(PitchCode::N2ss),
-            "Rbb" => Some(PitchCode::N2bb),
-            "G#" => Some(PitchCode::N3s),
-            "G##" => Some(PitchCode::N3ss),
-            "Gbb" => Some(PitchCode::N3bb),
-            "mb" => Some(PitchCode::N4b),
-            "mbb" => Some(PitchCode::N4bb),
-            "M#" => Some(PitchCode::N4ss), // M# is 4##
-            "P#" | "p#" => Some(PitchCode::N5s),
-            "P##" | "p##" => Some(PitchCode::N5ss),
-            "Pb" | "pb" => Some(PitchCode::N5b),
-            "Pbb" | "pbb" => Some(PitchCode::N5bb),
-            "D#" => Some(PitchCode::N6s),
-            "D##" => Some(PitchCode::N6ss),
-            "Dbb" => Some(PitchCode::N6bb),
-            "N#" => Some(PitchCode::N7s),
-            "N##" => Some(PitchCode::N7ss),
-            "Nbb" => Some(PitchCode::N7bb),
-            _ => None,
-        }
-    }
-
     /// Parse a string based on the given pitch system
     pub fn from_string(input: &str, pitch_system: super::elements::PitchSystem) -> Option<Self> {
         use super::elements::PitchSystem;
+        use crate::models::pitch_systems::{PitchParser, NumberSystem, WesternSystem, SargamSystem, BhatkhandeSystem, TablaSystem};
 
-        match pitch_system {
-            PitchSystem::Number => Self::from_number(input),
-            PitchSystem::Western => Self::from_western(input),
-            PitchSystem::Sargam => Self::from_sargam(input),
-            _ => None, // Unknown pitch system
-        }
-    }
+        let result = match pitch_system {
+            PitchSystem::Number => NumberSystem::parse_pitch(input),
+            PitchSystem::Western => WesternSystem::parse_pitch(input),
+            PitchSystem::Sargam => SargamSystem::parse_pitch(input),
+            PitchSystem::Bhatkhande => BhatkhandeSystem::parse_pitch(input),
+            PitchSystem::Tabla => TablaSystem::parse_pitch(input),
+            _ => NumberSystem::parse_pitch(input),
+        };
 
-    /// Parse number notation string (1-7 with #/b)
-    fn from_number(input: &str) -> Option<Self> {
-        match input {
-            "1" => Some(PitchCode::N1),
-            "2" => Some(PitchCode::N2),
-            "3" => Some(PitchCode::N3),
-            "4" => Some(PitchCode::N4),
-            "5" => Some(PitchCode::N5),
-            "6" => Some(PitchCode::N6),
-            "7" => Some(PitchCode::N7),
-            "1#" => Some(PitchCode::N1s), "1b" => Some(PitchCode::N1b),
-            "2#" => Some(PitchCode::N2s), "2b" => Some(PitchCode::N2b),
-            "3#" => Some(PitchCode::N3s), "3b" => Some(PitchCode::N3b),
-            "4#" => Some(PitchCode::N4s), "4b" => Some(PitchCode::N4b),
-            "5#" => Some(PitchCode::N5s), "5b" => Some(PitchCode::N5b),
-            "6#" => Some(PitchCode::N6s), "6b" => Some(PitchCode::N6b),
-            "7#" => Some(PitchCode::N7s), "7b" => Some(PitchCode::N7b),
-            "1##" => Some(PitchCode::N1ss), "1bb" => Some(PitchCode::N1bb),
-            "2##" => Some(PitchCode::N2ss), "2bb" => Some(PitchCode::N2bb),
-            "3##" => Some(PitchCode::N3ss), "3bb" => Some(PitchCode::N3bb),
-            "4##" => Some(PitchCode::N4ss), "4bb" => Some(PitchCode::N4bb),
-            "5##" => Some(PitchCode::N5ss), "5bb" => Some(PitchCode::N5bb),
-            "6##" => Some(PitchCode::N6ss), "6bb" => Some(PitchCode::N6bb),
-            "7##" => Some(PitchCode::N7ss), "7bb" => Some(PitchCode::N7bb),
-            "1b/" => Some(PitchCode::N1hf),
-            "2b/" => Some(PitchCode::N2hf),
-            "3b/" => Some(PitchCode::N3hf),
-            "4b/" => Some(PitchCode::N4hf),
-            "5b/" => Some(PitchCode::N5hf),
-            "6b/" => Some(PitchCode::N6hf),
-            "7b/" => Some(PitchCode::N7hf),
-            _ => None,
-        }
-    }
-
-    /// Parse western notation string (a-g/A-G with #/b)
-    /// Supports both lowercase and uppercase letters (atoms.yaml defines both)
-    fn from_western(input: &str) -> Option<Self> {
-        match input {
-            // Lowercase naturals
-            "c" => Some(PitchCode::N1),
-            "d" => Some(PitchCode::N2),
-            "e" => Some(PitchCode::N3),
-            "f" => Some(PitchCode::N4),
-            "g" => Some(PitchCode::N5),
-            "a" => Some(PitchCode::N6),
-            "b" => Some(PitchCode::N7),
-            // Uppercase naturals
-            "C" => Some(PitchCode::N1),
-            "D" => Some(PitchCode::N2),
-            "E" => Some(PitchCode::N3),
-            "F" => Some(PitchCode::N4),
-            "G" => Some(PitchCode::N5),
-            "A" => Some(PitchCode::N6),
-            // Lowercase sharps and flats
-            "c#" => Some(PitchCode::N1s), "cb" => Some(PitchCode::N1b),
-            "d#" => Some(PitchCode::N2s), "db" => Some(PitchCode::N2b),
-            "e#" => Some(PitchCode::N3s), "eb" => Some(PitchCode::N3b),
-            "f#" => Some(PitchCode::N4s), "fb" => Some(PitchCode::N4b),
-            "g#" => Some(PitchCode::N5s), "gb" => Some(PitchCode::N5b),
-            "a#" => Some(PitchCode::N6s), "ab" => Some(PitchCode::N6b),
-            "b#" => Some(PitchCode::N7s), "bb" => Some(PitchCode::N7b),
-            // Uppercase sharps and flats
-            "C#" => Some(PitchCode::N1s), "Cb" => Some(PitchCode::N1b),
-            "D#" => Some(PitchCode::N2s), "Db" => Some(PitchCode::N2b),
-            "E#" => Some(PitchCode::N3s), "Eb" => Some(PitchCode::N3b),
-            "F#" => Some(PitchCode::N4s), "Fb" => Some(PitchCode::N4b),
-            "G#" => Some(PitchCode::N5s), "Gb" => Some(PitchCode::N5b),
-            "A#" => Some(PitchCode::N6s), "Ab" => Some(PitchCode::N6b),
-            // Lowercase double sharps and double flats
-            "c##" => Some(PitchCode::N1ss), "cbb" => Some(PitchCode::N1bb),
-            "d##" => Some(PitchCode::N2ss), "dbb" => Some(PitchCode::N2bb),
-            "e##" => Some(PitchCode::N3ss), "ebb" => Some(PitchCode::N3bb),
-            "f##" => Some(PitchCode::N4ss), "fbb" => Some(PitchCode::N4bb),
-            "g##" => Some(PitchCode::N5ss), "gbb" => Some(PitchCode::N5bb),
-            "a##" => Some(PitchCode::N6ss), "abb" => Some(PitchCode::N6bb),
-            "b##" => Some(PitchCode::N7ss), "bbb" => Some(PitchCode::N7bb),
-            // Uppercase double sharps and double flats
-            "C##" => Some(PitchCode::N1ss), "Cbb" => Some(PitchCode::N1bb),
-            "D##" => Some(PitchCode::N2ss), "Dbb" => Some(PitchCode::N2bb),
-            "E##" => Some(PitchCode::N3ss), "Ebb" => Some(PitchCode::N3bb),
-            "F##" => Some(PitchCode::N4ss), "Fbb" => Some(PitchCode::N4bb),
-            "G##" => Some(PitchCode::N5ss), "Gbb" => Some(PitchCode::N5bb),
-            "A##" => Some(PitchCode::N6ss), "Abb" => Some(PitchCode::N6bb),
-            _ => None,
-        }
+        result.map(|(pc, _consumed)| pc)
     }
 }
 
@@ -860,46 +730,46 @@ mod tests {
     #[test]
     fn test_sargam_lowercase_s_p() {
         // Test that lowercase s and p map to the same pitch codes as uppercase S and P
-        assert_eq!(PitchCode::from_sargam("s"), Some(PitchCode::N1)); // Sa
-        assert_eq!(PitchCode::from_sargam("S"), Some(PitchCode::N1)); // Sa
-        assert_eq!(PitchCode::from_sargam("p"), Some(PitchCode::N5)); // Pa
-        assert_eq!(PitchCode::from_sargam("P"), Some(PitchCode::N5)); // Pa
+        assert_eq!(PitchCode::from_string("s", PitchSystem::Sargam), Some(PitchCode::N1)); // Sa
+        assert_eq!(PitchCode::from_string("S", PitchSystem::Sargam), Some(PitchCode::N1)); // Sa
+        assert_eq!(PitchCode::from_string("p", PitchSystem::Sargam), Some(PitchCode::N5)); // Pa
+        assert_eq!(PitchCode::from_string("P", PitchSystem::Sargam), Some(PitchCode::N5)); // Pa
 
         // Verify they are equivalent
-        assert_eq!(PitchCode::from_sargam("s"), PitchCode::from_sargam("S"));
-        assert_eq!(PitchCode::from_sargam("p"), PitchCode::from_sargam("P"));
+        assert_eq!(PitchCode::from_string("s", PitchSystem::Sargam), PitchCode::from_string("S", PitchSystem::Sargam));
+        assert_eq!(PitchCode::from_string("p", PitchSystem::Sargam), PitchCode::from_string("P", PitchSystem::Sargam));
     }
 
     #[test]
     fn test_sargam_extended_accidentals() {
-        assert_eq!(PitchCode::from_sargam("S#"), Some(PitchCode::N1s));
-        assert_eq!(PitchCode::from_sargam("G##"), Some(PitchCode::N3ss));
-        assert_eq!(PitchCode::from_sargam("M#"), Some(PitchCode::N4ss)); // M# is 4##
-        assert_eq!(PitchCode::from_sargam("mb"), Some(PitchCode::N4b));
+        assert_eq!(PitchCode::from_string("S#", PitchSystem::Sargam), Some(PitchCode::N1s));
+        assert_eq!(PitchCode::from_string("G##", PitchSystem::Sargam), Some(PitchCode::N3ss));
+        assert_eq!(PitchCode::from_string("M#", PitchSystem::Sargam), Some(PitchCode::N4ss)); // M# is 4##
+        assert_eq!(PitchCode::from_string("mb", PitchSystem::Sargam), Some(PitchCode::N4b));
     }
 
     #[test]
     fn test_sargam_invalid() {
-        assert_eq!(PitchCode::from_sargam("X"), None);
-        assert_eq!(PitchCode::from_sargam(""), None);
-        assert_eq!(PitchCode::from_sargam("unknown"), None);
+        assert_eq!(PitchCode::from_string("X", PitchSystem::Sargam), None);
+        assert_eq!(PitchCode::from_string("", PitchSystem::Sargam), None);
+        assert_eq!(PitchCode::from_string("unknown", PitchSystem::Sargam), None);
     }
 
     #[test]
     fn test_case_sensitive_mapping() {
         // Verify the SrRgGmMPdDnN -> C Db D Eb E F F# G Ab A Bb B mapping
-        assert_eq!(PitchCode::from_sargam("S"), Some(PitchCode::N1));   // C
-        assert_eq!(PitchCode::from_sargam("r"), Some(PitchCode::N2b));  // Db
-        assert_eq!(PitchCode::from_sargam("R"), Some(PitchCode::N2));   // D
-        assert_eq!(PitchCode::from_sargam("g"), Some(PitchCode::N3b));  // Eb
-        assert_eq!(PitchCode::from_sargam("G"), Some(PitchCode::N3));   // E
-        assert_eq!(PitchCode::from_sargam("m"), Some(PitchCode::N4));   // F
-        assert_eq!(PitchCode::from_sargam("M"), Some(PitchCode::N4s));  // F#
-        assert_eq!(PitchCode::from_sargam("P"), Some(PitchCode::N5));   // G
-        assert_eq!(PitchCode::from_sargam("d"), Some(PitchCode::N6b));  // Ab
-        assert_eq!(PitchCode::from_sargam("D"), Some(PitchCode::N6));   // A
-        assert_eq!(PitchCode::from_sargam("n"), Some(PitchCode::N7b));  // Bb
-        assert_eq!(PitchCode::from_sargam("N"), Some(PitchCode::N7));   // B
+        assert_eq!(PitchCode::from_string("S", PitchSystem::Sargam), Some(PitchCode::N1));   // C
+        assert_eq!(PitchCode::from_string("r", PitchSystem::Sargam), Some(PitchCode::N2b));  // Db
+        assert_eq!(PitchCode::from_string("R", PitchSystem::Sargam), Some(PitchCode::N2));   // D
+        assert_eq!(PitchCode::from_string("g", PitchSystem::Sargam), Some(PitchCode::N3b));  // Eb
+        assert_eq!(PitchCode::from_string("G", PitchSystem::Sargam), Some(PitchCode::N3));   // E
+        assert_eq!(PitchCode::from_string("m", PitchSystem::Sargam), Some(PitchCode::N4));   // F
+        assert_eq!(PitchCode::from_string("M", PitchSystem::Sargam), Some(PitchCode::N4s));  // F#
+        assert_eq!(PitchCode::from_string("P", PitchSystem::Sargam), Some(PitchCode::N5));   // G
+        assert_eq!(PitchCode::from_string("d", PitchSystem::Sargam), Some(PitchCode::N6b));  // Ab
+        assert_eq!(PitchCode::from_string("D", PitchSystem::Sargam), Some(PitchCode::N6));   // A
+        assert_eq!(PitchCode::from_string("n", PitchSystem::Sargam), Some(PitchCode::N7b));  // Bb
+        assert_eq!(PitchCode::from_string("N", PitchSystem::Sargam), Some(PitchCode::N7));   // B
     }
 
     #[test]
@@ -946,7 +816,7 @@ mod tests {
     fn test_double_accidentals_sargam() {
         assert_eq!(PitchCode::N1ss.to_string(PitchSystem::Sargam), "S##");
         assert_eq!(PitchCode::N1bb.to_string(PitchSystem::Sargam), "sbb");
-        assert_eq!(PitchCode::from_sargam("S##"), Some(PitchCode::N1ss));
-        assert_eq!(PitchCode::from_sargam("sbb"), Some(PitchCode::N1bb));
+        assert_eq!(PitchCode::from_string("S##", PitchSystem::Sargam), Some(PitchCode::N1ss));
+        assert_eq!(PitchCode::from_string("sbb", PitchSystem::Sargam), Some(PitchCode::N1bb));
     }
 }

@@ -137,7 +137,8 @@ export class WASMBridge implements WASMModule {
     const documentMutatingFunctions = [
       'setTitle', 'setComposer', 'setDocumentPitchSystem', 'setDocumentTonic', 'setDocumentKeySignature',
       'setLineLabel', 'setLineLyrics', 'setLineTala', 'setLinePitchSystem', 'setLineTonic', 'setLineKeySignature',
-      'setLineNewSystem', 'setLineStaffRole', 'setSystemMarker', 'setActiveConstraint'
+      'setLineNewSystem', 'setLineStaffRole', 'setSystemStart', 'clearSystemStart', 'setActiveConstraint',
+      'pasteCells', 'pasteText'
     ];
 
     // List of all WASM functions to map with automatic error handling
@@ -160,7 +161,7 @@ export class WASMBridge implements WASMModule {
       'insertText', 'deleteAtCursor', 'deleteForward', 'insertNewline',
 
       // Copy/Paste API
-      'copyCells', 'pasteCells',
+      'copyCells', 'pasteCells', 'pasteText',
 
       // Primary Selection API
       'getPrimarySelection', 'updatePrimarySelection',
@@ -171,7 +172,7 @@ export class WASMBridge implements WASMModule {
       // Document API (metadata)
       'setTitle', 'setComposer', 'setDocumentPitchSystem', 'setDocumentTonic', 'setDocumentKeySignature',
       'setLineLabel', 'setLineLyrics', 'setLineTala', 'setLinePitchSystem', 'setLineTonic', 'setLineKeySignature',
-      'setLineNewSystem', 'setLineStaffRole', 'setSystemMarker', 'getSystemMarker',
+      'setLineNewSystem', 'setLineStaffRole', 'setSystemStart', 'getSystemStart', 'clearSystemStart', 'getLineSystemRole',
 
       // Line manipulation API
       'splitLineAtPosition',
@@ -180,13 +181,15 @@ export class WASMBridge implements WASMModule {
       'computeLayout',
 
       // Export/Import APIs
-      'exportMusicXML', 'importMusicXML', 'convertMusicXMLToLilyPond', 'exportMIDI', 'exportMIDIDirect', 'generateIRJson', 'exportAsText',
+      'exportMusicXML', 'exportMusicXMLPolyphonic', 'importMusicXML', 'convertMusicXMLToLilyPond', 'exportMIDI', 'exportMIDIDirect', 'generateIRJson', 'exportAsText',
+      'exportAsASCIIMarkup', 'exportAsCodepointMarkup',
+      'exportSelectionAsAsciiMarkup', 'exportSelectionAsPuaMarkup',
+
+      // Notation Rendering API
+      'renderNotation', 'importNotationMarkup', 'getSupportedMarkupTags', 'isMarkupTagSupported',
 
       // Font Configuration API
-      'getFontConfig', 'setGlyphWidthCache', 'getSimpleChars',
-
-      // Patch-based Text Editing API
-      'insertCps', 'deleteRange',
+      'getFontConfig', 'setGlyphWidthCache',
 
       // Pitch System API
       'getAvailablePitchSystems',
@@ -218,7 +221,7 @@ export class WASMBridge implements WASMModule {
       'selectionToSuperscript', 'superscriptToNormal',
 
       // Textarea Rendering API
-      'getTextareaLineData', 'getTextareaDisplayList', 'setLineText', 'splitLine', 'joinLines'
+      'getTextareaLineData', 'getTextareaDisplayList', 'computeLyricLayout', 'setLineText', 'splitLine', 'joinLines'
     ];
 
     // Automatically wrap all functions with error handling
@@ -334,9 +337,6 @@ export class WASMBridge implements WASMModule {
   // Stub declarations to satisfy TypeScript (actual implementations added dynamically)
   getFontConfig!: WASMModule['getFontConfig'];
   setGlyphWidthCache!: WASMModule['setGlyphWidthCache'];
-  getSimpleChars!: WASMModule['getSimpleChars'];
-  insertCps!: WASMModule['insertCps'];
-  deleteRange!: WASMModule['deleteRange'];
   getAvailablePitchSystems!: WASMModule['getAvailablePitchSystems'];
   createNewDocument!: WASMModule['createNewDocument'];
   loadDocument!: WASMModule['loadDocument'];
@@ -355,8 +355,10 @@ export class WASMBridge implements WASMModule {
   setLineKeySignature!: WASMModule['setLineKeySignature'];
   setLineNewSystem!: WASMModule['setLineNewSystem'];
   setLineStaffRole!: WASMModule['setLineStaffRole'];
-  setSystemMarker!: WASMModule['setSystemMarker'];
-  getSystemMarker!: WASMModule['getSystemMarker'];
+  setSystemStart!: WASMModule['setSystemStart'];
+  getSystemStart!: WASMModule['getSystemStart'];
+  clearSystemStart!: WASMModule['clearSystemStart'];
+  getLineSystemRole!: WASMModule['getLineSystemRole'];
   insertText!: WASMModule['insertText'];
   deleteAtCursor!: WASMModule['deleteAtCursor'];
   deleteForward!: WASMModule['deleteForward'];
@@ -412,12 +414,15 @@ export class WASMBridge implements WASMModule {
   charPosToPixel!: WASMModule['charPosToPixel'];
   cellColToPixel!: WASMModule['cellColToPixel'];
   exportMusicXML!: WASMModule['exportMusicXML'];
+  exportMusicXMLPolyphonic!: WASMModule['exportMusicXMLPolyphonic'];
   importMusicXML!: WASMModule['importMusicXML'];
   convertMusicXMLToLilyPond!: WASMModule['convertMusicXMLToLilyPond'];
   exportMIDI!: WASMModule['exportMIDI'];
   exportMIDIDirect!: WASMModule['exportMIDIDirect'];
   generateIRJson!: WASMModule['generateIRJson'];
   exportAsText!: WASMModule['exportAsText'];
+  exportAsASCIIMarkup!: WASMModule['exportAsASCIIMarkup'];
+  exportAsCodepointMarkup!: WASMModule['exportAsCodepointMarkup'];
 
   // Superscript Glyph API
   getSuperscriptGlyph!: WASMModule['getSuperscriptGlyph'];
@@ -433,6 +438,7 @@ export class WASMBridge implements WASMModule {
   // Textarea Rendering API
   getTextareaLineData!: WASMModule['getTextareaLineData'];
   getTextareaDisplayList!: WASMModule['getTextareaDisplayList'];
+  computeLyricLayout!: WASMModule['computeLyricLayout'];
   setLineText!: WASMModule['setLineText'];
   splitLine!: WASMModule['splitLine'];
   joinLines!: WASMModule['joinLines'];

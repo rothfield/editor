@@ -51,10 +51,15 @@ interface ErrorOptions {
 interface UI {
   isInitialized?: boolean;
   activeTab?: string;
+  activeMenu?: unknown;
   updateDocumentTitle(title: string): void;
   updateCurrentPitchSystemDisplay(): void;
   updateKeySignatureCornerDisplay?(): void;
   updateModeToggleDisplay?(): void;
+  closeAllMenus?(): void;
+  newDocument?(): Promise<void>;
+  selectionToSuperscript?(): Promise<void>;
+  removeSuperscripts?(): Promise<void>;
 }
 
 class MusicNotationEditor {

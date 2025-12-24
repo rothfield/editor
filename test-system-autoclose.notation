@@ -1,0 +1,13 @@
+<title>System Auto-Close Test</title>
+<composer>Test Case</composer>
+
+<system>
+| 1 2 3 4 | <lyrics>First sys-tem line</lyrics>
+<system>
+| 5 6 7 1 | <lyrics>Se-cond sys-tem (auto-closed)</lyrics>
+<system>
+| 2 3 4 5 |
+| 6 7 1 2 |
+<system>
+| 3 4 5 6 | <lyrics>Fourth sys-tem</lyrics>
+</system>

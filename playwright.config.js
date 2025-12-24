@@ -37,21 +37,23 @@ export default defineConfig({
   },
 
   // Browser configurations
+  // Note: Firefox and WebKit disabled locally due to compatibility issues on Arch Linux
+  // Use Docker for cross-browser testing: ./scripts/run-tests-docker.sh
   projects: [
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
     },
-    {
-      name: 'firefox',
-      use: { ...devices['Desktop Firefox'] },
-    },
-    // WebKit (Safari) - works in Docker with Ubuntu 20.04 environment
-    // Disable locally on incompatible systems (Arch Linux) - use Docker instead
-    {
-      name: 'webkit',
-      use: { ...devices['Desktop Safari'] },
-    },
+    // Firefox disabled - NS_ERROR_NET_RESET connection issues with local dev server
+    // {
+    //   name: 'firefox',
+    //   use: { ...devices['Desktop Firefox'] },
+    // },
+    // WebKit disabled locally - use Docker with Ubuntu 20.04 for Safari testing
+    // {
+    //   name: 'webkit',
+    //   use: { ...devices['Desktop Safari'] },
+    // },
   ],
 
   // Development server

@@ -25,9 +25,9 @@ pub fn analyze_slurs(cells: &[Cell], line_index: usize) -> Vec<DiagnosticMark> {
     let mut stack: Vec<usize> = Vec::new(); // Stack of start cell indices
 
     for (idx, cell) in cells.iter().enumerate() {
-        let overline = cell.codepoint.get_overline();
+        let slur = cell.codepoint.get_slur();
 
-        match overline {
+        match slur {
             SlurRole::Left => {
                 // Slur start - push to stack
                 stack.push(idx);

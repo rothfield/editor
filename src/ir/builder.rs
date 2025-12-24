@@ -1292,8 +1292,9 @@ pub fn build_export_measures_from_line(line: &Line, document: Option<&Document>)
 
     let cells = &line.cells;
 
+    // Empty lines produce no measures - they're just structural (blank lines in editor)
     if cells.is_empty() {
-        return Vec::new();
+        return vec![];
     }
 
     // Determine effective tonic (line tonic overrides document tonic, defaults to C)
@@ -1343,11 +1344,15 @@ pub fn build_export_measures_from_line(line: &Line, document: Option<&Document>)
 
     // Process each measure group using beat boundaries
     for (_measure_num, mut measure_cells) in measure_cell_groups {
-        if measure_cells.is_empty() {
-            measures.push(ExportMeasure {
-                divisions: 4,
-                events: vec![ExportEvent::Rest { divisions: 4, fraction: Fraction::new(4, 4), tuplet: None }],
-            });
+        // Skip measure groups with no meaningful content (e.g., trailing | | is just a closing barline)
+        // A measure needs at least one pitched element or dash to have musical content
+        // The fallback at end ensures at least one measure exists for truly empty lines
+        let has_musical_content = measure_cells.iter().any(|c| {
+            let kind = c.get_kind();
+            kind == ElementKind::PitchedElement ||
+            kind == ElementKind::UnpitchedElement  // includes dashes
+        });
+        if !has_musical_content {
             continue;
         }
 
@@ -1517,15 +1522,8 @@ pub fn build_export_measures_from_line(line: &Line, document: Option<&Document>)
         });
     }
 
-    // Ensure at least one measure
-    if measures.is_empty() {
-        measures.push(ExportMeasure {
-            divisions: 4,
-            events: vec![ExportEvent::Rest { divisions: 4, fraction: Fraction::new(4, 4), tuplet: None }],
-        });
-    }
-
     // Attach lyrics to notes using LilyPond-style algorithm
+    // (Empty measures vec is valid - line had no musical content)
     attach_lyrics_to_measures(&mut measures, &line.lyrics);
 
     measures
@@ -1554,7 +1552,7 @@ pub fn build_export_measures_from_document(document: &Document) -> Vec<ExportLin
             } else {
                 Some(line.time_signature.clone())
             },
-            clef: "treble".to_string(), // TODO: derive from line metadata
+            clef: crate::ir::clef::guess_clef_from_line(line, document),
             label: line.label.clone(),
             show_bracket: true,  // Default to showing brackets; can be controlled per-line later
             lyrics: line.lyrics.clone(),

@@ -25,14 +25,8 @@ pub struct NumberPitchSystem;
 
 impl PitchSystemHandler for NumberPitchSystem {
     fn lookup(&self, symbol: &str) -> bool {
-        matches!(symbol,
-            "1" | "2" | "3" | "4" | "5" | "6" | "7" |
-            "1#" | "1b" | "2#" | "2b" | "3#" | "3b" |
-            "4#" | "4b" | "5#" | "5b" | "6#" | "6b" | "7#" | "7b" |
-            "1##" | "1bb" | "2##" | "2bb" | "3##" | "3bb" |
-            "4##" | "4bb" | "5##" | "5bb" | "6##" | "6bb" | "7##" | "7bb" |
-            "1b/" | "2b/" | "3b/" | "4b/" | "5b/" | "6b/" | "7b/"
-        )
+        use crate::models::pitch_systems::{PitchParser, NumberSystem};
+        NumberSystem::parse_pitch(symbol).is_some()
     }
 
     fn get_valid_chars(&self) -> Vec<char> {
@@ -50,36 +44,16 @@ pub struct WesternPitchSystem;
 
 impl PitchSystemHandler for WesternPitchSystem {
     fn lookup(&self, symbol: &str) -> bool {
-        matches!(symbol,
-            // Lowercase naturals
-            "c" | "d" | "e" | "f" | "g" | "a" | "b" |
-            // Uppercase naturals (atoms.yaml defines both cases for Western)
-            "C" | "D" | "E" | "F" | "G" | "A" |
-            // Lowercase sharps
-            "c#" | "d#" | "e#" | "f#" | "g#" | "a#" | "b#" |
-            // Uppercase sharps
-            "C#" | "D#" | "E#" | "F#" | "G#" | "A#" |
-            // Lowercase flats
-            "cb" | "db" | "eb" | "fb" | "gb" | "ab" | "bb" |
-            // Uppercase flats
-            "Cb" | "Db" | "Eb" | "Fb" | "Gb" | "Ab" |
-            // Lowercase double sharps
-            "c##" | "d##" | "e##" | "f##" | "g##" | "a##" | "b##" |
-            // Uppercase double sharps
-            "C##" | "D##" | "E##" | "F##" | "G##" | "A##" |
-            // Lowercase double flats
-            "cbb" | "dbb" | "ebb" | "fbb" | "gbb" | "abb" | "bbb" |
-            // Uppercase double flats
-            "Cbb" | "Dbb" | "Ebb" | "Fbb" | "Gbb" | "Abb"
-        )
+        use crate::models::pitch_systems::{PitchParser, WesternSystem};
+        WesternSystem::parse_pitch(symbol).is_some()
     }
 
     fn get_valid_chars(&self) -> Vec<char> {
-        vec!['a', 'b', 'c', 'd', 'e', 'f', 'g', 'A', 'C', 'D', 'E', 'F', 'G', '#']
+        vec!['a', 'b', 'c', 'd', 'e', 'f', 'g', 'A', 'B', 'C', 'D', 'E', 'F', 'G', '#']
     }
 
     fn get_pitch_chars(&self) -> Vec<char> {
-        vec!['a', 'b', 'c', 'd', 'e', 'f', 'g', 'A', 'C', 'D', 'E', 'F', 'G']
+        vec!['a', 'b', 'c', 'd', 'e', 'f', 'g', 'A', 'B', 'C', 'D', 'E', 'F', 'G']
     }
 }
 
@@ -89,16 +63,8 @@ pub struct SargamPitchSystem;
 
 impl PitchSystemHandler for SargamPitchSystem {
     fn lookup(&self, symbol: &str) -> bool {
-        matches!(symbol,
-            // Natural and komal
-            "S" | "s" | "R" | "r" | "G" | "g" | "m" | "M" | "P" | "p" | "D" | "d" | "N" | "n" |
-            // With accidentals
-            "S#" | "s#" | "Sb" | "sb" | "R#" | "Rb" | "G#" | "Gb" |
-            "mb" | "M#" | "Mb" | "P#" | "p#" | "Pb" | "pb" | "D#" | "Db" | "N#" | "Nb" |
-            // Double accidentals
-            "S##" | "s##" | "Sbb" | "sbb" | "R##" | "Rbb" | "G##" | "Gbb" |
-            "mbb" | "M##" | "Mbb" | "P##" | "p##" | "Pbb" | "pbb" | "D##" | "Dbb" | "N##" | "Nbb"
-        )
+        use crate::models::pitch_systems::{PitchParser, SargamSystem};
+        SargamSystem::parse_pitch(symbol).is_some()
     }
 
     fn get_valid_chars(&self) -> Vec<char> {

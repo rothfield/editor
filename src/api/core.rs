@@ -8,6 +8,7 @@ use crate::models::{Cell, PitchSystem, Document, Line, Pos, EditorDiff, CaretInf
 use crate::models::pitch_code::AccidentalType;
 use crate::parse::grammar::parse_single;
 use crate::api::helpers::lock_document;
+use crate::api::render::{MarkupTagRegistry, markup_to_document};
 use crate::{wasm_log, wasm_info, wasm_warn, wasm_error};
 use crate::undo::Command;
 use crate::renderers::lyrics::{distribute_lyrics, parse_lyrics};
@@ -646,7 +647,7 @@ pub fn split_line_at_position(
         time_signature: line.time_signature.clone(), // Inherit time signature
         new_system: false, // New line does not start a new system
         staff_role: StaffRole::default(), // DEPRECATED: use system_marker
-        system_marker: None, // No marker = standalone or continue group
+        system_start_count: None, // No marker = standalone or continue group
         system_id: 0, // Will be recalculated
         part_id: String::new(), // Will be recalculated
         beats: Vec::new(),
@@ -859,21 +860,18 @@ pub fn set_line_staff_role(line_index: usize, role: String) -> Result<(), JsValu
     Ok(())
 }
 
-/// Set the system marker for a line (LilyPond-style << / >> grouping)
+/// Set system start count for a line
 ///
 /// # Parameters
 /// * `line_index` - Index of the line to modify
-/// * `marker` - System marker as string ("<<", ">>", "start", "end", or "" to clear)
+/// * `count` - Number of lines in the system (1-based, typically 1-4)
 ///
 /// # Returns
-/// Ok(()) on success, Err with error message on failure
-#[wasm_bindgen(js_name = setSystemMarker)]
-pub fn set_system_marker(line_index: usize, marker: String) -> Result<(), JsValue> {
-    use crate::models::SystemMarker;
+/// Ok(truncations) where truncations is a JSON array of {line, original, truncated}
+#[wasm_bindgen(js_name = setSystemStart)]
+pub fn set_system_start(line_index: usize, count: usize) -> Result<JsValue, JsValue> {
+    wasm_info!("setSystemStart called: line_index={}, count={}", line_index, count);
 
-    wasm_info!("setSystemMarker called: line_index={}, marker={}", line_index, marker);
-
-    // Access internal WASM document
     let mut doc_guard = lock_document()?;
     let document = doc_guard.as_mut()
         .ok_or_else(|| {
@@ -881,43 +879,70 @@ pub fn set_system_marker(line_index: usize, marker: String) -> Result<(), JsValu
             JsValue::from_str("No document loaded")
         })?;
 
-    // Validate line index
     if line_index >= document.lines.len() {
         wasm_error!("Line index {} out of bounds (max: {})", line_index, document.lines.len() - 1);
         return Err(JsValue::from_str("Line index out of bounds"));
     }
 
-    // Parse the marker
-    let system_marker = match marker.as_str() {
-        "<<" | "start" => Some(SystemMarker::Start),
-        ">>" | "end" => Some(SystemMarker::End),
-        "" | "clear" | "none" => None,
-        _ => {
-            wasm_error!("Invalid system marker: {}", marker);
-            return Err(JsValue::from_str(&format!("Invalid marker: {}. Use '<<', '>>', or '' to clear.", marker)));
+    if count == 0 {
+        wasm_error!("Count must be >= 1");
+        return Err(JsValue::from_str("Count must be >= 1"));
+    }
+
+    // Validate count is in range 1-8
+    // UI always shows options 1-8, regardless of document size
+    const MAX_SYSTEM_COUNT: usize = 8;
+    if count > MAX_SYSTEM_COUNT {
+        wasm_error!("Count {} exceeds maximum {}", count, MAX_SYSTEM_COUNT);
+        return Err(JsValue::from_str(&format!("Count {} exceeds maximum {}", count, MAX_SYSTEM_COUNT)));
+    }
+
+    // Clear system_start_count on lines that will be covered by this system
+    // If we're setting line N to count C, clear lines N+1 through N+C-1
+    // This prevents overlap conflicts that would cause truncation
+    let end_line = (line_index + count).min(document.lines.len());
+    for i in (line_index + 1)..end_line {
+        if document.lines[i].system_start_count.is_some() {
+            wasm_info!("  Clearing system_start_count on line {} (will be covered by system starting at line {})", i, line_index);
+            document.lines[i].system_start_count = None;
         }
-    };
+    }
 
-    document.lines[line_index].system_marker = system_marker;
-    wasm_info!("  Line {} system_marker set to: {:?}", line_index, document.lines[line_index].system_marker);
+    document.lines[line_index].system_start_count = Some(count);
+    wasm_info!("  Line {} system_start_count set to: {}", line_index, count);
 
-    // Recalculate system_id and part_id after marker change
-    document.recalculate_system_and_part_ids();
-    wasm_info!("  System and part IDs recalculated");
+    // Recalculate system_id and part_id, get truncations
+    let truncations = document.recalculate_system_and_part_ids();
+    wasm_info!("  System and part IDs recalculated, {} truncations", truncations.len());
 
-    wasm_info!("setSystemMarker completed successfully");
-    Ok(())
+    // Convert truncations to JSON
+    #[derive(serde::Serialize)]
+    struct Truncation {
+        line: usize,
+        original: usize,
+        truncated: usize,
+    }
+
+    let truncation_objects: Vec<Truncation> = truncations.into_iter()
+        .map(|(line, original, truncated)| Truncation { line, original, truncated })
+        .collect();
+
+    serde_wasm_bindgen::to_value(&truncation_objects)
+        .map_err(|e| {
+            wasm_error!("Truncations serialization error: {}", e);
+            JsValue::from_str(&format!("Serialization error: {}", e))
+        })
 }
 
-/// Get the system marker for a line
+/// Get system start count for a line
 ///
 /// # Parameters
 /// * `line_index` - Index of the line to query
 ///
 /// # Returns
-/// The marker string ("<<", ">>", or "") on success
-#[wasm_bindgen(js_name = getSystemMarker)]
-pub fn get_system_marker(line_index: usize) -> Result<String, JsValue> {
+/// The count (1-4) if line starts a system, or 0 if not a system start
+#[wasm_bindgen(js_name = getSystemStart)]
+pub fn get_system_start(line_index: usize) -> Result<usize, JsValue> {
     let doc_guard = lock_document()?;
     let document = doc_guard.as_ref()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
@@ -926,13 +951,94 @@ pub fn get_system_marker(line_index: usize) -> Result<String, JsValue> {
         return Err(JsValue::from_str("Line index out of bounds"));
     }
 
-    let marker_str = match document.lines[line_index].system_marker {
-        Some(crate::models::SystemMarker::Start) => "<<",
-        Some(crate::models::SystemMarker::End) => ">>",
-        None => "",
-    };
+    Ok(document.lines[line_index].system_start_count.unwrap_or(0))
+}
 
-    Ok(marker_str.to_string())
+/// Clear system start marker for a line
+///
+/// # Parameters
+/// * `line_index` - Index of the line to modify
+#[wasm_bindgen(js_name = clearSystemStart)]
+pub fn clear_system_start(line_index: usize) -> Result<JsValue, JsValue> {
+    wasm_info!("clearSystemStart called: line_index={}", line_index);
+
+    let mut doc_guard = lock_document()?;
+    let document = doc_guard.as_mut()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    if line_index >= document.lines.len() {
+        return Err(JsValue::from_str("Line index out of bounds"));
+    }
+
+    document.lines[line_index].system_start_count = None;
+    wasm_info!("  Line {} system_start_count cleared", line_index);
+
+    let _truncations = document.recalculate_system_and_part_ids();
+    wasm_info!("  System and part IDs recalculated");
+
+    // Return empty truncations array
+    serde_wasm_bindgen::to_value(&Vec::<()>::new())
+        .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
+}
+
+/// Get the system role for a line (for visual grouping indicators)
+///
+/// # Parameters
+/// * `line_index` - Index of the line to query
+///
+/// # Returns
+/// JSON object: {type: "start"|"middle"|"end"|"standalone", count?: number}
+#[wasm_bindgen(js_name = getLineSystemRole)]
+pub fn get_line_system_role(line_index: usize) -> Result<JsValue, JsValue> {
+    let doc_guard = lock_document()?;
+    let document = doc_guard.as_ref()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    if line_index >= document.lines.len() {
+        return Err(JsValue::from_str("Line index out of bounds"));
+    }
+
+    // Scan backwards to find if we're covered by a system_start_count
+    for i in (0..=line_index).rev() {
+        if let Some(count) = document.lines[i].system_start_count {
+            if line_index < i + count {
+                // We're in this system
+                let is_last = line_index == i + count - 1;
+
+                #[derive(serde::Serialize)]
+                struct SystemRole {
+                    #[serde(rename = "type")]
+                    role_type: String,
+                    #[serde(skip_serializing_if = "Option::is_none")]
+                    count: Option<usize>,
+                }
+
+                let role = if line_index == i {
+                    SystemRole { role_type: "start".to_string(), count: Some(count) }
+                } else if is_last {
+                    SystemRole { role_type: "end".to_string(), count: None }
+                } else {
+                    SystemRole { role_type: "middle".to_string(), count: None }
+                };
+
+                return serde_wasm_bindgen::to_value(&role)
+                    .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)));
+            }
+        }
+    }
+
+    // Standalone line
+    #[derive(serde::Serialize)]
+    struct SystemRole {
+        #[serde(rename = "type")]
+        role_type: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        count: Option<usize>,
+    }
+
+    let role = SystemRole { role_type: "standalone".to_string(), count: None };
+    serde_wasm_bindgen::to_value(&role)
+        .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
 }
 
 // ============================================================================
@@ -1495,6 +1601,16 @@ pub fn delete_at_cursor() -> Result<JsValue, JsValue> {
 
             // If current line is empty, just delete it
             if current_line.cells.is_empty() {
+                // Check if deleted line has system_start_count - promote to next line
+                if let Some(count) = doc.lines[cursor_line].system_start_count {
+                    if cursor_line + 1 < doc.lines.len() {
+                        let new_count = count.saturating_sub(1);
+                        if new_count > 0 {
+                            doc.lines[cursor_line + 1].system_start_count = Some(new_count);
+                        }
+                    }
+                }
+
                 // Remove current (empty) line
                 doc.lines.remove(cursor_line);
 
@@ -1519,6 +1635,16 @@ pub fn delete_at_cursor() -> Result<JsValue, JsValue> {
 
                 // Append to previous line
                 doc.lines[cursor_line - 1].cells.extend(current_cells);
+
+                // Check if deleted line has system_start_count - promote to next line
+                if let Some(count) = doc.lines[cursor_line].system_start_count {
+                    if cursor_line + 1 < doc.lines.len() {
+                        let new_count = count.saturating_sub(1);
+                        if new_count > 0 {
+                            doc.lines[cursor_line + 1].system_start_count = Some(new_count);
+                        }
+                    }
+                }
 
                 // Remove current line
                 doc.lines.remove(cursor_line);
@@ -1717,7 +1843,7 @@ pub fn insert_newline() -> Result<JsValue, JsValue> {
         system_id: 0, // Will be recalculated
         part_id: String::new(), // Will be recalculated
         staff_role: StaffRole::default(), // DEPRECATED: use system_marker
-        system_marker: None, // No marker = standalone or continue group
+        system_start_count: None, // No marker = standalone or continue group
         beats: Vec::new(),
         slurs: Vec::new(),
     };
@@ -1944,6 +2070,184 @@ pub fn paste_cells(
             wasm_error!("EditResult serialization error: {}", e);
             JsValue::from_str(&format!("EditResult serialization error: {}", e))
         })
+}
+
+/// Paste text at position (parses PUA or ASCII text into cells and inserts)
+#[wasm_bindgen(js_name = pasteText)]
+pub fn paste_text(
+    row: usize,
+    col: usize,
+    text: &str,
+) -> Result<JsValue, JsValue> {
+    wasm_info!("pasteText: ({},{}) text_len={}", row, col, text.len());
+
+    let mut doc_guard = lock_document()?;
+    let doc = doc_guard.as_mut()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    if text.is_empty() {
+        // Empty paste - nothing to do
+        let result = EditResult {
+            dirty_lines: Vec::new(),
+            new_cursor_row: row,
+            new_cursor_col: col,
+        };
+        return serde_wasm_bindgen::to_value(&result)
+            .map_err(|e| JsValue::from_str(&format!("EditResult serialization error: {}", e)));
+    }
+
+    // Get pitch system from document (default to Number if not set)
+    let pitch_system = doc.pitch_system.unwrap_or(PitchSystem::Number);
+
+    // Detect content type and parse accordingly
+    let cells = if looks_like_markup(text) {
+        wasm_info!("pasteText: detected markup, using markup parser");
+        // Parse as markup - handles tags like <oct=1/>, <slur>, etc.
+        match parse_markup_fragment(text, pitch_system) {
+            Ok(cells) => cells,
+            Err(e) => {
+                wasm_warn!("pasteText: markup parsing failed ({}), falling back to plain text", e);
+                // Fall back to plain text parsing
+                crate::api::textarea::parse_text_to_cells_public(text, pitch_system)
+            }
+        }
+    } else {
+        // Plain text - use character parser (handles PUA or ASCII)
+        crate::api::textarea::parse_text_to_cells_public(text, pitch_system)
+    };
+
+    if cells.is_empty() {
+        // No valid cells parsed
+        let result = EditResult {
+            dirty_lines: Vec::new(),
+            new_cursor_row: row,
+            new_cursor_col: col,
+        };
+        return serde_wasm_bindgen::to_value(&result)
+            .map_err(|e| JsValue::from_str(&format!("EditResult serialization error: {}", e)));
+    }
+
+    // Ensure we have enough lines
+    while doc.lines.len() <= row {
+        doc.lines.push(Line::new());
+    }
+
+    // Insert cells at position
+    let line = &mut doc.lines[row];
+
+    // Ensure we have enough cells (pad with spaces if needed)
+    while line.cells.len() < col {
+        line.cells.push(Cell::new(" ".to_string(), ElementKind::UnpitchedElement));
+    }
+
+    // Insert new cells at position
+    for (i, cell) in cells.iter().enumerate() {
+        line.cells.insert(col + i, cell.clone());
+    }
+
+    // Sync text buffer from cells
+    line.sync_text_from_cells();
+
+    // Calculate new cursor position (after the pasted cells)
+    let new_cursor_col = col + cells.len();
+
+    // Build dirty lines list
+    let dirty_lines = vec![DirtyLine {
+        row,
+        cells: line.cells.clone(),
+    }];
+
+    let result = EditResult {
+        dirty_lines,
+        new_cursor_row: row,
+        new_cursor_col,
+    };
+
+    serde_wasm_bindgen::to_value(&result)
+        .map_err(|e| {
+            wasm_error!("EditResult serialization error: {}", e);
+            JsValue::from_str(&format!("EditResult serialization error: {}", e))
+        })
+}
+
+// ============================================================================
+// Markup Detection Helpers (for smart paste)
+// ============================================================================
+
+/// Detect if text looks like markup (contains known tag patterns)
+///
+/// Returns true if the text appears to contain markup tags like `<oct=1/>`, `<slur>`, etc.
+/// Uses the MarkupTagRegistry to validate tag names.
+fn looks_like_markup(text: &str) -> bool {
+    // Quick check: must have angle brackets
+    if !text.contains('<') {
+        return false;
+    }
+
+    // Scan for tag patterns: <tagname, <tagname/, </tagname
+    let chars: Vec<char> = text.chars().collect();
+    let mut i = 0;
+
+    while i < chars.len() {
+        if chars[i] == '<' {
+            let start = i + 1;
+            // Skip optional '/' for closing tags
+            let tag_start = if start < chars.len() && chars[start] == '/' {
+                start + 1
+            } else {
+                start
+            };
+
+            // Collect tag name (alphanumeric + special chars like '#')
+            let mut tag_end = tag_start;
+            while tag_end < chars.len() {
+                let ch = chars[tag_end];
+                if ch.is_alphanumeric() || ch == '#' {
+                    tag_end += 1;
+                } else {
+                    break;
+                }
+            }
+
+            if tag_end > tag_start {
+                let tag_name: String = chars[tag_start..tag_end].iter().collect();
+
+                // Check if this is a known tag
+                if MarkupTagRegistry::is_supported(&tag_name) {
+                    return true;
+                }
+
+                // Also check for oct=N format (special case)
+                if tag_name == "oct" && tag_end < chars.len() && chars[tag_end] == '=' {
+                    return true;
+                }
+            }
+        }
+        i += 1;
+    }
+
+    false
+}
+
+/// Parse a markup fragment into cells
+///
+/// This wraps the fragment in a `<system>` tag if needed, then uses the full markup parser.
+fn parse_markup_fragment(text: &str, pitch_system: PitchSystem) -> Result<Vec<Cell>, String> {
+    // If text doesn't have <system>, wrap it
+    let wrapped = if !text.to_lowercase().contains("<system") {
+        format!("<system>{}</system>", text)
+    } else {
+        text.to_string()
+    };
+
+    // Use existing markup parser
+    let doc = markup_to_document(&wrapped, pitch_system)?;
+
+    // Extract cells from first line
+    if doc.lines.is_empty() {
+        return Ok(Vec::new());
+    }
+    Ok(doc.lines[0].cells.clone())
 }
 
 // ============================================================================
@@ -4145,5 +4449,89 @@ mod tests {
         // First pitched cell gets "one", second gets remaining
         assert_eq!(before, "one");
         assert_eq!(after, "two three four");
+    }
+
+    // ========================================================================
+    // Markup Detection Tests
+    // ========================================================================
+
+    #[test]
+    fn test_looks_like_markup_positive() {
+        // Known tags should be detected
+        assert!(super::looks_like_markup("<oct=1/>1 2 3"));
+        assert!(super::looks_like_markup("<slur>1 2</slur>"));
+        assert!(super::looks_like_markup("<up/>1"));
+        assert!(super::looks_like_markup("<#/>1"));  // Sharp modifier
+        assert!(super::looks_like_markup("<sup>1 2</sup>"));
+        assert!(super::looks_like_markup("1 2 <down/>3"));
+        assert!(super::looks_like_markup("<oct=-1/>5 6 7"));
+    }
+
+    #[test]
+    fn test_looks_like_markup_negative() {
+        // Plain text - no angle brackets
+        assert!(!super::looks_like_markup("1 2 3"));
+        // Math expression - not a valid tag
+        assert!(!super::looks_like_markup("a < b"));
+        // Unknown tags should not trigger markup detection
+        assert!(!super::looks_like_markup("<unknown>1</unknown>"));
+        // Empty string
+        assert!(!super::looks_like_markup(""));
+        // Just angle brackets without tag
+        assert!(!super::looks_like_markup("<>"));
+        // PUA characters (no angle brackets)
+        assert!(!super::looks_like_markup("\u{E000}\u{E019}"));
+    }
+
+    #[test]
+    fn test_looks_like_markup_edge_cases() {
+        // Closing tag detected
+        assert!(super::looks_like_markup("</slur>"));
+        // Tag with whitespace before close
+        assert!(super::looks_like_markup("<up />1"));  // Should still work
+        // Multiple tags
+        assert!(super::looks_like_markup("<up/><#/>1"));
+    }
+
+    #[test]
+    fn test_parse_markup_fragment_basic() {
+        use crate::models::PitchSystem;
+
+        // Simple octave modifier
+        let result = super::parse_markup_fragment("<oct=1/>1 2 3", PitchSystem::Number);
+        assert!(result.is_ok());
+        let cells = result.unwrap();
+        // Should have parsed some cells
+        assert!(!cells.is_empty());
+        // First pitched cell should have octave +1
+        let pitched_cells: Vec<_> = cells.iter()
+            .filter(|c| c.get_kind() == crate::models::ElementKind::PitchedElement)
+            .collect();
+        assert!(!pitched_cells.is_empty());
+        assert_eq!(pitched_cells[0].get_octave(), 1, "First note should have octave +1");
+    }
+
+    #[test]
+    fn test_parse_markup_fragment_slur() {
+        use crate::models::PitchSystem;
+
+        // Slur tag
+        let result = super::parse_markup_fragment("<slur>1 2 3</slur>", PitchSystem::Number);
+        assert!(result.is_ok());
+        let cells = result.unwrap();
+        let pitched_cells: Vec<_> = cells.iter()
+            .filter(|c| c.get_kind() == crate::models::ElementKind::PitchedElement)
+            .collect();
+        // Should have slurred notes
+        assert!(pitched_cells.len() >= 2);
+    }
+
+    #[test]
+    fn test_parse_markup_fragment_with_system_tag() {
+        use crate::models::PitchSystem;
+
+        // Already has system tag - should work
+        let result = super::parse_markup_fragment("<system>1 2 3</system>", PitchSystem::Number);
+        assert!(result.is_ok());
     }
 }

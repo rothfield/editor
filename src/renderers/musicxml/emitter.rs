@@ -4,6 +4,7 @@
 //! representation (ExportLine, ExportMeasure, ExportEvent) and produce valid MusicXML strings.
 
 use crate::ir::*;
+use crate::ir::measurization::{measurize_export_lines, MeasurizedPart, TickEvent, Bar};
 // PitchCode not needed in emitter (pitch info comes from IR)
 use super::builder::{MusicXmlBuilder, xml_escape};
 use super::grace_notes::superscript_position_to_placement;
@@ -92,112 +93,102 @@ pub fn emit_musicxml(
         parts_map.entry(line.part_id.clone()).or_insert_with(Vec::new).push(line);
     }
 
-    // Get unique part IDs in order
-    let mut unique_part_ids: Vec<String> = parts_map.keys().cloned().collect();
-    unique_part_ids.sort(); // Ensure consistent ordering (P1, P2, P3...)
+    // Get unique part IDs in DOCUMENT order (not alphabetically sorted)
+    // This preserves the order lines appear in the document
+    let mut unique_part_ids: Vec<String> = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for line in export_lines.iter() {
+        if seen.insert(line.part_id.clone()) {
+            unique_part_ids.push(line.part_id.clone());
+        }
+    }
 
     #[cfg(target_arch = "wasm32")]
     web_sys::console::log_1(&format!("[MusicXML Emitter] Grouped into {} unique parts", unique_part_ids.len()).into());
 
-    // Group parts by system_id to determine bracket groups
-    // Map: system_id -> Vec<part_id>
+    // Build system_to_parts map: which parts appear in each system
+    // Map: system_id -> Vec<part_id> (parts active in that system)
     let mut system_to_parts: HashMap<usize, Vec<String>> = HashMap::new();
-    for part_id in &unique_part_ids {
-        let lines = &parts_map[part_id];
-        let system_id = lines[0].system_id;
-        system_to_parts.entry(system_id).or_insert_with(Vec::new).push(part_id.clone());
+    for line in export_lines.iter() {
+        let entry = system_to_parts.entry(line.system_id).or_insert_with(Vec::new);
+        // Only add part if not already in this system
+        if !entry.contains(&line.part_id) {
+            entry.push(line.part_id.clone());
+        }
     }
-
-    // Emit <part-list> with brackets for multi-part systems
-    xml.push_str("  <part-list>\n");
-    let mut group_number = 1;
 
     // Get system IDs in order
     let mut system_ids: Vec<usize> = system_to_parts.keys().cloned().collect();
     system_ids.sort();
 
-    for system_id in system_ids {
-        let part_ids_in_system = &system_to_parts[&system_id];
+    // Check if we have multiple separate systems (needed later for system break logic)
+    let has_multiple_systems = system_ids.len() > 1;
+
+    // Emit <part-list>
+    xml.push_str("  <part-list>\n");
+    let mut group_number = 1;
+
+    // Emit part-groups for systems with multiple staves, and score-parts
+    for system_id in &system_ids {
+        let part_ids_in_system = &system_to_parts[system_id];
 
         // Add bracket if system has multiple parts
         if part_ids_in_system.len() > 1 {
-            // Check if any line in this system wants to hide the bracket
-            let hide_bracket = part_ids_in_system.iter()
-                .any(|part_id| {
-                    parts_map[part_id].iter().any(|line| !line.show_bracket)
-                });
-
-            if hide_bracket {
-                xml.push_str(&format!("    <part-group type=\"start\" number=\"{}\" print-object=\"no\">\n", group_number));
-            } else {
-                xml.push_str(&format!("    <part-group type=\"start\" number=\"{}\">\n", group_number));
-            }
-
-            // Add group name from first line's label (if present)
-            let first_part_id = &part_ids_in_system[0];
-            let first_line = parts_map[first_part_id][0];
-            if !first_line.label.is_empty() {
-                xml.push_str(&format!("      <group-name>{}</group-name>\n", xml_escape(&first_line.label)));
-            }
-
+            xml.push_str(&format!("    <part-group type=\"start\" number=\"{}\">\n", group_number));
             xml.push_str("      <group-symbol>bracket</group-symbol>\n");
             xml.push_str("      <group-barline>yes</group-barline>\n");
             xml.push_str("    </part-group>\n");
         }
 
-        // Emit score-part for each part in this system
+        // Emit score-part for each part in this system (but only if not already emitted)
         for part_id in part_ids_in_system {
-            let lines = &parts_map[part_id];
-            let first_line = lines[0];
+            // Check if we've already emitted this part_id
+            // (a part can appear in multiple systems with position-based IDs)
+            let already_emitted = system_ids.iter()
+                .take_while(|&sid| sid < system_id)
+                .any(|sid| system_to_parts[sid].contains(part_id));
 
-            xml.push_str(&format!("    <score-part id=\"{}\">\n", part_id));
-            let part_name = if first_line.label.is_empty() {
-                "Staff".to_string()
-            } else {
-                xml_escape(&first_line.label)
-            };
-            xml.push_str(&format!("      <part-name>{}</part-name>\n", part_name));
-            xml.push_str("    </score-part>\n");
+            if !already_emitted {
+                let lines = &parts_map[part_id];
+                let first_line = lines[0];
+
+                xml.push_str(&format!("    <score-part id=\"{}\">\n", part_id));
+                let part_name = if first_line.label.is_empty() {
+                    format!("P{}", part_id.trim_start_matches('P'))
+                } else {
+                    xml_escape(&first_line.label)
+                };
+                xml.push_str(&format!("      <part-name>{}</part-name>\n", part_name));
+                xml.push_str("    </score-part>\n");
+            }
         }
 
         // Close bracket if system has multiple parts
         if part_ids_in_system.len() > 1 {
-            // Check if bracket was hidden (same logic as above)
-            let hide_bracket = part_ids_in_system.iter()
-                .any(|part_id| {
-                    parts_map[part_id].iter().any(|line| !line.show_bracket)
-                });
-
-            if hide_bracket {
-                xml.push_str(&format!("    <part-group type=\"stop\" number=\"{}\" print-object=\"no\"/>\n", group_number));
-            } else {
-                xml.push_str(&format!("    <part-group type=\"stop\" number=\"{}\"/>\n", group_number));
-            }
+            xml.push_str(&format!("    <part-group type=\"stop\" number=\"{}\"/>\n", group_number));
             group_number += 1;
         }
     }
 
     xml.push_str("  </part-list>\n");
 
-    // Emit one <part> per unique part_id, combining all lines with that part_id
-    let mut prev_system_id: Option<usize> = None;
+    // CRITICAL FIX: Per MusicXML spec, <print new-system="yes"/> must appear at the SAME
+    // measure position across ALL parts. To ensure separate systems render correctly,
+    // we emit system breaks consistently in ALL parts when we have multiple systems.
+    // (has_multiple_systems was calculated earlier before the system_ids vec was moved)
 
+    // Emit one <part> per unique part_id, combining all lines with that part_id
     for part_id in &unique_part_ids {
         let lines = &parts_map[part_id];
-        let current_system_id = lines[0].system_id; // All lines in same part have same system_id
 
         #[cfg(target_arch = "wasm32")]
-        web_sys::console::log_1(&format!("[MusicXML Emitter] Emitting part {} with {} lines, system_id={}",
-            part_id, lines.len(), current_system_id).into());
-
-        // Check if this part starts a new system (different system_id from previous part)
-        let starts_new_system = prev_system_id.map_or(false, |prev_id| current_system_id != prev_id);
+        web_sys::console::log_1(&format!("[MusicXML Emitter] Emitting part {} with {} lines",
+            part_id, lines.len()).into());
 
         // Combine all measures from all lines in this part
-        let combined_part_xml = emit_combined_part(lines, document_key_signature, starts_new_system)?;
+        // emit_combined_part will handle system_id transitions internally
+        let combined_part_xml = emit_combined_part(lines, document_key_signature, has_multiple_systems)?;
         xml.push_str(&combined_part_xml);
-
-        prev_system_id = Some(current_system_id);
     }
 
     xml.push_str("</score-partwise>\n");
@@ -219,11 +210,11 @@ fn parse_beat_count(time_sig: Option<&str>) -> usize {
 /// # Arguments
 /// * `lines` - ExportLines with the same part_id to combine
 /// * `document_key_signature` - Document-level key signature (fallback)
-/// * `starts_new_system` - True if this part should start on a new system (different system_id from previous part)
+/// * `has_multiple_systems` - True if document has multiple systems (enables system break logic)
 fn emit_combined_part(
     lines: &[&ExportLine],
     document_key_signature: Option<&str>,
-    starts_new_system: bool,
+    has_multiple_systems: bool,
 ) -> Result<String, String> {
     if lines.is_empty() {
         return Ok(String::new());
@@ -239,6 +230,9 @@ fn emit_combined_part(
             builder.set_key_signature(Some(key_sig_str));
         }
     }
+
+    // Set clef from first line
+    builder.set_clef(&lines[0].clef);
 
     // Parse beat count from first line's time signature
     let beat_count = parse_beat_count(lines[0].time_signature.as_deref());
@@ -262,6 +256,8 @@ fn emit_combined_part(
     if all_empty {
         // Empty part: emit a single measure with a whole rest
         // MusicXML requires at least one measure per part
+        let first_system_id = lines[0].system_id;
+        let starts_new_system = has_multiple_systems && first_system_id > 1;
         builder.start_measure_with_divisions(Some(1), starts_new_system, beat_count);
         builder.write_rest(beat_count, beat_count as f64);
         builder.end_measure();
@@ -269,19 +265,26 @@ fn emit_combined_part(
         // Combine all measures from all lines
         let mut measure_index = 0;
         let mut prev_system_id: Option<usize> = None;
+        let first_system_id = lines[0].system_id;
 
         for (_line_idx, line) in lines.iter().enumerate() {
             for (measure_idx_in_line, measure) in line.measures.iter().enumerate() {
                 let is_first_measure = measure_index == 0;
                 let is_first_measure_of_line = measure_idx_in_line == 0;
 
-                // Emit <print new-system="yes"/> if:
-                // 1. This is the first measure AND the part starts a new system (different from previous part)
-                // 2. This is the first measure of a line AND the line's system_id changed from previous line
-                let emit_new_system = if is_first_measure {
-                    starts_new_system
-                } else if is_first_measure_of_line {
-                    prev_system_id.map_or(false, |prev_id| line.system_id != prev_id)
+                // Emit <print new-system="yes"/> when:
+                // 1. Document has multiple systems AND this is the first measure of the part
+                //    (MusicXML spec requires system breaks at same position across all parts)
+                // 2. Or system_id changes from previous line within this part
+                let emit_new_system = if is_first_measure_of_line {
+                    if is_first_measure {
+                        // First measure of part: emit new-system if document has multiple systems
+                        // This ensures all parts are synchronized for system break positions
+                        has_multiple_systems
+                    } else {
+                        // First measure of a subsequent line: check if system_id changed
+                        prev_system_id.map_or(false, |prev_id| line.system_id != prev_id)
+                    }
                 } else {
                     false
                 };
@@ -331,6 +334,9 @@ fn emit_single_line_as_part(
             builder.set_key_signature(Some(key_sig_str));
         }
     }
+
+    // Set clef from export line
+    builder.set_clef(&export_line.clef);
 
     // Parse beat count from time signature
     let beat_count = parse_beat_count(export_line.time_signature.as_deref());
@@ -635,8 +641,16 @@ fn emit_note_without_grace_after(
         }
     });
 
-    // Handle lyrics
-    let lyric = if !syllables.is_empty() && *lyric_index < syllables.len() {
+    // TIE LOGIC: Don't assign syllables to tied continuation notes (Continue or Stop)
+    // Only the first note of a tie should get a syllable
+    let is_tied_continuation = note.tie.as_ref().map_or(false, |tie_data| {
+        matches!(tie_data.type_, TieType::Continue | TieType::Stop)
+    });
+
+    // Handle lyrics - skip tied continuation notes
+    let lyric = if is_tied_continuation {
+        None
+    } else if !syllables.is_empty() && *lyric_index < syllables.len() {
         let (text, syllabic) = &syllables[*lyric_index];
         *lyric_index += 1;
         Some(LyricData {
@@ -799,6 +813,12 @@ fn emit_note(
         matches!(slur_data.type_, SlurType::Continue | SlurType::Stop)
     });
 
+    // TIE LOGIC: Don't assign syllables to tied continuation notes (Continue or Stop)
+    // Only the first note of a tie should get a syllable
+    let is_tied_continuation = note.tie.as_ref().map_or(false, |tie_data| {
+        matches!(tie_data.type_, TieType::Continue | TieType::Stop)
+    });
+
     let lyric: Option<LyricData> = if let Some(lyric_data) = note.lyrics.clone() {
         // Note already has lyrics assigned (from IR builder)
         // Increment lyric_index to stay synchronized with syllable consumption
@@ -806,7 +826,7 @@ fn emit_note(
             *lyric_index += 1;
         }
         Some(lyric_data)
-    } else if !is_melisma_note && *lyric_index < syllables.len() {
+    } else if !is_melisma_note && !is_tied_continuation && *lyric_index < syllables.len() {
         // Only assign syllables to non-melisma notes
         // Check if there are multiple remaining syllables
         let remaining_count = syllables.len() - *lyric_index;
@@ -1417,6 +1437,99 @@ mod tests {
         // 5. <part-group> with type="stop"
         assert!(xml.contains("<part-group type=\"stop\" number=\"1\"/>"),
                 "MusicXML should contain part-group stop");
+    }
+
+    #[test]
+    fn test_two_lines_separate_systems_with_print_new_system() {
+        // RGR TEST: None marker (system_id=1) followed by Start marker (system_id=2)
+        // Should create 2 separate systems with <print new-system="yes"/> on P2
+        let line1 = ExportLine {
+            system_id: 1,
+            part_id: "P1".to_string(),
+            staff_role: crate::models::core::StaffRole::Melody,
+            key_signature: None,
+            time_signature: None,
+            clef: "treble".to_string(),
+            label: "".to_string(),
+            show_bracket: true,
+            lyrics: String::new(),
+            measures: vec![ExportMeasure {
+                divisions: 4,
+                events: vec![ExportEvent::Note(NoteData {
+                    pitch: PitchInfo::new(PitchCode::N1, 4),
+                    divisions: 4,
+                    fraction: Fraction { numerator: 1, denominator: 1 },
+                    grace_notes_before: Vec::new(),
+                    grace_notes_after: Vec::new(),
+                    lyrics: None,
+                    slur: None,
+                    articulations: Vec::new(),
+                    beam: None,
+                    tie: None,
+                    tuplet: None,
+                    breath_mark_after: false,
+                })],
+            }],
+        };
+
+        let line2 = ExportLine {
+            system_id: 2, // Different system = separate
+            part_id: "P2".to_string(),
+            staff_role: crate::models::core::StaffRole::GroupHeader,
+            key_signature: None,
+            time_signature: None,
+            clef: "treble".to_string(),
+            label: "".to_string(),
+            show_bracket: true,
+            lyrics: String::new(),
+            measures: vec![ExportMeasure {
+                divisions: 4,
+                events: vec![ExportEvent::Note(NoteData {
+                    pitch: PitchInfo::new(PitchCode::N1, 4),
+                    divisions: 4,
+                    fraction: Fraction { numerator: 1, denominator: 1 },
+                    grace_notes_before: Vec::new(),
+                    grace_notes_after: Vec::new(),
+                    lyrics: None,
+                    slur: None,
+                    articulations: Vec::new(),
+                    beam: None,
+                    tie: None,
+                    tuplet: None,
+                    breath_mark_after: false,
+                })],
+            }],
+        };
+
+        let lines = vec![line1, line2];
+
+        // Generate MusicXML
+        let xml = emit_musicxml(&lines, &EmitOptions::default()).expect("Failed to emit MusicXML");
+
+        eprintln!("\n=== TWO SEPARATE SYSTEMS XML ===\n{}\n=== END ===\n", xml);
+
+        // Should have 2 parts
+        assert!(xml.contains("<part id=\"P1\">"), "Should have P1");
+        assert!(xml.contains("<part id=\"P2\">"), "Should have P2");
+
+        // CRITICAL: Should NOT have part-group (different system_id)
+        assert!(!xml.contains("<part-group"), "Should NOT have part-group for separate systems");
+
+        // CRITICAL: According to MusicXML spec, <print new-system="yes"/> must appear
+        // in the SAME measure position across ALL parts for reliable rendering.
+        // So if P2 starts a new system, P1 must ALSO have <print new-system="yes"/> at the same measure.
+
+        // Check P1's first measure - should have <print new-system="yes"/>
+        let p1_part = xml.split("<part id=\"P1\">").nth(1).expect("P1 part not found");
+        let p1_first_measure = p1_part.split("</measure>").next().expect("P1 first measure not found");
+        assert!(p1_first_measure.contains("<print new-system=\"yes\"/>"),
+                "P1's first measure MUST have <print new-system=\"yes\"/> (MusicXML spec: system breaks must appear in same position across all parts)");
+
+        // Check P2's first measure - should have <print new-system="yes"/>
+        let p2_part = xml.split("<part id=\"P2\">").nth(1).expect("P2 part not found");
+        let p2_first_measure = p2_part.split("</measure>").next().expect("P2 first measure not found");
+        assert!(p2_first_measure.contains("<print new-system=\"yes\"/>"),
+                "P2's first measure MUST have <print new-system=\"yes\"/> to display on separate system");
     }
 
     #[test]
@@ -2166,4 +2279,369 @@ mod tests {
         }
     }
 
+}
+
+// ============================================================================
+// MEASURIZATION-BASED EMISSION (Polyphonic Alignment)
+// ============================================================================
+
+/// Emit MusicXML from MeasurizedParts (polyphonically aligned)
+/// All parts are guaranteed to have the same number of bars.
+#[allow(dead_code)]
+pub fn emit_from_measurized_parts(
+    parts: &[MeasurizedPart],
+    options: &EmitOptions,
+) -> Result<String, String> {
+    if parts.is_empty() {
+        return emit_empty_document(options);
+    }
+
+    let mut xml = String::new();
+
+    // XML header
+    xml.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+    xml.push_str("<!DOCTYPE score-partwise PUBLIC \"-//Recordare//DTD MusicXML 3.1 Partwise//EN\" \"http://www.musicxml.org/dtds/partwise.dtd\">\n");
+    xml.push_str("<score-partwise version=\"3.1\">\n");
+
+    // Identification (composer)
+    if let Some(composer) = options.composer {
+        if !composer.is_empty() {
+            xml.push_str("  <identification>\n");
+            xml.push_str("    <creator type=\"composer\">");
+            xml.push_str(&xml_escape(composer));
+            xml.push_str("</creator>\n");
+            xml.push_str("  </identification>\n");
+        }
+    }
+
+    // Title
+    if let Some(title) = options.title {
+        if !title.is_empty() {
+            xml.push_str("  <movement-title>");
+            xml.push_str(&xml_escape(title));
+            xml.push_str("</movement-title>\n");
+        }
+    }
+
+    // Emit <part-list>
+    xml.push_str("  <part-list>\n");
+
+    // Track groups for bracket emission
+    let mut current_group: Option<usize> = None;
+    let mut group_number = 1;
+
+    for part in parts {
+        // Check if we need to start a new group
+        if let Some(gn) = part.metadata.group_number {
+            if current_group != Some(gn) {
+                // Close previous group if any
+                if current_group.is_some() {
+                    xml.push_str(&format!("    <part-group type=\"stop\" number=\"{}\"/>\n", group_number));
+                    group_number += 1;
+                }
+                // Start new group
+                xml.push_str(&format!("    <part-group type=\"start\" number=\"{}\">\n", group_number));
+                xml.push_str("      <group-symbol>bracket</group-symbol>\n");
+                xml.push_str("      <group-barline>yes</group-barline>\n");
+                xml.push_str("    </part-group>\n");
+                current_group = Some(gn);
+            }
+        } else if current_group.is_some() {
+            // Close the group if this part is not in any group
+            xml.push_str(&format!("    <part-group type=\"stop\" number=\"{}\"/>\n", group_number));
+            group_number += 1;
+            current_group = None;
+        }
+
+        // Emit score-part
+        xml.push_str(&format!("    <score-part id=\"{}\">\n", part.part_id));
+        let part_name = part.metadata.name.as_ref()
+            .map(|n| xml_escape(n))
+            .unwrap_or_else(|| part.part_id.clone());
+        xml.push_str(&format!("      <part-name>{}</part-name>\n", part_name));
+        xml.push_str("    </score-part>\n");
+    }
+
+    // Close final group if any
+    if current_group.is_some() {
+        xml.push_str(&format!("    <part-group type=\"stop\" number=\"{}\"/>\n", group_number));
+    }
+
+    xml.push_str("  </part-list>\n");
+
+    // Emit each part
+    for part in parts {
+        let part_xml = emit_measurized_part(part)?;
+        xml.push_str(&part_xml);
+    }
+
+    xml.push_str("</score-partwise>\n");
+    Ok(xml)
+}
+
+/// Emit a single MeasurizedPart as MusicXML
+fn emit_measurized_part(part: &MeasurizedPart) -> Result<String, String> {
+    let mut builder = MusicXmlBuilder::new();
+
+    // Set key signature
+    if part.metadata.key_fifths != 0 {
+        // Convert fifths back to key string for the builder
+        let key_str = fifths_to_key_string(part.metadata.key_fifths);
+        builder.set_key_signature(Some(&key_str));
+    }
+
+    // Set clef
+    builder.set_clef(&part.metadata.clef_sign.to_lowercase());
+
+    let beat_count = part.metadata.time_beats;
+
+    for (bar_idx, bar) in part.bars.iter().enumerate() {
+        let is_first = bar_idx == 0;
+        let is_new_system = part.system_breaks.contains(&bar_idx);
+
+        // Start measure with global_divisions
+        builder.start_measure_with_divisions(
+            if is_first { Some(part.global_divisions) } else { None },
+            is_new_system,
+            beat_count,
+        );
+
+        // Emit events in the bar
+        emit_bar_events(&mut builder, bar, part.global_divisions)?;
+
+        builder.end_measure();
+    }
+
+    let measures_xml = builder.get_buffer();
+    Ok(format!("  <part id=\"{}\">\n{}  </part>\n", part.part_id, measures_xml))
+}
+
+/// Emit all events in a bar
+fn emit_bar_events(
+    builder: &mut MusicXmlBuilder,
+    bar: &Bar,
+    global_divisions: usize,
+) -> Result<(), String> {
+    for tick_event in &bar.events {
+        emit_tick_event(builder, tick_event, global_divisions)?;
+    }
+    Ok(())
+}
+
+/// Emit a single TickEvent as MusicXML
+fn emit_tick_event(
+    builder: &mut MusicXmlBuilder,
+    tick_event: &TickEvent,
+    global_divisions: usize,
+) -> Result<(), String> {
+    let duration_divs = tick_event.dur;
+    let musical_duration = duration_divs as f64 / global_divisions as f64;
+
+    match &tick_event.event {
+        ExportEvent::Rest { tuplet, .. } => {
+            if let Some(tuplet_info) = tuplet {
+                let time_modification = Some((tuplet_info.actual_notes, tuplet_info.normal_notes));
+                let tuplet_bracket = if tuplet_info.bracket_start {
+                    Some("start")
+                } else if tuplet_info.bracket_stop {
+                    Some("stop")
+                } else {
+                    None
+                };
+                builder.write_rest_with_tuplet(duration_divs, musical_duration, time_modification, tuplet_bracket);
+            } else {
+                builder.write_rest(duration_divs, musical_duration);
+            }
+        }
+
+        ExportEvent::Note(note) => {
+            // Determine tie type - structural ties from measurizer take precedence
+            let tie = if tick_event.tie_from && tick_event.tie_to {
+                Some("continue")
+            } else if tick_event.tie_from {
+                Some("stop")
+            } else if tick_event.tie_to {
+                Some("start")
+            } else if let Some(ref tie_data) = note.tie {
+                // Fallback to semantic tie from original note
+                match tie_data.type_ {
+                    TieType::Start => Some("start"),
+                    TieType::Continue => Some("continue"),
+                    TieType::Stop => Some("stop"),
+                }
+            } else {
+                None
+            };
+
+            let slur = if let Some(ref slur_data) = note.slur {
+                match slur_data.type_ {
+                    SlurType::Start => Some("start"),
+                    SlurType::Continue => None,
+                    SlurType::Stop => Some("stop"),
+                }
+            } else {
+                None
+            };
+
+            let time_modification = note.tuplet.as_ref().map(|t| (t.actual_notes, t.normal_notes));
+            let tuplet_bracket = note.tuplet.as_ref().and_then(|t| {
+                if t.bracket_start { Some("start") }
+                else if t.bracket_stop { Some("stop") }
+                else { None }
+            });
+
+            // Emit grace notes before
+            for grace in &note.grace_notes_before {
+                let placement = superscript_position_to_placement(&grace.position);
+                builder.write_grace_note(
+                    &grace.pitch.pitch_code,
+                    grace.pitch.octave,
+                    grace.slash,
+                    placement,
+                )?;
+            }
+
+            // Emit the main note with lyrics if present
+            let lyric_data = note.lyrics.as_ref().map(|l| (l.syllable.clone(), l.syllabic, l.number));
+            builder.write_note_with_beam_from_pitch_info_and_lyric(
+                &note.pitch,
+                duration_divs,
+                musical_duration,
+                None, // beam
+                time_modification,
+                tuplet_bracket,
+                tie,
+                slur,
+                None, // articulations
+                None, // ornament
+                lyric_data,
+            )?;
+        }
+
+        ExportEvent::Chord { pitches, slur, tuplet, .. } => {
+            let time_modification = tuplet.as_ref().map(|t| (t.actual_notes, t.normal_notes));
+            let tuplet_bracket = tuplet.as_ref().and_then(|t| {
+                if t.bracket_start { Some("start") }
+                else if t.bracket_stop { Some("stop") }
+                else { None }
+            });
+
+            // Determine tie from structural flags
+            let tie = if tick_event.tie_from && tick_event.tie_to {
+                Some("continue")
+            } else if tick_event.tie_from {
+                Some("stop")
+            } else if tick_event.tie_to {
+                Some("start")
+            } else {
+                None
+            };
+
+            let slur_type = if let Some(ref slur_data) = slur {
+                match slur_data.type_ {
+                    SlurType::Start => Some("start"),
+                    SlurType::Stop => Some("stop"),
+                    _ => None,
+                }
+            } else {
+                None
+            };
+
+            // Emit chord notes using existing method
+            // First note without chord flag
+            if !pitches.is_empty() {
+                builder.write_note_with_beam_from_pitch_info_and_lyric(
+                    &pitches[0],
+                    duration_divs,
+                    musical_duration,
+                    None, // beam
+                    time_modification,
+                    tuplet_bracket,
+                    tie,
+                    slur_type,
+                    None, // articulations
+                    None, // ornament
+                    None, // lyric
+                )?;
+
+                // Subsequent notes with chord flag
+                // Note: MusicXmlBuilder may need extension for proper chord support
+                // For now, emit additional notes as separate tied notes (approximation)
+                for pitch in pitches.iter().skip(1) {
+                    builder.write_note_with_beam_from_pitch_info_and_lyric(
+                        pitch,
+                        duration_divs,
+                        musical_duration,
+                        None, // beam
+                        time_modification,
+                        None, // tuplet only on first note
+                        tie,
+                        None, // slur only on first note
+                        None, // articulations
+                        None, // ornament
+                        None, // lyric
+                    )?;
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Convert fifths (circle of fifths position) back to key string
+fn fifths_to_key_string(fifths: i32) -> String {
+    match fifths {
+        0 => "C major".to_string(),
+        1 => "G major".to_string(),
+        2 => "D major".to_string(),
+        3 => "A major".to_string(),
+        4 => "E major".to_string(),
+        5 => "B major".to_string(),
+        6 => "F# major".to_string(),
+        7 => "C# major".to_string(),
+        -1 => "F major".to_string(),
+        -2 => "Bb major".to_string(),
+        -3 => "Eb major".to_string(),
+        -4 => "Ab major".to_string(),
+        -5 => "Db major".to_string(),
+        -6 => "Gb major".to_string(),
+        -7 => "Cb major".to_string(),
+        _ => "C major".to_string(),
+    }
+}
+
+/// Emit empty document for empty input
+fn emit_empty_document(options: &EmitOptions) -> Result<String, String> {
+    let mut builder = MusicXmlBuilder::new();
+    if let Some(title) = options.title {
+        if !title.is_empty() {
+            builder.set_title(Some(title.to_string()));
+        }
+    }
+    builder.start_measure_with_divisions(Some(1), false, 4);
+    builder.write_rest(4, 4.0);
+    builder.end_measure();
+    Ok(builder.finalize())
+}
+
+/// Emit MusicXML with polyphonic alignment using measurization
+/// This ensures all parts have the same number of measures.
+#[allow(dead_code)]
+pub fn emit_musicxml_polyphonic(
+    export_lines: &[ExportLine],
+    options: &EmitOptions,
+) -> Result<String, String> {
+    if export_lines.is_empty() {
+        return emit_empty_document(options);
+    }
+
+    // Convert to owned for measurization
+    let lines: Vec<ExportLine> = export_lines.to_vec();
+
+    // Measurize: convert beat-based to bar-aligned
+    let measurized_parts = measurize_export_lines(lines, 4, None);
+
+    // Emit from measurized parts
+    emit_from_measurized_parts(&measurized_parts, options)
 }

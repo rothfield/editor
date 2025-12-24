@@ -131,34 +131,9 @@ export interface WASMModule {
 
   /**
    * Set the global glyph width cache (for text measurement)
+   * @param cache - Object mapping glyph strings to their measured widths
    */
-  setGlyphWidthCache(cacheJson: string): void;
-
-  /**
-   * Get simple chars that JS can handle directly (no WASM call needed)
-   */
-  getSimpleChars(pitchSystem: number): number[];
-
-  // ========== Patch-based Text Editing ==========
-
-  /**
-   * Insert codepoints at selection, returns patch
-   */
-  insertCps(
-    codepoints: number[] | Uint32Array,
-    selStartCp: number,
-    selEndCp: number,
-    insertedCps: number[] | Uint32Array
-  ): Patch;
-
-  /**
-   * Delete selection, returns patch
-   */
-  deleteRange(
-    codepoints: number[] | Uint32Array,
-    selStartCp: number,
-    selEndCp: number
-  ): Patch;
+  setGlyphWidthCache(cache: Record<string, number>): void;
 
   // ========== Pitch System API ==========
 
@@ -259,18 +234,39 @@ export interface WASMModule {
   setLineStaffRole(lineIndex: number, role: string): void;
 
   /**
-   * Set system marker for multi-system grouping (LilyPond-style << and >>)
+   * Set system start marker with line count
    * @param lineIndex - Line to set marker on
-   * @param marker - "start" (<<), "end" (>>), or "" (clear)
+   * @param count - Number of lines in the system (1-99)
+   * @returns Array of truncations if overlaps detected
    */
-  setSystemMarker(lineIndex: number, marker: string): void;
+  setSystemStart(lineIndex: number, count: number): Array<{
+    line: number;
+    oldCount: number;
+    newCount: number;
+  }>;
 
   /**
-   * Get system marker for a line
+   * Get system start count for a line
    * @param lineIndex - Line to check
-   * @returns "start", "end", or null
+   * @returns Number of lines in system, or 0 if not a system start
    */
-  getSystemMarker(lineIndex: number): string | null;
+  getSystemStart(lineIndex: number): number;
+
+  /**
+   * Clear system start marker from a line
+   * @param lineIndex - Line to clear marker from
+   */
+  clearSystemStart(lineIndex: number): void;
+
+  /**
+   * Get line's role within a system (for visual grouping)
+   * @param lineIndex - Line to check
+   * @returns Role object with type and optional count
+   */
+  getLineSystemRole(lineIndex: number): {
+    type: 'start' | 'middle' | 'end' | 'standalone';
+    count?: number;
+  };
 
   // ========== Text Editing Operations (WASM-First) ==========
 
@@ -414,6 +410,16 @@ export interface WASMModule {
     endRow: number,
     endCol: number,
     cellsJson: Cell[]
+  ): DocumentOperationResult;
+
+  /**
+   * Paste text at a position (parses PUA or ASCII text into cells)
+   * Used for Ctrl+V to paste from system clipboard
+   */
+  pasteText(
+    row: number,
+    col: number,
+    text: string
   ): DocumentOperationResult;
 
   /**
@@ -651,6 +657,12 @@ export interface WASMModule {
   exportMusicXML(): string;
 
   /**
+   * Export document to MusicXML format with polyphonic alignment
+   * Ensures all parts have identical measure counts via measurization
+   */
+  exportMusicXMLPolyphonic(): string;
+
+  /**
    * Import MusicXML file and convert to Document
    * @param musicxmlString - MusicXML 3.1 document as string
    * @returns Document object
@@ -687,6 +699,83 @@ export interface WASMModule {
    * Export document as plain text using NotationFont PUA glyphs
    */
   exportAsText(): string;
+
+  /**
+   * Export document as ASCII markup (human-readable characters with XML tags)
+   */
+  exportAsASCIIMarkup(): string;
+
+  /**
+   * Export document as codepoint markup (PUA glyphs with XML tags)
+   */
+  exportAsCodepointMarkup(): string;
+
+  /**
+   * Export selection as ASCII markup (human-readable with octave context)
+   * Used by "Copy as ASCII Markup" menu item
+   */
+  exportSelectionAsAsciiMarkup(
+    startRow: number,
+    startCol: number,
+    endRow: number,
+    endCol: number
+  ): string;
+
+  /**
+   * Export selection as PUA markup (codepoint glyphs with octave context)
+   * Used by "Copy as PUA Markup" menu item
+   */
+  exportSelectionAsPuaMarkup(
+    startRow: number,
+    startCol: number,
+    endRow: number,
+    endCol: number
+  ): string;
+
+  /**
+   * Render notation markup to PUA codepoints
+   *
+   * Supports tags:
+   * - Document: <title>, <composer>, <system>, <lyrics>
+   * - Inline: <sup>, <slur>, <nl/>, octaves, accidentals
+   *
+   * @param pitchSystem - Pitch system (0=number, 1=western, 2=sargam, 3=doremi)
+   * @param markup - Notation markup string
+   * @returns Rendered document with PUA codepoint strings
+   */
+  renderNotation(pitchSystem: number, markup: string): any;
+
+  /**
+   * Import notation markup and convert to Document structure
+   *
+   * Parses markup and creates a full Document that can be loaded into the editor.
+   * Use loadDocument() to actually load the returned document.
+   *
+   * @param pitchSystem - Pitch system (0=number, 1=western, 2=sargam, 3=doremi)
+   * @param markup - Notation markup string with tags like <title>, <system>, <lyrics>, etc.
+   * @returns Full Document object
+   */
+  importNotationMarkup(pitchSystem: number, markup: string): Document;
+
+  /**
+   * Get documentation for all supported markup tags
+   *
+   * Returns a markdown-formatted string listing all supported tags organized by category.
+   * This is the single source of truth for markup language capabilities.
+   *
+   * @returns Markdown documentation string
+   */
+  getSupportedMarkupTags(): string;
+
+  /**
+   * Check if a markup tag is supported
+   *
+   * Returns true if the tag name (including aliases) is in the registry.
+   *
+   * @param tagName - Tag name to check (e.g., "title", "tit", "sup", "up")
+   * @returns true if tag is supported, false otherwise
+   */
+  isMarkupTagSupported(tagName: string): boolean;
 
   // ========== Superscript Glyph API ==========
 
@@ -780,9 +869,25 @@ export interface WASMModule {
   /**
    * Get textarea display data for all lines in the document
    *
+   * Phase 1 of lyric rendering: Returns text content, pitched_char_indices, and syllable_texts.
+   * JS should measure note positions and syllable widths, then call computeLyricLayout().
+   *
    * @returns TextareaDisplayList with all lines
    */
   getTextareaDisplayList(): TextareaDisplayList;
+
+  /**
+   * Compute lyric layout with collision avoidance (Phase 2)
+   *
+   * Takes measured note positions and syllable widths from JS,
+   * returns final x_px positions for each lyric.
+   *
+   * @param lineIndex - Line index
+   * @param notePositions - Array of x_px for each pitched note (from mirror div)
+   * @param syllableWidths - Array of pixel widths for each syllable
+   * @returns Array of OverlayItem with final x_px positions
+   */
+  computeLyricLayout(lineIndex: number, notePositions: number[], syllableWidths: number[]): OverlayItem[];
 
   /**
    * Set text content for a line (textarea mode input sync)
@@ -831,12 +936,16 @@ export interface TextareaLineDisplay {
   cursor_pos: number | null;
   /** Optional selection range */
   selection: TextRange | null;
-  /** Lyrics overlay items with character positions */
+  /** Lyrics overlay items (initially empty, computed by computeLyricLayout) */
   lyrics: OverlayItem[];
-  /** Tala marker overlay items with character positions */
+  /** Tala marker overlay items */
   talas: OverlayItem[];
   /** Optional line label */
   label: string | null;
+  /** Character indices of pitched notes (for JS to measure positions) */
+  pitched_char_indices: number[];
+  /** Syllable texts (for JS to measure widths) */
+  syllable_texts: string[];
 }
 
 /**
@@ -848,13 +957,15 @@ export interface TextRange {
 }
 
 /**
- * Overlay item positioned at a character index
+ * Overlay item with final pixel position
  */
 export interface OverlayItem {
-  /** Character index in the line text (0-based) */
-  char_index: number;
+  /** Final x position in pixels (relative to textarea content box) */
+  x_px: number;
   /** Content to display (syllable, tala marker, etc.) */
   content: string;
+  /** Anchor char index (for reference/debugging, not for positioning) */
+  anchor_char_index: number;
 }
 
 /**

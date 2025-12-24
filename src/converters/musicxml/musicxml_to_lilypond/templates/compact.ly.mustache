@@ -31,9 +31,6 @@
 {{/title}}
 
 \paper {
-  % Enable automatic page breaking
-  page-breaking = #ly:optimal-breaking
-
   % Minimal margins for clean output
   indent = 0\mm
   left-margin = 10\mm
@@ -41,17 +38,6 @@
   top-margin = 10\mm
   bottom-margin = 10\mm
 
-  % System spacing to encourage natural page breaks
-  % Increased spacing for better readability with many staves
-  system-system-spacing.basic-distance = #20
-  system-system-spacing.minimum-distance = #16
-  system-system-spacing.padding = #2
-  score-system-spacing.basic-distance = #20
-  score-system-spacing.minimum-distance = #16
-
-  % Force page breaks after a reasonable number of systems
-  % This ensures multi-page rendering for documents with many staves
-  systems-per-page = #4
   ragged-last-bottom = ##t
 }
 

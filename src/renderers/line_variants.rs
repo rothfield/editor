@@ -1,26 +1,26 @@
 //! Line variant glyph mapping
 //!
-//! Maps base glyphs to 15 line variant PUA codepoints based on underline/overline state.
+//! Maps base glyphs to 15 decoration variant PUA codepoints based on lower_loop/slur state.
 //! Used by both document model (compute_line_variants) and text export.
 //!
 //! Variant structure (15 total per character):
-//! - 0-2: underline-only (middle, left, right)
-//! - 3-5: overline-only (middle, left, right)
-//! - 6-14: combined (3 underline × 3 overline)
+//! - 0-2: lower_loop-only (middle, left, right) - beat grouping
+//! - 3-5: slur-only (middle, left, right) - phrasing
+//! - 6-14: combined (3 lower_loop × 3 slur)
 
-/// PUA bases for 15-variant line system
+/// PUA bases for 15-variant decoration system
 ///
-/// Architecture: Each notation system has 15 line variants per glyph:
-/// - 0-2: underline-only (middle, left, right)
-/// - 3-5: overline-only (middle, left, right)
-/// - 6-14: combined (3 underline × 3 overline)
+/// Architecture: Each notation system has 15 decoration variants per glyph:
+/// - 0-2: lower_loop-only (middle, left, right) - beat grouping
+/// - 3-5: slur-only (middle, left, right) - phrasing
+/// - 6-14: combined (3 lower_loop × 3 slur)
 ///
-/// Formula: line_cp = LINE_BASE + (note_offset × 15) + variant_idx
+/// Formula: decoration_cp = DECORATION_BASE + (note_offset × 15) + variant_idx
 pub mod pua {
     // ASCII printable (0x20-0x7E = 95 chars)
-    pub const ASCII_UNDERLINE_BASE: u32 = 0xE800;  // 95 chars × 3 variants = 285
-    pub const ASCII_OVERLINE_BASE: u32 = 0xE920;   // 95 chars × 3 variants = 285
-    pub const ASCII_COMBINED_BASE: u32 = 0xEA40;   // 95 chars × 9 variants = 855
+    pub const ASCII_LOWER_LOOP_BASE: u32 = 0xE800;  // 95 chars × 3 variants = 285
+    pub const ASCII_SLUR_BASE: u32 = 0xE920;        // 95 chars × 3 variants = 285
+    pub const ASCII_COMBINED_BASE: u32 = 0xEA40;    // 95 chars × 9 variants = 855
 
     // PUA note line variants (all accidentals pre-composed into system ranges)
     // Each system: note_count × 15 variants
@@ -65,12 +65,6 @@ pub enum SlurRole {
     Right,   // End of slur (right arc) - authoritative anchor
 }
 
-// Backward compatibility aliases (deprecated)
-#[deprecated(note = "Use LowerLoopRole instead")]
-pub type UnderlineState = LowerLoopRole;
-#[deprecated(note = "Use SlurRole instead")]
-pub type OverlineState = SlurRole;
-
 /// Check if a character is ASCII printable (line-capable)
 pub fn is_ascii_line_capable(c: char) -> bool {
     c >= ' ' && c <= '~'  // 0x20-0x7E
@@ -91,7 +85,7 @@ pub fn is_pua_note_line_capable(cp: u32) -> bool {
     )
 }
 
-/// Check if a character is line-capable (can have underline/overline variants)
+/// Check if a character is line-capable (can have lower_loop/slur variants)
 pub fn is_line_capable(c: char) -> bool {
     let cp = c as u32;
     is_ascii_line_capable(c) || is_pua_note_line_capable(cp)
@@ -101,11 +95,11 @@ pub fn is_line_capable(c: char) -> bool {
 ///
 /// Returns None if:
 /// - Character is not ASCII printable (0x20-0x7E)
-/// - Both underline and overline are None (plain character)
+/// - Both lower_loop and slur are None (plain character)
 pub fn get_line_variant_codepoint(
     base_char: char,
-    underline: LowerLoopRole,
-    overline: SlurRole,
+    lower_loop: LowerLoopRole,
+    slur: SlurRole,
 ) -> Option<char> {
     // Only ASCII printable characters
     if !is_ascii_line_capable(base_char) {
@@ -113,7 +107,7 @@ pub fn get_line_variant_codepoint(
     }
 
     // No line needed - return None to use plain character
-    if underline == LowerLoopRole::None && overline == SlurRole::None {
+    if lower_loop == LowerLoopRole::None && slur == SlurRole::None {
         return None;
     }
 
@@ -121,47 +115,47 @@ pub fn get_line_variant_codepoint(
     let char_index = (base_char as u32) - 0x20;
 
     // Calculate variant index and PUA codepoint based on line states
-    let variant_cp = match (underline, overline) {
-        // Underline-only (indices 0-2)
+    let variant_cp = match (lower_loop, slur) {
+        // Lower loop only (indices 0-2)
         (LowerLoopRole::Middle, SlurRole::None) => {
-            pua::ASCII_UNDERLINE_BASE + (char_index * 3) + 0
+            pua::ASCII_LOWER_LOOP_BASE + (char_index * 3) + 0
         }
         (LowerLoopRole::Left, SlurRole::None) => {
-            pua::ASCII_UNDERLINE_BASE + (char_index * 3) + 1
+            pua::ASCII_LOWER_LOOP_BASE + (char_index * 3) + 1
         }
         (LowerLoopRole::Right, SlurRole::None) => {
-            pua::ASCII_UNDERLINE_BASE + (char_index * 3) + 2
+            pua::ASCII_LOWER_LOOP_BASE + (char_index * 3) + 2
         }
 
-        // Overline-only (indices 0-2)
+        // Slur only (indices 0-2)
         (LowerLoopRole::None, SlurRole::Middle) => {
-            pua::ASCII_OVERLINE_BASE + (char_index * 3) + 0
+            pua::ASCII_SLUR_BASE + (char_index * 3) + 0
         }
         (LowerLoopRole::None, SlurRole::Left) => {
-            pua::ASCII_OVERLINE_BASE + (char_index * 3) + 1
+            pua::ASCII_SLUR_BASE + (char_index * 3) + 1
         }
         (LowerLoopRole::None, SlurRole::Right) => {
-            pua::ASCII_OVERLINE_BASE + (char_index * 3) + 2
+            pua::ASCII_SLUR_BASE + (char_index * 3) + 2
         }
 
-        // Combined (3 underline × 3 overline = 9 variants)
-        (u, o) => {
-            // Map underline state to index 0-2
-            let u_idx = match u {
+        // Combined (3 lower_loop × 3 slur = 9 variants)
+        (ll, s) => {
+            // Map lower_loop state to index 0-2
+            let ll_idx = match ll {
                 LowerLoopRole::Middle => 0,
                 LowerLoopRole::Left => 1,
                 LowerLoopRole::Right => 2,
                 LowerLoopRole::None => return None,
             };
-            // Map overline state to index 0-2
-            let o_idx = match o {
+            // Map slur state to index 0-2
+            let s_idx = match s {
                 SlurRole::Middle => 0,
                 SlurRole::Left => 1,
                 SlurRole::Right => 2,
                 SlurRole::None => return None,
             };
-            // Combined variant index: u_idx * 3 + o_idx
-            pua::ASCII_COMBINED_BASE + (char_index * 9) + (u_idx * 3 + o_idx)
+            // Combined variant index: ll_idx * 3 + s_idx
+            pua::ASCII_COMBINED_BASE + (char_index * 9) + (ll_idx * 3 + s_idx)
         }
     };
 
@@ -172,18 +166,18 @@ pub fn get_line_variant_codepoint(
 ///
 /// Returns None if:
 /// - Codepoint is not a PUA note (0xE000-0xE6A3)
-/// - Both underline and overline are None (plain note)
+/// - Both lower_loop and slur are None (plain note)
 ///
 /// Note: Accidentals are pre-composed into each system's range, so a sharp
 /// note like N1s (0xE019) is within the number system range and gets its
 /// line variants from NUMBER_LINE_BASE.
 pub fn get_pua_note_line_variant_codepoint(
     note_cp: u32,
-    underline: LowerLoopRole,
-    overline: SlurRole,
+    lower_loop: LowerLoopRole,
+    slur: SlurRole,
 ) -> Option<char> {
     // No line needed - return None to use plain note
-    if underline == LowerLoopRole::None && overline == SlurRole::None {
+    if lower_loop == LowerLoopRole::None && slur == SlurRole::None {
         return None;
     }
 
@@ -205,32 +199,32 @@ pub fn get_pua_note_line_variant_codepoint(
     let note_offset = note_cp - source_base;
 
     // Calculate variant index (0-14)
-    let variant_idx = match (underline, overline) {
-        // Underline-only (indices 0-2)
+    let variant_idx = match (lower_loop, slur) {
+        // Lower loop only (indices 0-2)
         (LowerLoopRole::Middle, SlurRole::None) => 0,
         (LowerLoopRole::Left, SlurRole::None) => 1,
         (LowerLoopRole::Right, SlurRole::None) => 2,
 
-        // Overline-only (indices 3-5)
+        // Slur only (indices 3-5)
         (LowerLoopRole::None, SlurRole::Middle) => 3,
         (LowerLoopRole::None, SlurRole::Left) => 4,
         (LowerLoopRole::None, SlurRole::Right) => 5,
 
         // Combined (indices 6-14)
-        (u, o) => {
-            let u_idx = match u {
+        (ll, s) => {
+            let ll_idx = match ll {
                 LowerLoopRole::Middle => 0,
                 LowerLoopRole::Left => 1,
                 LowerLoopRole::Right => 2,
                 LowerLoopRole::None => return None,
             };
-            let o_idx = match o {
+            let s_idx = match s {
                 SlurRole::Middle => 0,
                 SlurRole::Left => 1,
                 SlurRole::Right => 2,
                 SlurRole::None => return None,
             };
-            6 + (u_idx * 3 + o_idx)
+            6 + (ll_idx * 3 + s_idx)
         }
     };
 
@@ -241,14 +235,14 @@ pub fn get_pua_note_line_variant_codepoint(
 
 /// Encode an ASCII character with line variants into a PUA codepoint
 ///
-/// Supports any printable ASCII char (0x20-0x7E) with underline and/or overline.
+/// Supports any printable ASCII char (0x20-0x7E) with lower_loop and/or slur.
 /// Returns None if:
 /// - Character is not printable ASCII
-/// - Both underline and overline are None (use plain char)
+/// - Both lower_loop and slur are None (use plain char)
 pub fn encode_ascii_line_variant(
     ch: char,
-    underline: LowerLoopRole,
-    overline: SlurRole,
+    lower_loop: LowerLoopRole,
+    slur: SlurRole,
 ) -> Option<char> {
     // Only handle printable ASCII
     if !is_ascii_line_capable(ch) {
@@ -256,38 +250,38 @@ pub fn encode_ascii_line_variant(
     }
 
     // No line needed - return None to use plain char
-    if underline == LowerLoopRole::None && overline == SlurRole::None {
+    if lower_loop == LowerLoopRole::None && slur == SlurRole::None {
         return None;
     }
 
     let char_index = (ch as u32) - 0x20;
 
-    let cp = match (underline, overline) {
-        // Underline-only: 0xE800 + (char_index * 3) + variant
-        (LowerLoopRole::Middle, SlurRole::None) => pua::ASCII_UNDERLINE_BASE + (char_index * 3) + 0,
-        (LowerLoopRole::Left, SlurRole::None) => pua::ASCII_UNDERLINE_BASE + (char_index * 3) + 1,
-        (LowerLoopRole::Right, SlurRole::None) => pua::ASCII_UNDERLINE_BASE + (char_index * 3) + 2,
+    let cp = match (lower_loop, slur) {
+        // Lower loop only: 0xE800 + (char_index * 3) + variant
+        (LowerLoopRole::Middle, SlurRole::None) => pua::ASCII_LOWER_LOOP_BASE + (char_index * 3) + 0,
+        (LowerLoopRole::Left, SlurRole::None) => pua::ASCII_LOWER_LOOP_BASE + (char_index * 3) + 1,
+        (LowerLoopRole::Right, SlurRole::None) => pua::ASCII_LOWER_LOOP_BASE + (char_index * 3) + 2,
 
-        // Overline-only: 0xE920 + (char_index * 3) + variant
-        (LowerLoopRole::None, SlurRole::Middle) => pua::ASCII_OVERLINE_BASE + (char_index * 3) + 0,
-        (LowerLoopRole::None, SlurRole::Left) => pua::ASCII_OVERLINE_BASE + (char_index * 3) + 1,
-        (LowerLoopRole::None, SlurRole::Right) => pua::ASCII_OVERLINE_BASE + (char_index * 3) + 2,
+        // Slur only: 0xE920 + (char_index * 3) + variant
+        (LowerLoopRole::None, SlurRole::Middle) => pua::ASCII_SLUR_BASE + (char_index * 3) + 0,
+        (LowerLoopRole::None, SlurRole::Left) => pua::ASCII_SLUR_BASE + (char_index * 3) + 1,
+        (LowerLoopRole::None, SlurRole::Right) => pua::ASCII_SLUR_BASE + (char_index * 3) + 2,
 
-        // Combined: 0xEA40 + (char_index * 9) + (u_idx * 3 + o_idx)
-        (u, o) => {
-            let u_idx = match u {
+        // Combined: 0xEA40 + (char_index * 9) + (ll_idx * 3 + s_idx)
+        (ll, s) => {
+            let ll_idx = match ll {
                 LowerLoopRole::Middle => 0,
                 LowerLoopRole::Left => 1,
                 LowerLoopRole::Right => 2,
                 LowerLoopRole::None => return None,
             };
-            let o_idx = match o {
+            let s_idx = match s {
                 SlurRole::Middle => 0,
                 SlurRole::Left => 1,
                 SlurRole::Right => 2,
                 SlurRole::None => return None,
             };
-            pua::ASCII_COMBINED_BASE + (char_index * 9) + (u_idx * 3 + o_idx)
+            pua::ASCII_COMBINED_BASE + (char_index * 9) + (ll_idx * 3 + s_idx)
         }
     };
 
@@ -299,10 +293,10 @@ pub fn encode_ascii_line_variant(
 pub struct DecodedLineVariant {
     /// The base character or codepoint
     pub base_char: char,
-    /// Lower loop role (beat grouping underline)
-    pub underline: LowerLoopRole,
-    /// Slur role (slur overline)
-    pub overline: SlurRole,
+    /// Lower loop role (beat grouping)
+    pub lower_loop: LowerLoopRole,
+    /// Slur role (phrasing)
+    pub slur: SlurRole,
 }
 
 /// Decode a PUA line variant codepoint into its components
@@ -314,13 +308,13 @@ pub fn decode_line_variant(ch: char) -> Option<DecodedLineVariant> {
     let cp = ch as u32;
     const NUM_ASCII_CHARS: u32 = 95;
 
-    // Check ASCII underline-only range: 0xE800 + (char_index * 3) + variant
-    if cp >= pua::ASCII_UNDERLINE_BASE && cp < pua::ASCII_UNDERLINE_BASE + NUM_ASCII_CHARS * 3 {
-        let offset = cp - pua::ASCII_UNDERLINE_BASE;
+    // Check ASCII lower_loop-only range: 0xE800 + (char_index * 3) + variant
+    if cp >= pua::ASCII_LOWER_LOOP_BASE && cp < pua::ASCII_LOWER_LOOP_BASE + NUM_ASCII_CHARS * 3 {
+        let offset = cp - pua::ASCII_LOWER_LOOP_BASE;
         let char_index = offset / 3;
         let variant = offset % 3;
 
-        let underline = match variant {
+        let lower_loop = match variant {
             0 => LowerLoopRole::Middle,
             1 => LowerLoopRole::Left,
             2 => LowerLoopRole::Right,
@@ -328,18 +322,18 @@ pub fn decode_line_variant(ch: char) -> Option<DecodedLineVariant> {
         };
         return Some(DecodedLineVariant {
             base_char: char::from_u32(0x20 + char_index)?,
-            underline,
-            overline: SlurRole::None,
+            lower_loop,
+            slur: SlurRole::None,
         });
     }
 
-    // Check ASCII overline-only range: 0xE920 + (char_index * 3) + variant
-    if cp >= pua::ASCII_OVERLINE_BASE && cp < pua::ASCII_OVERLINE_BASE + NUM_ASCII_CHARS * 3 {
-        let offset = cp - pua::ASCII_OVERLINE_BASE;
+    // Check ASCII slur-only range: 0xE920 + (char_index * 3) + variant
+    if cp >= pua::ASCII_SLUR_BASE && cp < pua::ASCII_SLUR_BASE + NUM_ASCII_CHARS * 3 {
+        let offset = cp - pua::ASCII_SLUR_BASE;
         let char_index = offset / 3;
         let variant = offset % 3;
 
-        let overline = match variant {
+        let slur = match variant {
             0 => SlurRole::Middle,
             1 => SlurRole::Left,
             2 => SlurRole::Right,
@@ -347,26 +341,26 @@ pub fn decode_line_variant(ch: char) -> Option<DecodedLineVariant> {
         };
         return Some(DecodedLineVariant {
             base_char: char::from_u32(0x20 + char_index)?,
-            underline: LowerLoopRole::None,
-            overline,
+            lower_loop: LowerLoopRole::None,
+            slur,
         });
     }
 
-    // Check ASCII combined range: 0xEA40 + (char_index * 9) + (u_idx * 3 + o_idx)
+    // Check ASCII combined range: 0xEA40 + (char_index * 9) + (ll_idx * 3 + s_idx)
     if cp >= pua::ASCII_COMBINED_BASE && cp < pua::ASCII_COMBINED_BASE + NUM_ASCII_CHARS * 9 {
         let offset = cp - pua::ASCII_COMBINED_BASE;
         let char_index = offset / 9;
         let combined_variant = offset % 9;
-        let u_idx = combined_variant / 3;
-        let o_idx = combined_variant % 3;
+        let ll_idx = combined_variant / 3;
+        let s_idx = combined_variant % 3;
 
-        let underline = match u_idx {
+        let lower_loop = match ll_idx {
             0 => LowerLoopRole::Middle,
             1 => LowerLoopRole::Left,
             2 => LowerLoopRole::Right,
             _ => return None,
         };
-        let overline = match o_idx {
+        let slur = match s_idx {
             0 => SlurRole::Middle,
             1 => SlurRole::Left,
             2 => SlurRole::Right,
@@ -374,8 +368,8 @@ pub fn decode_line_variant(ch: char) -> Option<DecodedLineVariant> {
         };
         return Some(DecodedLineVariant {
             base_char: char::from_u32(0x20 + char_index)?,
-            underline,
-            overline,
+            lower_loop,
+            slur,
         });
     }
 

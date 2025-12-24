@@ -33,10 +33,10 @@ pub struct TextareaLineDisplay {
     /// Optional selection range
     pub selection: Option<TextRange>,
 
-    /// Lyrics overlay items with character positions
+    /// Lyrics overlay items with final pixel positions
     pub lyrics: Vec<OverlayItem>,
 
-    /// Tala marker overlay items with character positions
+    /// Tala marker overlay items with final pixel positions
     pub talas: Vec<OverlayItem>,
 
     /// Optional line label
@@ -44,6 +44,13 @@ pub struct TextareaLineDisplay {
 
     /// Decoded glyph information for inspector display
     pub decoded_glyphs: Vec<DecodedGlyph>,
+
+    /// Character indices of pitched notes (for JS to measure positions)
+    /// JS should measure x_px at each of these indices and pass back to compute_lyric_layout
+    pub pitched_char_indices: Vec<usize>,
+
+    /// Syllable texts (for JS to measure widths)
+    pub syllable_texts: Vec<String>,
 }
 
 /// A text range (for selection)
@@ -53,14 +60,19 @@ pub struct TextRange {
     pub end: usize,
 }
 
-/// An overlay item positioned at a character index
+/// An overlay item with final pixel position
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct OverlayItem {
-    /// Character index in the line text (0-based)
-    pub char_index: usize,
+    /// Final x position in pixels (relative to textarea content box, after padding)
+    /// This is the authoritative position - JS should render here without further computation
+    pub x_px: f32,
 
     /// Content to display (syllable, tala marker, etc.)
     pub content: String,
+
+    /// Anchor char index (for reference/debugging, not for positioning)
+    #[serde(default)]
+    pub anchor_char_index: usize,
 }
 
 /// Decoded glyph information for inspector display
@@ -139,6 +151,11 @@ pub fn get_textarea_line_data(line_index: usize) -> Result<JsValue, JsValue> {
 }
 
 /// Get textarea display data for all lines in the document
+///
+/// Phase 1 of lyric rendering:
+/// - Returns text content, pitched_char_indices, and syllable_texts for each line
+/// - JS measures note positions and syllable widths
+/// - Then JS calls computeLyricLayout() with measurements for each line
 #[wasm_bindgen(js_name = getTextareaDisplayList)]
 pub fn get_textarea_display_list() -> Result<JsValue, JsValue> {
     wasm_info!("getTextareaDisplayList called");
@@ -165,6 +182,97 @@ pub fn get_textarea_display_list() -> Result<JsValue, JsValue> {
 
     serde_wasm_bindgen::to_value(&display_list)
         .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
+}
+
+/// Compute lyric layout with collision avoidance
+///
+/// This is the second phase of lyric rendering:
+/// 1. First, JS calls getTextareaDisplayList() to get pitched_char_indices and syllable_texts
+/// 2. JS measures note_positions (x_px for each pitched note) and syllable_widths
+/// 3. JS calls this function with those measurements
+/// 4. WASM computes final x_px positions with collision avoidance
+/// 5. JS renders lyrics at those positions (no further computation needed)
+///
+/// Input structure per line:
+/// - note_positions: Array of x_px values for each pitched note (from mirror div)
+/// - syllable_widths: Array of pixel widths for each syllable
+/// - syllable_texts: Array of syllable strings
+///
+/// Returns array of OverlayItem with final x_px positions
+#[wasm_bindgen(js_name = computeLyricLayout)]
+pub fn compute_lyric_layout(
+    line_index: usize,
+    note_positions_js: JsValue,
+    syllable_widths_js: JsValue,
+) -> Result<JsValue, JsValue> {
+    // Parse inputs from JavaScript
+    let note_positions: Vec<f32> = serde_wasm_bindgen::from_value(note_positions_js)
+        .map_err(|e| JsValue::from_str(&format!("Failed to parse note_positions: {}", e)))?;
+    let syllable_widths: Vec<f32> = serde_wasm_bindgen::from_value(syllable_widths_js)
+        .map_err(|e| JsValue::from_str(&format!("Failed to parse syllable_widths: {}", e)))?;
+
+    // Get syllable texts from document
+    let doc_guard = lock_document()?;
+    let document = doc_guard.as_ref()
+        .ok_or_else(|| JsValue::from_str("No document loaded"))?;
+
+    if line_index >= document.lines.len() {
+        return Err(JsValue::from_str(&format!(
+            "Line index {} out of bounds (document has {} lines)",
+            line_index, document.lines.len()
+        )));
+    }
+
+    let line = &document.lines[line_index];
+    let syllable_texts: Vec<&str> = line.lyrics.split_whitespace().collect();
+
+    // Compute layout with collision avoidance
+    let overlays = compute_lyric_positions(&note_positions, &syllable_widths, &syllable_texts);
+
+    serde_wasm_bindgen::to_value(&overlays)
+        .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
+}
+
+/// Pure function: compute lyric positions with collision avoidance
+///
+/// This is deterministic and testable in Rust without browser.
+/// Input: measured note positions (left edge of note characters) and syllable widths
+/// Output: final x_px position for each syllable (left edge of lyric)
+///
+/// Lyrics are LEFT-ALIGNED at the note position, not centered.
+/// This gives predictable alignment where lyrics start at their corresponding notes.
+fn compute_lyric_positions(
+    note_positions: &[f32],
+    syllable_widths: &[f32],
+    syllable_texts: &[&str],
+) -> Vec<OverlayItem> {
+    const MIN_GAP: f32 = 4.0; // minimum pixels between lyrics
+
+    let mut overlays = Vec::new();
+    let mut min_next_x: f32 = 0.0;
+
+    for (i, syllable) in syllable_texts.iter().enumerate() {
+        // Get note position for this syllable (syllable i -> note i)
+        // note_x is the left edge of the note character
+        let note_x = note_positions.get(i).copied().unwrap_or(0.0);
+
+        // Get syllable width
+        let width = syllable_widths.get(i).copied().unwrap_or(20.0);
+
+        // Position lyric at note position, but ensure no collision with previous lyric
+        let actual_x = note_x.max(min_next_x);
+
+        overlays.push(OverlayItem {
+            x_px: actual_x,
+            content: syllable.to_string(),
+            anchor_char_index: i, // Use index as reference (note index, not char index)
+        });
+
+        // Update minimum x for next syllable
+        min_next_x = actual_x + width + MIN_GAP;
+    }
+
+    overlays
 }
 
 /// Set text content for a line (called when textarea input changes)
@@ -218,7 +326,7 @@ pub fn set_line_text(line_index: usize, text: &str, cursor_char_pos: Option<usiz
         &document.lines[line_index],
         line_index,
         pitch_system,
-        &document.state
+        &document.state,
     );
 
     wasm_info!("setLineText returning: text={:?} len={} cells={}",
@@ -498,6 +606,11 @@ fn parse_text_to_cells(text: &str, pitch_system: PitchSystem) -> Vec<crate::mode
     parse_text_to_cells_with_positions(text, pitch_system).0
 }
 
+/// Public wrapper for parse_text_to_cells (used by pasteText in core.rs)
+pub fn parse_text_to_cells_public(text: &str, pitch_system: PitchSystem) -> Vec<crate::models::core::Cell> {
+    parse_text_to_cells(text, pitch_system)
+}
+
 /// Convert character position to cell index using char_boundaries mapping.
 ///
 /// char_boundaries[i] = starting char position of cell i.
@@ -674,22 +787,36 @@ fn compute_textarea_line_display(
         cell_to_char_index.push(text.chars().count());
 
         // Render cell with lines
-        let char_str = render_cell_with_lines(cell, pitch_system, underline, overline);
+        let char_str = render_cell_with_lines(cell, underline, overline);
         text.push_str(&char_str);
 
         prev_beat = current_beat;
     }
 
-    // 6. Build lyric overlays (map syllables to character positions)
-    let lyrics = build_lyric_overlays(&line.lyrics, cells, &cell_to_char_index);
+    // 6. Extract pitched char indices (for JS to measure note positions)
+    let pitched_char_indices: Vec<usize> = cells.iter()
+        .enumerate()
+        .filter(|(_, cell)| cell.get_pitch_code().is_some())
+        .filter_map(|(cell_idx, _)| cell_to_char_index.get(cell_idx).copied())
+        .collect();
 
-    // 7. Build tala overlays (position markers at barlines)
+    // 7. Extract syllable texts (for JS to measure widths)
+    let syllable_texts: Vec<String> = line.lyrics
+        .split_whitespace()
+        .map(|s| s.to_string())
+        .collect();
+
+    // 8. Lyrics will be computed by compute_lyric_layout after JS measures positions
+    // For now, return empty - JS will call compute_lyric_layout with measurements
+    let lyrics = Vec::new();
+
+    // 9. Build tala overlays (position markers at barlines)
     let talas = build_tala_overlays(&line.tala, cells, &cell_to_char_index);
 
-    // 8. Compute cursor/selection if on this line
+    // 10. Compute cursor/selection if on this line
     let (cursor_pos, selection) = compute_cursor_for_line(line_index, doc_state, &cell_to_char_index);
 
-    // 9. Build decoded glyphs for inspector display
+    // 11. Build decoded glyphs for inspector display
     let decoded_glyphs = build_decoded_glyphs(&text, pitch_system);
 
     TextareaLineDisplay {
@@ -701,27 +828,9 @@ fn compute_textarea_line_display(
         talas,
         label: if line.label.is_empty() { None } else { Some(line.label.clone()) },
         decoded_glyphs,
+        pitched_char_indices,
+        syllable_texts,
     }
-}
-
-/// Convert pitch to display glyph with underline/overline/superscript transformations.
-///
-/// Uses the GlyphExt trait for composable, order-independent transformations.
-fn to_glyph(
-    pitch_system: PitchSystem,
-    pitch_code: crate::models::pitch_code::PitchCode,
-    octave: i8,
-    underline: LowerLoopRole,
-    overline: SlurRole,
-    is_superscript: bool,
-) -> char {
-    use crate::renderers::font_utils::GlyphExt;
-
-    glyph_for_pitch(pitch_code, octave, pitch_system)
-        .unwrap_or('?')
-        .underline(underline)
-        .overline(overline)
-        .superscript(is_superscript)
 }
 
 /// Get base ASCII character for a pitch code in a given system
@@ -741,13 +850,14 @@ fn pitch_to_base_char(pitch_code: crate::models::pitch_code::PitchCode, pitch_sy
     }
 }
 
-/// Render a cell to its display character with underline/overline variants
+/// Render a cell to its display character with lower_loop/slur variants
 fn render_cell_with_lines(
     cell: &crate::models::core::Cell,
-    pitch_system: PitchSystem,
-    underline: LowerLoopRole,
-    overline: SlurRole,
+    lower_loop: LowerLoopRole,
+    slur: SlurRole,
 ) -> String {
+    use crate::renderers::font_utils::GlyphExt;
+
     // For non-pitched elements, use simple characters
     match cell.get_kind() {
         ElementKind::SingleBarline => return "|".to_string(),
@@ -758,17 +868,29 @@ fn render_cell_with_lines(
         _ => {}
     }
 
-    // For pitched elements, use the unified to_glyph lookup (with superscript support)
-    if let Some(pitch_code) = cell.get_pitch_code() {
-        let glyph = to_glyph(pitch_system, pitch_code, cell.get_octave(), underline, overline, cell.is_superscript());
-        return glyph.to_string();
+    // For pitched elements, use the cell's stored character (don't regenerate based on pitch_system!)
+    // The cell already has the correct glyph for its pitch system - we just need to apply line variants
+    if cell.get_pitch_code().is_some() {
+        // Get the base glyph from the cell (already has correct pitch representation)
+        let base_glyph = cell.get_char_string()
+            .chars()
+            .next()
+            .unwrap_or('?');
+
+        // Apply lower_loop/slur/superscript transformations to the existing glyph
+        let transformed = base_glyph
+            .lower_loop(lower_loop)
+            .slur(slur)
+            .superscript(cell.is_superscript());
+
+        return transformed.to_string();
     }
 
     // For non-pitched elements (dash, breath mark, etc.)
     match cell.get_kind() {
         ElementKind::UnpitchedElement => {
-            if underline != LowerLoopRole::None || overline != SlurRole::None {
-                get_line_variant_codepoint('-', underline, overline)
+            if lower_loop != LowerLoopRole::None || slur != SlurRole::None {
+                get_line_variant_codepoint('-', lower_loop, slur)
                     .map(|c| c.to_string())
                     .unwrap_or_else(|| "-".to_string())
             } else {
@@ -795,51 +917,18 @@ fn build_decoded_glyphs(text: &str, pitch_system: PitchSystem) -> Vec<DecodedGly
                 base_char: decoded.base_char.to_string(),
                 pitch: decoded.pitch_code.map(|pc| format!("{:?}", pc)),
                 octave: decoded.octave,
-                underline: format!("{:?}", decoded.underline),
-                overline: format!("{:?}", decoded.overline),
+                underline: format!("{:?}", decoded.lower_loop),
+                overline: format!("{:?}", decoded.slur),
             }
         })
         .collect()
 }
 
-/// Build lyric overlay items from lyrics string
-fn build_lyric_overlays(
-    lyrics: &str,
-    cells: &[crate::models::core::Cell],
-    cell_to_char_index: &[usize],
-) -> Vec<OverlayItem> {
-    if lyrics.is_empty() {
-        return Vec::new();
-    }
-
-    // Split lyrics by whitespace
-    let syllables: Vec<&str> = lyrics.split_whitespace().collect();
-    let mut overlays = Vec::new();
-
-    // Find pitched cells (notes) to align lyrics to
-    let pitched_cell_indices: Vec<usize> = cells.iter()
-        .enumerate()
-        .filter(|(_, cell)| cell.get_pitch_code().is_some())
-        .map(|(idx, _)| idx)
-        .collect();
-
-    // Match syllables to pitched cells
-    for (i, syllable) in syllables.iter().enumerate() {
-        if i < pitched_cell_indices.len() {
-            let cell_idx = pitched_cell_indices[i];
-            if cell_idx < cell_to_char_index.len() {
-                overlays.push(OverlayItem {
-                    char_index: cell_to_char_index[cell_idx],
-                    content: syllable.to_string(),
-                });
-            }
-        }
-    }
-
-    overlays
-}
-
 /// Build tala overlay items from tala string
+///
+/// For tala markers, we return anchor_char_index and x_px = 0.
+/// JS will measure the actual x position from anchor_char_index using mirror div.
+/// (Talas don't need collision avoidance - they're sparse and attached to barlines)
 fn build_tala_overlays(
     tala: &str,
     cells: &[crate::models::core::Cell],
@@ -870,8 +959,9 @@ fn build_tala_overlays(
     // First marker at position 0 (start of line)
     if !markers.is_empty() && !cell_to_char_index.is_empty() {
         overlays.push(OverlayItem {
-            char_index: 0,
+            x_px: 0.0, // JS will compute from anchor_char_index
             content: markers[0].to_string(),
+            anchor_char_index: 0,
         });
     }
 
@@ -881,8 +971,9 @@ fn build_tala_overlays(
         if marker_idx < markers.len() && barline_idx + 1 < cell_to_char_index.len() {
             // Position marker at cell AFTER the barline
             overlays.push(OverlayItem {
-                char_index: cell_to_char_index[barline_idx + 1],
+                x_px: 0.0, // JS will compute from anchor_char_index
                 content: markers[marker_idx].to_string(),
+                anchor_char_index: cell_to_char_index[barline_idx + 1],
             });
         }
     }
@@ -967,13 +1058,15 @@ mod tests {
     #[test]
     fn test_overlay_item_serialization() {
         let item = OverlayItem {
-            char_index: 5,
+            x_px: 120.5,
             content: "sa".to_string(),
+            anchor_char_index: 5,
         };
 
         let json = serde_json::to_string(&item).unwrap();
-        assert!(json.contains("\"char_index\":5"));
+        assert!(json.contains("\"x_px\":120.5"));
         assert!(json.contains("\"content\":\"sa\""));
+        assert!(json.contains("\"anchor_char_index\":5"));
     }
 
     #[test]
@@ -1003,7 +1096,7 @@ mod tests {
         let cell = Cell::new(glyph.to_string(), ElementKind::PitchedElement);
         // pitch_code and pitch_system are derived from codepoint via getters
 
-        let rendered = render_cell_with_lines(&cell, PitchSystem::Number, LowerLoopRole::None, SlurRole::None);
+        let rendered = render_cell_with_lines(&cell, LowerLoopRole::None, SlurRole::None);
         println!("Rendered: {:?} len={}", rendered, rendered.len());
         assert!(!rendered.is_empty(), "render_cell_with_lines should not return empty string");
     }
@@ -1117,6 +1210,37 @@ mod tests {
         assert_eq!(cells2.len(), 2, "Should combine N1+# and then parse 2");
         assert_eq!(cells2[0].get_pitch_code(), Some(crate::models::pitch_code::PitchCode::N1s));
         assert_eq!(cells2[1].get_pitch_code(), Some(crate::models::pitch_code::PitchCode::N2));
+    }
+
+    #[test]
+    fn test_render_cell_preserves_original_pitch_system() {
+        // Regression test: render_cell_with_lines should use the cell's stored char,
+        // NOT regenerate it based on pitch_system parameter
+        use crate::models::core::Cell;
+
+        // Create a cell with Number system glyph for N1 (displays as "1")
+        let glyph_number = glyph_for_pitch(crate::models::pitch_code::PitchCode::N1, 0, PitchSystem::Number)
+            .expect("Should get Number glyph for N1");
+        let cell_number = Cell::new(glyph_number.to_string(), ElementKind::PitchedElement);
+
+        // Render with Number system - should show "1"
+        let rendered_number = render_cell_with_lines(&cell_number, LowerLoopRole::None, SlurRole::None);
+        assert_eq!(rendered_number.chars().next(), Some(glyph_number),
+            "Should preserve Number system glyph '1'");
+
+        // Create a cell with Sargam system glyph for N1 (displays as "S")
+        let glyph_sargam = glyph_for_pitch(crate::models::pitch_code::PitchCode::N1, 0, PitchSystem::Sargam)
+            .expect("Should get Sargam glyph for N1");
+        let cell_sargam = Cell::new(glyph_sargam.to_string(), ElementKind::PitchedElement);
+
+        // Render - should show "S"
+        let rendered_sargam = render_cell_with_lines(&cell_sargam, LowerLoopRole::None, SlurRole::None);
+        assert_eq!(rendered_sargam.chars().next(), Some(glyph_sargam),
+            "Should preserve Sargam system glyph 'S'");
+
+        // Key test: cells preserve their original glyphs regardless of context
+        assert_ne!(glyph_number, glyph_sargam,
+            "Number '1' and Sargam 'S' should be different glyphs");
     }
 
     #[test]

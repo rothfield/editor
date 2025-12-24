@@ -6,7 +6,7 @@ import typescript from '@rollup/plugin-typescript';
 const production = !process.env.ROLLUP_WATCH;
 
 export default {
-  input: 'src/js/main.js',
+  input: 'src/js/main.ts',
   output: {
     dir: 'dist',
     entryFileNames: 'main.js',

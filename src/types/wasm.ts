@@ -192,10 +192,11 @@ export interface FontConfig {
 }
 
 export interface PitchSystemConfig {
-  name: string;
-  base_chars: string[];
-  octave_variants: number[];
-  sharp_variants: number[];
+  system_name: string;
+  pua_base: number;
+  char_count: number;
+  variants_per_character: number;
+  total_glyphs: number;
 }
 
 /**

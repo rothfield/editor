@@ -10,7 +10,7 @@
 //!   Note 1: SlurType::Stop  ← BUG: should be Start
 //!   Note 2: None            ← BUG: should be Stop
 
-use editor_wasm::models::{Cell, ElementKind, Line, PitchCode, SlurIndicator, StaffRole};
+use editor_wasm::models::{Cell, ElementKind, Line, PitchCode, SlurIndicator};
 use editor_wasm::ir::{build_export_measures_from_line, ExportEvent, SlurType};
 use editor_wasm::renderers::font_utils::glyph_for_pitch;
 

@@ -39,6 +39,8 @@
 
 pub mod types;
 pub mod builder;
+pub mod clef;
+pub mod measurization;
 
 // Re-export commonly used types for convenience
 pub use types::{
@@ -75,4 +77,14 @@ pub use builder::{
     build_export_measures_from_line,
     group_cells_into_events,
     parse_lyrics_to_syllables,
+};
+
+// Re-export measurization types
+pub use measurization::{
+    TickEvent,
+    Bar,
+    MeasurizedPart,
+    PartMetadata,
+    GroupPosition,
+    measurize_export_lines,
 };

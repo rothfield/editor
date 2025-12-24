@@ -254,73 +254,73 @@ pua_allocation:
       range: "0xE500 - 0xE6A3"  # 14 × 30 = 420 glyphs
 
   # -------------------------------------------------------------------------
-  # SECTION 2: Line variants for beat grouping (15 variants per character)
-  # Used for underlines, overlines, and combinations
+  # SECTION 2: Glyph decorations for beat grouping and slurs (15 variants per character)
+  # Used for lower loops (beat grouping), slurs (phrasing), and combinations
   # Covers ALL ASCII printable characters (0x20-0x7E = 95 chars)
   # -------------------------------------------------------------------------
-  line_variants:
-    description: "Pre-composed glyphs with underline/overline for beat grouping and slurs"
-    line_capable_chars: 95  # All ASCII printable (0x20-0x7E)
-    variants_per_char: 15   # 3 underline + 3 overline + 9 combined
+  glyph_decorations:
+    description: "Pre-composed glyphs with lower loops (beat grouping) and slurs (phrasing)"
+    decoration_capable_chars: 95  # All ASCII printable (0x20-0x7E)
+    variants_per_char: 15   # 3 lower_loop + 3 slur + 9 combined
 
-    underline_only:
+    lower_loop_only:
       pua_base: 0xE800
       variants: 3   # middle, left, right
       range: "0xE800 - 0xE91C"  # 95 × 3 = 285 glyphs
 
-    overline_only:
+    slur_only:
       pua_base: 0xE920
       variants: 3   # middle, left, right
       range: "0xE920 - 0xEA3B"  # 95 × 3 = 285 glyphs
 
     combined:
       pua_base: 0xEA40
-      variants: 9   # 3 underline × 3 overline
+      variants: 9   # 3 lower_loop × 3 slur
       range: "0xEA40 - 0xEDB3"  # 95 × 9 = 855 glyphs
 
   # -------------------------------------------------------------------------
-  # SECTION 3: Unified 15-variant line system for PUA note glyphs
-  # Each note atom gets 15 line variants: 3 underline + 3 overline + 9 combined
-  # Replaces legacy separate underlined_notes, overlined_notes, combined_line_notes
+  # SECTION 3: Unified 15-variant decoration system for PUA note glyphs
+  # Each note atom gets 15 decoration variants: 3 lower_loop + 3 slur + 9 combined
+  # Replaces legacy separate lower_loop_notes, slur_notes, combined_decoration_notes
   # -------------------------------------------------------------------------
-  pua_note_line_variants:
-    description: "Unified 15-variant line system for all PUA note glyphs"
-    variants_per_note: 15  # 3 underline + 3 overline + 9 combined
+  pua_note_decorations:
+    description: "Unified 15-variant decoration system for all PUA note glyphs"
+    variants_per_note: 15  # 3 lower_loop + 3 slur + 9 combined
 
-    # Variant indices (matches ASCII line_variants):
-    #   0-2: underline-only (middle, left, right)
-    #   3-5: overline-only (middle, left, right)
-    #   6-14: combined (3 underline × 3 overline)
+    # Variant indices (matches ASCII glyph_decorations):
+    #   0-2: lower_loop-only (middle, left, right) - beat grouping
+    #   3-5: slur-only (middle, left, right) - phrasing
+    #   6-14: combined (3 lower_loop × 3 slur)
 
-    # Formula: line_cp = system_line_base + (note_offset × 15) + variant_index
+    # Formula: decoration_cp = system_decoration_base + (note_offset × 15) + variant_index
     # where note_offset = original_codepoint - system_source_base
 
-    number_lines:
+    number_decorations:
       pua_base: 0x1A000
       source_base: 0xE000
       note_count: 210   # 7 chars × 30 variants
-      line_variants: 15
+      decoration_variants: 15
       range: "0x1A000 - 0x1AC4D"  # 210 × 15 = 3,150 glyphs
 
-    western_lines:
+    western_decorations:
       pua_base: 0x1B000
       source_base: 0xE100
       note_count: 210   # 7 chars (CDEFGAB) × 30 variants
-      line_variants: 15
+      decoration_variants: 15
       range: "0x1B000 - 0x1BC4D"  # 210 × 15 = 3,150 glyphs
 
-    sargam_lines:
+    sargam_decorations:
       pua_base: 0x1D000
       source_base: 0xE300
       note_count: 360   # 12 chars × 30 variants
-      line_variants: 15
+      decoration_variants: 15
       range: "0x1D000 - 0x1E517"  # 360 × 15 = 5,400 glyphs
 
-    doremi_lines:
+    doremi_decorations:
       pua_base: 0x1F000
       source_base: 0xE500
       note_count: 210   # 7 chars (drmfslt) × 30 variants
-      line_variants: 15
+      decoration_variants: 15
       range: "0x1F000 - 0x1FC4D"  # 210 × 15 = 3,150 glyphs
 
     # Total: (210 + 210 + 360 + 210) × 15 = 990 × 15 = 14,850 glyphs
@@ -337,44 +337,44 @@ pua_allocation:
         loop_top_left: 0xE706
         loop_top_right: 0xE707
 
-    line_mark_variants:
-      description: "Width-class variants for combining underline/overline marks"
+    decoration_mark_variants:
+      description: "Width-class variants for combining lower_loop/slur marks"
       codepoints:
-        underline_narrow: 0xE7F0
-        underline_medium: 0xE7F1
-        underline_wide: 0xE7F2
-        overline_narrow: 0xE7F3
-        overline_medium: 0xE7F4
-        overline_wide: 0xE7F5
+        lower_loop_narrow: 0xE7F0
+        lower_loop_medium: 0xE7F1
+        lower_loop_wide: 0xE7F2
+        slur_narrow: 0xE7F3
+        slur_medium: 0xE7F4
+        slur_wide: 0xE7F5
 
     fullwidth_combining:
-      description: "Combining marks for fullwidth lines (bracket joining)"
+      description: "Combining marks for fullwidth decorations (bracket joining)"
       codepoints:
-        combining_fullwidth_overline: 0xE7E0
-        combining_fullwidth_underline: 0xE7E1
+        combining_fullwidth_slur: 0xE7E0
+        combining_fullwidth_lower_loop: 0xE7E1
 
   # -------------------------------------------------------------------------
-  # SECTION 5: Bracket variants (fullwidth lines for seamless joining)
-  # NOTE: Moved to 0xF700+ to avoid collision with accidental_line_variants
+  # SECTION 5: Bracket variants (fullwidth decorations for seamless joining)
+  # NOTE: Moved to 0xF700+ to avoid collision with accidental decoration variants
   # -------------------------------------------------------------------------
   bracket_variants:
-    underline_brackets:
+    lower_loop_brackets:
       pua_base: 0xF700
-      description: "Underline brackets for beat grouping (basic chars)"
+      description: "Lower loop brackets for beat grouping (basic chars)"
       max_glyphs: 512
 
-    overline_brackets:
+    slur_brackets:
       pua_base: 0xFA00
-      description: "Overline brackets for slur indication (basic chars)"
+      description: "Slur brackets for phrasing indication (basic chars)"
       max_glyphs: 512
 
-    # Bracket variants for underlined note atoms (0x16000+)
-    # These add left/right arc endpoints to already-underlined glyphs
-    underlined_note_brackets:
+    # Bracket variants for lower_loop note atoms (0x16000+)
+    # These add left/right arc endpoints to already-decorated glyphs
+    lower_loop_note_brackets:
       pua_base: 0x17000
-      description: "Bracket endpoints for underlined note variants"
+      description: "Bracket endpoints for lower_loop note variants"
       # Layout: left=0x17000, right=0x17600
-      max_glyphs: 2820  # 1410 underlined notes × 2 variants
+      max_glyphs: 2820  # 1410 lower_loop notes × 2 variants
 
   # -------------------------------------------------------------------------
   # SECTION 6: Superscript variants (50% scaled for grace notes)
@@ -383,21 +383,21 @@ pua_allocation:
   superscript_variants:
     description: "50% scaled superscript glyphs for grace note rendering"
     scale_factor: 0.5
-    line_variants: 16  # 0=none, 1-3=underline, 4-6=overline, 7-15=combined
+    decoration_variants: 16  # 0=none, 1-3=lower_loop, 4-6=slur, 7-15=combined
 
     geometry:
       y_offset: 400              # Position 25% below top of font (font units)
-      # Lines use same positions as regular underlines/overlines
+      # Decorations use same positions as regular lower loops/slurs
 
-    # Line variant encoding (16 variants per source glyph):
-    #   0: no lines
-    #   1-3: underline only (1=left, 2=middle, 3=right)
-    #   4-6: overline only (4=left, 5=middle, 6=right)
-    #   7-15: combined (underline_style-1)*3 + (overline_style-1) + 7
-    #         7=UL+OL, 8=UL+OM, 9=UL+OR, 10=UM+OL, 11=UM+OM, 12=UM+OR, 13=UR+OL, 14=UR+OM, 15=UR+OR
+    # Decoration variant encoding (16 variants per source glyph):
+    #   0: no decorations
+    #   1-3: lower_loop only (1=left, 2=middle, 3=right) - beat grouping
+    #   4-6: slur only (4=left, 5=middle, 6=right) - phrasing
+    #   7-15: combined (lower_loop_style-1)*3 + (slur_style-1) + 7
+    #         7=LL+SL, 8=LL+SM, 9=LL+SR, 10=LM+SL, 11=LM+SM, 12=LM+SR, 13=LR+SL, 14=LR+SM, 15=LR+SR
 
     # Formula (MUST match generate.py and build.rs):
-    # superscript_cp = system_base + (source_offset × 16) + line_variant
+    # superscript_cp = system_base + (source_offset × 16) + decoration_variant
     # where source_offset = source_codepoint - source_system_base
 
     ascii_superscripts:
@@ -580,78 +580,78 @@ summary:
     - Runtime lookup: JavaScript uses PUA ranges; WASM uses get_accidental_glyph_codepoint()
 
 # =============================================================================
-# LINE VARIANTS: Underline and Overline Pre-Composed Glyphs
+# GLYPH DECORATIONS: Lower Loop and Slur Pre-Composed Glyphs
 # =============================================================================
-# Every glyph gets 15 line variants (uniform system):
-# - 3 underline-only (Middle, Left, Right)
-# - 3 overline-only (Middle, Left, Right)
-# - 9 combined (3 underline × 3 overline)
+# Every glyph gets 15 decoration variants (uniform system):
+# - 3 lower_loop-only (Middle, Left, Right) - for beat grouping
+# - 3 slur-only (Middle, Left, Right) - for phrasing
+# - 9 combined (3 lower_loop × 3 slur)
 #
-# Formula: line_variant_codepoint = line_base + (glyph_offset × 15) + variant_index
+# Formula: decoration_codepoint = decoration_base + (glyph_offset × 15) + variant_index
 
-line_variant_config:
-  variants_per_glyph: 15
+decoration_config:
+  decorations_per_glyph: 15
   layout:
-    # Underline only (indices 0-2)
+    # Lower loop only (indices 0-2) - beat grouping
     - index: 0
-      underline: middle
-      overline: none
+      lower_loop: middle
+      slur: none
     - index: 1
-      underline: left
-      overline: none
+      lower_loop: left
+      slur: none
     - index: 2
-      underline: right
-      overline: none
-    # Overline only (indices 3-5)
+      lower_loop: right
+      slur: none
+    # Slur only (indices 3-5) - phrasing
     - index: 3
-      underline: none
-      overline: middle
+      lower_loop: none
+      slur: middle
     - index: 4
-      underline: none
-      overline: left
+      lower_loop: none
+      slur: left
     - index: 5
-      underline: none
-      overline: right
-    # Combined (indices 6-14): 3 underline × 3 overline
+      lower_loop: none
+      slur: right
+    # Combined (indices 6-14): 3 lower_loop × 3 slur
     - index: 6
-      underline: middle
-      overline: middle
+      lower_loop: middle
+      slur: middle
     - index: 7
-      underline: middle
-      overline: left
+      lower_loop: middle
+      slur: left
     - index: 8
-      underline: middle
-      overline: right
+      lower_loop: middle
+      slur: right
     - index: 9
-      underline: left
-      overline: middle
+      lower_loop: left
+      slur: middle
     - index: 10
-      underline: left
-      overline: left
+      lower_loop: left
+      slur: left
     - index: 11
-      underline: left
-      overline: right
+      lower_loop: left
+      slur: right
     - index: 12
-      underline: right
-      overline: middle
+      lower_loop: right
+      slur: middle
     - index: 13
-      underline: right
-      overline: left
+      lower_loop: right
+      slur: left
     - index: 14
-      underline: right
-      overline: right
+      lower_loop: right
+      slur: right
 
-# Per-system line variant bases for pitched notes
-# Formula: line_codepoint = line_base + (note_offset × 15) + variant_index
-pitched_note_line_bases:
+# Per-system decoration bases for pitched notes
+# Formula: decoration_codepoint = decoration_base + (note_offset × 15) + variant_index
+pitched_note_decoration_bases:
   number:
-    line_base: 0x1A000    # 210 glyphs (1234567 × 30) × 15 variants = 3,150
+    decoration_base: 0x1A000    # 210 glyphs (1234567 × 30) × 15 variants = 3,150
   western:
-    line_base: 0x1B000    # 210 glyphs (CDEFGAB × 30) × 15 variants = 3,150
+    decoration_base: 0x1B000    # 210 glyphs (CDEFGAB × 30) × 15 variants = 3,150
   sargam:
-    line_base: 0x1D000    # 360 glyphs (SrRgGmMPdDnN × 30) × 15 variants = 5,400
+    decoration_base: 0x1D000    # 360 glyphs (SrRgGmMPdDnN × 30) × 15 variants = 5,400
   doremi:
-    line_base: 0x1F000    # 210 glyphs (drmfslt × 30) × 15 variants = 3,150
+    decoration_base: 0x1F000    # 210 glyphs (drmfslt × 30) × 15 variants = 3,150
 
 # =============================================================================
 # NOTATION ELEMENTS: Non-pitched symbols that appear in notation

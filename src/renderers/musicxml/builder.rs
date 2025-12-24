@@ -53,6 +53,7 @@ pub struct MusicXmlBuilder {
     attributes_written: bool,
     title: Option<String>,
     key_signature: Option<i8>, // Circle of fifths position (-7 to +7)
+    clef: String, // Clef type: "treble" or "bass"
     parts: Vec<Part>, // Completed parts
     current_part_id: usize, // ID counter for parts (P1, P2, P3, ...)
     current_part_name: String, // Name of the current part being built
@@ -70,6 +71,7 @@ impl MusicXmlBuilder {
             attributes_written: false,
             title: None,
             key_signature: None,
+            clef: "treble".to_string(), // Default to treble clef
             parts: Vec::new(),
             current_part_id: 0,
             current_part_name: String::new(),
@@ -128,6 +130,11 @@ impl MusicXmlBuilder {
     /// Set the key signature from a key string (e.g., "C", "G", "D major", "F minor")
     pub fn set_key_signature(&mut self, key_str: Option<&str>) {
         self.key_signature = key_str.and_then(parse_key_to_fifths);
+    }
+
+    /// Set the clef type ("treble" or "bass")
+    pub fn set_clef(&mut self, clef: &str) {
+        self.clef = clef.to_string();
     }
 
     /// Start a new measure with optional divisions value
@@ -675,7 +682,12 @@ impl MusicXmlBuilder {
         // Write hidden time signature for OSMD compatibility
         self.write_time_signature(beat_count);
 
-        self.buffer.push_str("    <clef><sign>G</sign><line>2</line></clef>\n");
+        // Write clef based on clef type
+        let (sign, line) = match self.clef.as_str() {
+            "bass" => ("F", 4),
+            "treble" | _ => ("G", 2),
+        };
+        self.buffer.push_str(&format!("    <clef><sign>{}</sign><line>{}</line></clef>\n", sign, line));
         self.buffer.push_str("  </attributes>\n");
     }
 

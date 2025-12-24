@@ -1,0 +1,12 @@
+<title>Test Song</title>
+<composer>Test Composer</composer>
+
+<system>
+| 1 2 3 4 | <lyrics>do re mi fa</lyrics>
+| 5 6 7 1 | <lyrics>sol la ti do</lyrics>
+</system>
+
+<system>
+<sup>12</sup>3 <slur>4 5 6</slur> 7 <lyrics>Grace notes and slurs</lyrics>
+1 <up/>1 <#/>2 <b/>3 <lyrics>Oct-aves and sharps flats</lyrics>
+</system>

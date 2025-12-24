@@ -32,15 +32,18 @@ pub mod core;
 pub mod layered;  // Layered architecture (text-first design)
 pub mod layered_tala;  // Modern tala API
 pub mod textarea;  // Textarea-based rendering API
+pub mod render;  // Notation markup rendering API
+// pub mod patch;  // TODO: Patch-based text editing API (incomplete)
 
 // Re-export all public functions from modules to maintain the current public API
 pub use core::*;
 pub use cells::{insert_character, parse_text, delete_character};
 pub use position::{get_max_char_position, char_pos_to_cell_index, cell_index_to_char_pos, char_pos_to_pixel};
-pub use export::{export_musicxml, generate_ir_json, export_midi, convert_musicxml_to_lilypond};
+pub use export::{export_musicxml, export_musicxml_polyphonic, generate_ir_json, export_midi, convert_musicxml_to_lilypond};
 pub use layered::{
     select_whole_beat, shift_octave,
     apply_slur_layered, remove_slur_layered
 };  // Layered architecture API
 pub use layered_tala::set_line_tala_modern;  // Modern tala API
 pub use textarea::{get_textarea_line_data, get_textarea_display_list};  // Textarea rendering API
+pub use render::{render_notation, import_notation_markup};  // Notation markup rendering API

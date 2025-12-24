@@ -94,13 +94,14 @@ See [BUILD_OPTIMIZATION_GUIDE.md](BUILD_OPTIMIZATION_GUIDE.md) for detailed buil
 ```
 editor/
 ├── src/
-│   ├── rs/                      # Rust WebAssembly module
-│   │   ├── api.rs              # WASM API bindings
-│   │   ├── models/             # Core data structures
-│   │   ├── parse/              # Music notation parsing
-│   │   └── converters/         # Export converters (MusicXML, MIDI, LilyPond)
+│   ├── api/                     # WASM API bindings
+│   ├── models/                  # Core data structures
+│   ├── parse/                   # Music notation parsing
+│   ├── converters/              # Export converters (MusicXML, MIDI, LilyPond)
+│   ├── text/                    # Text buffer and cursor logic
+│   ├── lib.rs                   # Rust entry point
 │   └── js/                      # JavaScript/TypeScript frontend
-│       ├── editor.js           # Main editor UI
+│       ├── editor.ts           # Main editor UI
 │       ├── ui.js               # UI components
 │       ├── dev-server.js       # Dev server
 │       └── main.js             # Entry point

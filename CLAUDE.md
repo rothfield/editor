@@ -31,6 +31,19 @@ This is a **side project**. CORRECTNESS is more important than speed of developm
 ## Commands
 `cargo test` | `cargo clippy` | `npm run build-wasm` | `npx playwright test`
 
+## Markup and Web UI Parallel Design
+
+The markup language and web UI must work in **parallel** - any feature available in one must be available in the other.
+
+**System Markers:**
+- **Web UI**: Click gutter indicators to cycle through system counts (`·` → `«1` → `«2` → ... → `«8` → `·`)
+  - Visual grouping: `«N` (start), `├` (middle), `└` (end), `·` (standalone)
+  - Always shows all options 1-8, regardless of document size
+- **Markup**: Use `<system N/>` inline tags or `<system>...</system>` block tags to group lines
+- **Round-trip guarantee**: Import → Edit → Export preserves user intent
+
+This ensures users can work in their preferred mode (visual or text) without feature gaps.
+
 ## Testing Conventions
 
 **RGR (Red-Green-Refactor):** When user says "RGR", make a failing test and a PLAN. Don't implement.
@@ -61,10 +74,10 @@ See **[@RHYTHM.md](RHYTHM.md)** for spatial rhythm, beat grouping, tuplets.
 **PUA Allocation:**
 ```
 0xE000-0xE6FF: Note variants (pitch + octave + accidental)
-0xE800-0xE8FF: Underline variants (beat grouping)
-0xE900-0xE9FF: Overline variants (slurs)
-0xEA00-0xEBFF: Combined underline + overline
-0xF8000+:      Superscript variants (grace notes, 16 line variants each)
+0xE800-0xE8FF: Lower loop variants (beat grouping)
+0xE900-0xE9FF: Slur variants (phrasing curves)
+0xEA00-0xEBFF: Combined lower loop + slur
+0xF8000+:      Superscript variants (grace notes, 16 decoration variants each)
 ```
 
 **Note:** Even though 50,000+ codepoints seems excessive, they form the **input alphabet** for parsing. Pitched codepoints encode pitch + octave + accidental + line variant. Non-pitch elements (barlines, whitespace, breath marks, dashes) are also part of the alphabet with semantic significance. See `src/parse/GRAMMAR.md` for the formal grammar.
@@ -75,11 +88,11 @@ See **[@RHYTHM.md](RHYTHM.md)** for spatial rhythm, beat grouping, tuplets.
 
 **Related:** `tools/fontgen/generate.py`, `src/renderers/font_utils.rs`, `FONT_ARCHITECTURE_NOTO.md`
 
-### Underlined Variants for Beat Grouping
+### Lower Loop Variants for Beat Grouping
 
-Notes subdividing a beat show continuous underlines via GSUB ligatures:
-- `char + U+0332` → underlined variant
-- Adjacent underlines connect seamlessly
+Notes subdividing a beat show continuous lower loops via GSUB ligatures:
+- `char + U+0332` → lower loop variant
+- Adjacent lower loops connect seamlessly
 
 ### Layered Text-First Design
 
@@ -92,7 +105,7 @@ Layer 3: Export (IR → MusicXML → LilyPond/OSMD)
 
 **Key:** `(PitchCode, octave) → char` via direct lookup. Cells are views, not storage.
 
-**Cell.char:** Holds the display glyph directly, including line variants (underline/overline) as PUA codepoints. No separate `combined_char` field - variants are encoded in `cell.char` itself.
+**Cell.char:** Holds the display glyph directly, including glyph decorations (lower_loop/slur) as PUA codepoints. No separate `combined_char` field - decorations are encoded in `cell.char` itself.
 
 **Design Principles:**
 1. All stateful ops go through Layer 0 (text buffer)
@@ -217,17 +230,17 @@ See `TONIC_KEY_SIGNATURE_RESEARCH.md` for design rationale.
 
 **Annotation tracking:** `on_insert()`, `on_delete()`, `on_replace()` shift positions automatically.
 
-## Line Variants (src/renderers/line_variants.rs)
+## Glyph Decorations (src/renderers/line_variants.rs)
 
-Underline (beat grouping): None, Middle, Left, Right, Both
-Overline (slurs): None, Middle, Left, Right
+**Lower loop** (beat grouping curves below notes): `LowerLoopRole` = None, Middle, Left, Right, Both
+**Slur** (phrasing curves above notes): `SlurRole` = None, Middle, Left, Right
 Combined: 5 × 4 = 20 variants (19 excluding None/None)
 
 **Superscripts:** `SuperscriptLineVariant` enum (0-15) for superscript decorations
 ```rust
 None = 0,
-UnderlineLeft = 1, UnderlineMiddle = 2, UnderlineRight = 3,
-OverlineLeft = 4, OverlineMiddle = 5, OverlineRight = 6,
+LowerLoopLeft = 1, LowerLoopMiddle = 2, LowerLoopRight = 3,
+SlurLeft = 4, SlurMiddle = 5, SlurRight = 6,
 // Combined variants 7-15...
 ```
 

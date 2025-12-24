@@ -25,13 +25,10 @@ pub use layout_engine::{
 };
 // Lookup table API (lookup-based, handles accidentals and octaves in one call)
 pub use font_utils::{glyph_for_pitch, pitch_from_glyph};
-// Line variant API (new names)
+// Line variant API
 pub use line_variants::{
     get_line_variant_codepoint,
     LowerLoopRole,
     SlurRole,
     is_line_capable,
 };
-// Backward compatibility aliases
-#[allow(deprecated)]
-pub use line_variants::{UnderlineState, OverlineState};

@@ -363,7 +363,7 @@ mod tests {
             system_id: 0,
             part_id: String::new(),
             staff_role: StaffRole::default(),
-            system_marker: None,
+            system_start_count: None,
             beats: vec![],
             slurs: vec![],
         };

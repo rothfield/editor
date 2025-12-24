@@ -209,7 +209,7 @@ use crate::renderers::line_variants::{
 /// let ch = glyph_for_pitch(PitchCode::N1, 0, PitchSystem::Number)
 ///     .unwrap()
 ///     .octave(1)
-///     .underline(LowerLoopRole::Left)
+///     .lower_loop(LowerLoopRole::Left)
 ///     .superscript(true);
 /// ```
 ///
@@ -223,18 +223,18 @@ pub trait GlyphExt {
     /// No-op on non-pitched glyphs.
     fn accidental(self, acc: crate::models::pitch_code::AccidentalType) -> Self;
 
-    /// Set underline state for beat grouping.
-    fn underline(self, state: LowerLoopRole) -> Self;
+    /// Set lower loop state for beat grouping.
+    fn lower_loop(self, state: LowerLoopRole) -> Self;
 
-    /// Set overline state for slurs.
-    fn overline(self, state: SlurRole) -> Self;
+    /// Set slur state for phrasing.
+    fn slur(self, state: SlurRole) -> Self;
 
     /// Convert to/from superscript (grace note). Pass `true` to make superscript, `false` to make normal.
     fn superscript(self, enable: bool) -> Self;
 
     // Checked variants for debugging/tests
-    /// Like `underline()` but returns `None` if transformation not applicable.
-    fn try_underline(self, state: LowerLoopRole) -> Option<Self> where Self: Sized;
+    /// Like `lower_loop()` but returns `None` if transformation not applicable.
+    fn try_lower_loop(self, state: LowerLoopRole) -> Option<Self> where Self: Sized;
 
     /// Like `superscript()` but returns `None` if transformation not applicable.
     fn try_superscript(self, enable: bool) -> Option<Self> where Self: Sized;
@@ -279,7 +279,7 @@ impl GlyphParts {
         // Check if ASCII line variant PUA (0xE800-0xEBFF)
         // ASCII chars stay as ASCII - they have their own line variant encoding
         if let Some(decoded) = decode_line_variant(ch) {
-            let line_variant = line_states_to_variant(decoded.underline, decoded.overline);
+            let line_variant = line_states_to_variant(decoded.lower_loop, decoded.slur);
             let base_cp = decoded.base_char as u32;
             return GlyphParts { base_cp, line_variant, is_super: false };
         }
@@ -389,17 +389,17 @@ impl GlyphParts {
             if super_cp != 0 { super_cp } else { self.base_cp }
         } else if self.line_variant != 0 {
             // Encode with line variant
-            let (underline, overline) = variant_to_line_states(self.line_variant);
+            let (lower_loop, slur) = variant_to_line_states(self.line_variant);
 
             // ASCII chars (0x20-0x7E) stay as ASCII line variants
             if self.base_cp >= 0x20 && self.base_cp <= 0x7E {
                 char::from_u32(self.base_cp)
-                    .and_then(|ch| encode_ascii_line_variant(ch, underline, overline))
+                    .and_then(|ch| encode_ascii_line_variant(ch, lower_loop, slur))
                     .map(|c| c as u32)
                     .unwrap_or(self.base_cp)
             } else {
                 // Pitch PUA codepoints use NOTE line variants
-                get_pua_note_line_variant_codepoint(self.base_cp, underline, overline)
+                get_pua_note_line_variant_codepoint(self.base_cp, lower_loop, slur)
                     .map(|c| c as u32)
                     .unwrap_or(self.base_cp)
             }
@@ -518,16 +518,16 @@ impl GlyphExt for char {
         new_parts.encode()
     }
 
-    fn underline(self, state: LowerLoopRole) -> Self {
+    fn lower_loop(self, state: LowerLoopRole) -> Self {
         let mut parts = GlyphParts::decode(self);
-        let new_variant = set_underline_in_variant(parts.line_variant, state);
+        let new_variant = set_lower_loop_in_variant(parts.line_variant, state);
         parts.line_variant = new_variant;
         parts.encode()
     }
 
-    fn overline(self, state: SlurRole) -> Self {
+    fn slur(self, state: SlurRole) -> Self {
         let mut parts = GlyphParts::decode(self);
-        let new_variant = set_overline_in_variant(parts.line_variant, state);
+        let new_variant = set_slur_in_variant(parts.line_variant, state);
         parts.line_variant = new_variant;
         parts.encode()
     }
@@ -538,9 +538,9 @@ impl GlyphExt for char {
         parts.encode()
     }
 
-    fn try_underline(self, state: LowerLoopRole) -> Option<Self> {
+    fn try_lower_loop(self, state: LowerLoopRole) -> Option<Self> {
         let parts = GlyphParts::decode(self);
-        let new_variant = set_underline_in_variant(parts.line_variant, state);
+        let new_variant = set_lower_loop_in_variant(parts.line_variant, state);
 
         // Check if the transformation actually works
         let new_parts = GlyphParts {
@@ -602,16 +602,16 @@ fn glyph_for_pitch_from_cp(pitch: crate::models::pitch_code::PitchCode, octave: 
     glyph_for_pitch(pitch, octave, system)
 }
 
-/// Helper: set underline in line variant byte
-fn set_underline_in_variant(variant: u8, underline: LowerLoopRole) -> u8 {
-    let (_, overline) = variant_to_line_states(variant);
-    line_states_to_variant(underline, overline)
+/// Helper: set lower_loop in line variant byte
+fn set_lower_loop_in_variant(variant: u8, lower_loop: LowerLoopRole) -> u8 {
+    let (_, slur) = variant_to_line_states(variant);
+    line_states_to_variant(lower_loop, slur)
 }
 
-/// Helper: set overline in line variant byte
-fn set_overline_in_variant(variant: u8, overline: SlurRole) -> u8 {
-    let (underline, _) = variant_to_line_states(variant);
-    line_states_to_variant(underline, overline)
+/// Helper: set slur in line variant byte
+fn set_slur_in_variant(variant: u8, slur: SlurRole) -> u8 {
+    let (lower_loop, _) = variant_to_line_states(variant);
+    line_states_to_variant(lower_loop, slur)
 }
 
 /// Convert line variant index (0-15) to (LowerLoopRole, SlurRole)
@@ -638,8 +638,8 @@ fn variant_to_line_states(variant: u8) -> (LowerLoopRole, SlurRole) {
 }
 
 /// Convert (LowerLoopRole, SlurRole) to line variant index (0-15)
-fn line_states_to_variant(underline: LowerLoopRole, overline: SlurRole) -> u8 {
-    match (underline, overline) {
+fn line_states_to_variant(lower_loop: LowerLoopRole, slur: SlurRole) -> u8 {
+    match (lower_loop, slur) {
         (LowerLoopRole::None, SlurRole::None) => 0,
         (LowerLoopRole::Left, SlurRole::None) => 1,
         (LowerLoopRole::Middle, SlurRole::None) => 2,
@@ -674,7 +674,7 @@ fn line_states_to_variant(underline: LowerLoopRole, overline: SlurRole) -> u8 {
 ///         in_slur = true;
 ///     }
 ///     if !cell.codepoint.slur_left() && !cell.codepoint.slur_right() {
-///         cell.codepoint = cell.codepoint.overline_mid(in_slur);
+///         cell.codepoint = cell.codepoint.slur_mid(in_slur);
 ///     }
 ///     if cell.codepoint.slur_right() {
 ///         in_slur = false;
@@ -687,36 +687,36 @@ fn line_states_to_variant(underline: LowerLoopRole, overline: SlurRole) -> u8 {
 /// - Middle overline is derived - recalculated on each redraw
 /// - No String allocation, direct codepoint math
 pub trait CodepointTransform {
-    /// Check if this codepoint has overline Left (slur start marker)
+    /// Check if this codepoint has slur Left (slur start marker)
     fn slur_left(self) -> bool;
 
-    /// Check if this codepoint has overline Right (slur end marker)
+    /// Check if this codepoint has slur Right (slur end marker)
     fn slur_right(self) -> bool;
 
-    /// Set or clear overline Middle based on `in_slur` state
+    /// Set or clear slur Middle based on `in_slur` state
     /// Returns new codepoint with middle bit modified
-    fn overline_mid(self, set: bool) -> Self;
+    fn slur_mid(self, set: bool) -> Self;
 
-    /// Check if this codepoint has underline Left (beat start)
+    /// Check if this codepoint has lower_loop Left (beat start)
     fn beat_left(self) -> bool;
 
-    /// Check if this codepoint has underline Right (beat end)
+    /// Check if this codepoint has lower_loop Right (beat end)
     fn beat_right(self) -> bool;
 
-    /// Set or clear underline Middle based on `in_beat` state
-    fn underline_mid(self, set: bool) -> Self;
+    /// Set or clear lower_loop Middle based on `in_beat` state
+    fn lower_loop_mid(self, set: bool) -> Self;
 
-    /// Get the current overline state
-    fn get_overline(self) -> SlurRole;
+    /// Get the current slur state
+    fn get_slur(self) -> SlurRole;
 
-    /// Get the current underline state
-    fn get_underline(self) -> LowerLoopRole;
+    /// Get the current lower_loop state
+    fn get_lower_loop(self) -> LowerLoopRole;
 
-    /// Set overline state directly
-    fn set_overline(self, state: SlurRole) -> Self;
+    /// Set slur state directly
+    fn set_slur(self, state: SlurRole) -> Self;
 
-    /// Set underline state directly
-    fn set_underline(self, state: LowerLoopRole) -> Self;
+    /// Set lower_loop state directly
+    fn set_lower_loop(self, state: LowerLoopRole) -> Self;
 
     /// Strip all line variants (reset to base codepoint)
     fn strip_lines(self) -> Self;
@@ -727,76 +727,76 @@ pub trait CodepointTransform {
 
 impl CodepointTransform for u32 {
     fn slur_left(self) -> bool {
-        self.get_overline() == SlurRole::Left
+        self.get_slur() == SlurRole::Left
     }
 
     fn slur_right(self) -> bool {
-        self.get_overline() == SlurRole::Right
+        self.get_slur() == SlurRole::Right
     }
 
-    fn overline_mid(self, set: bool) -> Self {
-        let current = self.get_overline();
+    fn slur_mid(self, set: bool) -> Self {
+        let current = self.get_slur();
         // Only modify if current state is None or Middle
         // Don't touch Left/Right (durable markers)
         if current == SlurRole::Left || current == SlurRole::Right {
             self
         } else {
             let new_state = if set { SlurRole::Middle } else { SlurRole::None };
-            self.set_overline(new_state)
+            self.set_slur(new_state)
         }
     }
 
     fn beat_left(self) -> bool {
-        self.get_underline() == LowerLoopRole::Left
+        self.get_lower_loop() == LowerLoopRole::Left
     }
 
     fn beat_right(self) -> bool {
-        self.get_underline() == LowerLoopRole::Right
+        self.get_lower_loop() == LowerLoopRole::Right
     }
 
-    fn underline_mid(self, set: bool) -> Self {
-        let current = self.get_underline();
+    fn lower_loop_mid(self, set: bool) -> Self {
+        let current = self.get_lower_loop();
         // Only modify if current state is None or Middle
         // Don't touch Left/Right (durable markers)
         if current == LowerLoopRole::Left || current == LowerLoopRole::Right {
             self
         } else {
             let new_state = if set { LowerLoopRole::Middle } else { LowerLoopRole::None };
-            self.set_underline(new_state)
+            self.set_lower_loop(new_state)
         }
     }
 
-    fn get_overline(self) -> SlurRole {
+    fn get_slur(self) -> SlurRole {
         if let Some(ch) = char::from_u32(self) {
             let parts = GlyphParts::decode(ch);
-            let (_, overline) = variant_to_line_states(parts.line_variant);
-            overline
+            let (_, slur) = variant_to_line_states(parts.line_variant);
+            slur
         } else {
             SlurRole::None
         }
     }
 
-    fn get_underline(self) -> LowerLoopRole {
+    fn get_lower_loop(self) -> LowerLoopRole {
         if let Some(ch) = char::from_u32(self) {
             let parts = GlyphParts::decode(ch);
-            let (underline, _) = variant_to_line_states(parts.line_variant);
-            underline
+            let (lower_loop, _) = variant_to_line_states(parts.line_variant);
+            lower_loop
         } else {
             LowerLoopRole::None
         }
     }
 
-    fn set_overline(self, state: SlurRole) -> Self {
+    fn set_slur(self, state: SlurRole) -> Self {
         if let Some(ch) = char::from_u32(self) {
-            ch.overline(state) as u32
+            ch.slur(state) as u32
         } else {
             self
         }
     }
 
-    fn set_underline(self, state: LowerLoopRole) -> Self {
+    fn set_lower_loop(self, state: LowerLoopRole) -> Self {
         if let Some(ch) = char::from_u32(self) {
-            ch.underline(state) as u32
+            ch.lower_loop(state) as u32
         } else {
             self
         }
@@ -929,11 +929,11 @@ pub struct DecodedChar {
     /// Octave offset (-2 to +2), 0 for non-pitched or base octave
     pub octave: i8,
 
-    /// Underline state (for beat grouping)
-    pub underline: LowerLoopRole,
+    /// Lower loop state (for beat grouping)
+    pub lower_loop: LowerLoopRole,
 
-    /// Overline state (for slurs)
-    pub overline: SlurRole,
+    /// Slur state (for phrasing)
+    pub slur: SlurRole,
 }
 
 impl DecodedChar {
@@ -943,8 +943,8 @@ impl DecodedChar {
             base_char,
             pitch_code: None,
             octave: 0,
-            underline: LowerLoopRole::None,
-            overline: SlurRole::None,
+            lower_loop: LowerLoopRole::None,
+            slur: SlurRole::None,
         }
     }
 
@@ -955,7 +955,7 @@ impl DecodedChar {
 
     /// Check if this has any line decorations
     pub fn has_lines(&self) -> bool {
-        self.underline != LowerLoopRole::None || self.overline != SlurRole::None
+        self.lower_loop != LowerLoopRole::None || self.slur != SlurRole::None
     }
 }
 
@@ -996,7 +996,7 @@ pub fn decode_char(
     // 0. Check if it's a superscript glyph (0xF8000+)
     if is_superscript(cp) {
         let line_variant = (cp % SUPERSCRIPT_LINE_VARIANTS) as u8;
-        let (underline, overline) = variant_to_line_states(line_variant);
+        let (lower_loop, slur) = variant_to_line_states(line_variant);
 
         // Get base (non-superscript) codepoint and decode it
         if let Some(base_cp) = from_superscript(cp) {
@@ -1007,8 +1007,8 @@ pub fn decode_char(
                     base_char: base_decoded.base_char,
                     pitch_code: base_decoded.pitch_code,
                     octave: base_decoded.octave,
-                    underline,
-                    overline,
+                    lower_loop,
+                    slur,
                 };
             }
         }
@@ -1017,15 +1017,15 @@ pub fn decode_char(
             base_char: ch,
             pitch_code: None,
             octave: 0,
-            underline,
-            overline,
+            lower_loop,
+            slur,
         };
     }
 
     // 1. Check if it's a NOTE line variant PUA (0x1A000+)
     // These encode pitch PUA codepoints with line variants and preserve octave
     if let Some((base_pitch_cp, line_variant)) = GlyphParts::decode_note_line_variant(cp) {
-        let (underline, overline) = variant_to_line_states(line_variant);
+        let (lower_loop, slur) = variant_to_line_states(line_variant);
 
         // Decode the base pitch codepoint to get pitch info
         // Try the specified system first, then try all systems to find the pitch
@@ -1043,8 +1043,8 @@ pub fn decode_char(
                 base_char,
                 pitch_code: Some(pitch_code),
                 octave,
-                underline,
-                overline,
+                lower_loop,
+                slur,
             };
         }
 
@@ -1053,8 +1053,8 @@ pub fn decode_char(
             base_char: base_ch.unwrap_or('?'),
             pitch_code: None,
             octave: 0,
-            underline,
-            overline,
+            lower_loop,
+            slur,
         };
     }
 
@@ -1069,8 +1069,8 @@ pub fn decode_char(
             base_char: decoded.base_char,
             pitch_code: pitch_code_opt,
             octave: 0, // ASCII line variants don't encode octave (known limitation)
-            underline: decoded.underline,
-            overline: decoded.overline,
+            lower_loop: decoded.lower_loop,
+            slur: decoded.slur,
         };
     }
 
@@ -1084,8 +1084,8 @@ pub fn decode_char(
             base_char,
             pitch_code: Some(pitch_code),
             octave,
-            underline: LowerLoopRole::None,
-            overline: SlurRole::None,
+            lower_loop: LowerLoopRole::None,
+            slur: SlurRole::None,
         };
     }
 
@@ -1096,8 +1096,8 @@ pub fn decode_char(
         base_char: ch,
         pitch_code: pitch_info.map(|(pc, _)| pc),
         octave: pitch_info.map(|(_, o)| o).unwrap_or(0),
-        underline: LowerLoopRole::None,
-        overline: SlurRole::None,
+        lower_loop: LowerLoopRole::None,
+        slur: SlurRole::None,
     }
 }
 
@@ -1175,8 +1175,8 @@ pub fn is_superscript_glyph(cp: u32) -> bool {
 ///
 /// Returns the overline variant (0-3) or 255 if not a superscript glyph.
 #[wasm_bindgen(js_name = getSuperscriptOverline)]
-pub fn get_superscript_overline(cp: u32) -> u8 {
-    superscript_overline(cp)
+pub fn get_superscript_line_variant(cp: u32) -> u8 {
+    superscript_line_variant(cp)
         .map(|o| o as u8)
         .unwrap_or(255)
 }
@@ -1426,7 +1426,7 @@ mod tests {
     #[test]
     fn test_superscript_ascii_with_overline() {
         // ASCII '1' (0x31) with middle overline (variant 5)
-        let result = superscript_ascii('1', SuperscriptOverline::OverlineMiddle);
+        let result = superscript_ascii('1', SuperscriptOverline::SlurMiddle);
         // source_offset = 17, line_variant = 5
         // superscript_cp = 0xF8000 + (17 × 16) + 5 = 0xF8115
         assert_eq!(result, Some('\u{F8115}'));
@@ -1451,7 +1451,7 @@ mod tests {
     #[test]
     fn test_superscript_number_with_underline() {
         // Number system pitch at 0xE000 with right-cap underline (variant 3)
-        let result = superscript_number(0xE000, SuperscriptOverline::UnderlineRight);
+        let result = superscript_number(0xE000, SuperscriptOverline::LowerLoopRight);
         // superscript_cp = 0xF8600 + (0 × 16) + 3 = 0xF8603
         assert_eq!(result, Some('\u{F8603}'));
     }
@@ -1487,14 +1487,14 @@ mod tests {
     #[test]
     fn test_superscript_line_variant_extraction() {
         // Line variant is always cp % 16
-        assert_eq!(superscript_overline(0xF8600), Some(SuperscriptOverline::None));
-        assert_eq!(superscript_overline(0xF8601), Some(SuperscriptOverline::UnderlineLeft));
-        assert_eq!(superscript_overline(0xF8602), Some(SuperscriptOverline::UnderlineMiddle));
-        assert_eq!(superscript_overline(0xF8603), Some(SuperscriptOverline::UnderlineRight));
-        assert_eq!(superscript_overline(0xF8604), Some(SuperscriptOverline::OverlineLeft));
-        assert_eq!(superscript_overline(0xF8605), Some(SuperscriptOverline::OverlineMiddle));
-        assert_eq!(superscript_overline(0xF8606), Some(SuperscriptOverline::OverlineRight));
-        assert_eq!(superscript_overline(0xE000), None); // Not a superscript
+        assert_eq!(superscript_line_variant(0xF8600), Some(SuperscriptOverline::None));
+        assert_eq!(superscript_line_variant(0xF8601), Some(SuperscriptOverline::LowerLoopLeft));
+        assert_eq!(superscript_line_variant(0xF8602), Some(SuperscriptOverline::LowerLoopMiddle));
+        assert_eq!(superscript_line_variant(0xF8603), Some(SuperscriptOverline::LowerLoopRight));
+        assert_eq!(superscript_line_variant(0xF8604), Some(SuperscriptOverline::SlurLeft));
+        assert_eq!(superscript_line_variant(0xF8605), Some(SuperscriptOverline::SlurMiddle));
+        assert_eq!(superscript_line_variant(0xF8606), Some(SuperscriptOverline::SlurRight));
+        assert_eq!(superscript_line_variant(0xE000), None); // Not a superscript
     }
 
     #[test]
@@ -1521,8 +1521,8 @@ mod tests {
         assert_eq!(d.base_char, '1');
         assert_eq!(d.pitch_code, Some(PitchCode::N1));
         assert_eq!(d.octave, 0);
-        assert_eq!(d.underline, LowerLoopRole::None);
-        assert_eq!(d.overline, SlurRole::None);
+        assert_eq!(d.lower_loop, LowerLoopRole::None);
+        assert_eq!(d.slur, SlurRole::None);
         assert!(d.is_pitched());
         assert!(!d.has_lines());
     }
@@ -1535,8 +1535,8 @@ mod tests {
         assert_eq!(d.base_char, '1');
         assert_eq!(d.pitch_code, Some(PitchCode::N1));
         assert_eq!(d.octave, 1);
-        assert_eq!(d.underline, LowerLoopRole::None);
-        assert_eq!(d.overline, SlurRole::None);
+        assert_eq!(d.lower_loop, LowerLoopRole::None);
+        assert_eq!(d.slur, SlurRole::None);
     }
 
     #[test]
@@ -1551,8 +1551,8 @@ mod tests {
         assert_eq!(d.base_char, '1');
         assert_eq!(d.pitch_code, Some(PitchCode::N1));
         assert_eq!(d.octave, 0); // Line variants don't preserve octave
-        assert_eq!(d.underline, LowerLoopRole::Middle);
-        assert_eq!(d.overline, SlurRole::None);
+        assert_eq!(d.lower_loop, LowerLoopRole::Middle);
+        assert_eq!(d.slur, SlurRole::None);
         assert!(d.has_lines());
     }
 
@@ -1567,8 +1567,8 @@ mod tests {
 
         assert_eq!(d.base_char, '2');
         assert_eq!(d.pitch_code, Some(PitchCode::N2));
-        assert_eq!(d.underline, LowerLoopRole::None);
-        assert_eq!(d.overline, SlurRole::Left);
+        assert_eq!(d.lower_loop, LowerLoopRole::None);
+        assert_eq!(d.slur, SlurRole::Left);
     }
 
     #[test]
@@ -1582,8 +1582,8 @@ mod tests {
 
         assert_eq!(d.base_char, '3');
         assert_eq!(d.pitch_code, Some(PitchCode::N3));
-        assert_eq!(d.underline, LowerLoopRole::Left);
-        assert_eq!(d.overline, SlurRole::Right);
+        assert_eq!(d.lower_loop, LowerLoopRole::Left);
+        assert_eq!(d.slur, SlurRole::Right);
     }
 
     #[test]
@@ -1608,8 +1608,8 @@ mod tests {
         assert_eq!(d.base_char, 'x');
         assert_eq!(d.pitch_code, None);
         assert_eq!(d.octave, 0);
-        assert_eq!(d.underline, LowerLoopRole::None);
-        assert_eq!(d.overline, SlurRole::None);
+        assert_eq!(d.lower_loop, LowerLoopRole::None);
+        assert_eq!(d.slur, SlurRole::None);
     }
 
     #[test]
@@ -1632,7 +1632,7 @@ mod tests {
 
         assert_eq!(d.base_char, '-');
         assert_eq!(d.pitch_code, None); // Dash is not pitched
-        assert_eq!(d.underline, LowerLoopRole::Middle);
+        assert_eq!(d.lower_loop, LowerLoopRole::Middle);
         assert!(!d.is_pitched());
         assert!(d.has_lines());
     }
@@ -1744,15 +1744,15 @@ mod tests {
 
     #[test]
     fn test_glyph_ext_underline_idempotence() {
-        // ch.underline(X).underline(X) == ch.underline(X)
+        // ch.lower_loop(X).lower_loop(X) == ch.lower_loop(X)
         let ch = glyph_for_pitch(PitchCode::N1, 0, PitchSystem::Number).unwrap();
 
-        let once = ch.underline(LowerLoopRole::Left);
-        let twice = ch.underline(LowerLoopRole::Left).underline(LowerLoopRole::Left);
+        let once = ch.lower_loop(LowerLoopRole::Left);
+        let twice = ch.lower_loop(LowerLoopRole::Left).lower_loop(LowerLoopRole::Left);
         assert_eq!(once, twice, "Underline should be idempotent");
 
-        let once_mid = ch.underline(LowerLoopRole::Middle);
-        let twice_mid = ch.underline(LowerLoopRole::Middle).underline(LowerLoopRole::Middle);
+        let once_mid = ch.lower_loop(LowerLoopRole::Middle);
+        let twice_mid = ch.lower_loop(LowerLoopRole::Middle).lower_loop(LowerLoopRole::Middle);
         assert_eq!(once_mid, twice_mid, "Underline middle should be idempotent");
     }
 
@@ -1777,31 +1777,31 @@ mod tests {
 
     #[test]
     fn test_glyph_ext_underline_remove() {
-        // ch.underline(X).underline(None) removes underline
+        // ch.lower_loop(X).lower_loop(None) removes underline
         let ch = glyph_for_pitch(PitchCode::N1, 0, PitchSystem::Number).unwrap();
 
-        let with_underline = ch.underline(LowerLoopRole::Left);
-        let removed = with_underline.underline(LowerLoopRole::None);
+        let with_underline = ch.lower_loop(LowerLoopRole::Left);
+        let removed = with_underline.lower_loop(LowerLoopRole::None);
         assert_eq!(ch, removed, "Underline None should remove underline");
     }
 
     #[test]
     fn test_glyph_ext_order_independence_underline_overline() {
-        // ch.underline(X).overline(Y) == ch.overline(Y).underline(X)
+        // ch.lower_loop(X).slur(Y) == ch.slur(Y).lower_loop(X)
         let ch = glyph_for_pitch(PitchCode::N1, 0, PitchSystem::Number).unwrap();
 
-        let under_over = ch.underline(LowerLoopRole::Left).overline(SlurRole::Middle);
-        let over_under = ch.overline(SlurRole::Middle).underline(LowerLoopRole::Left);
+        let under_over = ch.lower_loop(LowerLoopRole::Left).slur(SlurRole::Middle);
+        let over_under = ch.slur(SlurRole::Middle).lower_loop(LowerLoopRole::Left);
         assert_eq!(under_over, over_under, "Underline and overline should commute");
     }
 
     #[test]
     fn test_glyph_ext_order_independence_superscript_underline() {
-        // ch.superscript(true).underline(X) == ch.underline(X).superscript(true)
+        // ch.superscript(true).lower_loop(X) == ch.lower_loop(X).superscript(true)
         let ch = glyph_for_pitch(PitchCode::N1, 0, PitchSystem::Number).unwrap();
 
-        let super_under = ch.superscript(true).underline(LowerLoopRole::Left);
-        let under_super = ch.underline(LowerLoopRole::Left).superscript(true);
+        let super_under = ch.superscript(true).lower_loop(LowerLoopRole::Left);
+        let under_super = ch.lower_loop(LowerLoopRole::Left).superscript(true);
         assert_eq!(super_under, under_super, "Superscript and underline should commute");
     }
 
@@ -1810,9 +1810,9 @@ mod tests {
         // All three transforms should commute
         let ch = glyph_for_pitch(PitchCode::N1, 0, PitchSystem::Number).unwrap();
 
-        let result1 = ch.underline(LowerLoopRole::Left).overline(SlurRole::Right).superscript(true);
-        let result2 = ch.superscript(true).underline(LowerLoopRole::Left).overline(SlurRole::Right);
-        let result3 = ch.overline(SlurRole::Right).superscript(true).underline(LowerLoopRole::Left);
+        let result1 = ch.lower_loop(LowerLoopRole::Left).slur(SlurRole::Right).superscript(true);
+        let result2 = ch.superscript(true).lower_loop(LowerLoopRole::Left).slur(SlurRole::Right);
+        let result3 = ch.slur(SlurRole::Right).superscript(true).lower_loop(LowerLoopRole::Left);
 
         assert_eq!(result1, result2, "All transforms should commute (1==2)");
         assert_eq!(result2, result3, "All transforms should commute (2==3)");
@@ -1825,8 +1825,8 @@ mod tests {
 
         // Transform with multiple operations
         let transformed = ch
-            .underline(LowerLoopRole::Left)
-            .overline(SlurRole::Middle)
+            .lower_loop(LowerLoopRole::Left)
+            .slur(SlurRole::Middle)
             .superscript(true);
 
         // Decode and re-encode
@@ -1847,7 +1847,7 @@ mod tests {
         assert_eq!(space.octave(-1), space);
 
         // Underline/overline might work on some chars
-        let _ = dash.underline(LowerLoopRole::Left);
+        let _ = dash.lower_loop(LowerLoopRole::Left);
         let _ = space.superscript(true);
     }
 
@@ -1875,7 +1875,7 @@ mod tests {
 
             // Apply transforms
             let transformed = ch
-                .underline(LowerLoopRole::Middle)
+                .lower_loop(LowerLoopRole::Middle)
                 .superscript(true);
 
             // Decode and verify state
@@ -1901,12 +1901,12 @@ mod tests {
         assert!(!cp.slur_right());
 
         // Set overline Left (slur start)
-        let with_slur_start = cp.set_overline(SlurRole::Left);
+        let with_slur_start = cp.set_slur(SlurRole::Left);
         assert!(with_slur_start.slur_left());
         assert!(!with_slur_start.slur_right());
 
         // Set overline Right (slur end)
-        let with_slur_end = cp.set_overline(SlurRole::Right);
+        let with_slur_end = cp.set_slur(SlurRole::Right);
         assert!(!with_slur_end.slur_left());
         assert!(with_slur_end.slur_right());
     }
@@ -1919,21 +1919,21 @@ mod tests {
         let cp = ch as u32;
 
         // Set middle overline
-        let with_middle = cp.overline_mid(true);
-        assert_eq!(with_middle.get_overline(), SlurRole::Middle);
+        let with_middle = cp.slur_mid(true);
+        assert_eq!(with_middle.get_slur(), SlurRole::Middle);
 
         // Clear middle overline
-        let without_middle = with_middle.overline_mid(false);
-        assert_eq!(without_middle.get_overline(), SlurRole::None);
+        let without_middle = with_middle.slur_mid(false);
+        assert_eq!(without_middle.get_slur(), SlurRole::None);
 
         // overline_mid should NOT change Left/Right markers
-        let with_left = cp.set_overline(SlurRole::Left);
-        let still_left = with_left.overline_mid(true);
-        assert_eq!(still_left.get_overline(), SlurRole::Left, "overline_mid should not change Left");
+        let with_left = cp.set_slur(SlurRole::Left);
+        let still_left = with_left.slur_mid(true);
+        assert_eq!(still_left.get_slur(), SlurRole::Left, "overline_mid should not change Left");
 
-        let with_right = cp.set_overline(SlurRole::Right);
-        let still_right = with_right.overline_mid(false);
-        assert_eq!(still_right.get_overline(), SlurRole::Right, "overline_mid should not change Right");
+        let with_right = cp.set_slur(SlurRole::Right);
+        let still_right = with_right.slur_mid(false);
+        assert_eq!(still_right.get_slur(), SlurRole::Right, "overline_mid should not change Right");
     }
 
     #[test]
@@ -1944,18 +1944,18 @@ mod tests {
         let cp = ch as u32;
 
         // Set underline Left (beat start)
-        let with_beat_start = cp.set_underline(LowerLoopRole::Left);
+        let with_beat_start = cp.set_lower_loop(LowerLoopRole::Left);
         assert!(with_beat_start.beat_left());
         assert!(!with_beat_start.beat_right());
 
         // Set underline Right (beat end)
-        let with_beat_end = cp.set_underline(LowerLoopRole::Right);
+        let with_beat_end = cp.set_lower_loop(LowerLoopRole::Right);
         assert!(!with_beat_end.beat_left());
         assert!(with_beat_end.beat_right());
 
         // Set middle underline
-        let with_middle = cp.underline_mid(true);
-        assert_eq!(with_middle.get_underline(), LowerLoopRole::Middle);
+        let with_middle = cp.lower_loop_mid(true);
+        assert_eq!(with_middle.get_lower_loop(), LowerLoopRole::Middle);
     }
 
     #[test]
@@ -1967,13 +1967,13 @@ mod tests {
 
         // Add both underline and overline
         let decorated = cp
-            .set_underline(LowerLoopRole::Left)
-            .set_overline(SlurRole::Middle);
+            .set_lower_loop(LowerLoopRole::Left)
+            .set_slur(SlurRole::Middle);
 
         // Strip lines
         let stripped = decorated.strip_lines();
-        assert_eq!(stripped.get_underline(), LowerLoopRole::None);
-        assert_eq!(stripped.get_overline(), SlurRole::None);
+        assert_eq!(stripped.get_lower_loop(), LowerLoopRole::None);
+        assert_eq!(stripped.get_slur(), SlurRole::None);
     }
 
     #[test]
@@ -1984,13 +1984,13 @@ mod tests {
         let cp = ch as u32;
 
         // overline_mid(true) should be idempotent
-        let once = cp.overline_mid(true);
-        let twice = once.overline_mid(true);
+        let once = cp.slur_mid(true);
+        let twice = once.slur_mid(true);
         assert_eq!(once, twice, "overline_mid(true) should be idempotent");
 
         // underline_mid(true) should be idempotent
-        let once_u = cp.underline_mid(true);
-        let twice_u = once_u.underline_mid(true);
+        let once_u = cp.lower_loop_mid(true);
+        let twice_u = once_u.lower_loop_mid(true);
         assert_eq!(once_u, twice_u, "underline_mid(true) should be idempotent");
     }
 
@@ -2018,14 +2018,14 @@ mod tests {
 
         // Combine slur start (overline Left) with beat middle (underline Middle)
         let combined = cp
-            .set_overline(SlurRole::Left)
-            .underline_mid(true);
+            .set_slur(SlurRole::Left)
+            .lower_loop_mid(true);
 
         assert!(combined.slur_left(), "Should still have slur left");
-        assert_eq!(combined.get_underline(), LowerLoopRole::Middle);
+        assert_eq!(combined.get_lower_loop(), LowerLoopRole::Middle);
 
         // overline_mid should not affect Left
-        let after_mid = combined.overline_mid(true);
+        let after_mid = combined.slur_mid(true);
         assert!(after_mid.slur_left(), "Should preserve slur left after overline_mid");
     }
 
@@ -2035,14 +2035,14 @@ mod tests {
         use crate::renderers::line_variants::pua;
 
         let space: u32 = ' ' as u32;  // 0x20
-        let with_middle = space.set_overline(SlurRole::Middle);
+        let with_middle = space.set_slur(SlurRole::Middle);
 
         println!("Space codepoint: 0x{:X}", space);
         println!("After set_overline(Middle): 0x{:X}", with_middle);
-        println!("Expected ASCII_OVERLINE_BASE: 0x{:X}", pua::ASCII_OVERLINE_BASE);
+        println!("Expected ASCII_SLUR_BASE: 0x{:X}", pua::ASCII_SLUR_BASE);
 
-        // Expected: 0xE920 (ASCII_OVERLINE_BASE + 0)
-        assert_eq!(with_middle, pua::ASCII_OVERLINE_BASE, "Space with Middle overline should be ASCII_OVERLINE_BASE");
+        // Expected: 0xE920 (ASCII_SLUR_BASE + 0)
+        assert_eq!(with_middle, pua::ASCII_SLUR_BASE, "Space with Middle overline should be ASCII_SLUR_BASE");
     }
 
     // ============================================================================
@@ -2096,14 +2096,14 @@ mod tests {
                             oct, cp, original.pitch_code, after.pitch_code));
                     }
                     // underline must be preserved
-                    if after.underline != original.underline {
+                    if after.lower_loop != original.lower_loop {
                         failures.push(format!("octave({}) on 0x{:X} changed underline: {:?} -> {:?}",
-                            oct, cp, original.underline, after.underline));
+                            oct, cp, original.lower_loop, after.lower_loop));
                     }
                     // overline must be preserved
-                    if after.overline != original.overline {
+                    if after.slur != original.slur {
                         failures.push(format!("octave({}) on 0x{:X} changed overline: {:?} -> {:?}",
-                            oct, cp, original.overline, after.overline));
+                            oct, cp, original.slur, after.slur));
                     }
                     // superscript must be preserved
                     if after_is_super != original_is_super {
@@ -2119,8 +2119,8 @@ mod tests {
                     let roundtrip_is_super = is_superscript(roundtrip as u32);
                     if roundtrip_decoded.pitch_code != original.pitch_code ||
                        roundtrip_decoded.octave != original.octave ||
-                       roundtrip_decoded.underline != original.underline ||
-                       roundtrip_decoded.overline != original.overline ||
+                       roundtrip_decoded.lower_loop != original.lower_loop ||
+                       roundtrip_decoded.slur != original.slur ||
                        roundtrip_is_super != original_is_super {
                         failures.push(format!(
                             "octave roundtrip failed: 0x{:X}.octave({}).octave({}) = 0x{:X} - properties changed",
@@ -2152,14 +2152,14 @@ mod tests {
                                 acc, cp, original.octave, after.octave));
                         }
                         // underline must be preserved
-                        if after.underline != original.underline {
+                        if after.lower_loop != original.lower_loop {
                             failures.push(format!("accidental({:?}) on 0x{:X} changed underline: {:?} -> {:?}",
-                                acc, cp, original.underline, after.underline));
+                                acc, cp, original.lower_loop, after.lower_loop));
                         }
                         // overline must be preserved
-                        if after.overline != original.overline {
+                        if after.slur != original.slur {
                             failures.push(format!("accidental({:?}) on 0x{:X} changed overline: {:?} -> {:?}",
-                                acc, cp, original.overline, after.overline));
+                                acc, cp, original.slur, after.slur));
                         }
                         // superscript must be preserved
                         if after_is_super != original_is_super {
@@ -2171,7 +2171,7 @@ mod tests {
 
                 // Test underline transformation preserves: pitch_code, octave, overline, superscript
                 for state in [LowerLoopRole::None, LowerLoopRole::Left, LowerLoopRole::Middle, LowerLoopRole::Right] {
-                    let transformed = ch.underline(state);
+                    let transformed = ch.lower_loop(state);
                     let after = decode_char(transformed, system);
                     let after_is_super = is_superscript(transformed as u32);
 
@@ -2183,9 +2183,9 @@ mod tests {
                         failures.push(format!("underline({:?}) on 0x{:X} changed octave: {} -> {}",
                             state, cp, original.octave, after.octave));
                     }
-                    if after.overline != original.overline {
+                    if after.slur != original.slur {
                         failures.push(format!("underline({:?}) on 0x{:X} changed overline: {:?} -> {:?}",
-                            state, cp, original.overline, after.overline));
+                            state, cp, original.slur, after.slur));
                     }
                     if after_is_super != original_is_super {
                         failures.push(format!("underline({:?}) on 0x{:X} changed superscript: {} -> {}",
@@ -2195,7 +2195,7 @@ mod tests {
 
                 // Test overline transformation preserves: pitch_code, octave, underline, superscript
                 for state in [SlurRole::None, SlurRole::Left, SlurRole::Middle, SlurRole::Right] {
-                    let transformed = ch.overline(state);
+                    let transformed = ch.slur(state);
                     let after = decode_char(transformed, system);
                     let after_is_super = is_superscript(transformed as u32);
 
@@ -2207,9 +2207,9 @@ mod tests {
                         failures.push(format!("overline({:?}) on 0x{:X} changed octave: {} -> {}",
                             state, cp, original.octave, after.octave));
                     }
-                    if after.underline != original.underline {
+                    if after.lower_loop != original.lower_loop {
                         failures.push(format!("overline({:?}) on 0x{:X} changed underline: {:?} -> {:?}",
-                            state, cp, original.underline, after.underline));
+                            state, cp, original.lower_loop, after.lower_loop));
                     }
                     if after_is_super != original_is_super {
                         failures.push(format!("overline({:?}) on 0x{:X} changed superscript: {} -> {}",
@@ -2229,13 +2229,13 @@ mod tests {
                     failures.push(format!("superscript(true) on 0x{:X} changed octave: {} -> {}",
                         cp, original.octave, after_super.octave));
                 }
-                if after_super.underline != original.underline {
+                if after_super.lower_loop != original.lower_loop {
                     failures.push(format!("superscript(true) on 0x{:X} changed underline: {:?} -> {:?}",
-                        cp, original.underline, after_super.underline));
+                        cp, original.lower_loop, after_super.lower_loop));
                 }
-                if after_super.overline != original.overline {
+                if after_super.slur != original.slur {
                     failures.push(format!("superscript(true) on 0x{:X} changed overline: {:?} -> {:?}",
-                        cp, original.overline, after_super.overline));
+                        cp, original.slur, after_super.slur));
                 }
 
                 // Superscript roundtrip (if started non-super)
@@ -2244,8 +2244,8 @@ mod tests {
                     let after_rt = decode_char(roundtrip, system);
                     if after_rt.pitch_code != original.pitch_code ||
                        after_rt.octave != original.octave ||
-                       after_rt.underline != original.underline ||
-                       after_rt.overline != original.overline {
+                       after_rt.lower_loop != original.lower_loop ||
+                       after_rt.slur != original.slur {
                         failures.push(format!("superscript roundtrip on 0x{:X} changed attributes", cp));
                     }
                 }
@@ -2293,11 +2293,11 @@ mod tests {
             // 1. COMMUTATIVITY: underline/overline order independence
             for &u in &underlines {
                 for &o in &overlines {
-                    let path1 = ch.underline(u).overline(o);
-                    let path2 = ch.overline(o).underline(u);
+                    let path1 = ch.lower_loop(u).slur(o);
+                    let path2 = ch.slur(o).lower_loop(u);
                     if path1 != path2 {
                         failures.push(format!(
-                            "Commutativity failed: 0x{:X}.underline({:?}).overline({:?}) != .overline.underline",
+                            "Commutativity failed: 0x{:X}.lower_loop({:?}).slur({:?}) != .overline.underline",
                             cp, u, o
                         ));
                     }
@@ -2307,11 +2307,11 @@ mod tests {
             // 2. COMMUTATIVITY: octave/underline order independence
             for &oct in &octaves {
                 for &u in &underlines {
-                    let path1 = ch.octave(oct).underline(u);
-                    let path2 = ch.underline(u).octave(oct);
+                    let path1 = ch.octave(oct).lower_loop(u);
+                    let path2 = ch.lower_loop(u).octave(oct);
                     if path1 != path2 {
                         failures.push(format!(
-                            "Commutativity failed: 0x{:X}.octave({}).underline({:?}) != .underline.octave",
+                            "Commutativity failed: 0x{:X}.octave({}).lower_loop({:?}) != .underline.octave",
                             cp, oct, u
                         ));
                     }
@@ -2327,10 +2327,10 @@ mod tests {
                 }
             }
             for &u in &underlines {
-                let once = ch.underline(u);
-                let twice = ch.underline(u).underline(u);
+                let once = ch.lower_loop(u);
+                let twice = ch.lower_loop(u).lower_loop(u);
                 if once != twice {
-                    failures.push(format!("Idempotence failed: 0x{:X}.underline({:?}) twice != once", cp, u));
+                    failures.push(format!("Idempotence failed: 0x{:X}.lower_loop({:?}) twice != once", cp, u));
                 }
             }
 
@@ -2352,16 +2352,16 @@ mod tests {
             // 5. FULL ROUNDTRIP: complex chain returning to original
             let complex_roundtrip = ch
                 .octave(1)
-                .underline(LowerLoopRole::Left)
-                .overline(SlurRole::Middle)
+                .lower_loop(LowerLoopRole::Left)
+                .slur(SlurRole::Middle)
                 .superscript(true)
                 .octave(-1)
-                .underline(LowerLoopRole::None)
-                .overline(SlurRole::None)
+                .lower_loop(LowerLoopRole::None)
+                .slur(SlurRole::None)
                 .superscript(false)
                 .octave(original.octave)
-                .underline(original.underline)
-                .overline(original.overline);
+                .lower_loop(original.lower_loop)
+                .slur(original.slur);
 
             if complex_roundtrip != ch {
                 failures.push(format!(

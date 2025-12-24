@@ -458,11 +458,13 @@
                                 <li><button id="menu-export-json" class="menu-item">Export as JSON...</button></li>
                                 <li><button id="menu-import-json" class="menu-item">Import from JSON...</button></li>
                                 <li><button id="menu-import-musicxml" class="menu-item">Import MusicXML...</button></li>
+                                <li><button id="menu-export-ascii-markup" class="menu-item">Export as ASCII Markup...</button></li>
+                                <li><button id="menu-export-codepoint-markup" class="menu-item">Export as Codepoint Markup...</button></li>
                                 <li class="border-t border-ui-border my-1"></li>
                                 <li><button id="menu-set-title" class="menu-item">Set Title...</button></li>
                                 <li><button id="menu-set-composer" class="menu-item">Set Composer...</button></li>
                                 <li><button id="menu-set-tonic" class="menu-item">Set Tonic...</button></li>
-                                <li><button id="menu-set-pitch-system" class="menu-item">Set Pitch System...</button></li>
+                                <li><button id="menu-set-pitch-system" class="menu-item">Set Notation...</button></li>
                                 <li><button id="menu-set-key-signature" class="menu-item">Set Key Signature...</button></li>
                             </ul>
                         </li>
@@ -489,7 +491,7 @@
                             <ul id="line-menu" class="absolute top-full left-0 bg-white border border-ui-border rounded shadow-lg hidden z-menu min-w-48">
                                 <li><button id="menu-set-label" class="menu-item">Set Label...</button></li>
                                 <li><button id="menu-set-tonic" class="menu-item">Set Tonic...</button></li>
-                                <li><button id="menu-set-pitch-system" class="menu-item">Set Pitch System...</button></li>
+                                <li><button id="menu-set-pitch-system" class="menu-item">Set Notation...</button></li>
                                 <li><button id="menu-set-lyrics" class="menu-item">Set Lyrics...</button></li>
                                 <li><button id="menu-set-tala" class="menu-item">Set Tala...</button></li>
                                 <li><button id="menu-line-set-key-signature" class="menu-item">Set Key Signature...</button></li>
@@ -584,10 +586,13 @@
                         <button id="tab-musicxml" class="tab" data-tab="musicxml" data-testid="tab-musicxml">
                             MusicXML
                         </button>
+                        <button id="tab-markup" class="tab" data-tab="markup" data-testid="tab-markup" title="Markup - Import and preview notation markup">
+                            Markup
+                        </button>
                         <button id="tab-text" class="tab" data-tab="text" data-testid="tab-text" title="Plain text with combining characters (copy/paste friendly)">
                             Text
                         </button>
-                        <button id="tab-text-sample" class="tab" data-tab="text-sample" data-testid="tab-text-sample" title="Sample text with all pitch systems, octaves, beat groups, and slurs">
+                        <button id="tab-text-sample" class="tab" data-tab="text-sample" data-testid="tab-text-sample" title="Sample text with all notations, octaves, beat groups, and slurs">
                             Text Sample
                         </button>
                         <button id="tab-displaylist" class="tab" data-tab="displaylist" data-testid="tab-displaylist">
@@ -655,6 +660,59 @@
                         <pre id="musicxml-source" data-testid="pane-musicxml" class="flex-1 text-xs font-mono bg-white p-3 border-2 border-gray-300 rounded overflow-auto"></pre>
                     </div>
 
+                    <!-- Markup Tab -->
+                    <div id="tab-content-markup" data-tab-content="markup" class="tab-content hidden flex-1 flex flex-col p-4">
+                        <!-- Markup Output Section (shows current document as markup) -->
+                        <div class="mb-3 flex-1 flex flex-col">
+                            <div class="flex items-center justify-between mb-1">
+                                <label class="text-xs font-medium text-gray-700">Markup Output (current document):</label>
+                                <select id="markup-output-format" class="px-2 py-1 border border-gray-300 rounded text-xs">
+                                    <option value="ascii" selected>ASCII (human-readable)</option>
+                                    <option value="codepoint">Codepoint (PUA glyphs)</option>
+                                </select>
+                            </div>
+                            <pre id="markup-output" data-testid="pane-markup" class="flex-1 text-xs font-mono bg-white p-3 border-2 border-gray-300 rounded overflow-auto" style="min-height: 10rem;"></pre>
+                        </div>
+
+                        <!-- Import Section (collapsible) -->
+                        <details class="mb-2">
+                            <summary class="text-xs font-medium text-gray-700 cursor-pointer mb-1">Import Markup</summary>
+                            <div class="p-2 border border-gray-200 rounded bg-gray-50">
+                                <div class="mb-2 flex flex-wrap items-center gap-2">
+                                    <label for="markup-system" class="text-xs font-medium text-gray-700">Notation:</label>
+                                    <select id="markup-system" class="px-2 py-1 border border-gray-300 rounded text-xs">
+                                        <option value="1">Number (1234567)</option>
+                                        <option value="2">Western (CDEFGAB)</option>
+                                        <option value="3">Sargam (SrRgGmMPdDnN)</option>
+                                    </select>
+                                    <button id="markup-import-btn" class="px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700">
+                                        Import
+                                    </button>
+                                </div>
+                                <textarea id="markup-input"
+                                    class="w-full h-24 p-2 border border-gray-300 rounded text-xs font-mono resize-none"
+                                    placeholder="Enter markup here..."><title>My Song</title>
+<composer>John Doe</composer>
+<notation>number</notation>
+
+<system>
+| 1 2 3 4 | 5 6 7 1 |
+<lyrics>do re mi fa sol la ti do</lyrics>
+</system></textarea>
+                            </div>
+                        </details>
+
+                        <!-- Supported Tags Reference (collapsible) -->
+                        <details>
+                            <summary class="text-xs font-medium text-gray-700 cursor-pointer">Supported Markup Tags</summary>
+                            <div id="supported-tags-panel" class="p-3 bg-blue-50 border border-blue-200 rounded text-xs mt-1" style="max-height: 12rem; overflow-y: scroll;">
+                                <div id="supported-tags-content" class="text-blue-800">
+                                    Loading tag documentation...
+                                </div>
+                            </div>
+                        </details>
+                    </div>
+
                     <!-- Plain Text Tab -->
                     <div id="tab-content-text" data-tab-content="text" class="tab-content hidden flex-1 flex flex-col p-4">
                         <div class="flex items-center gap-4 mb-2">
@@ -675,8 +733,8 @@
                         <textarea id="text-display" data-testid="pane-text" class="flex-1 bg-gray-50 p-3 border-2 border-gray-300 rounded overflow-auto resize-none" style="font-family: 'NotationFont', monospace; font-size: 32px; line-height: 1.6;"></textarea>
                     </div>
 
-                    <!-- Text Sample Tab: All pitch systems, octaves, beat groups, slurs
-                         NOTE: When adding new text export features, add examples for ALL pitch systems here:
+                    <!-- Text Sample Tab: All notations, octaves, beat groups, slurs
+                         NOTE: When adding new text export features, add examples for ALL notations here:
                          - Number (1-7)
                          - Western (C-B)
                          - Sargam (S r R g G m M P d D n N)
@@ -684,7 +742,7 @@
                     -->
                     <div id="tab-content-text-sample" data-tab-content="text-sample" class="tab-content hidden flex-1 flex flex-col p-4">
                         <div class="flex justify-between items-center mb-2">
-                            <span class="text-sm font-medium text-gray-600">Sample: All pitch systems, octaves, beat groups, and slurs</span>
+                            <span class="text-sm font-medium text-gray-600">Sample: All notations, octaves, beat groups, and slurs</span>
                             <div class="flex items-center gap-2">
                                 <label class="text-sm font-medium">Font:</label>
                                 <select id="text-sample-font-toggle" class="text-sm border rounded px-2 py-1">
@@ -867,9 +925,10 @@ SARGAM with all combinations:
                         <div class="mb-3 flex flex-wrap items-center gap-2">
                             <label for="font-inspector-category" class="text-xs font-medium text-gray-700">Category:</label>
                             <select id="font-inspector-category" class="px-2 py-1 border border-gray-300 rounded text-xs">
-                                <option value="base-pitches">Base Pitches (33 chars)</option>
+                                <option value="base-pitches">Base Pitches</option>
+                                <option value="pitches-accidentals">Pitches + Accidentals</option>
                                 <option value="octave-variants">Octave Variants</option>
-                                <option value="accidentals">Accidentals</option>
+                                <option value="accidentals">Accidentals (rows)</option>
                                 <option value="underlines">Underlines (Beat Grouping)</option>
                                 <option value="slurs">Slurs (Overlines)</option>
                                 <option value="superscripts">Superscripts (Grace Notes)</option>

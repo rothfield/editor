@@ -247,13 +247,14 @@ impl<'a> LayoutLineComputer<'a> {
             cells.push(render_cell);
         }
 
-        // Position lyrics syllables (with edge case handling)
+        // Position lyrics syllables (with collision avoidance)
         let lyrics = self.position_lyrics(
             &syllable_assignments,
             &line.lyrics,
             &line.cells,
             &cells,
             &beats,
+            syllable_widths,
             config,
             line_y_offset,
         );
@@ -317,9 +318,12 @@ impl<'a> LayoutLineComputer<'a> {
                 crate::models::StaffRole::GroupHeader => "group-header",
                 crate::models::StaffRole::GroupItem => "group-item",
             }.to_string(),
-            system_marker: line.system_marker.map(|m| match m {
-                crate::models::SystemMarker::Start => "start".to_string(),
-                crate::models::SystemMarker::End => "end".to_string(),
+            system_marker: line.system_start_count.map(|count| {
+                if count == 1 {
+                    "single".to_string()
+                } else {
+                    "start".to_string()
+                }
             }),
             lyrics,
             tala,
@@ -588,62 +592,20 @@ impl<'a> LayoutLineComputer<'a> {
         }
     }
 
-    /// Calculate effective widths for cells, using collision-based syllable expansion
+    /// Calculate effective widths for cells
     ///
-    /// Only expands cell widths when a syllable would collide with the next syllable.
-    /// Syllables are allowed to extend past their cell boundary if there's no collision.
-    ///
-    /// This prevents unnecessary spacing when syllables don't overlap.
+    /// Note: Cell widths are NOT expanded for lyrics. Lyrics handle their own
+    /// collision avoidance in position_lyrics(). This keeps the textarea layout
+    /// unchanged while still preventing lyric overlap.
     fn calculate_effective_widths(
         &self,
         cell_widths: &[f32],
-        syllable_assignments: &[SyllableAssignment],
-        syllable_widths: &[f32],
+        _syllable_assignments: &[SyllableAssignment],
+        _syllable_widths: &[f32],
         _config: &LayoutConfig,
     ) -> Vec<f32> {
-        let mut effective = cell_widths.to_vec();
-
-        if effective.is_empty() || syllable_assignments.is_empty() {
-            return effective;
-        }
-
-        // Only expand when syllables would collide with the next syllable
-        for i in 0..syllable_assignments.len() {
-            let assignment = &syllable_assignments[i];
-
-            // Skip whitespace-only syllables
-            if assignment.syllable.trim().is_empty() {
-                continue;
-            }
-
-            let Some(&syll_width) = syllable_widths.get(i) else {
-                continue;
-            };
-
-            // Check if there's a next syllable to potentially collide with
-            let next_assignment = syllable_assignments.get(i + 1);
-
-            if let Some(next) = next_assignment {
-                // Calculate positions based on current effective widths
-                let current_cell_x: f32 = effective[..assignment.cell_index].iter().sum();
-                let current_cell_width = effective.get(assignment.cell_index).copied().unwrap_or(0.0);
-                let syllable_end = current_cell_x + syll_width;
-
-                // Calculate where next syllable's cell starts
-                let next_cell_x: f32 = effective[..next.cell_index].iter().sum();
-
-                // Only expand if syllable would extend past next cell's start
-                if syllable_end > next_cell_x {
-                    let expansion_needed = syllable_end - next_cell_x;
-                    if let Some(eff) = effective.get_mut(assignment.cell_index) {
-                        *eff = current_cell_width + expansion_needed;
-                    }
-                }
-            }
-            // If no next syllable, no expansion needed - syllable can extend freely
-        }
-
-        effective
+        // Return cell widths unchanged - no expansion for lyrics
+        cell_widths.to_vec()
     }
 
     /// Find anchor cells for superscript spans
@@ -719,11 +681,14 @@ impl<'a> LayoutLineComputer<'a> {
         anchors
     }
 
-    /// Position lyrics syllables with edge case handling
+    /// Position lyrics syllables with collision avoidance
+    ///
+    /// Lyrics are positioned left-aligned with their assigned cells, but if a lyric
+    /// would collide with the next one, it is pushed right to avoid overlap.
+    /// This is a fallback when perfect alignment isn't possible.
     ///
     /// Edge cases:
     /// - No pitched elements: assign all lyrics to first cell position
-    /// - Unassigned syllables: position to the right with metadata
     /// - Empty line: position at default first cell x
     fn position_lyrics(
         &self,
@@ -732,6 +697,7 @@ impl<'a> LayoutLineComputer<'a> {
         original_cells: &[Cell],
         render_cells: &[RenderCell],
         beats: &[BeatSpan],
+        syllable_widths: &[f32],
         config: &LayoutConfig,
         line_y_offset: f32,
     ) -> Vec<RenderLyric> {
@@ -741,6 +707,9 @@ impl<'a> LayoutLineComputer<'a> {
         if lyrics_trimmed.is_empty() {
             return result;
         }
+
+        // Minimum gap between lyrics (in pixels)
+        const MIN_LYRIC_GAP: f32 = 2.0;
 
         // Adaptive Y positioning: below beat loops, octave dots, or cell
         const BEAT_LOOP_GAP: f32 = 2.0;
@@ -775,13 +744,34 @@ impl<'a> LayoutLineComputer<'a> {
             return result;
         }
 
-        // Render all assignments (which already have spaces included)
-        for assignment in assignments {
-            let lyric_x = if let Some(cell) = render_cells.get(assignment.cell_index) {
-                cell.x // Flush left with cell
+        // Track the minimum X position for the next lyric to avoid collision
+        let mut min_next_x = config.left_margin;
+
+        // Render all assignments with collision avoidance
+        for (i, assignment) in assignments.iter().enumerate() {
+            // Get the cell's X position (ideal position for this lyric)
+            let cell_x = if let Some(cell) = render_cells.get(assignment.cell_index) {
+                cell.x
             } else {
                 config.left_margin
             };
+
+            // Use the larger of: cell position or minimum required position
+            // This ensures no overlap with the previous lyric
+            let lyric_x = cell_x.max(min_next_x);
+
+            // Get this syllable's width for calculating the next minimum position
+            // Fallback: estimate from text length if no measured width available
+            let measured_width = syllable_widths.get(i).copied().unwrap_or(0.0);
+            let syllable_width = if measured_width > 0.0 {
+                measured_width
+            } else {
+                // Estimate: ~7px per character for typical lyric font
+                assignment.syllable.chars().count() as f32 * 7.0
+            };
+
+            // Update min_next_x for the next lyric
+            min_next_x = lyric_x + syllable_width + MIN_LYRIC_GAP;
 
             result.push(RenderLyric {
                 text: assignment.syllable.clone(),
@@ -1146,7 +1136,7 @@ mod line_variant_tests {
             part_id: "P1".to_string(),
             system_id: 1,
             staff_role: StaffRole::Melody,
-            system_marker: None,
+            system_start_count: None,
             new_system: false,
         };
         line.sync_text_from_cells();
@@ -1244,5 +1234,292 @@ mod line_variant_tests {
                 );
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod lyric_collision_tests {
+    use crate::models::core::{Cell, Document, Line};
+    use crate::models::elements::ElementKind;
+    use crate::models::pitch_code::PitchCode;
+    use crate::models::StaffRole;
+    use crate::html_layout::{LayoutConfig, LayoutEngine};
+    use crate::models::PitchSystem;
+
+    fn make_pitched_cell(pitch_code: PitchCode) -> Cell {
+        use crate::renderers::font_utils::glyph_for_pitch;
+
+        let glyph = glyph_for_pitch(pitch_code, 0, PitchSystem::Number).unwrap_or('X');
+        Cell {
+            codepoint: glyph as u32,
+            flags: 0,
+            x: 0.0,
+            y: 0.0,
+            w: 0.0,
+            h: 0.0,
+            bbox: (0.0, 0.0, 0.0, 0.0),
+            hit: (0.0, 0.0, 0.0, 0.0),
+        }
+    }
+
+    fn make_whitespace_cell() -> Cell {
+        // Space character (U+0020) - ElementKind::Whitespace
+        Cell {
+            codepoint: 0x0020,
+            flags: 0,
+            x: 0.0,
+            y: 0.0,
+            w: 0.0,
+            h: 0.0,
+            bbox: (0.0, 0.0, 0.0, 0.0),
+            hit: (0.0, 0.0, 0.0, 0.0),
+        }
+    }
+
+    fn make_test_line(cells: Vec<Cell>, lyrics: &str) -> Line {
+        let mut line = Line {
+            cells,
+            text: Vec::new(),
+            label: String::new(),
+            tala: String::new(),
+            lyrics: lyrics.to_string(),
+            tonic: None,
+            pitch_system: None,
+            key_signature: String::new(),
+            time_signature: String::new(),
+            tempo: String::new(),
+            beats: Vec::new(),
+            slurs: Vec::new(),
+            part_id: "P1".to_string(),
+            system_id: 1,
+            staff_role: StaffRole::Melody,
+            system_start_count: None,
+            new_system: false,
+        };
+        line.sync_text_from_cells();
+        line
+    }
+
+    /// Test that long syllables trigger cell width expansion to prevent collision.
+    ///
+    /// BUG: The collision detection in calculate_effective_widths uses sum of widths
+    /// to estimate cell positions, but actual positions use beat-aware gap distribution.
+    /// This causes the algorithm to miss collisions.
+    ///
+    /// Setup: Two notes separated by space (beat boundary creates gap)
+    /// - Note 1 at position ~12px with syllable "deer" (30px wide, ends at ~42px)
+    /// - Note 2 at position ~24px with syllable "a"
+    /// Expected: The cell width should expand so "deer" doesn't overlap "a"
+    #[test]
+    fn test_lyric_collision_detected_with_beat_spacing() {
+        // Create cells: 1 2 (two pitched notes separated by beat boundary)
+        let cells = vec![
+            make_pitched_cell(PitchCode::N1), // "1"
+            make_whitespace_cell(),           // " " (beat boundary)
+            make_pitched_cell(PitchCode::N2), // "2"
+        ];
+
+        let line = make_test_line(cells, "deer a");
+        let mut doc = Document::new();
+        doc.lines = vec![line];
+        doc.pitch_system = Some(PitchSystem::Number);
+
+        // Set up glyph width cache with small widths (12px per character)
+        crate::html_layout::document::set_glyph_width_cache(
+            [("1".to_string(), 12.0), ("2".to_string(), 12.0), (" ".to_string(), 8.0)]
+                .into_iter()
+                .collect()
+        );
+
+        // Syllable widths: "deer" = 30px (wider than cell), "a" = 10px
+        let config = LayoutConfig {
+            syllable_widths: vec![30.0, 10.0],  // "deer" = 30px, "a" = 10px
+            font_size: 24.0,
+            line_height: 48.0,
+            left_margin: 12.0,
+            cell_y_offset: 0.0,
+            cell_height: 24.0,
+            min_syllable_padding: 4.0,
+            word_spacing: 10.0,
+            slur_offset_above: 10.0,
+            beat_loop_offset_below: 10.0,
+            beat_loop_height: 20.0,
+        };
+
+        let engine = LayoutEngine::new();
+        let display_list = engine.compute_layout(&doc, &config);
+
+        let render_line = &display_list.lines[0];
+        let lyrics = &render_line.lyrics;
+
+        assert_eq!(lyrics.len(), 2, "Should have 2 lyrics: 'deer' and 'a'");
+
+        // Verify no collision: first lyric's right edge should not exceed second's left edge
+        let first_lyric = &lyrics[0];
+        let second_lyric = &lyrics[1];
+        let first_right_edge = first_lyric.x + 30.0;  // "deer" width
+        let second_left_edge = second_lyric.x;
+
+        assert!(
+            first_right_edge <= second_left_edge,
+            "Lyric collision detected: '{}' ends at {:.1}px but '{}' starts at {:.1}px",
+            first_lyric.text,
+            first_right_edge,
+            second_lyric.text,
+            second_left_edge
+        );
+    }
+
+    /// Test that close adjacent notes with long syllables don't collide.
+    /// This simulates the user's bug: "deer" overlapping with "a".
+    #[test]
+    fn test_lyric_collision_multiple_adjacent_notes() {
+        // Create cells: 1 2 3 (three adjacent pitched notes, no spaces = one beat)
+        let cells = vec![
+            make_pitched_cell(PitchCode::N1), // "1" -> "deer"
+            make_pitched_cell(PitchCode::N2), // "2" -> "a"
+            make_pitched_cell(PitchCode::N3), // "3" -> "female"
+        ];
+
+        let line = make_test_line(cells, "deer a female");
+        let mut doc = Document::new();
+        doc.lines = vec![line];
+        doc.pitch_system = Some(PitchSystem::Number);
+
+        // Set up glyph width cache
+        crate::html_layout::document::set_glyph_width_cache(
+            [("1".to_string(), 12.0), ("2".to_string(), 12.0), ("3".to_string(), 12.0)]
+                .into_iter()
+                .collect()
+        );
+
+        // Syllable widths that would cause collision without expansion
+        let config = LayoutConfig {
+            syllable_widths: vec![30.0, 10.0, 40.0],  // "deer" = 30px, "a" = 10px, "female" = 40px
+            font_size: 24.0,
+            line_height: 48.0,
+            left_margin: 12.0,
+            cell_y_offset: 0.0,
+            cell_height: 24.0,
+            min_syllable_padding: 4.0,
+            word_spacing: 10.0,
+            slur_offset_above: 10.0,
+            beat_loop_offset_below: 10.0,
+            beat_loop_height: 20.0,
+        };
+
+        let engine = LayoutEngine::new();
+        let display_list = engine.compute_layout(&doc, &config);
+
+        let render_line = &display_list.lines[0];
+        let lyrics = &render_line.lyrics;
+
+        assert_eq!(lyrics.len(), 3, "Should have 3 lyrics");
+
+        // Check all adjacent pairs for collision
+        for i in 0..lyrics.len() - 1 {
+            let current = &lyrics[i];
+            let next = &lyrics[i + 1];
+            let syllable_width = config.syllable_widths[i];
+            let current_right = current.x + syllable_width;
+            let next_left = next.x;
+
+            assert!(
+                current_right <= next_left,
+                "Lyric collision at position {}: '{}' ends at {:.1}px but '{}' starts at {:.1}px",
+                i,
+                current.text,
+                current_right,
+                next.text,
+                next_left
+            );
+        }
+    }
+
+    fn make_dash_cell() -> Cell {
+        // Dash character (U+002D) - ElementKind::UnpitchedElement
+        Cell {
+            codepoint: 0x002D,
+            flags: 0,
+            x: 0.0,
+            y: 0.0,
+            w: 0.0,
+            h: 0.0,
+            bbox: (0.0, 0.0, 0.0, 0.0),
+            hit: (0.0, 0.0, 0.0, 0.0),
+        }
+    }
+
+    /// Test the exact user scenario: notes separated by dashes in a multi-element beat
+    /// BUG: Notes 3 and 1 in "3--1" (no spaces) form a single beat. The beat-aware positioning
+    /// distributes gaps, but the collision algorithm uses sum-based positions.
+    #[test]
+    fn test_lyric_collision_user_scenario_with_dashes() {
+        // Simulate: "3--1" (note, dash, dash, note) - NO SPACES = single beat
+        // This forms ONE beat with 4 elements, where gaps are distributed
+        let cells = vec![
+            make_pitched_cell(PitchCode::N3), // "3" -> "deer"
+            make_dash_cell(),                 // "-"
+            make_dash_cell(),                 // "-"
+            make_pitched_cell(PitchCode::N1), // "1" -> "a"
+        ];
+
+        let line = make_test_line(cells, "deer a");
+        let mut doc = Document::new();
+        doc.lines = vec![line];
+        doc.pitch_system = Some(PitchSystem::Number);
+
+        // Set up glyph width cache - dashes are narrow
+        crate::html_layout::document::set_glyph_width_cache(
+            [
+                ("1".to_string(), 12.0),
+                ("3".to_string(), 12.0),
+                ("-".to_string(), 6.0),
+            ]
+                .into_iter()
+                .collect()
+        );
+
+        // Syllable widths: "deer" is much wider than cells between notes
+        // Cells: [N3, -, -, N1] with widths [12, 6, 6, 12] = 36 total
+        // Collision detection: sum([12]) = 12 for N3, sum([12,6,6]) = 24 for N1
+        // Distance = 24 - 12 = 12, but "deer" is 30px wide!
+        // Sum-based: 12 + 30 = 42 > 24 → collision detected, should expand
+        let config = LayoutConfig {
+            syllable_widths: vec![30.0, 10.0],  // "deer" = 30px
+            font_size: 24.0,
+            line_height: 48.0,
+            left_margin: 12.0,
+            cell_y_offset: 0.0,
+            cell_height: 24.0,
+            min_syllable_padding: 4.0,
+            word_spacing: 10.0,
+            slur_offset_above: 10.0,
+            beat_loop_offset_below: 10.0,
+            beat_loop_height: 20.0,
+        };
+
+        let engine = LayoutEngine::new();
+        let display_list = engine.compute_layout(&doc, &config);
+
+        let render_line = &display_list.lines[0];
+        let lyrics = &render_line.lyrics;
+
+        assert_eq!(lyrics.len(), 2, "Should have 2 lyrics: 'deer' and 'a'");
+
+        let first_lyric = &lyrics[0];
+        let second_lyric = &lyrics[1];
+        let first_right_edge = first_lyric.x + 30.0;  // "deer" width
+        let second_left_edge = second_lyric.x;
+
+        assert!(
+            first_right_edge <= second_left_edge,
+            "Lyric collision detected: '{}' ends at {:.1}px but '{}' starts at {:.1}px. \
+             This demonstrates the bug where beat-aware positioning differs from sum-based collision detection.",
+            first_lyric.text,
+            first_right_edge,
+            second_lyric.text,
+            second_left_edge
+        );
     }
 }

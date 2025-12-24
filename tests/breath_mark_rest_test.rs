@@ -81,7 +81,7 @@ fn test_breath_mark_followed_by_dashes_creates_quarter_note_and_quarter_rest() {
         system_id: 0,
         part_id: "P1".to_string(),
         staff_role: editor_wasm::models::core::StaffRole::Melody,
-        system_marker: None,
+        system_start_count: None,
         beats: Vec::new(),
         slurs: Vec::new(),
     };
@@ -192,7 +192,7 @@ fn test_breath_mark_with_rest_and_note() {
         system_id: 0,
         part_id: "P1".to_string(),
         staff_role: editor_wasm::models::core::StaffRole::Melody,
-        system_marker: None,
+        system_start_count: None,
         beats: Vec::new(),
         slurs: Vec::new(),
     };
@@ -299,7 +299,7 @@ fn test_breath_mark_space_dash_creates_two_quarter_notes() {
         system_id: 0,
         part_id: "P1".to_string(),
         staff_role: editor_wasm::models::core::StaffRole::Melody,
-        system_marker: None,
+        system_start_count: None,
         beats: Vec::new(),
         slurs: Vec::new(),
     };
@@ -391,7 +391,7 @@ fn test_breath_mark_space_nine_dashes() {
         system_id: 0,
         part_id: "P1".to_string(),
         staff_role: editor_wasm::models::core::StaffRole::Melody,
-        system_marker: None,
+        system_start_count: None,
         beats: Vec::new(),
         slurs: Vec::new(),
     };
@@ -475,7 +475,7 @@ fn test_breath_mark_space_three_dashes() {
         system_id: 0,
         part_id: "P1".to_string(),
         staff_role: editor_wasm::models::core::StaffRole::Melody,
-        system_marker: None,
+        system_start_count: None,
         beats: Vec::new(),
         slurs: Vec::new(),
     };
@@ -559,7 +559,7 @@ fn test_note_space_breath_mark_dashes() {
         system_id: 0,
         part_id: "P1".to_string(),
         staff_role: editor_wasm::models::core::StaffRole::Melody,
-        system_marker: None,
+        system_start_count: None,
         beats: Vec::new(),
         slurs: Vec::new(),
     };
@@ -643,7 +643,7 @@ fn test_note_two_spaces_breath_mark_dashes() {
         system_id: 0,
         part_id: "P1".to_string(),
         staff_role: editor_wasm::models::core::StaffRole::Melody,
-        system_marker: None,
+        system_start_count: None,
         beats: Vec::new(),
         slurs: Vec::new(),
     };
@@ -718,7 +718,7 @@ fn test_note_breath_mark_with_surrounding_spaces() {
         system_id: 0,
         part_id: "P1".to_string(),
         staff_role: editor_wasm::models::core::StaffRole::Melody,
-        system_marker: None,
+        system_start_count: None,
         beats: Vec::new(),
         slurs: Vec::new(),
     };
