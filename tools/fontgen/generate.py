@@ -417,7 +417,157 @@ def load_atom_spec(yaml_path: str, fontspec: dict, selected_system: str = "all")
     spec.pua_blocks = notation_system_pua_blocks  # type: ignore
     spec.glyph_variants = glyph_variants  # type: ignore
 
+    # Validate PUA ranges to detect collisions early
+    pua_ranges = collect_pua_ranges(config)
+    validate_pua_ranges(pua_ranges)
+
     return spec
+
+
+# ============================================================================
+# PUA Range Validation (prevents codepoint collisions)
+# ============================================================================
+
+def collect_pua_ranges(config: dict) -> list:
+    """
+    Collect all PUA ranges from atoms.yaml config.
+
+    Returns list of (name, start, end) tuples for collision detection.
+    """
+    ranges = []
+
+    # 1. Notation systems (number, western, sargam, doremi) - from notation_system_pua_blocks
+    pua_blocks = config.get('notation_system_pua_blocks', {})
+    for name, block in pua_blocks.items():
+        if isinstance(block, dict) and 'base' in block:
+            base = block['base']
+            chars = block.get('chars', 7)
+            variants = block.get('variants_per_char', 30)
+            count = chars * variants
+            ranges.append((f"{name}_notes", base, base + count - 1))
+
+    # 2. Glyph decorations for ASCII (lower_loop, slur, combined)
+    # Nested under pua_allocation.glyph_decorations
+    pua_alloc = config.get('pua_allocation', {})
+    glyph_deco = pua_alloc.get('glyph_decorations', {})
+    for name in ['lower_loop_only', 'slur_only', 'combined']:
+        block = glyph_deco.get(name, {})
+        if 'pua_base' in block:
+            base = block['pua_base']
+            chars = glyph_deco.get('decoration_capable_chars', 95)
+            variants = block.get('variants', 3)
+            count = chars * variants
+            ranges.append((f"ascii_{name}", base, base + count - 1))
+
+    # 3. PUA note decorations (number, western, sargam, doremi)
+    # These are nested under pua_allocation.pua_note_decorations in atoms.yaml
+    pua_alloc = config.get('pua_allocation', {})
+    note_deco = pua_alloc.get('pua_note_decorations', {})
+    for key in ['number_decorations', 'western_decorations', 'sargam_decorations', 'doremi_decorations']:
+        block = note_deco.get(key, {})
+        if 'pua_base' in block:
+            base = block['pua_base']
+            note_count = block.get('note_count', 210)
+            variants = block.get('decoration_variants', 15)
+            count = note_count * variants
+            ranges.append((key, base, base + count - 1))
+
+    # 4. Notation elements (dash, breath_mark, space, barlines) - both base and line variants
+    notation_elements = config.get('notation_elements', {})
+    for name, elem in notation_elements.items():
+        if isinstance(elem, dict):
+            # Base glyph
+            if 'base' in elem:
+                ranges.append((f"{name}_base", elem['base'], elem['base']))
+            # Line variants (15 per element)
+            if 'line_base' in elem:
+                base = elem['line_base']
+                ranges.append((f"{name}_lines", base, base + 14))
+
+    # 5. Bracket variants (nested under pua_allocation)
+    bracket = pua_alloc.get('bracket_variants', {})
+    for name, block in bracket.items():
+        if isinstance(block, dict) and 'pua_base' in block:
+            base = block['pua_base']
+            max_glyphs = block.get('max_glyphs', 512)
+            ranges.append((f"bracket_{name}", base, base + max_glyphs - 1))
+
+    # 6. Superscript variants (nested under pua_allocation)
+    superscript = pua_alloc.get('superscript_variants', {})
+    for key in ['ascii_superscripts', 'number_superscripts', 'western_superscripts',
+                'sargam_superscripts', 'doremi_superscripts']:
+        block = superscript.get(key, {})
+        if 'pua_base' in block:
+            base = block['pua_base']
+            # Calculate count based on available info
+            if 'char_count' in block:
+                count = block['char_count'] * 16  # 16 decoration variants
+            elif 'chars' in block and 'variants_per_char' in block:
+                count = block['chars'] * block['variants_per_char'] * 16
+            else:
+                count = 1520  # default ASCII count
+            ranges.append((key, base, base + count - 1))
+
+    # 7. Utility glyphs (nested under pua_allocation)
+    utility = pua_alloc.get('utility_glyphs', {})
+    loop_arcs = utility.get('loop_arcs', {}).get('codepoints', {})
+    if loop_arcs:
+        cps = list(loop_arcs.values())
+        ranges.append(("utility_loop_arcs", min(cps), max(cps)))
+
+    deco_marks = utility.get('decoration_mark_variants', {}).get('codepoints', {})
+    if deco_marks:
+        cps = list(deco_marks.values())
+        ranges.append(("utility_deco_marks", min(cps), max(cps)))
+
+    fullwidth = utility.get('fullwidth_combining', {}).get('codepoints', {})
+    if fullwidth:
+        cps = list(fullwidth.values())
+        ranges.append(("utility_fullwidth", min(cps), max(cps)))
+
+    return ranges
+
+
+def validate_pua_ranges(ranges: list) -> None:
+    """
+    Check for overlapping PUA ranges. Raises ValueError if collision found.
+
+    Args:
+        ranges: List of (name, start, end) tuples
+
+    Raises:
+        ValueError with detailed collision info if ranges overlap
+    """
+    if not ranges:
+        return
+
+    # Sort by start address
+    sorted_ranges = sorted(ranges, key=lambda r: r[1])
+
+    print(f"\n[VALIDATION] Checking {len(sorted_ranges)} PUA ranges for collisions...")
+
+    # Check each adjacent pair for overlap
+    for i in range(len(sorted_ranges) - 1):
+        name1, start1, end1 = sorted_ranges[i]
+        name2, start2, end2 = sorted_ranges[i + 1]
+
+        if end1 >= start2:
+            overlap_start = start2
+            overlap_end = min(end1, end2)
+            raise ValueError(
+                f"\n{'='*60}\n"
+                f"PUA COLLISION DETECTED!\n"
+                f"{'='*60}\n"
+                f"  Range 1: {name1}\n"
+                f"           0x{start1:05X} - 0x{end1:05X} ({end1 - start1 + 1} codepoints)\n"
+                f"  Range 2: {name2}\n"
+                f"           0x{start2:05X} - 0x{end2:05X} ({end2 - start2 + 1} codepoints)\n"
+                f"  Overlap: 0x{overlap_start:05X} - 0x{overlap_end:05X} ({overlap_end - overlap_start + 1} codepoints)\n"
+                f"{'='*60}\n"
+                f"Fix: Update atoms.yaml to move one of these ranges.\n"
+            )
+
+    print(f"  ✓ All {len(sorted_ranges)} PUA ranges validated - no collisions")
 
 
 # ============================================================================
@@ -919,136 +1069,6 @@ def add_line_mark_calt_rules(font, width_classes, underline_variants, overline_v
     # Future: Implement GPOS mark-to-base positioning or contextual chain substitution
     # For now, the legacy approach works well and the mark variants are available
 
-    return 0
-
-
-def create_loop_arc_marks(font):
-    """
-    Create 4 loop arc mark glyphs for rounded corners of underline/overline loops.
-
-    These are quarter-ring arcs (outer + inner circle) with stroke thickness
-    equal to LINE_THICKNESS, designed to attach to our underline/overline lanes.
-
-    Codepoints:
-        U+E704: loop_bottom_left   – bottom-left "smiley" cap  (╰)
-        U+E705: loop_bottom_right  – bottom-right "smiley" cap (╯)
-        U+E706: loop_top_left      – top-left "frown" cap      (╭)
-        U+E707: loop_top_right     – top-right "frown" cap     (╮)
-    """
-    import math
-
-    if font is None:
-        return 0
-
-    print("  Creating loop arc mark glyphs...")
-
-    outer_r = ARC_RADIUS
-    inner_r = max(outer_r - ARC_STROKE, 1)
-    STEPS = 8
-
-    def draw_ring_segment(pen, cx, cy, start_deg, end_deg, clockwise=True):
-        start_rad = math.radians(start_deg)
-        end_rad = math.radians(end_deg)
-
-        if clockwise:
-            if end_rad > start_rad:
-                end_rad -= 2 * math.pi
-        else:
-            if end_rad < start_rad:
-                end_rad += 2 * math.pi
-
-        # Outer arc
-        pen.moveTo((
-            cx + outer_r * math.cos(start_rad),
-            cy + outer_r * math.sin(start_rad),
-        ))
-        for i in range(1, STEPS + 1):
-            t = i / STEPS
-            a = start_rad + (end_rad - start_rad) * t
-            pen.lineTo((
-                cx + outer_r * math.cos(a),
-                cy + outer_r * math.sin(a),
-            ))
-
-        # Inner arc back
-        for i in range(STEPS, -1, -1):
-            t = i / STEPS
-            a = start_rad + (end_rad - start_rad) * t
-            pen.lineTo((
-                cx + inner_r * math.cos(a),
-                cy + inner_r * math.sin(a),
-            ))
-
-        pen.closePath()
-
-    # -------------------------
-    # Bottom-left (works today)
-    # -------------------------
-    try:
-        g_bl = font.createChar(0xE704, "loop_bottom_left")
-        g_bl.clear()
-        pen = g_bl.glyphPen()
-
-        cx = int(outer_r * 0.5)
-        cy = UNDERLINE_Y_BOTTOM + outer_r  # center above underline bottom
-        # Quarter from down (270°) to left (180°)
-        draw_ring_segment(pen, cx, cy, 270, 180, clockwise=True)
-
-        g_bl.width = 0
-        # Base glyph uses Anchor-underline at UNDERLINE_Y_TOP,
-        # but we want the cap to attach at the bottom of the lane so it "hangs" below.
-        g_bl.addAnchorPoint("Anchor-underline", "mark", 0, UNDERLINE_Y_BOTTOM)
-        g_bl.correctDirection()
-    except Exception as e:
-        print(f"    Warning: could not create loop_bottom_left: {e}")
-
-    # Bottom-right: horizontal mirror of bottom-left
-    try:
-        g_br = font.createChar(0xE705, "loop_bottom_right")
-        g_br.clear()
-        if font[0xE704]:
-            g_br.addReference(font[0xE704].glyphname, (-1, 0, 0, 1, 0, 0))
-        g_br.width = 0
-        g_br.addAnchorPoint("Anchor-underline", "mark", 0, UNDERLINE_Y_BOTTOM)
-        g_br.correctDirection()
-    except Exception as e:
-        print(f"    Warning: could not create loop_bottom_right: {e}")
-
-    # -------------------------
-    # Top-left: ╭ shape - mirror of bottom-left ╰
-    # -------------------------
-    try:
-        g_tl = font.createChar(0xE706, "loop_top_left")
-        g_tl.clear()
-        pen = g_tl.glyphPen()
-
-        cx = int(outer_r * 0.5)
-        cy = OVERLINE_Y_TOP - outer_r  # center BELOW overline top (inside the bracket)
-        # Arc from 90° (up) to 180° (left), counter-clockwise
-        # At 90°: Y = cy + outer_r = OVERLINE_Y_TOP (join point at top)
-        # At 180°: X = cx - outer_r (extends left)
-        # This creates a ╭ shape
-        draw_ring_segment(pen, cx, cy, 90, 180, clockwise=False)
-
-        g_tl.width = 0
-        g_tl.addAnchorPoint("Anchor-overline", "mark", 0, OVERLINE_Y_TOP)
-        g_tl.correctDirection()
-    except Exception as e:
-        print(f"    Warning: could not create loop_top_left: {e}")
-
-    # Top-right: horizontal mirror of top-left
-    try:
-        g_tr = font.createChar(0xE707, "loop_top_right")
-        g_tr.clear()
-        if font[0xE706]:
-            g_tr.addReference(font[0xE706].glyphname, (-1, 0, 0, 1, 0, 0))
-        g_tr.width = 0
-        g_tr.addAnchorPoint("Anchor-overline", "mark", 0, OVERLINE_Y_TOP)
-        g_tr.correctDirection()
-    except Exception as e:
-        print(f"    Warning: could not create loop_top_right: {e}")
-
-    print("    ✓ Loop arc mark glyphs created (U+E704–U+E707)")
     return 0
 
 
@@ -2087,8 +2107,8 @@ def create_overlined_accidental_variants(font, layout):
         if acc_type == 0:  # Natural (no accidental)
             continue
 
-        # Skip Sargam komal/tivra notes
-        if atom.character in SARGAM_NO_ACCIDENTALS:
+        # Skip Sargam komal/tivra notes (but NOT Doremi - same chars d, r, m need accidentals)
+        if atom.system == 'sargam' and atom.character in SARGAM_NO_ACCIDENTALS:
             continue
 
         try:
@@ -2356,131 +2376,6 @@ def reposition_combining_marks(font):
         print(f"    Warning: Could not reposition combining underline: {e}")
 
     return modified
-
-
-def create_line_endpoint_caps(font):
-    """
-    Create rounded cap glyphs for the start and end of continuous lines.
-
-    These are small semicircle shapes that cap the ends of underlines/overlines.
-
-    Design:
-      - Left caps: Semicircle on the left, drawn at negative X (before the glyph origin)
-                   with zero advance width. This prepends a rounded end.
-      - Right caps: Semicircle on the right, drawn at positive X with the semicircle
-                    as advance width. This appends a rounded end.
-
-    Creates 4 glyphs:
-      U+E700: underline_left_cap  (rounded left end for underline)
-      U+E701: underline_right_cap (rounded right end for underline)
-      U+E702: overline_left_cap   (rounded left end for overline)
-      U+E703: overline_right_cap  (rounded right end for overline)
-
-    Uses global lane constants defined at module level.
-    """
-    import math
-
-    # Cap geometry - uses global LINE_THICKNESS constant
-    CAP_RADIUS = LINE_THICKNESS // 2  # Half the thickness for semicircle
-
-    # Codepoint allocation
-    CAPS = [
-        (0xE700, 'underline_left_cap', UNDERLINE_Y_BOTTOM, UNDERLINE_Y_TOP, 'left'),
-        (0xE701, 'underline_right_cap', UNDERLINE_Y_BOTTOM, UNDERLINE_Y_TOP, 'right'),
-        (0xE702, 'overline_left_cap', OVERLINE_Y_BOTTOM, OVERLINE_Y_TOP, 'left'),
-        (0xE703, 'overline_right_cap', OVERLINE_Y_BOTTOM, OVERLINE_Y_TOP, 'right'),
-    ]
-
-    created = 0
-
-    def semicircle_points(cx, cy, r, start_angle, end_angle, num_points=8):
-        """Generate points along a semicircle arc."""
-        points = []
-        for i in range(num_points + 1):
-            t = i / num_points
-            angle = start_angle + t * (end_angle - start_angle)
-            x = cx + r * math.cos(angle)
-            y = cy + r * math.sin(angle)
-            points.append((x, y))
-        return points
-
-    for codepoint, name, y_bottom, y_top, side in CAPS:
-        try:
-            glyph = font.createChar(codepoint, name)
-            glyph.clear()
-
-            pen = glyph.glyphPen()
-
-            y_center = (y_bottom + y_top) / 2
-
-            if side == 'left':
-                # Left cap: semicircle bulging LEFT from the straight edge at X=0
-                # Zero advance width - this prepends a rounded end
-                #
-                # Shape: Start at top-right (0, y_top), go down the straight edge,
-                # then arc around to the left and back up to close.
-
-                pen.moveTo((0, y_top))
-                pen.lineTo((0, y_bottom))  # Straight edge down
-
-                # Arc from bottom to top, curving left (270° down to 90° up)
-                # This goes: bottom -> left side -> top
-                arc_points = semicircle_points(0, y_center, CAP_RADIUS,
-                                               -math.pi/2, math.pi/2, 8)
-                # Reverse direction: we want to go counterclockwise (left side)
-                # Actually we need 270° to 90° going through 180° (the left side)
-                arc_points = semicircle_points(0, y_center, CAP_RADIUS,
-                                               3*math.pi/2, math.pi/2 + 2*math.pi, 8)
-                # Simpler: just go from -90° to 90° but negate X to flip to left
-                arc_points = []
-                for i in range(9):
-                    t = i / 8
-                    angle = -math.pi/2 + t * math.pi  # -90° to +90°
-                    x = -CAP_RADIUS * math.cos(angle)  # Negate X to go left
-                    y = y_center + CAP_RADIUS * math.sin(angle)
-                    arc_points.append((x, y))
-
-                for px, py in arc_points:
-                    pen.lineTo((px, py))
-
-                pen.closePath()
-                pen = None
-                glyph.width = 0
-
-            else:  # right
-                # Right cap: semicircle bulging RIGHT from the straight edge at X=0
-                # Advance width = CAP_RADIUS
-                #
-                # Shape: Start at bottom-left (0, y_bottom), go up the straight edge,
-                # then arc around to the right and back down to close.
-
-                pen.moveTo((0, y_bottom))
-                pen.lineTo((0, y_top))  # Straight edge up
-
-                # Arc from top to bottom, curving right
-                arc_points = []
-                for i in range(9):
-                    t = i / 8
-                    angle = math.pi/2 - t * math.pi  # +90° to -90°
-                    x = CAP_RADIUS * math.cos(angle)
-                    y = y_center + CAP_RADIUS * math.sin(angle)
-                    arc_points.append((x, y))
-
-                for px, py in arc_points:
-                    pen.lineTo((px, py))
-
-                pen.closePath()
-                pen = None
-                glyph.width = CAP_RADIUS
-
-            glyph.correctDirection()
-            created += 1
-
-        except Exception as e:
-            print(f"    Warning: Could not create {name}: {e}")
-
-    print(f"    ✓ Created {created} line endpoint caps (U+E700-U+E703)")
-    return created
 
 
 def add_overline_ligatures(font, overline_map):
@@ -4138,6 +4033,7 @@ def build_font(
             # - U+1D12A: Musical Symbol Double Sharp
             print(f"  Importing accidental symbols from Noto Music...")
             symbols_imported = 0
+            # Accidentals (standard Unicode) - ornaments come from Bravura instead
             accidental_codepoints = [0x266D, 0x266F, 0x1D12B, 0x1D12A]
             for codepoint in accidental_codepoints:
                 try:
@@ -4447,8 +4343,10 @@ def build_font(
         # acc_type from variant_index: 0=natural, 1=flat, 2=half-flat, 3=double-flat, 4=double-sharp, 5=sharp
         # EXCEPTION: Sargam komal/tivra notes (r, g, m, d, n, M) should NEVER get accidentals
         # In Sargam, case itself indicates pitch: r=komal Re, g=komal Ga, m=komal ma, d=komal Dha, n=komal Ni, M=tivra Ma
+        # NOTE: Only applies to Sargam system - Doremi uses same chars (d, r, m) but DOES need accidentals
         SARGAM_NO_ACCIDENTALS = {'r', 'g', 'm', 'd', 'n', 'M'}
-        if acc_type > 0 and atom.character not in SARGAM_NO_ACCIDENTALS:
+        is_sargam_komal_tivra = atom.system == 'sargam' and atom.character in SARGAM_NO_ACCIDENTALS
+        if acc_type > 0 and not is_sargam_komal_tivra:
             try:
                 acc_glyph = None
                 if acc_type == 1:  # Flat
@@ -4571,10 +4469,6 @@ def build_font(
     # This ensures fallback rendering (when ligatures don't fire) is still correct
     print(f"  Repositioning combining marks to lane positions...")
     reposition_combining_marks(font)
-
-    # Create line endpoint caps (rounded ends for underlines/overlines)
-    print(f"  Creating line endpoint caps...")
-    create_line_endpoint_caps(font)
 
     # Add ccmp ligatures for combining octave dots → precomposed glyphs
     # This enables octave dots to work WITHOUT CSS font-feature-settings

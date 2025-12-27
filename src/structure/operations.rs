@@ -95,7 +95,6 @@ pub fn shift_octaves(text: &str, delta: i8, system: PitchSystem) -> OctaveShiftR
 /// `true` if octave was set successfully, `false` if cell is not pitched or octave out of range
 pub fn set_cell_octave(cell: &mut crate::models::core::Cell, target_octave: i8) -> bool {
     use crate::models::elements::ElementKind;
-    use crate::models::elements::PitchSystem;
 
     // Only apply to pitched elements
     if cell.get_kind() != ElementKind::PitchedElement {

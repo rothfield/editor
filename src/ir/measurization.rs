@@ -17,7 +17,7 @@
 //! - Preserves all metadata (lyrics, slurs, grace notes, etc.)
 //! - Tracks system breaks for `<print new-system="yes"/>`
 
-use crate::ir::{ExportLine, ExportMeasure, ExportEvent, NoteData, Fraction, TieData, TieType};
+use crate::ir::{ExportLine, ExportEvent, Fraction, TieData, TieType};
 use std::collections::HashSet;
 
 /// Single event in the uniform tick timeline.

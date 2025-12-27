@@ -390,6 +390,36 @@ mod tests {
         assert_eq!(cell.get_char_string(), "x");
     }
 
+    #[test]
+    fn test_f_not_pitch_in_number_system() {
+        use crate::parse::pitch_system::PitchSystemDispatcher;
+
+        // First verify the dispatcher correctly rejects F in Number system
+        let dispatcher = PitchSystemDispatcher::new();
+        let lookup_result = dispatcher.lookup("F", PitchSystem::Number);
+        println!("dispatcher.lookup('F', Number) = {}", lookup_result);
+        assert!(!lookup_result, "dispatcher.lookup should return false for F in Number system");
+
+        // Now test parse_single
+        // 'F' is a Western pitch, NOT a Number pitch
+        // It should parse as Text in Number system
+        let cell_f = parse_single('F', PitchSystem::Number, None);
+        println!("cell_f.get_kind() = {:?}", cell_f.get_kind());
+        println!("cell_f.get_char_string() = {:?}", cell_f.get_char_string());
+        println!("cell_f.get_pitch_code() = {:?}", cell_f.get_pitch_code());
+        assert_eq!(cell_f.get_kind(), ElementKind::Text, "F should be Text in Number system, not PitchedElement");
+        assert_eq!(cell_f.get_char_string(), "F");
+        assert_eq!(cell_f.get_pitch_code(), None, "F should have no pitch_code in Number system");
+
+        let cell_f_lower = parse_single('f', PitchSystem::Number, None);
+        assert_eq!(cell_f_lower.get_kind(), ElementKind::Text, "f should be Text in Number system");
+
+        // Verify F IS a pitch in Western system
+        let cell_f_western = parse_single('F', PitchSystem::Western, None);
+        assert_eq!(cell_f_western.get_kind(), ElementKind::PitchedElement, "F SHOULD be PitchedElement in Western system");
+        assert_eq!(cell_f_western.get_pitch_code(), Some(PitchCode::N4), "F should be pitch code N4 in Western");
+    }
+
 
     // REMOVED: Tests for continuation cell system (no longer used)
     // Multi-character notation like "1#", "||", "|:" now creates single cells

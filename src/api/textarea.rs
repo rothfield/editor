@@ -10,9 +10,11 @@ use serde::{Serialize, Deserialize};
 use crate::api::helpers::lock_document;
 use crate::wasm_info;
 use crate::models::{PitchSystem, ElementKind};
+use crate::undo::Command;
 use crate::parse::beats::BeatDeriver;
 use crate::renderers::line_variants::{LowerLoopRole, SlurRole, get_line_variant_codepoint};
 use crate::renderers::font_utils::{glyph_for_pitch, decode_char, DecodedChar};
+use crate::html_layout::lyrics::parse_lyrics;
 
 // ============================================================================
 // Types
@@ -224,10 +226,12 @@ pub fn compute_lyric_layout(
     }
 
     let line = &document.lines[line_index];
-    let syllable_texts: Vec<&str> = line.lyrics.split_whitespace().collect();
+    // Use parse_lyrics to properly handle hyphenated syllables like "shake-spear" -> ["shake-", "spear"]
+    let syllable_texts: Vec<String> = parse_lyrics(&line.lyrics);
+    let syllable_refs: Vec<&str> = syllable_texts.iter().map(|s| s.as_str()).collect();
 
     // Compute layout with collision avoidance
-    let overlays = compute_lyric_positions(&note_positions, &syllable_widths, &syllable_texts);
+    let overlays = compute_lyric_positions(&note_positions, &syllable_widths, &syllable_refs);
 
     serde_wasm_bindgen::to_value(&overlays)
         .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
@@ -236,11 +240,18 @@ pub fn compute_lyric_layout(
 /// Pure function: compute lyric positions with collision avoidance
 ///
 /// This is deterministic and testable in Rust without browser.
-/// Input: measured note positions (left edge of note characters) and syllable widths
-/// Output: final x_px position for each syllable (left edge of lyric)
+/// Input: measured note positions (center positions for lyrics) and syllable widths
+/// Output: final x_px position for each syllable (center position, CSS uses translateX(-50%))
 ///
-/// Lyrics are LEFT-ALIGNED at the note position, not centered.
-/// This gives predictable alignment where lyrics start at their corresponding notes.
+/// Lyrics are CENTERED on their position via CSS: transform: translateX(-50%)
+/// This means:
+///   - Visual left edge = x_px - width/2
+///   - Visual right edge = x_px + width/2
+///
+/// For no collision between adjacent syllables:
+///   - prev_right + MIN_GAP < next_left
+///   - prev_center + prev_width/2 + MIN_GAP < next_center - next_width/2
+///   - next_center > prev_center + prev_width/2 + MIN_GAP + next_width/2
 fn compute_lyric_positions(
     note_positions: &[f32],
     syllable_widths: &[f32],
@@ -249,27 +260,36 @@ fn compute_lyric_positions(
     const MIN_GAP: f32 = 4.0; // minimum pixels between lyrics
 
     let mut overlays = Vec::new();
-    let mut min_next_x: f32 = 0.0;
+    let mut prev_center: f32 = f32::NEG_INFINITY;
+    let mut prev_half_width: f32 = 0.0;
 
     for (i, syllable) in syllable_texts.iter().enumerate() {
         // Get note position for this syllable (syllable i -> note i)
-        // note_x is the left edge of the note character
+        // note_x is the center position for this lyric
         let note_x = note_positions.get(i).copied().unwrap_or(0.0);
 
-        // Get syllable width
+        // Get syllable width and half-width for centered positioning
         let width = syllable_widths.get(i).copied().unwrap_or(20.0);
+        let half_width = width / 2.0;
 
-        // Position lyric at note position, but ensure no collision with previous lyric
-        let actual_x = note_x.max(min_next_x);
+        // For centered positioning:
+        // - Previous lyric's visual right edge = prev_center + prev_half_width
+        // - This lyric's visual left edge = center - half_width
+        // For no collision: prev_right + MIN_GAP < this_left
+        // => prev_center + prev_half_width + MIN_GAP < center - half_width
+        // => center > prev_center + prev_half_width + MIN_GAP + half_width
+        let min_center = prev_center + prev_half_width + MIN_GAP + half_width;
+        let actual_center = note_x.max(min_center);
 
         overlays.push(OverlayItem {
-            x_px: actual_x,
+            x_px: actual_center,
             content: syllable.to_string(),
             anchor_char_index: i, // Use index as reference (note index, not char index)
         });
 
-        // Update minimum x for next syllable
-        min_next_x = actual_x + width + MIN_GAP;
+        // Update for next iteration
+        prev_center = actual_center;
+        prev_half_width = half_width;
     }
 
     overlays
@@ -302,24 +322,45 @@ pub fn set_line_text(line_index: usize, text: &str, cursor_char_pos: Option<usiz
     let doc_pitch_system = document.pitch_system.unwrap_or(PitchSystem::Number);
     let pitch_system = line_pitch_system.unwrap_or(doc_pitch_system);
 
+    // Save old cells and cursor position for undo
+    let old_cells = document.lines[line_index].cells.clone();
+    let old_cursor_col = document.state.cursor.col;
+
     // Parse text to cells, also getting char position mapping
     let (new_cells, char_boundaries) = parse_text_to_cells_with_positions(text, pitch_system);
 
     // Update the line's cells
     let new_cell_count = new_cells.len();
-    document.lines[line_index].cells = new_cells;
-    // Sync text field after replacing cells
-    document.lines[line_index].sync_text_from_cells();
 
-    // Update cursor position
-    document.state.cursor.line = line_index;
-    document.state.cursor.col = if let Some(char_pos) = cursor_char_pos {
+    // Calculate new cursor position
+    let new_cursor_col = if let Some(char_pos) = cursor_char_pos {
         // Convert character position to cell index
         char_pos_to_cell_index(char_pos, &char_boundaries, new_cell_count)
     } else {
         // Default: cursor at end of line
         new_cell_count
     };
+
+    // Only push undo command if cells actually changed
+    if old_cells != new_cells {
+        let command = Command::ReplaceLine {
+            line: line_index,
+            old_cells,
+            new_cells: new_cells.clone(),
+            old_cursor_col,
+            new_cursor_col,
+        };
+        let cursor_pos = (line_index, new_cursor_col);
+        document.state.undo_stack.push(command, cursor_pos);
+    }
+
+    document.lines[line_index].cells = new_cells;
+    // Sync text field after replacing cells
+    document.lines[line_index].sync_text_from_cells();
+
+    // Update cursor position
+    document.state.cursor.line = line_index;
+    document.state.cursor.col = new_cursor_col;
 
     // Compute and return updated display
     let display = compute_textarea_line_display(
@@ -511,7 +552,7 @@ fn parse_text_to_cells_with_positions(text: &str, pitch_system: PitchSystem) -> 
 
     let mut cells = Vec::new();
     let mut char_boundaries = Vec::new(); // Starting char position for each cell
-    let mut column = 0;
+    let _column = 0;
     let mut remaining = text;
     let mut char_pos = 0; // Current character position (not byte position)
 
@@ -801,10 +842,8 @@ fn compute_textarea_line_display(
         .collect();
 
     // 7. Extract syllable texts (for JS to measure widths)
-    let syllable_texts: Vec<String> = line.lyrics
-        .split_whitespace()
-        .map(|s| s.to_string())
-        .collect();
+    // Use parse_lyrics to properly handle hyphenated syllables like "shake-spear" -> ["shake-", "spear"]
+    let syllable_texts: Vec<String> = parse_lyrics(&line.lyrics);
 
     // 8. Lyrics will be computed by compute_lyric_layout after JS measures positions
     // For now, return empty - JS will call compute_lyric_layout with measurements
@@ -834,6 +873,7 @@ fn compute_textarea_line_display(
 }
 
 /// Get base ASCII character for a pitch code in a given system
+#[allow(dead_code)]
 fn pitch_to_base_char(pitch_code: crate::models::pitch_code::PitchCode, pitch_system: PitchSystem) -> char {
     let degree = pitch_code.degree();
     match pitch_system {
@@ -1241,6 +1281,62 @@ mod tests {
         // Key test: cells preserve their original glyphs regardless of context
         assert_ne!(glyph_number, glyph_sargam,
             "Number '1' and Sargam 'S' should be different glyphs");
+    }
+
+    #[test]
+    fn test_compute_lyric_positions_no_collision_centered() {
+        // Test that syllables are positioned to avoid collision WITH CENTERED POSITIONING
+        // CSS uses: transform: translateX(-50%) which centers items on their left position
+        //
+        // Scenario: "willam" (42.8px wide) and "shakespear" (75.4px wide)
+        // Note positions: 38px and 64px
+        //
+        // With centered positioning:
+        // - willam at center=38: visual span = [38-21.4, 38+21.4] = [16.6, 59.4]
+        // - shakespear at center=64: visual span = [64-37.7, 64+37.7] = [26.3, 101.7]
+        // - COLLISION: 59.4 > 26.3
+        //
+        // For no collision with centered positioning:
+        // - willam right edge = 38 + 21.4 = 59.4
+        // - shakespear left edge must be > 59.4 + MIN_GAP = 63.4
+        // - shakespear center = shakespear_left + 37.7 = 63.4 + 37.7 = 101.1
+        // So shakespear should be pushed to center >= 101.1
+
+        let note_positions = vec![38.0, 64.0];
+        let syllable_widths = vec![42.8, 75.4];
+        let syllable_texts = vec!["willam", "shakespear"];
+
+        let overlays = compute_lyric_positions(&note_positions, &syllable_widths, &syllable_texts);
+
+        assert_eq!(overlays.len(), 2);
+
+        // First syllable at note position
+        assert_eq!(overlays[0].x_px, 38.0, "First lyric should be at note position");
+        assert_eq!(overlays[0].content, "willam");
+
+        // Second syllable should be pushed right to avoid collision (centered positioning)
+        // For centered: min_center = prev_center + prev_half_width + MIN_GAP + this_half_width
+        // min_center = 38 + 21.4 + 4 + 37.7 = 101.1
+        let expected_second_center = 38.0 + 42.8/2.0 + 4.0 + 75.4/2.0; // ~101.1
+        assert!(
+            overlays[1].x_px >= expected_second_center - 0.1, // Small tolerance for floating point
+            "Second lyric center at {} should be >= {} to avoid collision (centered)",
+            overlays[1].x_px,
+            expected_second_center
+        );
+        assert_eq!(overlays[1].content, "shakespear");
+
+        // Verify no visual collision with centered positioning:
+        // first_right_edge = center_1 + width_1/2
+        // second_left_edge = center_2 - width_2/2
+        let first_right_visual = overlays[0].x_px + syllable_widths[0] / 2.0;
+        let second_left_visual = overlays[1].x_px - syllable_widths[1] / 2.0;
+        assert!(
+            first_right_visual < second_left_visual,
+            "Visual collision detected (centered): first ends at {}, second starts at {}",
+            first_right_visual,
+            second_left_visual
+        );
     }
 
     #[test]

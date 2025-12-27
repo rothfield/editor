@@ -7,9 +7,8 @@
  * 3. Accidentals - 6 types (natural, flat, half-flat, double-flat, sharp, double-sharp)
  * 4. Line Variants - 15 per glyph (underline + overline combinations)
  * 5. Superscripts - 16 line variants per scaled glyph
- * 6. Symbols - SMuFL barlines, ornaments
- * 7. Notation Elements - dash, breath mark, space, barlines
- * 8. Example Beats - realistic beat patterns
+ * 6. Notation Elements - dash, breath mark, space, barlines
+ * 7. Example Beats - realistic beat patterns
  */
 
 import logger, { LOG_CATEGORIES } from './logger.js';
@@ -60,11 +59,6 @@ interface SuperscriptConfig {
   variantsPerChar?: number;
 }
 
-interface NotationElement {
-  base: number;
-  lineBase: number;
-}
-
 interface PUAConfig {
   systems: PUASystems;
   lineVariants: {
@@ -74,8 +68,26 @@ interface PUAConfig {
   };
   noteLineVariants: { [key: string]: NoteLineVariantConfig };
   superscripts: { [key: string]: SuperscriptConfig };
-  notationElements: { [key: string]: NotationElement };
-  utility: { [key: string]: number };
+}
+
+// WASM-provided notation element config
+interface WasmNotationElement {
+  name: string;
+  base: number;
+  line_base: number;
+  label: string;
+}
+
+interface WasmSymbol {
+  name: string;
+  codepoint: number;
+  label: string;
+}
+
+interface WasmFontConfig {
+  notation_elements: WasmNotationElement[];
+  line_variants_per_glyph: number;
+  symbols: WasmSymbol[];
 }
 
 interface OctaveInfo {
@@ -135,7 +147,7 @@ const PUA: PUAConfig = {
       base: 0xE300,
       chars: 'SrRgGmMPdDnN',
       variantsPerChar: 30,
-      description: 'Sargam - case distinguishes pitch variants (r=komal, R=shuddha)'
+      description: 'Sargam - case distinguishes pitch variants (r=flat, R=natural, M=sharp)'
     },
     // atoms.yaml: "Solfège notation (drmfslt)" - "Octaves indicated by dots above/below, not by case"
     doremi: {
@@ -171,24 +183,8 @@ const PUA: PUAConfig = {
     doremi: { base: 0xFC600, sourceBase: 0xE500, chars: 7, variantsPerChar: 30 }
   },
 
-  // Notation elements
-  notationElements: {
-    dash: { base: 0xE750, lineBase: 0x1E000 },
-    breathMark: { base: 0xE751, lineBase: 0x1E00F },
-    space: { base: 0xE752, lineBase: 0x1E01E },
-    singleBarline: { base: 0xE753, lineBase: 0x1E02D },
-    doubleBarline: { base: 0xE754, lineBase: 0x1E03C },
-    repeatLeft: { base: 0xE755, lineBase: 0x1E04B },
-    repeatRight: { base: 0xE756, lineBase: 0x1E05A }
-  },
-
-  // Utility glyphs
-  utility: {
-    loopBottomLeft: 0xE704,
-    loopBottomRight: 0xE705,
-    loopTopLeft: 0xE706,
-    loopTopRight: 0xE707
-  }
+  // NOTE: Notation elements now loaded from WASM via getFontConfig()
+  // notationElements removed - use wasmConfig.notation_elements instead
 };
 
 // Octave indices (must match Rust octave_index())
@@ -263,6 +259,7 @@ export class FontInspector {
   private currentCategory: string;
   private currentSystem: string;
   private currentFontSize: number;
+  private wasmConfig: WasmFontConfig | null = null;
 
   constructor() {
     this.display = document.getElementById('font-inspector-display') as HTMLTextAreaElement | null;
@@ -284,7 +281,21 @@ export class FontInspector {
     if (this.sizeSelect) this.sizeSelect.value = String(this.currentFontSize);
     if (this.display) this.display.style.fontSize = `${this.currentFontSize}pt`;
 
+    // Load WASM config
+    this.loadWasmConfig();
+
     this.setupEventListeners();
+  }
+
+  private loadWasmConfig(): void {
+    try {
+      const config = (window as any).editor?.wasmModule?.getFontConfig?.();
+      if (config) {
+        this.wasmConfig = config as WasmFontConfig;
+      }
+    } catch (e) {
+      console.warn('[FontInspector] Failed to load WASM config:', e);
+    }
   }
 
   loadSettings(): { category?: string; system?: string; fontSize?: number } {
@@ -440,14 +451,26 @@ export class FontInspector {
       }
     }
 
-    // Check notation elements
-    for (const [name, elem] of Object.entries(PUA.notationElements)) {
-      if (cp === elem.base) {
-        return `notation element: ${name}`;
+    // Check notation elements (from WASM config)
+    if (this.wasmConfig?.notation_elements) {
+      for (const elem of this.wasmConfig.notation_elements) {
+        if (cp === elem.base) {
+          return `notation element: ${elem.name}`;
+        }
+        const lineVariants = this.wasmConfig.line_variants_per_glyph || 15;
+        if (cp >= elem.line_base && cp < elem.line_base + lineVariants) {
+          const lineVar = cp - elem.line_base;
+          return `notation element: ${elem.name} with ${LINE_VARIANTS[lineVar]?.label}`;
+        }
       }
-      if (cp >= elem.lineBase && cp < elem.lineBase + 15) {
-        const lineVar = cp - elem.lineBase;
-        return `notation element: ${name} with ${LINE_VARIANTS[lineVar]?.label}`;
+    }
+
+    // Check symbols (ornaments, barlines from Noto Music)
+    if (this.wasmConfig?.symbols) {
+      for (const sym of this.wasmConfig.symbols) {
+        if (cp === sym.codepoint) {
+          return `symbol: ${sym.label}`;
+        }
       }
     }
 
@@ -634,9 +657,10 @@ export class FontInspector {
     // atoms.yaml indices: 0=U-mid, 1=U-left, 2=U-right
     const U_MID = 0, U_LEFT = 1, U_RIGHT = 2;
 
-    // Get dash with underline from notation elements (same formula as notes)
+    // Get dash with underline from notation elements (from WASM config)
     // Formula: line_base + variant (dash has only one glyph, so no offset)
-    const dashLineBase = PUA.notationElements.dash.lineBase;
+    const dashElem = this.wasmConfig?.notation_elements?.find(e => e.name === 'dash');
+    const dashLineBase = dashElem?.line_base || 0x1E520;
     const dashU = (variant: number): string => String.fromCodePoint(dashLineBase + variant);
 
     // Row 1: left glyphs + examples (12, 1-3)
@@ -700,15 +724,17 @@ export class FontInspector {
 
     let text = '';
     let info = `<strong>Superscripts (Grace Notes)</strong> - ${this.currentSystem}<br>`;
-    info += '50% scaled glyphs, 16 line variants each';
+    info += 'Source → superscript pairs. Row 2: line variants. Row 3: ASCII.';
 
     const sys = PUA.systems[this.currentSystem];
 
-    // Row 1: base superscripts (no lines)
+    // Row 1: source glyph → superscript pairs
     for (let i = 0; i < sys.chars.length; i++) {
+      // Source glyph (base PUA, octave 0, natural)
+      const sourceCp = sys.base + (i * 30);  // 30 variants per char
       const sourceOffset = i * (superConfig.variantsPerChar || 0);
-      const cp = superConfig.base + (sourceOffset * 16) + 0;
-      text += String.fromCodePoint(cp);
+      const superCp = superConfig.base + (sourceOffset * 16) + 0;
+      text += String.fromCodePoint(sourceCp) + String.fromCodePoint(superCp) + ' ';
     }
     text += '\n';
 
@@ -720,12 +746,12 @@ export class FontInspector {
     }
     text += '\n';
 
-    // Row 3: ASCII superscripts (dash, numbers)
+    // Row 3: ASCII source → superscript pairs
     const asciiChars = '-0123456789';
     for (const ch of asciiChars) {
       const charIdx = ch.charCodeAt(0) - 0x20;
       const cp = PUA.superscripts.ascii.base + (charIdx * 16) + 0;
-      text += String.fromCodePoint(cp);
+      text += ch + String.fromCodePoint(cp) + ' ';
     }
 
     return { text, info };
@@ -733,43 +759,32 @@ export class FontInspector {
 
   generateSymbols(): ContentResult {
     let text = '';
-    let info = '<strong>Symbols</strong> - SMuFL barlines and ornaments<br>';
-    info += 'From Noto Music font. Click for Unicode details.';
+    let info = '<strong>Symbols</strong> - Musical symbols from Noto Music<br>';
+    info += 'Ornaments and barlines. Click for Unicode details.';
 
-    // Try to get symbols from WASM font config
-    const fontConfig = (window as any).editor?.wasmModule?.getFontConfig?.();
-
-    if (fontConfig?.symbols) {
-      const barlines = fontConfig.symbols.filter(s => s.name.startsWith('barline'));
-      const ornaments = fontConfig.symbols.filter(s => s.name.startsWith('ornament'));
-      const accidentals = fontConfig.symbols.filter(s => s.name.startsWith('accidental'));
-
-      // Barlines row
-      for (const s of barlines) text += String.fromCodePoint(s.codepoint);
-      text += '\n';
-
-      // Ornaments row
-      for (const s of ornaments) text += String.fromCodePoint(s.codepoint);
-      text += '\n';
-
-      // Accidentals row
-      for (const s of accidentals) text += String.fromCodePoint(s.codepoint);
-      text += '\n';
-    } else {
-      // Fallback: barlines
-      text += String.fromCodePoint(0x1D100) + String.fromCodePoint(0x1D101);
-      text += String.fromCodePoint(0x1D106) + String.fromCodePoint(0x1D107) + '\n';
-
-      // Ornaments
-      text += String.fromCodePoint(0xE566) + String.fromCodePoint(0xE567);
-      text += String.fromCodePoint(0xE56D) + String.fromCodePoint(0xE56E) + '\n';
+    // Get symbols from WASM config
+    if (!this.wasmConfig?.symbols) {
+      return { text: 'WASM config not loaded', info };
     }
 
-    // Utility glyphs row
-    text += String.fromCodePoint(PUA.utility.loopBottomLeft);
-    text += String.fromCodePoint(PUA.utility.loopBottomRight);
-    text += String.fromCodePoint(PUA.utility.loopTopLeft);
-    text += String.fromCodePoint(PUA.utility.loopTopRight);
+    const symbols = this.wasmConfig.symbols;
+
+    // Group by type
+    const ornaments = symbols.filter(s => s.name.startsWith('ornament'));
+    const barlines = symbols.filter(s => s.name.startsWith('barline'));
+
+    // Row 1: Ornaments
+    text += 'Ornaments: ';
+    for (const sym of ornaments) {
+      text += String.fromCodePoint(sym.codepoint) + ' ';
+    }
+    text += '\n';
+
+    // Row 2: Barlines
+    text += 'Barlines:  ';
+    for (const sym of barlines) {
+      text += String.fromCodePoint(sym.codepoint) + ' ';
+    }
 
     return { text, info };
   }
@@ -779,23 +794,34 @@ export class FontInspector {
     let info = '<strong>Notation Elements</strong> - Non-pitched symbols<br>';
     info += 'Dash, breath mark, space, barlines. Click for Unicode details.';
 
-    // Row 1: base elements
-    for (const [name, elem] of Object.entries(PUA.notationElements)) {
+    // Get notation elements from WASM config
+    if (!this.wasmConfig?.notation_elements) {
+      return { text: 'WASM config not loaded', info };
+    }
+
+    const elements = this.wasmConfig.notation_elements;
+
+    // Row 1: base elements with labels
+    for (const elem of elements) {
       text += String.fromCodePoint(elem.base);
     }
     text += '\n';
 
     // Row 2: dash with underline variants (left, mid, right)
-    const dashElem = PUA.notationElements.dash;
-    for (const v of [1, 0, 2]) { // left, mid, right
-      text += String.fromCodePoint(dashElem.lineBase + v);
+    const dashElem = elements.find(e => e.name === 'dash');
+    if (dashElem) {
+      for (const v of [1, 0, 2]) { // left, mid, right
+        text += String.fromCodePoint(dashElem.line_base + v);
+      }
+      text += '\n';
     }
-    text += '\n';
 
     // Row 3: breath mark with underline variants
-    const breathElem = PUA.notationElements.breathMark;
-    for (const v of [1, 0, 2]) {
-      text += String.fromCodePoint(breathElem.lineBase + v);
+    const breathElem = elements.find(e => e.name === 'breathMark');
+    if (breathElem) {
+      for (const v of [1, 0, 2]) {
+        text += String.fromCodePoint(breathElem.line_base + v);
+      }
     }
 
     return { text, info };

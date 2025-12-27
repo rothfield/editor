@@ -215,7 +215,9 @@ class EventManager {
       // Alt commands for file operations
       'Alt+n', 'Alt+N',
       // Ctrl commands for file operations
-      'Ctrl+o', 'Ctrl+O'
+      'Ctrl+o', 'Ctrl+O',
+      // Undo/Redo - prevent browser's built-in textarea undo/redo
+      'Ctrl+z', 'Ctrl+Z', 'Ctrl+y', 'Ctrl+Y'
     ];
   }
 

@@ -265,7 +265,7 @@ fn emit_combined_part(
         // Combine all measures from all lines
         let mut measure_index = 0;
         let mut prev_system_id: Option<usize> = None;
-        let first_system_id = lines[0].system_id;
+        let _first_system_id = lines[0].system_id;
 
         for (_line_idx, line) in lines.iter().enumerate() {
             for (measure_idx_in_line, measure) in line.measures.iter().enumerate() {

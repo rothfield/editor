@@ -461,6 +461,7 @@ impl<'a> LayoutLineComputer<'a> {
 
     /// Create a smooth frown-shaped arc for superscripts (horizontal with upward curve)
     /// Arc goes from parent note top to superscript position
+    #[allow(dead_code)]
     fn create_superscript_arc_positioned(
         &self,
         start_x: f32,
@@ -827,6 +828,7 @@ impl<'a> LayoutLineComputer<'a> {
     /// Helper: Check if a character requires collision avoidance
     /// Returns true if the character is NOT a space, nbsp, or dash
     /// i.e., it's an actual note or other significant character
+    #[allow(dead_code)]
     fn char_requires_collision_avoidance(ch: &str) -> bool {
         match ch {
             " " | "\u{00A0}" | "-" => false, // space, nbsp, dash - no collision avoidance
@@ -836,6 +838,7 @@ impl<'a> LayoutLineComputer<'a> {
 
     /// Helper: Check if any following cells have significant characters
     /// Returns true if there are non-space/non-dash characters following this position
+    #[allow(dead_code)]
     fn has_significant_following_chars(cells: &[Cell], start_idx: usize) -> bool {
         // Look at the next few cells to see if there are significant characters
         for cell in cells.iter().skip(start_idx + 1).take(3) {

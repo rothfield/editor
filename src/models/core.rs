@@ -74,7 +74,10 @@ impl<'de> Deserialize<'de> for Cell {
     where
         D: serde::Deserializer<'de>,
     {
+        // Legacy fields (kind, col, pitch_code, pitch_system, octave) are deserialized
+        // for backwards compatibility with old JSON but not used - values come from codepoint now
         #[derive(Deserialize)]
+        #[allow(dead_code)]
         struct CellData {
             #[serde(default)]
             codepoint: Option<u32>,
@@ -364,17 +367,32 @@ impl Cell {
     /// Get pitch code derived from codepoint
     ///
     /// Returns the PitchCode encoded in this cell's codepoint.
-    /// Returns None for non-pitched elements.
+    /// Returns None for non-pitched elements (based on get_kind()).
     /// Auto-detects pitch system from codepoint range.
     pub fn get_pitch_code(&self) -> Option<crate::models::pitch_code::PitchCode> {
+        // Only return pitch code for elements that can have pitches:
+        // - PitchedElement: regular notes
+        // - UpperAnnotation: superscripts (grace notes) which encode pitches
+        // This ensures that 'F' in Number system (classified as Text) has no pitch code
+        let kind = self.get_kind();
+        if kind != ElementKind::PitchedElement && kind != ElementKind::UpperAnnotation {
+            return None;
+        }
         crate::renderers::font_utils::pitch_code_from_codepoint(self.codepoint)
     }
 
     /// Get pitch system derived from codepoint
     ///
     /// Returns the PitchSystem (Number, Western, Sargam) for this cell.
-    /// Returns None for non-pitched elements.
+    /// Returns None for non-pitched elements (based on get_kind()).
     pub fn get_pitch_system(&self) -> Option<crate::models::elements::PitchSystem> {
+        // Only return pitch system for elements that can have pitches:
+        // - PitchedElement: regular notes
+        // - UpperAnnotation: superscripts (grace notes) which encode pitches
+        let kind = self.get_kind();
+        if kind != ElementKind::PitchedElement && kind != ElementKind::UpperAnnotation {
+            return None;
+        }
         crate::renderers::font_utils::pitch_system_from_codepoint(self.codepoint)
     }
 
@@ -2460,4 +2478,107 @@ mod tests {
         assert_eq!(doc.lines[1].system_id, 2, "Line 1 is system 2 (None always creates new system)");
     }
     */
+
+    /// Test: Space characters get correct slur PUA codepoints
+    #[test]
+    fn test_space_slur_pua_encoding() {
+        use crate::renderers::font_utils::CodepointTransform;
+        use crate::renderers::line_variants::SlurRole;
+
+        // Create a space cell
+        let mut cell = Cell::new(" ".to_string(), crate::models::ElementKind::Space);
+        assert_eq!(cell.codepoint, 0x20, "Initial space codepoint should be 0x20");
+
+        // Apply slur start (Left overline)
+        cell.set_slur_start();
+
+        // Verify codepoint is now PUA for space + Left overline
+        // Formula: 0xE920 + (char_index * 3) + variant
+        // Space is char_index 0, Left is variant 1
+        // Expected: 0xE920 + 0 + 1 = 0xE921
+        assert_eq!(cell.codepoint, 0xE921,
+            "Space with Left overline should be 0xE921, got 0x{:X}", cell.codepoint);
+        assert_eq!(cell.codepoint.get_slur(), SlurRole::Left);
+    }
+
+    /// Test: Two spaces with slur anchors get correct PUA codepoints
+    #[test]
+    fn test_two_spaces_slur_encoding() {
+        use crate::renderers::font_utils::CodepointTransform;
+        use crate::renderers::line_variants::SlurRole;
+
+        let mut line = Line::new();
+
+        // Add two space cells
+        let mut cell1 = Cell::new(" ".to_string(), crate::models::ElementKind::Space);
+        let mut cell2 = Cell::new(" ".to_string(), crate::models::ElementKind::Space);
+
+        // Set slur anchors
+        cell1.set_slur_start();
+        cell2.set_slur_end();
+
+        line.cells.push(cell1);
+        line.cells.push(cell2);
+        line.sync_text_from_cells();
+
+        // Verify codepoints
+        assert_eq!(line.cells[0].codepoint, 0xE921,
+            "First space (Left) should be 0xE921");
+        assert_eq!(line.cells[1].codepoint, 0xE922,
+            "Second space (Right) should be 0xE922");
+
+        // Verify text field is synced with PUA characters
+        assert_eq!(line.text.len(), 2);
+        assert_eq!(line.text[0] as u32, 0xE921,
+            "line.text[0] should be PUA 0xE921");
+        assert_eq!(line.text[1] as u32, 0xE922,
+            "line.text[1] should be PUA 0xE922");
+    }
+
+    /// Test: Space in middle of slur span gets Middle overline
+    #[test]
+    fn test_space_slur_middle_derived() {
+        use crate::renderers::font_utils::CodepointTransform;
+        use crate::renderers::line_variants::SlurRole;
+
+        let mut line = Line::new();
+
+        // Create "1 2" with space in middle
+        let glyph1 = crate::renderers::font_utils::glyph_for_pitch(
+            crate::models::pitch_code::PitchCode::N1, 0, crate::models::PitchSystem::Number
+        ).unwrap();
+        let mut cell1 = Cell::new(glyph1.to_string(), crate::models::ElementKind::PitchedElement);
+        cell1.set_slur_start();
+
+        let cell_space = Cell::new(" ".to_string(), crate::models::ElementKind::Space);
+
+        let glyph2 = crate::renderers::font_utils::glyph_for_pitch(
+            crate::models::pitch_code::PitchCode::N2, 0, crate::models::PitchSystem::Number
+        ).unwrap();
+        let mut cell2 = Cell::new(glyph2.to_string(), crate::models::ElementKind::PitchedElement);
+        cell2.set_slur_end();
+
+        line.cells.push(cell1);
+        line.cells.push(cell_space);
+        line.cells.push(cell2);
+
+        // Apply draw_slurs to derive Middle for space
+        line.draw_slurs();
+
+        // Verify space got Middle overline
+        assert_eq!(line.cells[1].codepoint.get_slur(), SlurRole::Middle,
+            "Space between anchors should have Middle slur");
+
+        // Apply line variants to encode PUA
+        line.apply_line_variants();
+
+        // Space with Middle overline: 0xE920 + 0 + 0 = 0xE920
+        assert_eq!(line.cells[1].codepoint, 0xE920,
+            "Space with Middle overline should be 0xE920, got 0x{:X}", line.cells[1].codepoint);
+
+        // Sync and verify text
+        line.sync_text_from_cells();
+        assert_eq!(line.text[1] as u32, 0xE920,
+            "line.text[1] should be PUA 0xE920 for space with Middle overline");
+    }
 }

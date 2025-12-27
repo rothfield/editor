@@ -416,7 +416,7 @@ impl MusicXmlBuilder {
     }
 
     /// Full grace note with all attributes
-    pub fn write_grace_note_full(&mut self, pitch_code: &PitchCode, octave: i8, slash: bool, placement: Option<&str>, after_grace: bool, steal_time_pct: Option<f32>, beam_state: Option<&str>, slur_type: Option<&str>) -> Result<(), String> {
+    pub fn write_grace_note_full(&mut self, pitch_code: &PitchCode, octave: i8, slash: bool, placement: Option<&str>, after_grace: bool, steal_time_pct: Option<f32>, _beam_state: Option<&str>, slur_type: Option<&str>) -> Result<(), String> {
         let (step, alter) = pitch_code_to_step_alter(pitch_code);
         let xml_octave = octave + 4; // music-text octave 0 = MIDI octave 4 (middle C)
 

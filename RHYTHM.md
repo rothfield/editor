@@ -212,15 +212,16 @@ let fraction_to_lilypond = HashMap::from([
 
 ### Example 2: Leading Rests
 
-**Input:** `--S-r`
+**Input:** `--1- 2---`
 
 **Processing:**
-1. **Beat Detection:** 1 beat, 5 subdivisions
+1. **Beat Detection:** 2 beats
+   - Beat 1: `--1-` → 4 subdivisions
+   - Beat 2: `2---` → 4 subdivisions
 2. **Dash Consumption:**
-   - First `--` = 2/5 rest
-   - S gets position 3,4 → 2/5
-   - r gets position 5 → 1/5
-3. **LilyPond Output:** Uses tuplets for irregular divisions
+   - Beat 1: First `--` = 2/4 rest (no previous pitch), 1 gets 2/4
+   - Beat 2: 2 gets 4/4 (whole beat)
+3. **LilyPond Output:** `r8 c8 d4`
 
 ### Example 3: Multiple Beats
 

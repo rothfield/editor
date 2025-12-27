@@ -309,6 +309,10 @@ pub fn shift_octave(line: usize, start_col: usize, end_col: usize, delta: i8) ->
         return serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL);
     }
 
+    // Save old cells for undo
+    let old_cells = doc.lines[line].cells.clone();
+    let old_cursor_col = doc.state.cursor.col;
+
     // Get text from the line
     let cells = &doc.lines[line].cells;
     let text: String = cells.iter().map(|c| c.get_char_string()).collect();
@@ -332,6 +336,20 @@ pub fn shift_octave(line: usize, start_col: usize, end_col: usize, delta: i8) ->
 
     doc.lines[line].cells = new_cells;
     doc.lines[line].sync_text_from_cells();
+
+    // Push undo command if cells changed
+    if shift_result.shifted_count > 0 {
+        let new_cells_for_undo = doc.lines[line].cells.clone();
+        let command = crate::undo::Command::ReplaceLine {
+            line,
+            old_cells,
+            new_cells: new_cells_for_undo,
+            old_cursor_col,
+            new_cursor_col: old_cursor_col,
+        };
+        let cursor_pos = (line, old_cursor_col);
+        doc.state.undo_stack.push(command, cursor_pos);
+    }
 
     let result = OctaveShiftResult {
         line,
@@ -423,6 +441,10 @@ pub fn set_octave(line: usize, start_col: usize, end_col: usize, target_octave: 
         return serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL);
     }
 
+    // Save old cells for undo
+    let old_cells = doc.lines[line].cells.clone();
+    let old_cursor_col = doc.state.cursor.col;
+
     // Set octaves for cells in range
     let count = {
         let cells = &mut doc.lines[line].cells;
@@ -434,8 +456,22 @@ pub fn set_octave(line: usize, start_col: usize, end_col: usize, target_octave: 
     let start = start_col.min(doc.lines[line].cells.len());
     let end = end_col.min(doc.lines[line].cells.len());
 
-    // Regenerate glyphs for the modified cells (octave dots changed!)
-    
+    // Sync text from cells
+    doc.lines[line].sync_text_from_cells();
+
+    // Push undo command if cells were changed
+    if count > 0 {
+        let new_cells = doc.lines[line].cells.clone();
+        let command = crate::undo::Command::ReplaceLine {
+            line,
+            old_cells,
+            new_cells,
+            old_cursor_col,
+            new_cursor_col: old_cursor_col, // cursor doesn't move for this operation
+        };
+        let cursor_pos = (line, old_cursor_col);
+        doc.state.undo_stack.push(command, cursor_pos);
+    }
 
     // Reconstruct text for result (derived from cells)
     let new_text: String = doc.lines[line].cells.iter().map(|c| c.display_char()).collect();
@@ -547,6 +583,10 @@ pub fn toggle_slur(line: usize, start_col: usize, end_col: usize) -> JsValue {
         return serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL);
     }
 
+    // Save old cells for undo
+    let old_cells = document.lines[line].cells.clone();
+    let old_cursor_col = document.state.cursor.col;
+
     // Check if exact slur exists by examining cell markers
     let has_start = document.lines[line].cells[start_col].is_slur_start();
     let has_end = document.lines[line].cells[end_cell_col].is_slur_end();
@@ -572,6 +612,18 @@ pub fn toggle_slur(line: usize, start_col: usize, end_col: usize) -> JsValue {
 
     // Re-normalize to derive slur_mid
     document.compute_line_variants();
+
+    // Push undo command
+    let new_cells = document.lines[line].cells.clone();
+    let command = crate::undo::Command::ReplaceLine {
+        line,
+        old_cells,
+        new_cells,
+        old_cursor_col,
+        new_cursor_col: old_cursor_col, // cursor doesn't move for this operation
+    };
+    let cursor_pos = (line, old_cursor_col);
+    document.state.undo_stack.push(command, cursor_pos);
 
     web_sys::console::log_1(&"[WASM] Toggle complete".into());
 
@@ -696,6 +748,10 @@ pub fn apply_slur_layered(line: usize, start_col: usize, end_col: usize) -> JsVa
         return serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL);
     }
 
+    // Save old cells for undo
+    let old_cells = document.lines[line].cells.clone();
+    let old_cursor_col = document.state.cursor.col;
+
     // Set slur markers directly on cells
     // start_col gets slur_start (overline Left)
     document.lines[line].cells[start_col].set_slur_start();
@@ -709,6 +765,18 @@ pub fn apply_slur_layered(line: usize, start_col: usize, end_col: usize) -> JsVa
     // Derive slur_mid for cells in between via normalization
     document.compute_line_variants();
     web_sys::console::log_1(&"[WASM] ✅ Computed line variants (derived slur_mid)".into());
+
+    // Push undo command
+    let new_cells = document.lines[line].cells.clone();
+    let command = crate::undo::Command::ReplaceLine {
+        line,
+        old_cells,
+        new_cells,
+        old_cursor_col,
+        new_cursor_col: old_cursor_col,
+    };
+    let cursor_pos = (line, old_cursor_col);
+    document.state.undo_stack.push(command, cursor_pos);
 
     // Return success (slur_count=1 since we added one slur)
     let result = SlurResult {
@@ -807,6 +875,10 @@ pub fn remove_slur_layered(line: usize, start_col: usize, end_col: usize) -> JsV
         start_col, actual_end
     ).into());
 
+    // Save old cells for undo
+    let old_cells = document.lines[line].cells.clone();
+    let old_cursor_col = document.state.cursor.col;
+
     // Clear slur markers from all cells in the range
     for col in start_col..actual_end {
         document.lines[line].cells[col].clear_slur();
@@ -814,6 +886,20 @@ pub fn remove_slur_layered(line: usize, start_col: usize, end_col: usize) -> JsV
 
     // Re-normalize to fix any orphaned slur anchors
     document.compute_line_variants();
+
+    // Push undo command
+    let new_cells = document.lines[line].cells.clone();
+    if old_cells != new_cells {
+        let command = crate::undo::Command::ReplaceLine {
+            line,
+            old_cells,
+            new_cells,
+            old_cursor_col,
+            new_cursor_col: old_cursor_col, // cursor doesn't move for this operation
+        };
+        let cursor_pos = (line, old_cursor_col);
+        document.state.undo_stack.push(command, cursor_pos);
+    }
 
     #[cfg(target_arch = "wasm32")]
     web_sys::console::log_1(&"[WASM] ✅ Slur markers cleared and line variants recomputed".into());
@@ -909,6 +995,10 @@ pub fn selection_to_superscript(
         return serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL);
     }
 
+    // Save old cells for undo
+    let old_cells = document.lines[line].cells.clone();
+    let old_cursor_col = document.state.cursor.col;
+
     let mut cells_converted = 0;
     let cells_len = document.lines[line].cells.len();
 
@@ -929,9 +1019,22 @@ pub fn selection_to_superscript(
         }
     }
 
-
     // Sync text from cells
     document.lines[line].sync_text_from_cells();
+
+    // Push undo command if cells were changed
+    if cells_converted > 0 {
+        let new_cells = document.lines[line].cells.clone();
+        let command = crate::undo::Command::ReplaceLine {
+            line,
+            old_cells,
+            new_cells,
+            old_cursor_col,
+            new_cursor_col: old_cursor_col, // cursor doesn't move for this operation
+        };
+        let cursor_pos = (line, old_cursor_col);
+        document.state.undo_stack.push(command, cursor_pos);
+    }
 
     #[cfg(target_arch = "wasm32")]
     web_sys::console::log_1(&format!(
@@ -1003,6 +1106,10 @@ pub fn superscript_to_normal(
         return serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL);
     }
 
+    // Save old cells for undo
+    let old_cells = document.lines[line].cells.clone();
+    let old_cursor_col = document.state.cursor.col;
+
     let mut cells_converted = 0;
     let cells_len = document.lines[line].cells.len();
 
@@ -1023,11 +1130,22 @@ pub fn superscript_to_normal(
         }
     }
 
-    // Recompute glyphs to apply normal rendering
-    
-
     // Sync text from cells
     document.lines[line].sync_text_from_cells();
+
+    // Push undo command if cells were changed
+    if cells_converted > 0 {
+        let new_cells = document.lines[line].cells.clone();
+        let command = crate::undo::Command::ReplaceLine {
+            line,
+            old_cells,
+            new_cells,
+            old_cursor_col,
+            new_cursor_col: old_cursor_col, // cursor doesn't move for this operation
+        };
+        let cursor_pos = (line, old_cursor_col);
+        document.state.undo_stack.push(command, cursor_pos);
+    }
 
     #[cfg(target_arch = "wasm32")]
     web_sys::console::log_1(&format!(

@@ -28,6 +28,7 @@ use super::types::{
 };
 use crate::transposition::normalize_pitch;
 use crate::models::pitch_code::AccidentalType;
+use crate::html_layout::lyrics::parse_lyrics;
 
 /// FSM state for cell-to-event grouping
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -179,6 +180,7 @@ impl BeatAccumulator {
     }
 
     /// Process ornament cells and convert them to grace notes
+    #[allow(dead_code)]
     fn process_ornament(&mut self, ornament: &crate::models::Ornament) {
         use crate::models::OrnamentPlacement;
 
@@ -291,6 +293,7 @@ impl BeatAccumulator {
 /// then converts back to a PitchCode.
 ///
 /// Example: 1# in Gb major → lookup gives "G" → output is pitch G
+#[allow(dead_code)]
 fn transpose_pitch_code_by_tonic(pitch_code: crate::models::PitchCode, tonic: &str) -> crate::models::PitchCode {
     if tonic.is_empty() {
         return pitch_code;
@@ -317,6 +320,7 @@ fn transpose_pitch_code_by_tonic(pitch_code: crate::models::PitchCode, tonic: &s
 
 /// Convert a pitch name string (e.g., "C#", "Bb", "F") to a PitchCode
 /// This is a helper to reverse-map from pitch names back to the number system
+#[allow(dead_code)]
 fn pitch_name_to_pitch_code(name: &str) -> Option<crate::models::PitchCode> {
     use crate::models::PitchCode;
 
@@ -836,7 +840,12 @@ pub fn attach_lyrics_to_measures(measures: &mut [ExportMeasure], lyrics: &str) {
         return;
     }
 
-    let syllables = parse_lyrics_to_syllables(lyrics);
+    // Use parse_lyrics which preserves hyphens: "shake-spear" → ["shake-", "spear"]
+    // All syllables are Single type (no LilyPond -- connector needed)
+    let syllables: Vec<(String, Syllabic)> = parse_lyrics(lyrics)
+        .into_iter()
+        .map(|s| (s, Syllabic::Single))
+        .collect();
     if syllables.is_empty() {
         return;
     }
@@ -2260,6 +2269,60 @@ mod tests {
             }
             _ => panic!("Expected Note, got {:?}", measures[0].events[1]),
         }
+    }
+}
+
+#[cfg(test)]
+mod lyrics_parsing_tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_lyrics_simple_words() {
+        let result = parse_lyrics_to_syllables("willam spear");
+        assert_eq!(result, vec![
+            ("willam".to_string(), Syllabic::Single),
+            ("spear".to_string(), Syllabic::Single),
+        ]);
+    }
+
+    #[test]
+    fn test_parse_lyrics_hyphenated_word() {
+        // "shake-spear" is ONE hyphenated word
+        // Current behavior: ("shake", Begin), ("spear", End)
+        // This produces LilyPond: "shake -- spear"
+        //
+        // But the user expects each syllable to be under its own note:
+        // - "shake-" under note 2 (with visible trailing hyphen)
+        // - "spear" under note 3
+        //
+        // In LilyPond, "shake --" means hyphen AFTER shake connecting to next syllable
+        // This is actually correct for multi-syllable words!
+        let result = parse_lyrics_to_syllables("willam shake-spear");
+
+        // Current behavior - verify what we have now
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[0], ("willam".to_string(), Syllabic::Single));
+        assert_eq!(result[1], ("shake".to_string(), Syllabic::Begin));
+        assert_eq!(result[2], ("spear".to_string(), Syllabic::End));
+    }
+
+    #[test]
+    fn test_hyphenated_syllables_use_parse_lyrics() {
+        // attach_lyrics_to_measures now uses parse_lyrics which preserves hyphens:
+        //   "willam shake-spear" → ["willam", "shake-", "spear"]
+        // All syllables are Single type (no LilyPond -- connector)
+        use crate::html_layout::lyrics::parse_lyrics;
+
+        let syllables: Vec<(String, Syllabic)> = parse_lyrics("willam shake-spear")
+            .into_iter()
+            .map(|s| (s, Syllabic::Single))
+            .collect();
+
+        assert_eq!(syllables, vec![
+            ("willam".to_string(), Syllabic::Single),
+            ("shake-".to_string(), Syllabic::Single),  // hyphen IN the text
+            ("spear".to_string(), Syllabic::Single),
+        ], "Syllables should preserve hyphen in text, all Single type");
     }
 }
 

@@ -185,6 +185,15 @@ pub fn distribute_lyrics(lyrics: &str, cells: &[Cell]) -> Vec<SyllableAssignment
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::pitch_code::PitchCode;
+    use crate::models::elements::PitchSystem;
+    use crate::renderers::font_utils::glyph_for_pitch;
+
+    /// Helper to create a properly pitched cell using PUA codepoints
+    fn make_pitch_cell(pitch: PitchCode) -> Cell {
+        let ch = glyph_for_pitch(pitch, 0, PitchSystem::Sargam).unwrap();
+        Cell::new(ch.to_string(), ElementKind::PitchedElement)
+    }
 
     #[test]
     fn test_parse_lyrics_simple() {
@@ -213,10 +222,11 @@ mod tests {
     #[test]
     fn test_distribute_lyrics_simple() {
         let lyrics = "do re mi";
+        // Use PUA codepoints for proper pitched cells
         let cells = vec![
-            Cell::new("S".to_string(), ElementKind::PitchedElement),
-            Cell::new("R".to_string(), ElementKind::PitchedElement),
-            Cell::new("G".to_string(), ElementKind::PitchedElement),
+            make_pitch_cell(PitchCode::N1),  // S in Sargam
+            make_pitch_cell(PitchCode::N2),  // R in Sargam
+            make_pitch_cell(PitchCode::N3),  // G in Sargam
         ];
 
         let assignments = distribute_lyrics(lyrics, &cells);

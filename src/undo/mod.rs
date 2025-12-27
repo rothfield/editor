@@ -19,6 +19,18 @@ pub enum Command {
         /// The cells that were deleted (for restoration)
         deleted_cells: Vec<Cell>,
     },
+    /// Replace entire line contents (for set_line_text operations)
+    ReplaceLine {
+        line: usize,
+        /// The old cells (for undo)
+        old_cells: Vec<Cell>,
+        /// The new cells (for redo)
+        new_cells: Vec<Cell>,
+        /// The old cursor column (for undo)
+        old_cursor_col: usize,
+        /// The new cursor column (for redo)
+        new_cursor_col: usize,
+    },
     /// A batch of commands grouped together (e.g., typing a word)
     Batch {
         commands: Vec<Command>,
@@ -52,6 +64,15 @@ impl Command {
                     }
                 }
                 // Sync text field after bulk modification
+                line_obj.sync_text_from_cells();
+                Ok(())
+            }
+            Command::ReplaceLine { line, new_cells, .. } => {
+                let line_obj = lines.get_mut(*line)
+                    .ok_or_else(|| format!("Line {} not found", line))?;
+
+                // Replace all cells with new cells
+                line_obj.cells = new_cells.clone();
                 line_obj.sync_text_from_cells();
                 Ok(())
             }
@@ -93,6 +114,15 @@ impl Command {
                 line_obj.sync_text_from_cells();
                 Ok(())
             }
+            Command::ReplaceLine { line, old_cells, .. } => {
+                // Undo replace by restoring old cells
+                let line_obj = lines.get_mut(*line)
+                    .ok_or_else(|| format!("Line {} not found", line))?;
+
+                line_obj.cells = old_cells.clone();
+                line_obj.sync_text_from_cells();
+                Ok(())
+            }
             Command::Batch { commands } => {
                 // Undo batch in reverse order
                 for cmd in commands.iter().rev() {
@@ -108,8 +138,35 @@ impl Command {
         match self {
             Command::InsertText { line, .. } => *line,
             Command::DeleteText { line, .. } => *line,
+            Command::ReplaceLine { line, .. } => *line,
             Command::Batch { commands } => {
                 commands.first().map(|c| c.affected_line()).unwrap_or(0)
+            }
+        }
+    }
+
+    /// Get the cursor column to restore after undoing this command
+    pub fn undo_cursor_col(&self) -> usize {
+        match self {
+            Command::InsertText { start_col, .. } => *start_col,
+            Command::DeleteText { start_col, deleted_cells, .. } => start_col + deleted_cells.len(),
+            Command::ReplaceLine { old_cursor_col, .. } => *old_cursor_col,
+            Command::Batch { commands } => {
+                // For batch, use the first command's undo cursor position
+                commands.first().map(|c| c.undo_cursor_col()).unwrap_or(0)
+            }
+        }
+    }
+
+    /// Get the cursor column to restore after redoing this command
+    pub fn redo_cursor_col(&self) -> usize {
+        match self {
+            Command::InsertText { start_col, cells, .. } => start_col + cells.len(),
+            Command::DeleteText { start_col, .. } => *start_col,
+            Command::ReplaceLine { new_cursor_col, .. } => *new_cursor_col,
+            Command::Batch { commands } => {
+                // For batch, use the last command's redo cursor position
+                commands.last().map(|c| c.redo_cursor_col()).unwrap_or(0)
             }
         }
     }
@@ -183,11 +240,20 @@ impl UndoStack {
             self.finalize_batch();
         }
 
+        // Check if this is a ReplaceLine command (needs immediate finalization)
+        let is_replace_line = matches!(command, Command::ReplaceLine { .. });
+
         // Start or continue batch
         if let Some(ref mut batch) = self.current_batch {
             batch.push(command);
         } else {
             self.current_batch = Some(vec![command]);
+        }
+
+        // ReplaceLine commands must be immediately available for undo
+        // (they come from textarea input where each keystroke should be undoable)
+        if is_replace_line {
+            self.finalize_batch();
         }
 
         self.last_edit_time = Some(current_time);
@@ -196,6 +262,11 @@ impl UndoStack {
 
     /// Determine if the current batch should be finalized
     fn should_break_batch(&self, command: &Command, cursor_pos: (usize, usize), _current_time: u64) -> bool {
+        // ReplaceLine always breaks batch - these are full line replacements from textarea input
+        if matches!(command, Command::ReplaceLine { .. }) {
+            return true;
+        }
+
         if self.current_batch.is_none() {
             return false;
         }

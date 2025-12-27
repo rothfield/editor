@@ -542,7 +542,6 @@ fn emit_range(
 ) -> String {
     use crate::models::ElementKind;
     use crate::renderers::font_utils;
-    use crate::renderers::line_variants::SlurRole;
 
     let doc_pitch_system = document.pitch_system.unwrap_or(crate::models::PitchSystem::Number);
     let is_full_document = range.is_none();
@@ -1097,6 +1096,7 @@ fn render_cell_with_lines(
 /// * `pitch_system` - The pitch system to use for glyph lookup
 /// * `parent_in_slur` - Whether the parent cell is inside a slur (needs overline)
 /// * `needs_underline` - Whether superscript is between pitches in a multi-cell beat (needs underline)
+#[allow(dead_code)]
 fn render_superscript_inline(
     superscript_cells: &[crate::models::core::Cell],
     pitch_system: crate::models::PitchSystem,
@@ -1244,6 +1244,7 @@ fn build_lyric_line(
 /// Convert a cell to its text representation
 /// Uses display_char() for pitched elements (returns char with line variants encoded as PUA codepoints)
 /// This matches HTML layout behavior - display_char() has the font glyph (e.g., G# composite with underline)
+#[allow(dead_code)]
 fn cell_to_text_char(cell: &crate::models::core::Cell, _pitch_system: crate::models::PitchSystem) -> String {
     use crate::models::ElementKind;
 

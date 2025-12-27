@@ -308,6 +308,15 @@ pub fn distribute_lyrics(lyrics: &str, cells: &[Cell]) -> Vec<SyllableAssignment
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::pitch_code::PitchCode;
+    use crate::models::elements::PitchSystem;
+    use crate::renderers::font_utils::glyph_for_pitch;
+
+    /// Helper to create a properly pitched cell using PUA codepoints
+    fn make_pitch_cell(pitch: PitchCode) -> Cell {
+        let ch = glyph_for_pitch(pitch, 0, PitchSystem::Sargam).unwrap();
+        Cell::new(ch.to_string(), ElementKind::PitchedElement)
+    }
 
     #[test]
     fn test_parse_lyrics_simple() {
@@ -336,10 +345,11 @@ mod tests {
     #[test]
     fn test_distribute_lyrics_simple() {
         let lyrics = "do re mi";
+        // Use PUA codepoints for proper pitched cells
         let cells = vec![
-            Cell::new("S".to_string(), ElementKind::PitchedElement),
-            Cell::new("R".to_string(), ElementKind::PitchedElement),
-            Cell::new("G".to_string(), ElementKind::PitchedElement),
+            make_pitch_cell(PitchCode::N1),  // S in Sargam
+            make_pitch_cell(PitchCode::N2),  // R in Sargam
+            make_pitch_cell(PitchCode::N3),  // G in Sargam
         ];
 
         let assignments = distribute_lyrics(lyrics, &cells);
@@ -357,8 +367,8 @@ mod tests {
         // 4 syllables but only 2 notes - last note should get remaining
         let lyrics = "hel-lo-wor-ld";
         let cells = vec![
-            Cell::new("S".to_string(), ElementKind::PitchedElement),
-            Cell::new("R".to_string(), ElementKind::PitchedElement),
+            make_pitch_cell(PitchCode::N1),
+            make_pitch_cell(PitchCode::N2),
         ];
 
         let assignments = distribute_lyrics(lyrics, &cells);
@@ -375,9 +385,9 @@ mod tests {
         // 4 syllables with 3 notes - last note gets remaining
         let lyrics = "hel-lo-wor-ld";
         let cells = vec![
-            Cell::new("S".to_string(), ElementKind::PitchedElement),
-            Cell::new("R".to_string(), ElementKind::PitchedElement),
-            Cell::new("G".to_string(), ElementKind::PitchedElement),
+            make_pitch_cell(PitchCode::N1),
+            make_pitch_cell(PitchCode::N2),
+            make_pitch_cell(PitchCode::N3),
         ];
 
         let assignments = distribute_lyrics(lyrics, &cells);
@@ -393,8 +403,8 @@ mod tests {
         // Equal number of notes and syllables - normal behavior
         let lyrics = "hel-lo";
         let cells = vec![
-            Cell::new("S".to_string(), ElementKind::PitchedElement),
-            Cell::new("R".to_string(), ElementKind::PitchedElement),
+            make_pitch_cell(PitchCode::N1),
+            make_pitch_cell(PitchCode::N2),
         ];
 
         let assignments = distribute_lyrics(lyrics, &cells);
@@ -409,9 +419,9 @@ mod tests {
         // More notes than syllables - extra notes get no lyric
         let lyrics = "hel-lo";
         let cells = vec![
-            Cell::new("S".to_string(), ElementKind::PitchedElement),
-            Cell::new("R".to_string(), ElementKind::PitchedElement),
-            Cell::new("G".to_string(), ElementKind::PitchedElement),
+            make_pitch_cell(PitchCode::N1),
+            make_pitch_cell(PitchCode::N2),
+            make_pitch_cell(PitchCode::N3),
         ];
 
         let assignments = distribute_lyrics(lyrics, &cells);
@@ -426,7 +436,7 @@ mod tests {
         // Single note with multiple syllables - gets all of them
         let lyrics = "hel-lo-wor-ld";
         let cells = vec![
-            Cell::new("S".to_string(), ElementKind::PitchedElement),
+            make_pitch_cell(PitchCode::N1),
         ];
 
         let assignments = distribute_lyrics(lyrics, &cells);

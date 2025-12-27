@@ -185,10 +185,20 @@ export interface SymbolInfo {
   label: string;
 }
 
+/** Notation element info (dash, breath mark, barlines) */
+export interface NotationElementInfo {
+  name: string;
+  base: number;
+  line_base: number;
+  label: string;
+}
+
 /** Font configuration */
 export interface FontConfig {
   systems: PitchSystemConfig[];
   symbols: SymbolInfo[];
+  notation_elements: NotationElementInfo[];
+  line_variants_per_glyph: number;
 }
 
 export interface PitchSystemConfig {

@@ -1539,7 +1539,7 @@ pub fn delete_at_cursor() -> Result<JsValue, JsValue> {
                 wasm_info!("  Two-stage backspace: removing last char from '{}'", cell_char);
 
                 // Transform barline types directly via codepoint
-                use crate::renderers::font_utils::{BARLINE_SINGLE, BARLINE_REPEAT_LEFT, BARLINE_REPEAT_RIGHT, BARLINE_DOUBLE};
+                use crate::renderers::font_utils::BARLINE_SINGLE;
                 let cell = &mut line.cells[cell_idx];
 
                 // Update codepoint based on barline type (kind derived automatically)
@@ -1728,7 +1728,7 @@ pub fn delete_forward() -> Result<JsValue, JsValue> {
         wasm_info!("  Two-stage delete: removing first char from '{}'", cell_char);
 
         // Transform barline types directly via codepoint
-        use crate::renderers::font_utils::{BARLINE_SINGLE, BARLINE_REPEAT_LEFT, BARLINE_REPEAT_RIGHT, BARLINE_DOUBLE};
+        use crate::renderers::font_utils::BARLINE_SINGLE;
         let cell = &mut line.cells[cell_idx];
 
         // Update codepoint based on cell type (kind derived automatically)
@@ -2141,12 +2141,22 @@ pub fn paste_text(
     }
 
     // Insert new cells at position
+    let cells_to_insert = cells.clone();
     for (i, cell) in cells.iter().enumerate() {
         line.cells.insert(col + i, cell.clone());
     }
 
     // Sync text buffer from cells
     line.sync_text_from_cells();
+
+    // Record undo command
+    let command = Command::InsertText {
+        line: row,
+        start_col: col,
+        cells: cells_to_insert,
+    };
+    let cursor_pos = (row, col);
+    doc.state.undo_stack.push(command, cursor_pos);
 
     // Calculate new cursor position (after the pasted cells)
     let new_cursor_col = col + cells.len();
@@ -2338,18 +2348,23 @@ pub fn undo() -> Result<JsValue, JsValue> {
     doc.state.undo_stack.undo(&mut doc.lines)
         .map_err(|e| JsValue::from_str(&e))?;
 
-    // Get the affected line from the undone command
-    let affected_line = if doc.state.undo_stack.can_redo() {
+    // Get the affected line and cursor position from the undone command
+    let (affected_line, cursor_col) = if doc.state.undo_stack.can_redo() {
         // The command we just undid is now available for redo
         let idx = doc.state.undo_stack.current_index;
         if idx < doc.state.undo_stack.commands.len() {
-            doc.state.undo_stack.commands[idx].affected_line()
+            let cmd = &doc.state.undo_stack.commands[idx];
+            (cmd.affected_line(), cmd.undo_cursor_col())
         } else {
-            0
+            (0, 0)
         }
     } else {
-        0
+        (0, 0)
     };
+
+    // Update document cursor state
+    doc.state.cursor.line = affected_line;
+    doc.state.cursor.col = cursor_col;
 
     // Build dirty lines list with just the affected line
     let mut dirty_lines = Vec::new();
@@ -2360,11 +2375,11 @@ pub fn undo() -> Result<JsValue, JsValue> {
         });
     }
 
-    // Keep cursor position at affected line
+    // Return cursor position from the command
     let result = EditResult {
         dirty_lines,
         new_cursor_row: affected_line,
-        new_cursor_col: doc.state.cursor.col,
+        new_cursor_col: cursor_col,
     };
 
     serde_wasm_bindgen::to_value(&result)
@@ -2383,13 +2398,14 @@ pub fn redo() -> Result<JsValue, JsValue> {
     let doc = doc_guard.as_mut()
         .ok_or_else(|| JsValue::from_str("No document loaded"))?;
 
-    // Get the affected line before redo (for dirty list)
-    let affected_line = if doc.state.undo_stack.can_redo() {
+    // Get the affected line and cursor position before redo
+    let (affected_line, cursor_col) = if doc.state.undo_stack.can_redo() {
         let idx = doc.state.undo_stack.current_index;
         if idx < doc.state.undo_stack.commands.len() {
-            doc.state.undo_stack.commands[idx].affected_line()
+            let cmd = &doc.state.undo_stack.commands[idx];
+            (cmd.affected_line(), cmd.redo_cursor_col())
         } else {
-            0
+            (0, 0)
         }
     } else {
         return Err(JsValue::from_str("No redo history available"));
@@ -2398,6 +2414,10 @@ pub fn redo() -> Result<JsValue, JsValue> {
     // Redo using the command stack
     doc.state.undo_stack.redo(&mut doc.lines)
         .map_err(|e| JsValue::from_str(&e))?;
+
+    // Update document cursor state
+    doc.state.cursor.line = affected_line;
+    doc.state.cursor.col = cursor_col;
 
     // Build dirty lines list with just the affected line
     let mut dirty_lines = Vec::new();
@@ -2408,11 +2428,11 @@ pub fn redo() -> Result<JsValue, JsValue> {
         });
     }
 
-    // Keep cursor position at affected line
+    // Return cursor position from the command
     let result = EditResult {
         dirty_lines,
         new_cursor_row: affected_line,
-        new_cursor_col: doc.state.cursor.col,
+        new_cursor_col: cursor_col,
     };
 
     serde_wasm_bindgen::to_value(&result)

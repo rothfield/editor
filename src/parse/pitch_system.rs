@@ -208,6 +208,12 @@ mod tests {
         assert!(!dispatcher.lookup("X", PitchSystem::Number));
         assert!(!dispatcher.lookup("1", PitchSystem::Western));
 
+        // IMPORTANT: F is a Western pitch, NOT a Number pitch
+        assert!(!dispatcher.lookup("F", PitchSystem::Number), "F should NOT be valid in Number system");
+        assert!(!dispatcher.lookup("f", PitchSystem::Number), "f should NOT be valid in Number system");
+        assert!(dispatcher.lookup("F", PitchSystem::Western), "F SHOULD be valid in Western system");
+        assert!(dispatcher.lookup("f", PitchSystem::Western), "f SHOULD be valid in Western system");
+
         // Test pitch char detection
         assert!(dispatcher.is_pitch_char('1', PitchSystem::Number));
         assert!(!dispatcher.is_pitch_char('#', PitchSystem::Number));

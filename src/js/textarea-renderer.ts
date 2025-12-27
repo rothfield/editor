@@ -96,6 +96,7 @@ class TextareaRenderer {
   private _textareas: Map<number, HTMLTextAreaElement> = new Map();
   private _isComposing: boolean = false;
   private _initialRenderDone: boolean = false;
+  private _isProgrammaticUpdate: boolean = false;
 
   constructor(container: HTMLElement, editor: Editor) {
     this.container = container;
@@ -119,6 +120,17 @@ class TextareaRenderer {
       }
     }
 
+    // Find which line has the cursor (for focus restoration after render)
+    let cursorLineIndex: number | null = null;
+    let cursorCharIndex: number | null = null;
+    for (const lineDisplay of displayList.lines) {
+      if (lineDisplay.cursor_pos !== null) {
+        cursorLineIndex = lineDisplay.line_index;
+        cursorCharIndex = lineDisplay.cursor_pos;
+        break;
+      }
+    }
+
     // Render each line
     for (const lineDisplay of displayList.lines) {
       this.renderLine(lineDisplay);
@@ -133,6 +145,15 @@ class TextareaRenderer {
           firstTextarea.focus();
           console.log('[TextareaRenderer] Auto-focused first textarea on initial render');
         });
+      }
+    } else if (cursorLineIndex !== null && cursorCharIndex !== null) {
+      // Restore focus to the line with the cursor after re-render
+      const cursorTextarea = this._textareas.get(cursorLineIndex);
+      if (cursorTextarea) {
+        const text = cursorTextarea.value;
+        const codeUnitPos = charIndexToCodeUnits(text, cursorCharIndex);
+        cursorTextarea.focus();
+        cursorTextarea.setSelectionRange(codeUnitPos, codeUnitPos);
       }
     }
   }
@@ -157,20 +178,27 @@ class TextareaRenderer {
       this._textareas.set(lineIndex, textarea);
     }
 
-    // Update textarea value from WASM
-    if (textarea.value !== lineDisplay.text) {
-      textarea.value = lineDisplay.text;
-    }
+    // Set flag to prevent input handler from running during programmatic updates
+    // This prevents redo/render from triggering spurious setLineText calls
+    this._isProgrammaticUpdate = true;
+    try {
+      // Update textarea value from WASM
+      if (textarea.value !== lineDisplay.text) {
+        textarea.value = lineDisplay.text;
+      }
 
-    // Apply cursor position from WASM
-    if (lineDisplay.cursor_pos !== null) {
-      const codeUnitPos = charIndexToCodeUnits(lineDisplay.text, lineDisplay.cursor_pos);
-      textarea.setSelectionRange(codeUnitPos, codeUnitPos);
-    }
-    if (lineDisplay.selection) {
-      const startUnits = charIndexToCodeUnits(lineDisplay.text, lineDisplay.selection.start);
-      const endUnits = charIndexToCodeUnits(lineDisplay.text, lineDisplay.selection.end);
-      textarea.setSelectionRange(startUnits, endUnits);
+      // Apply cursor position from WASM
+      if (lineDisplay.cursor_pos !== null) {
+        const codeUnitPos = charIndexToCodeUnits(lineDisplay.text, lineDisplay.cursor_pos);
+        textarea.setSelectionRange(codeUnitPos, codeUnitPos);
+      }
+      if (lineDisplay.selection) {
+        const startUnits = charIndexToCodeUnits(lineDisplay.text, lineDisplay.selection.start);
+        const endUnits = charIndexToCodeUnits(lineDisplay.text, lineDisplay.selection.end);
+        textarea.setSelectionRange(startUnits, endUnits);
+      }
+    } finally {
+      this._isProgrammaticUpdate = false;
     }
 
     // Update overlays
@@ -334,6 +362,13 @@ class TextareaRenderer {
    * Handle input event
    */
   private _handleInput(textarea: HTMLTextAreaElement, lineIndex: number): void {
+    // Skip if this is a programmatic update (e.g., from redo/render)
+    // This prevents spurious setLineText calls that could corrupt document state
+    if (this._isProgrammaticUpdate) {
+      console.log('[TextareaRenderer] Skipping input handler during programmatic update');
+      return;
+    }
+
     mirrorDivService.invalidateCache(textarea);
 
     try {
@@ -345,15 +380,21 @@ class TextareaRenderer {
 
         if (lineDisplay) {
           if (inputValue !== lineDisplay.text) {
-            textarea.value = lineDisplay.text;
-            if (lineDisplay.cursor_pos !== null) {
-              const newCursorCodeUnits = charIndexToCodeUnits(lineDisplay.text, lineDisplay.cursor_pos);
-              textarea.setSelectionRange(newCursorCodeUnits, newCursorCodeUnits);
-            } else {
-              const chars = Array.from(lineDisplay.text);
-              const newCharIndex = Math.min(cursorCharIndex, chars.length);
-              const newCodeUnits = charIndexToCodeUnits(lineDisplay.text, newCharIndex);
-              textarea.setSelectionRange(newCodeUnits, newCodeUnits);
+            // Set guard flag to prevent recursive input events
+            this._isProgrammaticUpdate = true;
+            try {
+              textarea.value = lineDisplay.text;
+              if (lineDisplay.cursor_pos !== null) {
+                const newCursorCodeUnits = charIndexToCodeUnits(lineDisplay.text, lineDisplay.cursor_pos);
+                textarea.setSelectionRange(newCursorCodeUnits, newCursorCodeUnits);
+              } else {
+                const chars = Array.from(lineDisplay.text);
+                const newCharIndex = Math.min(cursorCharIndex, chars.length);
+                const newCodeUnits = charIndexToCodeUnits(lineDisplay.text, newCharIndex);
+                textarea.setSelectionRange(newCodeUnits, newCodeUnits);
+              }
+            } finally {
+              this._isProgrammaticUpdate = false;
             }
           }
 

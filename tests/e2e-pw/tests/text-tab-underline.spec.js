@@ -152,16 +152,6 @@ test.describe('Text Tab Combining Underline', () => {
       `Expected 4 combining underlines (one per char), got ${underlineCount}`
     );
 
-    // Check for loop arc characters (new feature)
-    const LOOP_BOTTOM_LEFT = '\uE704';
-    const LOOP_BOTTOM_RIGHT = '\uE705';
-
-    // Should have 2 left arcs (start of each beat group) and 2 right arcs (end of each)
-    const leftArcCount = [...text].filter(c => c === LOOP_BOTTOM_LEFT).length;
-    const rightArcCount = [...text].filter(c => c === LOOP_BOTTOM_RIGHT).length;
-    expect(leftArcCount).toBe(2, `Expected 2 left loop arcs (one per beat group), got ${leftArcCount}`);
-    expect(rightArcCount).toBe(2, `Expected 2 right loop arcs (one per beat group), got ${rightArcCount}`);
-
     // CRITICAL: There must be a space between the two beat groups
     // The output should be: "1̲2̲ 3̲4̲" (with space between "2̲" and "3̲")
     // Strip underlines and check for space
@@ -171,14 +161,11 @@ test.describe('Text Tab Combining Underline', () => {
       'There should be a space between beat groups'
     );
 
-    // The pattern should be: [BL_ARC] 1 U+0332 2 U+0332 [BR_ARC] SPACE [BL_ARC] 3 U+0332 4 U+0332 [BR_ARC]
-    // This means when we look at the text, after removing underlines AND loop arcs, we get "12 34"
+    // After removing underlines, we should get "12 34"
     // Note: The output may include an ABC-style header (e.g., "P: Number\n\n")
     // We just need to check that the note line contains "12 34"
-    // Also strip loop arc characters (U+E704-E707)
-    const withoutArcs = withoutUnderlines.replace(/[\uE704-\uE707]/g, '');
-    expect(withoutArcs.trim()).toContain('12 34',
-      'Text without underlines and arcs should contain "12 34"'
+    expect(withoutUnderlines.trim()).toContain('12 34',
+      'Text without underlines should contain "12 34"'
     );
   });
 

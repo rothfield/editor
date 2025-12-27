@@ -249,9 +249,9 @@ pua_allocation:
 
     doremi:
       pua_base: 0xE500
-      chars: 14
+      chars: 7
       variants_per_char: 30
-      range: "0xE500 - 0xE6A3"  # 14 × 30 = 420 glyphs
+      range: "0xE500 - 0xE5D1"  # 7 × 30 = 210 glyphs
 
   # -------------------------------------------------------------------------
   # SECTION 2: Glyph decorations for beat grouping and slurs (15 variants per character)
@@ -329,13 +329,7 @@ pua_allocation:
   # SECTION 4: Utility glyphs (marks, arcs, combining characters)
   # -------------------------------------------------------------------------
   utility_glyphs:
-    loop_arcs:
-      description: "Quarter-circle arcs for loop brackets"
-      codepoints:
-        loop_bottom_left: 0xE704
-        loop_bottom_right: 0xE705
-        loop_top_left: 0xE706
-        loop_top_right: 0xE707
+    # NOTE: loop_arcs (0xE704-0xE707) removed - unused combining marks
 
     decoration_mark_variants:
       description: "Width-class variants for combining lower_loop/slur marks"
@@ -430,9 +424,9 @@ pua_allocation:
     doremi_superscripts:
       pua_base: 0xFC600
       source_base: 0xE500
-      chars: 14
+      chars: 7
       variants_per_char: 30
-      range: "0xFC600 - 0xFE03F"  # 14 × 30 × 16 = 6,720 glyphs
+      range: "0xFC600 - 0xFD91F"  # 7 × 30 × 16 = 3,360 glyphs
 
 # NOTE: Character order is derived from notation_systems by generate.py
 # Do not manually maintain character lists here - edit notation_systems instead.
@@ -532,26 +526,30 @@ smufl_symbols:
     smufl_codepoint: 0x1D108  # Unicode U+1D108 𝄈 (Begin and End Repeat)
     codepoint_offset: 9
 
-  # Ornaments (SMuFL common ornaments range)
+  # Ornaments (SMuFL common ornaments range) - from Bravura
   - glyph_name: "ornamentMordent"
     label: "Mordent"
     smufl_codepoint: 0xE56D  # SMuFL U+E56D
     codepoint_offset: 10
+    source_font: "bravura"
 
   - glyph_name: "ornamentInvertedMordent"
     label: "Inverted mordent"
     smufl_codepoint: 0xE56E  # SMuFL U+E56E
     codepoint_offset: 11
+    source_font: "bravura"
 
   - glyph_name: "ornamentTurn"
     label: "Turn"
     smufl_codepoint: 0xE567  # SMuFL U+E567
     codepoint_offset: 12
+    source_font: "bravura"
 
   - glyph_name: "ornamentTrill"
     label: "Trill"
     smufl_codepoint: 0xE566  # SMuFL U+E566
     codepoint_offset: 13
+    source_font: "bravura"
 
 # Summary Statistics
 summary:
@@ -662,44 +660,45 @@ pitched_note_decoration_bases:
 notation_elements:
   # NOTE: 0xE700-0xE703 reserved for line endpoint caps (generate.py)
   # Notation elements start at 0xE750 to avoid conflict
+  # Line variants start at 0x1E520 (after sargam_decorations ends at 0x1E517)
   dash:
     base: 0xE750
-    line_base: 0x1E000
+    line_base: 0x1E520  # Was 0x1E000 - moved to avoid collision with sargam_decorations
     ascii_input: ["-"]
     description: "Rhythmic placeholder / rest continuation"
 
   breath_mark:
     base: 0xE751
-    line_base: 0x1E00F
+    line_base: 0x1E52F  # Was 0x1E00F
     ascii_input: ["'", ","]
     description: "Breath mark / phrasing separator"
 
   space:
     base: 0xE752
-    line_base: 0x1E01E
+    line_base: 0x1E53E  # Was 0x1E01E
     ascii_input: [" "]
     description: "Beat separator"
 
   single_barline:
     base: 0xE753
-    line_base: 0x1E02D
+    line_base: 0x1E54D  # Was 0x1E02D
     ascii_input: ["|"]
     description: "Single barline"
 
   double_barline:
     base: 0xE754
-    line_base: 0x1E03C
+    line_base: 0x1E55C  # Was 0x1E03C
     ascii_input: ["||"]
     description: "Double barline"
 
   repeat_left:
     base: 0xE755
-    line_base: 0x1E04B
+    line_base: 0x1E56B  # Was 0x1E04B
     ascii_input: ["|:"]
     description: "Repeat start barline"
 
   repeat_right:
     base: 0xE756
-    line_base: 0x1E05A
+    line_base: 0x1E57A  # Was 0x1E05A
     ascii_input: [":|"]
     description: "Repeat end barline"
